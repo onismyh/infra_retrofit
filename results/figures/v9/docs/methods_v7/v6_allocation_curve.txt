@@ -1,0 +1,66 @@
+THE COST OF WATER HEADROOM IS CONVEX -- BUT LESS SO THAN THE RAW OBJECTIVE SUGGESTS,
+AND THE STEEPEST SEGMENT IS MOSTLY A PRICE CAP, NOT A PHYSICAL COST
+============================================================================================
+
+REVISION NOTE. An earlier version of this file reported a 117x rise in marginal cost and
+said 'China sits at the knee'. Both claims are withdrawn here. Two independent review
+findings, which I verified against the model's own cost accounting, cut them down:
+
+  (1) Unserved water is charged at a bare literal 1000 CNY/m3 (solver.py:711). At s = 0.90
+      the model stops adapting and simply BUYS the shortfall: 63.7% of the 0.85 -> 0.90
+      increment is that penalty, not physical adaptation. My first estimate of the penalty
+      share (17%) was wrong -- it priced `slack_detail.csv` volumes by hand, which
+      under-captures what the objective charges. `cost_breakdown.csv` carries the model's
+      own `slack_penalty` category and is authoritative.
+  (2) The knee's LOCATION on the s axis is not identified. The solver sees only
+      usable = extractable x (1 - s) x water_multiplier (data_prep.py:452-455), so the
+      same physical point sits at s = 0.85 under a 0.20 extractable ceiling and s = 0.925
+      under Jin et al. 2022's 0.40. 'China sits at the knee' is a statement about the
+      convention, not about China. The curve is therefore reported below against the
+      usable share u, which IS identified.
+
+All five runs are on the corrected dry-season basis (digest 9c613b0ddf4b), threads pinned
+at 8. Degeneracy floor 0.3277% (95% envelope on a difference, gated seed family n=5).
+
+============================================================================================
+THE CURVE, SPLIT INTO PHYSICAL COST AND PRICE-CAP PURCHASES
+============================================================================================
+
+      s u = 0.20(1-s)   total %  penalty %  PHYSICAL %     certified [lo,hi]
+   0.00        0.2000    0.0000     0.0000      0.0000 [-0.8304, 0.8373]
+   0.56        0.0880    0.2542     0.0000      0.2542 [-0.5379, 1.0937]
+   0.70        0.0600    0.5702     0.0000      0.5702 [-0.3498, 1.4123]
+   0.85        0.0300    1.3397     0.0738      1.2659 [ 0.6393, 2.1883]
+   0.90        0.0200    3.9935     1.7650      2.2285 [ 3.1792, 4.8643]
+
+The upper endpoint divides by the CONTROL'S BOUND, not its incumbent: the maximum of
+(OPT_t - OPT_c)/OPT_c over the certified box is attained at OPT_c = LB_c. The previously
+published +2.1701% for s = 0.85 understated it; the correct value is +2.1883%.
+
+============================================================================================
+MARGINAL COST ON THE PHYSICAL SERIES -- THE CLAIM THAT SURVIVES
+============================================================================================
+
+        segment  d physical %     dV/ds  rel. to first  vs floor
+   0.00-> 0.56        0.2542     0.454          1.00x     0.78x
+   0.56-> 0.70        0.3159     2.257          4.97x     0.96x
+   0.70-> 0.85        0.6957     4.638         10.22x     2.12x
+   0.85-> 0.90        0.9626    19.253         42.41x     2.94x
+
+So the marginal PHYSICAL cost of headroom rises about 42-fold across the range, not 117.
+Convexity survives the correction; the headline multiple does not.
+
+WHAT IS AND IS NOT RESOLVED:
+  - s = 0.85: effect 1.340%, of which only 5.5% is penalty. Certified interval excludes
+    zero. This is the paper's headline and it is 94.5% physical adaptation.
+  - s = 0.90: effect 3.994%, but 44.2% of it is the fleet buying shortfall at 1000 CNY/m3.
+    Report the physical 2.229%, or re-solve at 10x the penalty before quoting the total.
+  - s = 0.56 and 0.70 carry NO penalty at all -- the constraint is met physically -- but
+    their effects (0.254%, 0.570%) sit at 0.78x and 1.74x the floor, so the lower half of
+    the curve is not resolved and its SHAPE cannot be claimed.
+
+The defensible statement: the cost of water headroom is zero-to-unresolvable while power
+keeps more than about 6% of dry-season flow, becomes resolvable and physical at 3%, and
+beyond that the model stops adapting and starts paying a price cap. China's published
+conventions straddle exactly that range, which is the policy point -- stated on u, where it
+is identified, rather than on s, where it is not.

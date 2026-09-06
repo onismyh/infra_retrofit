@@ -1,0 +1,29 @@
+year,check_name,status,metric,value,threshold,detail
+2030,target_shortfall,pass,mt,0.0,0.0,Emission target slack should remain zero.
+2030,biomass_overuse,pass,GJ,0.0,0.0,Biomass use should fit shared biomass-node availability within hub buffers.
+2030,ammonia_overuse,pass,kg,0.0,0.0,Ammonia use should fit shared ammonia-node availability under hub competition.
+2030,water_overuse,pass,m3,0.0,0.0,Consumptive water use should fit the shared grid-water-node availability proxy under local competition.
+2030,storage_or_network_stress,pass,aggregate_slack,0.0,0.0,Transport and storage slacks indicate infeasible corridor or sink assumptions.
+2030,single_route_lock_in,warn,share,0.9962733263228686,0.8,A single route dominating the annual mix may indicate lock-in.
+2030,province_concentration,pass,share,0.09664741021196425,0.35,A single province carrying too much of the result should be reviewed.
+2040,target_shortfall,pass,mt,0.0,0.0,Emission target slack should remain zero.
+2040,biomass_overuse,pass,GJ,0.0,0.0,Biomass use should fit shared biomass-node availability within hub buffers.
+2040,ammonia_overuse,pass,kg,0.0,0.0,Ammonia use should fit shared ammonia-node availability under hub competition.
+2040,water_overuse,pass,m3,0.0,0.0,Consumptive water use should fit the shared grid-water-node availability proxy under local competition.
+2040,storage_or_network_stress,pass,aggregate_slack,0.0,0.0,Transport and storage slacks indicate infeasible corridor or sink assumptions.
+2040,single_route_lock_in,pass,share,0.5506180089770426,0.8,A single route dominating the annual mix may indicate lock-in.
+2040,province_concentration,pass,share,0.09664741021196427,0.35,A single province carrying too much of the result should be reviewed.
+2050,target_shortfall,pass,mt,0.0,0.0,Emission target slack should remain zero.
+2050,biomass_overuse,pass,GJ,0.0,0.0,Biomass use should fit shared biomass-node availability within hub buffers.
+2050,ammonia_overuse,pass,kg,0.0,0.0,Ammonia use should fit shared ammonia-node availability under hub competition.
+2050,water_overuse,pass,m3,0.0,0.0,Consumptive water use should fit the shared grid-water-node availability proxy under local competition.
+2050,storage_or_network_stress,pass,aggregate_slack,0.0,0.0,Transport and storage slacks indicate infeasible corridor or sink assumptions.
+2050,single_route_lock_in,pass,share,0.4103803855485768,0.8,A single route dominating the annual mix may indicate lock-in.
+2050,province_concentration,pass,share,0.09664741021196425,0.35,A single province carrying too much of the result should be reviewed.
+2060,target_shortfall,pass,mt,0.0,0.0,Emission target slack should remain zero.
+2060,biomass_overuse,pass,GJ,0.0,0.0,Biomass use should fit shared biomass-node availability within hub buffers.
+2060,ammonia_overuse,pass,kg,0.0,0.0,Ammonia use should fit shared ammonia-node availability under hub competition.
+2060,water_overuse,pass,m3,0.0,0.0,Consumptive water use should fit the shared grid-water-node availability proxy under local competition.
+2060,storage_or_network_stress,pass,aggregate_slack,0.0,0.0,Transport and storage slacks indicate infeasible corridor or sink assumptions.
+2060,single_route_lock_in,pass,share,0.5407983520613233,0.8,A single route dominating the annual mix may indicate lock-in.
+2060,province_concentration,pass,share,0.09664741021196425,0.35,A single province carrying too much of the result should be reviewed.

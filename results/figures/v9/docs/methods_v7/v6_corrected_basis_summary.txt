@@ -1,0 +1,180 @@
+================================================================================================
+v6 SUMMARY -- every headline on the CORRECTED dry-season basis
+================================================================================================
+
+OBJECTIVE CONTRASTS (certified interval = [LB_B - INC_A, INC_B - LB_A] / INC_A)
+
+  contrast                                    effect              certified  verdict
+  water accounted at all (BASE -> s=0)       +0.311%  [ -0.52, +1.02]%  inside bounds
+  reservation s=0 -> 0.85, cwatm ssp126      +1.340%  [ +0.64, +2.17]%  RESOLVED
+  reservation s=0 -> 0.85, wgap ssp126       +1.605%  [ +0.64, +2.55]%  RESOLVED
+  reservation s=0 -> 0.85, wgap ssp370       +1.506%  [ +0.60, +2.41]%  RESOLVED
+
+  The three reservation contrasts agree to within 0.27 percentage points across two hydrology
+  models and two SSPs (+1.340, +1.605, +1.506%). On the superseded per-cell-minimum dry-season
+  basis the same contrast read +5.827%: the aggregation defect inflated the cost of the water
+  constraint by roughly 4.3x. Merely ACCOUNTING for basin water without reserving any of it
+  (+0.311%) is NOT resolved and must not be reported as an effect.
+
+------------------------------------------------------------------------------------------------
+DRY-COOLING CONVERSION (GW) -- the study's only resolved physical channel
+------------------------------------------------------------------------------------------------
+  contrast                                   2030                     2040                     2060
+   cwatm ssp126           127.1 ->  354.7  (+227.6)  131.8 ->  380.1  (+248.4)   13.9 ->   45.5  (+ 31.6)
+   wgap ssp126            124.7 ->  310.6  (+186.0)  117.0 ->  337.2  (+220.2)   16.3 ->   42.3  (+ 26.0)
+   wgap ssp370            120.1 ->  320.5  (+200.5)  117.5 ->  351.3  (+233.8)   12.8 ->   49.7  (+ 37.0)
+
+  BASE, no water constraint at all: 2030 89.6 GW  2040 85.9 GW  2060 11.2 GW
+
+  Reserving the non-power share moves conversion by +186 to +248 GW at 2030-2040 in all three
+  contrasts. Against a solver-degeneracy floor of order 10-15 GW that is resolved by 15-25x,
+  and it is the ONLY channel this model resolves: capture, residual emissions and end-of-horizon
+  retirement all sit inside their own noise floors.
+
+
+------------------------------------------------------------------------------------------------
+SOLVER-DEGENERACY FLOOR ON THE CORRECTED BASIS
+------------------------------------------------------------------------------------------------
+  Seed replicates admitted by plot_style.same_model_runs (identical fingerprint 0xbf2f6de,
+  632,442 columns, 240,918 rows, threads pinned at 8): 3 of 4.
+  WA_cwatm_126_dry_wd085, WA_cwatm_126_dry_wd085_seed2, WA_cwatm_126_dry_wd085_seed3
+
+  raw objective range 0.2750% over n = 3
+  sigma = range / d2(3) = 0.1624%
+  95% envelope on a DIFFERENCE of two such runs = 1.96 x sqrt(2) x sigma = 0.4503%
+
+  effect                     magnitude   ratio to floor   verdict
+  reservation, cwatm ssp126    +1.340%         3.0x        RESOLVED
+  reservation, wgap  ssp126    +1.605%         3.6x        RESOLVED
+  reservation, wgap  ssp370    +1.506%         3.3x        RESOLVED
+  accounting for water only    +0.311%         0.7x        NOT RESOLVED -- do not report
+
+  A NOTE ON THE GATE ITSELF. `same_model_runs` first rejected all three replicates and left a
+  family of one, silently disabling the floor. The cause was not a model difference: `mip_focus`
+  was added to the provenance stamp mid-campaign, so the run solved before it carries None while
+  the runs solved after carry 0 -- and 0 is what None means, because the stamp reads an
+  environment variable that was unset. An absent field is not a difference when the default is
+  known; the comparison now normalises it. This is exactly the failure mode the gate exists to
+  prevent, in the opposite direction, and it is worth stating that a too-strict gate is as
+  dangerous as a missing one: it would have removed the only null the study has.
+
+------------------------------------------------------------------------------------------------
+ACT 3b ON THE CORRECTED BASIS -- the carbon price of cooling adaptation, paid in biomass
+------------------------------------------------------------------------------------------------
+              run  conv_GW  bio_pct_gen  bio_EJ  residual_Mt
+         no water   89.641        0.274   0.178     5392.194
+   accounted, s=0  127.064        0.390   0.253     5392.194
+ reserved, s=0.85  354.712        1.000   0.648     5392.194
+reserved, wgap126  310.639        0.887   0.575     5392.197
+reserved, wgap370  320.543        0.913   0.592     5392.197
+
+  At 2030 the non-negative-reduction constraint binds in every run: residual emissions are
+  5392.19 Mt against a baseline of 5392.20, identical to within 0.003 Mt across five runs
+  spanning 90 to 355 GW of wet-to-dry conversion. Converting a condenser costs 1.5 points of
+  thermal efficiency, which raises emissions above baseline; the model buys exactly enough
+  biomass co-firing to bring them back.
+
+  The purchase is LINEAR in the conversion: 1.769 PJ of biomass per GW converted
+  (R2 = 0.9997 over five runs and three hydrology members). Reserving the non-power share
+  therefore obligates roughly 395 PJ/yr of additional biomass at 2030 -- a claim on a
+  resource the model does not charge water for, which is the largest single gap between what
+  this mechanism costs in the model and what it would cost in the world.
+------------------------------------------------------------------------------------------------
+WHERE THE +1.340% ACTUALLY GOES -- decomposition by cost category, all planning years
+------------------------------------------------------------------------------------------------
+
+  The categories sum to the objective exactly (13.9552 -> 14.1422 e12), so this is a
+  complete decomposition and not an indicative one.
+
+  category                    control  treatment     delta  pp of obj
+  incremental_om               4.2355     4.4719   +0.2364    +1.694
+  carbon_cost                  7.7269     7.5260   -0.2008    -1.439
+  biomass_cost                 7.7147     7.8532   +0.1385    +0.992
+  water_cost                   0.6320     0.4952   -0.1367    -0.980
+  energy_penalty_cost          0.7088     0.8231   +0.1143    +0.819
+  coal_savings_credit         -5.7007    -5.8105   -0.1097    -0.786
+  baseline_net_cost           -3.3498    -3.2917   +0.0581    +0.417
+  air_retrofit_capex           0.0302     0.0838   +0.0536    +0.384
+  stranded_capex               0.0345     0.0611   +0.0265    +0.190
+  slack_penalty                0.0000     0.0103   +0.0103    +0.074
+  transport_opex               0.2564     0.2502   -0.0062    -0.044
+  blend_upgrade_capex          0.6791     0.6825   +0.0034    +0.024
+  pipe_capex                   0.0762     0.0733   -0.0028    -0.020
+  rebuild_capex                0.2754     0.2777   +0.0024    +0.017
+
+  READ IT AS A MECHANISM, NOT A PRICE. Reserving the non-power share does not simply make the
+  system more expensive by 1.34%. It moves money between five terms of comparable size:
+
+    it SPENDS on   dry-cooling O&M            +1.694 pp   (the largest single term)
+                   biomass co-firing          +0.992 pp
+                   backpressure fuel          +0.819 pp
+                   air-retrofit capex         +0.384 pp
+    and SAVES on   carbon                     -1.439 pp   (the extra biomass abates)
+                   water tariff               -0.980 pp   (dry cooling draws less)
+                   coal displaced by biomass  -0.786 pp
+
+  Two things follow that the single headline number hides.
+
+  FIRST, the capex the study is most exposed on is nearly irrelevant to the cost.
+  `air_retrofit_capex_cny_per_kw = 300` is an unsourced placeholder against a literature anchor
+  near 1370. But air-retrofit capex is only +0.384 pp of the +1.340%. Even a 4.6x increase moves
+  the headline to roughly +2.7%, not to a different conclusion -- and the physical response
+  (GW converted) was already shown flat across that swing. The exposure is real but bounded, and
+  it is bounded by this table rather than by assertion.
+
+  SECOND, the big-M is no longer the story. The unserved-water slack penalty contributes
+  +0.074 pp of the +1.340%, i.e. 5.5% of the effect; measured on the volumes in slack_detail.csv
+  alone it is +0.041 pp, 3.1%. On the superseded dry-season basis the same term carried roughly
+  two thirds of a +5.827% effect. The aggregation correction did not merely shrink the headline
+  -- it converted it from a penalty artefact into real spending. Those are the same change:
+  a looser right-hand side is one the fleet can satisfy by converting condensers instead of by
+  buying its way out at 1000 CNY/m3.
+
+  WHAT IS STILL UNSATISFACTORY. `slack_penalty_cny_per_unit` has never been perturbed, and the
+  water slack is priced by a bare literal 1000.0 at solver.py:711 rather than by that field. At
+  3-6% of the effect this no longer threatens the headline, but the price of infeasibility should
+  be a swept parameter, not a constant nobody has varied.
+------------------------------------------------------------------------------------------------
+INSTALLED DRY-COOLING STOCK vs OPERATED SHARE -- the reported series is the OPERATED one
+------------------------------------------------------------------------------------------------
+
+  solver.py:735         capex charged on `air_installed`
+  constraints.py:277    air_installed >= sum_k air_share    (installed covers operation)
+  constraints.py:66     air_installed[t] >= air_installed[t-1]   (monotone stock)
+  solver.py:658         fuel, CO2 and water penalties charged on `air_share`
+  results/*             `air_installed` is written NOWHERE
+
+  So the model may install dry cooling, pay for it, and then operate it WET -- and nothing in the
+  outputs records the stock. Reconstructing a lower bound on the stock as each plant's running-max
+  operating fraction, applied to that year's surviving capacity (so retirement cannot masquerade
+  as idle capacity):
+
+  WA_cwatm_126_dry_wd085
+      year  operated GW   stock GW  run wet GW  % of stock
+      2030        354.7      354.7         0.0          0%
+      2040        379.8      384.1         4.3          1%
+      2050        178.1      225.4        47.3         21%
+      2060         43.6      140.6        97.0         69%
+
+  WA_cwatm_126_dry
+      year  operated GW   stock GW  run wet GW  % of stock
+      2030        127.1      127.1         0.0          0%
+      2040        131.8      140.9         9.2          7%
+      2050         49.6      100.8        51.3         51%
+      2060         13.4       47.0        33.6         71%
+
+  THE DIVERGENCE IS LARGE AND IT CHANGES WHAT FIG 5 SAYS. In the binding run 97 GW -- 69% of the
+  surviving dry-cooling stock -- is being operated WET at 2060, and 47 GW (21%) at 2050. So the
+  headline series "conversion peaks at 380 GW and falls to 44 GW" is an OPERATING share. The stock
+  falls only to 141 GW. Fig 5's annotation attributes the whole decline to "converted stock
+  retiring, not a policy reversal"; that is right for part of it and wrong for the rest, because
+  the remainder is capacity reverting to wet operation once water stops binding at its node.
+
+  Economically the behaviour is correct -- running dry costs 1.5 points of efficiency in fuel and
+  CO2, so once the basin constraint slackens (the northern fleet has largely retired by 2060) wet
+  operation is cheaper. It is a genuine and interesting result: the fleet does not stay converted,
+  it converts for the transition and reverts afterwards. But it must be SAID, and it cannot be
+  verified from the outputs because `air_installed` is never written.
+
+  ACTIONS: (1) emit `air_installed` from the results writer; (2) relabel the Fig 5 annotation to
+  separate retirement from reversion; (3) report the stock series alongside the operated series.

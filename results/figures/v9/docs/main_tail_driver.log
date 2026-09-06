@@ -1,0 +1,13 @@
+=== START WA_cwatm_126_dry_wd085_noair_capfree 2026-08-22T15:44:27-04:00 threads=8 gap=0.03 ===
+=== END   WA_cwatm_126_dry_wd085_noair_capfree rc=0 2026-08-22T16:20:05-04:00 ===
+=== START WA_cwatm_126_dry_wd085_air1370 2026-08-22T16:20:05-04:00 threads=8 gap=0.03 ===
+=== END   WA_cwatm_126_dry_wd085_air1370 rc=0 2026-08-22T17:02:59-04:00 ===
+=== START WA_cwatm_126_dry_wd085_air1000 2026-08-22T17:02:59-04:00 threads=8 gap=0.03 ===
+=== END   WA_cwatm_126_dry_wd085_air1000 rc=0 2026-08-22T17:42:25-04:00 ===
+=== START WA_wgap_126_dry_wd085 2026-08-22T17:42:25-04:00 threads=8 gap=0.03 ===
+=== END   WA_wgap_126_dry_wd085 rc=1 2026-08-22T18:24:32-04:00 ===
+!!! WA_wgap_126_dry_wd085 FAILED rc=1 -- continuing
+=== SKIP  WA_wgap_126_dry_nobias (lane 1 got there first) ===
+=== SKIP  WA_cwatm_370_dry_nobias (lane 1 got there first) ===
+=== SKIP  WA_wgap_126_dry (lane 1 got there first) ===
+=== TAIL LANE COMPLETE 2026-08-22T18:24:32-04:00 ===

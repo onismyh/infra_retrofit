@@ -1,0 +1,6 @@
+year,constraint_type,node_id,province,slack_value,unit
+2030,water_supply,WC_0046_0021_K,新疆维吾尔族自治区,1203695.1029495092,m3
+2040,water_supply,WC_0044_0018_K,新疆维吾尔族自治区,2263726.214339548,m3
+2040,water_supply,WC_0053_0019_D,内蒙古自治区,2779376.4268636247,m3
+2040,water_supply,WC_0053_0019_K,内蒙古自治区,215045.63153190332,m3
+2050,water_supply,WC_0044_0018_K,新疆维吾尔族自治区,1418798.3457278165,m3

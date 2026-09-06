@@ -1,0 +1,34 @@
+=== v9tree campaign start Thu Sep  3 11:46:10     2026 ===
+--- WA_cwatm_126_dry_wd085 start Thu Sep  3 11:46:10     2026 ---
+--- WA_cwatm_126_dry_wd085 done Thu Sep  3 17:25:34     2026 ---
+--- BASE start Thu Sep  3 17:25:34     2026 ---
+--- BASE done Thu Sep  3 21:02:18     2026 ---
+--- WA_cwatm_126_dry start Thu Sep  3 21:02:18     2026 ---
+--- WA_cwatm_126_dry done Thu Sep  3 21:33:30     2026 ---
+=== campaign done Thu Sep  3 21:33:30     2026 ===
+=== fill lane a start Fri Sep  4 09:19:42     2026 queue: WA_cwatm_126_dry_wd085_seed2 WA_cwatm_126_dry_wd085_seed3 WA_cwatm_126_dry_wd085_seed4 WA_cwatm_126_dry_seed2 WA_cwatm_126_dry_seed3 WA_cwatm_126_dry_seed4 WA_cwatm_126_dry_wd085_seed5 WA_cwatm_126_dry_wd085_seed6 SA_discount_3pct SA_discount_8pct SA_carbon_low SA_carbon_high SA_retire_cost_250 SA_retire_cost_500 SA_retire_cost_650 SA_retire_cost_1000 SA_biomass_cost_150 SA_biomass_cost_200 SA_injectivity_half ===
+--- WA_cwatm_126_dry_wd085_seed2 start Fri Sep  4 09:19:42     2026 lane=a seed=2 threads=8 ---
+=== fill lane b start Fri Sep  4 09:19:45     2026 queue: WA_cwatm_370_dry_wd085 WA_cwatm_370_dry WA_cwatm_126_dry_wd085_noair WA_cwatm_126_dry_wd085_air1000 WA_cwatm_126_dry_wd085_air1370 WA_wgap_126_dry WA_wgap_126_dry_wd085 WA_cwatm_370_dry_nobias WA_wgap_126_dry_nobias WA_cwatm_126_dry_wd085_noair_capfree WA_cwatm_126_dry_wd085_capfree SA_ccs_capex_low SA_ccs_capex_high SA_retire_cap_010 SA_retire_cap_025 SA_air_capex_low SA_air_capex_high SA_air_penalty_high SA_pipe_mid SA_pipe_full SA_ammonia_cost_50 SA_ammonia_cost_70 ===
+--- WA_cwatm_370_dry_wd085 start Fri Sep  4 09:19:45     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_wd085_seed2 done rc=0 Fri Sep  4 11:38:26     2026 ---
+--- WA_cwatm_126_dry_wd085_seed3 start Fri Sep  4 11:38:26     2026 lane=a seed=3 threads=8 ---
+--- WA_cwatm_370_dry_wd085 done rc=0 Fri Sep  4 12:24:27     2026 ---
+--- WA_cwatm_370_dry start Fri Sep  4 12:24:27     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_wd085_seed3 done rc=0 Fri Sep  4 13:26:44     2026 ---
+--- WA_cwatm_126_dry_wd085_seed4 start Fri Sep  4 13:26:44     2026 lane=a seed=4 threads=8 ---
+--- WA_cwatm_370_dry done rc=0 Fri Sep  4 14:11:41     2026 ---
+--- WA_cwatm_126_dry_wd085_noair start Fri Sep  4 14:11:41     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_wd085_seed4 done rc=0 Fri Sep  4 15:08:04     2026 ---
+--- WA_cwatm_126_dry_seed2 start Fri Sep  4 15:08:04     2026 lane=a seed=2 threads=8 ---
+--- WA_cwatm_126_dry_wd085_noair done rc=0 Fri Sep  4 15:22:40     2026 ---
+--- WA_cwatm_126_dry_wd085_air1000 start Fri Sep  4 15:22:40     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_wd085_air1000 done rc=0 Fri Sep  4 17:21:31     2026 ---
+--- WA_cwatm_126_dry_wd085_air1370 start Fri Sep  4 17:21:31     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_seed2 done rc=0 Fri Sep  4 17:21:54     2026 ---
+--- WA_cwatm_126_dry_seed3 start Fri Sep  4 17:21:54     2026 lane=a seed=3 threads=8 ---
+--- WA_cwatm_126_dry_wd085_air1370 done rc=0 Fri Sep  4 19:57:39     2026 ---
+--- WA_wgap_126_dry start Fri Sep  4 19:57:39     2026 lane=b seed=0 threads=8 ---
+--- WA_cwatm_126_dry_seed3 done rc=0 Fri Sep  4 21:57:59     2026 ---
+--- WA_cwatm_126_dry_seed4 start Fri Sep  4 21:57:59     2026 lane=a seed=4 threads=8 ---
+--- WA_wgap_126_dry done rc=0 Fri Sep  4 22:27:48     2026 ---
+--- WA_wgap_126_dry_wd085 start Fri Sep  4 22:27:49     2026 lane=b seed=0 threads=8 ---

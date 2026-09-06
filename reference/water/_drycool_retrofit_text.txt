@@ -1,0 +1,1223 @@
+ 
+ 
+Dry Cooling Retrofits at Existing Fossil Fuel-Fired Power Plants in a Water-
+Stressed Region: Tradeoffs in Water Savings, Cost, and Capacity Shortfalls  
+ 
+Haibo Zhai,a,b,* Edward S. Rubin,b Eric J. Grol,c Andrew C. O'Connell,c,d Zitao Wu,a and Eric G. Lewis c,d  
+aDepartment of Civil and Architectural Engineering, University of Wyoming, Laramie, WY 82071 
+bDepartment of Engineering and Public Policy, Carnegie Mellon University, Pittsburgh, PA 15213 
+cNational Energy Technology Laboratory, Pittsburgh, PA 15236 
+dNational Energy Technology Laboratory support contractor, Pittsburgh, PA 15236 
+ 
+*Corresponding Author Email: hzhai@uwyo.edu; Phone: 307-766-2318 
+ 
+ 
+Prepared for consideration of publication in Applied Energy 
+ 
+  
+1 
+ 
+Abstract 
+This study investigates the performance, cost , and generating capacity impacts of switching from 
+wet cooling towers to dry cooling systems to reduce consum ptive water use at existing fossil 
+fuel-fired power plants in a water-stressed region. Retrofit analysis of dry cooling is conducted 
+on a unit-by-unit basis for both coal-fired and gas-fired power plants in several western U.S. 
+states. Unit-level results are then aggregated to the regional level. Based on regional averages, 
+retrofitting dry cooling systems in lieu of wet cooling towers decreases total annual plant water 
+consumption at existing coal- and gas-fired power plants by 93% and 100%, respectively, while 
+increasing the levelized cost of electricity generation by  approximately 12% and 18%, 
+respectively . Based on a nominal regional water price, this cost increase corresponds to an 
+average cost of consumptive water savings of $9.6 and $22.5 per thousand gallons of water 
+saved  at coal and gas plants, respectively,  if retrofit difficulty is minimal.  Over the year, the 
+change in monthly  net regional generating capacity from dry cooling retrofits exhibits a seasonal 
+pattern, with the largest shortfalls occuring in July. The average monthly reduction in net 
+capacity is estimated at 0.7% and 1.2% of the regional nameplate capacity for coal- and gas-
+based plants, respectively. Dry cooling retrofits thus lead to tradeoffs in water savings, cost, and 
+capacity  shortfalls, which vary with power plant characteristics. The tradeoffs identified here can 
+inform  electric power industry water management plans and decision-making for alternative 
+cooling options  in water-stressed regions.  
+ 
+Keywords : Dry Cooling, Wet Cooling Tower, Retrofit, Coal, Natural Gas, Water Consumption, 
+Water Savings, Capacity Shortfall, Cost, and Tradeoffs  
+ 
+2 
+ 
+ 
+Highlights 
+• Retrofits of dry cooling can substantially reduce or eliminate the consumptive use of 
+water at existing fossil fuel power plants in arid regions . 
+• Dry cooling retrofits can reduce the  monthly net capacity of coal-fired and gas-fired 
+plants, with the largest shortfall in summer.  
+• The cost of water savings by dry cooling varies significantly with power plant 
+characteristics.   
+3 
+ 
+1. Introduction 
+Electric power plants are one of the largest sources of freshwater withdrawals in the U.S., and 
+cooling systems are typically the largest source of water use within thermoelectric power plants 
+[1]. Driven by Section 316(b ) of the Clean Water Act regulations for cooling water intake 
+structures, a shift from on ce-through cooling systems to recirculating wet cooling towers has 
+significantly reduc ed water withdrawals at thermal power plants—often at the expense of 
+increase d water consumption by evaporation in cooling towers [1-2]. In the U.S., more than 61% 
+of current thermoelectric generating capacity has used closed-loop wet cooling systems, mainly 
+recirculating cooling tower systems [3]. At the same time, increasing water stress has driven 
+some states in the western and southern U.S., such as California and Texas, to restrict freshwater 
+use for power plant cooling in arid regions or during dry seasons  [4]. Limited water resources or 
+drought events can affect the ability to generate electricity to meet the regional power demand 
+and increase the system -wide operation cost [5-6]. The extent of capacity expansion in the 
+electric power sector can be constrained by water resource availability, especially in the western 
+regions [4, 7]. 
+To overcome potential water constraints  on thermoelectric power generation in arid regions, 
+air-cooled condensers (ACCs) for dry cooling can be employed to significantly reduce plant 
+fresh water use to conserve water resources.  However, dry cooling systems are a capital-
+intensive investment  compared to wet cooling towers [8]. Dry cooling may also impose a larger 
+parasitic load than wet cooling towers  [9], reducing the net capacity available to the power grid. 
+Thus, systems  research is needed to understand the tradeoffs associated with dry cooling with 
+respect to water savings, energy penalty, and cost  in order to promote efficient water use and 
+energy production .  
+4 
+ 
+Past studies of the performance and cost of dry cooling systems at new thermoelectric power 
+plants, and of retrofit costs at existing plants, have not considered the variable seasonal effects of 
+dry cooling on power generation capacity  [8-10]. One recent study (published in 2016) 
+estimating the marginal cost of water savings from  dry cooling was based on  systems that were 
+in use more than a decade ago [11]; however, modern systems are significantly improved and 
+less costly [9]. Although dry cooling systems have often been included in capacity expansion 
+planning as a water reduction option for the electric power sector, few studies have paid attention 
+to the associated reduction in power generating capacity [12-13]. In addition, unit commitment 
+and dispatch modeling for power generation systems also commonly ignore such performance 
+penalties from dry cooling deployment  [14-15]. However, without careful attention to the full 
+impact of  climate and water-using technologies on the performance of individual power plants, 
+regional energy systems may be vulnerable, especially in arid regions [16]. Power plant 
+characteristics need to be considered while assessing water -related threats to the electric power 
+sector [17]. 
+The major objectives of this study , therefore, are to investigate the water-use reduction 
+benefit of current dry cooling technology if deployed at existing fossil fuel-fired power plants 
+using wet cooling towers, including both pulverized coal (PC) and natural gas combined cycle 
+(NGCC) power plants; to evaluate the cost-effectiveness of such dry cooling retrofits; and to 
+quantify p otential shortfalls in net generating capacity from dry cooling deployment over a 
+typical year. For existing fossil fuel -fired power plants using wet cooling towers in a water-
+stressed region, dry cooling retrofit is a key option to cope with potential water -related threats to 
+the electric power sector. Toward this end, therefore, case studies are conducted of dry cooling 
+retrofits at existing electric generating units (EGUs) with wet cooling towers in a water-stressed 
+5 
+ 
+region of the western U.S. This study seeks to identify the tradeoffs among multiple impacts and 
+criteria in order  to help inform decision -making for water management in the electric power 
+industry . It also explores implications for the operation of units with dry cooling, especially 
+during periods  of hot weather. In this study, retrofit analysis of dry cooling is conducted on an 
+EGU level.  
+ 
+2. Methods and Materials   
+This study develops analytical performance and cost models of current dry cooling technology 
+based on a recently completed study by the National Energy Technology Laboratory (NETL)  (in 
+2018) [9]. These models have been  incorporated as new options in the Integrated Environmental 
+Control Model (IECM), a power plant modeling tool developed by Carnegie Mellon University  
+[18].  
+The enhanced  IECM is then applied to configure and model existing EGUs with wet cooling 
+towers using major unit-specific  attributes and local ambient air conditions. Analyses are 
+conducted  on both an annual average and monthly average basis. The IECM is further  applied to 
+model the same EGUs retrofitted with dry cooling systems . In addition to plant performance and 
+water use impacts, the IECM also estimates the capital and operating costs of the dry cooling 
+systems as well as the added  unit-level cost of electricity generation. In this study, we assume the 
+same capital cost for both new and retrofit applications at these western plant locations. From 
+this baseline cost, we later estimate the impact of higher retrofit costs due to site -specific 
+difficulties such as space constraints or other factors . The enhanced IECM can also be applied 
+for retrofit analysis in other states or regions when unit attributes and ambient conditions are 
+specified by location.  
+6 
+ 
+To evaluate the cost-effectiveness of dry cooling retrofits, the annual average cost of water 
+savings is estimated based on the unit -level water consumption intensity and added cost of 
+electricity generation. To evaluate potential plant deratings from dry cooling deployment, 
+including seasonal variations,  the enhanced IECM is used to model the changes in unit 
+performance based on operating conditions and ambient air conditions on a monthly basis.  
+ 
+2.1 Power Plant and Climate Databases 
+This study acquire d data on the major attributes and operating conditions of existing U.S. 
+fossil fuel -fired EGUs from several power plant databases, including ABB Ability™ Velocity 
+Suite, the National Electric Energy Data System (NEEDS), and the Energy Information 
+Administration (EIA) Survey Forms 860 and 923  [19-22]. NEEDS, EIA Form 860, and Velocity 
+Suite report on plant name, identification number, location, unit type, online year, nameplate 
+capacity, and flue gas desulfurization (FGD) type and removal efficiency, as well as 
+environmental control s for nitrogen oxides (NOx), particulate matter, and mercury. EIA Form 
+923 reports the type of cooling technology. Velocity Suite also reports hourly gross and net 
+electricity generation and fuel consumption, which were used to estimate the gross and net heat 
+rates on monthly and annual bases. The steam cycle heat rate of existing coal-fired EGUs, which 
+is needed to estimate the cooling duty , was further estimated based on gross heat rate and boiler 
+efficiency  [1], while the steam cycle heat rate of existing NGCC units was estimated using an 
+adjustment function based on the net heat rate, which is discussed later. For coal-fired EGUs, 
+boiler effici ency is calculated using existing IECM algorithms. Information on fuel properties 
+and prices is also available from Velocity Suite, supplemented with EIA Form 923. Capacity 
+factor  was estimated based on nameplate capacity and annual electricity generation.  
+7 
+ 
+In addition, this study acquire d hourly ambient air conditions from the National Climatic 
+Data Center for the meteorological stations  closest to each of the power plants that were modeled 
+or the meteorological stations referenced by power plants. Local climate data included the air 
+dry-bulb temperature, relative humidity, and ambient air pressure  [23]. Tables S1 and S2 of the 
+Supplementary Information (SI) summarize the climate monitoring stations  for the coal- and gas-
+fired power plants  that were modeled, respectively.   
+ 
+2.2 Case Study Power Plants 
+To assess the impacts of dry cooling retrofits  on fossil fuel-fired power plants, this study 
+analyzed 12 coal-fired EGUs at six power plants in Arizona and New Mexico, plus 14 EGUs 
+operating at 12 NGCC power plants  in Arizona, New Mexico and Colorado. All of these units 
+currently use wet cooling towers. The 12 coal-fired EGUs have a combined nameplate capacity 
+of about 4700 megawatts gross (MWg), while the 14 NGCC units have combined nameplate 
+capacity of about 7500 MWg. Tables 1 and 2 respectively summarize the major attributes of the 
+selected coal- and gas-fired EGUs and their ambient air conditions on an annual average basis 
+for the year 2017 . Coal properties and prices are provided in SI Table S3, while natural gas 
+prices are provided in  SI Table S4. 
+Table 1 shows that the unit attributes vary significantly  across the 12 coal-fired units, which 
+vary in age by up to 30 years. For the coal-fired EGUs, the nameplate capacities range from 257 
+to 555 MW, while the net heat rates range from 9,150 to 12,530 Btu/kWh. While all coal-fired 
+EGUs are equipped with  FGD systems, eight units use wet FGD while four use dry FGD  
+systems. This is significant because  wet FGD systems are a major consumer of water while dry 
+systems are not [1]. In terms of key climate variables, the  annual average air dry-bulb 
+8 
+ 
+temperature  at the 6 coal-fired power plants ranges from 51  to 65 °F and the relative humidity 
+ranges from 39 to 48%.  
+As shown in Table 2, the unit attributes also vary significantly  across the 14 NGCC units. 
+For the NGCC units, the nameplate capacit ies range from 136 to 685 MW, while the net heat 
+rates range from 7,028  to 8,509 Btu/kWh. The annual average air dry-bulb temperature at the 12 
+gas-fired power plants ranges from 51 to 78 °F and the relative humidity ranges from 31 to 53%.  
+9 
+ 
+ 
+Table 1. Existing coal-fired EGUs with wet cooling towers 
+State New Mexico  Arizona 
+Plant study ID NM1 NM2 AZ1 AZ2 AZ3 AZ4 
+Unit study ID 1 2 3 4 5 6 7 8 9 10 11 12 
+Online year 1984  1982  1982  1980  1981  1979  1979  1980  1985  1990  2006  2009  
+Nameplate capacity (MWg a) 257 369.0  555.0  312.3  414.0  204 410.9  410.9  424.8  424.8  458.1  458.1  
+Capacity factor (%) 52.7 76.8 78.9 51.8 59.6 58.0 61.5 61.7 47.4 74.3 68.2 57.0 
+Net heat rate (Btu/kWh) 10,740 11,232 11,649 12,526 11,799 11,163 11,313 11,608 9,430 9,151 9,956 9,991 
+Net generation (billion 
+kWh/year) 
+1.102  2.288  3.612  1.307  2.037  0.9637 2.085  2.093  1.662  2.607  2.578  2.156  
+Air dry-bulb temp. (°F) 51.5 53.7 53.7 58.6 58.6 64.8 56.7 56.7 56.7 56.7 56.7 56.7 
+Relative humidity (%) 47.6 46.5 46.5 39.3 39.3 39.6 41.1 41.1 41.1 41.1 41.1 41.1 
+Air pollution controls             
+NOx (in-furnace)  √ √ √ √ √ √ √ √ √ √ √ √ 
+NOx (post-combustion) None √ √ none  none  √ √ √ none  none  √ √ 
+Mercury √ √ √ √ √ √ √ √ none  none  √ √ 
+Particulate matter √ √ √ √ √ √ √ √ none  none  √ √ 
+SO2 (FGD)  Wet Wet  Wet  Wet  Wet  Wet  Wet  Wet  Dry  Dry  Dry  Dry  
+a MWg represents the gross power output in megawatt. 
+ 
+ 
+ 
+ 
+10 
+ 
+ 
+Table 2. Existing NGCC units with wet cooling towers 
+State  Arizona 
+New 
+Mexico 
+Colorado 
+Plant study ID AZ1 AZ2 AZ3 AZ4 AZ5 AZ6 AZ7 AZ8 AZ9 NM1 CO1 CO2 
+Unit study ID 1 2 3 4 5 6 7 8 9 10 11 12 13 14 
+Online year 2001  2003  2002  2005  2006  2002  2001  2004  2002  2003  2003  2006  2015  2004  
+Nameplate capacity (MWg a) 135.6 570 292 622.1 290.2 654.2 646.3 441.6  573.1 691.5 619 650.3  624.8 684.7 
+Capacity factor (%) 21.0 44.5 40.5 43.1 42.0 35.0 19.4 13.7 43.0 33.9 44.8 45.3 57.2 35.7 
+Net heat rate (Btu/kWh) 8509  8064  7413  7362  7460  7313  8024  7266  7445  7321  7095  7028  8348  7653  
+Net generation (billion 
+kWh/year) 
+0.222 2.026 1.009 2.307 1.049 1.957 1.037 0.5196 2.079 2.015 2.388  2.536  3.08 1.996 
+Air dry-bulb temp. (°F) 77.9 77.9 77.9 77.9 77.9 64.5 77.9 77.9 77.9 77.9 77.9 63.5 51.4 51.4 
+Relative humidity (%) 31.2 31.2 31.2 31.2 31.2 33.2 31.2 31.2 31.2 31.2 31.2 41.3 52.6 52.6 
+a MWg represents the gross power output in megawatt. 
+ 
+11 
+ 
+2.3 Analytical Performance and Cost Models of Dry Cooling Systems 
+The recent NETL study examined the technical and economic effects of current dry cooling 
+systems on new fossil fuel-fired power plants under varying climate conditions based on current 
+performance and cost estimates  using data and information from vendors and users of the 
+technology, design/build utility projects, best engineering judgment, relevant NETL studies, and 
+published reports  [9]. Based on this study, analytical models of dry cooling were derived using 
+linear and nonlinear regressions for the design and off-design cases of coal- and gas-fired power 
+plants in the NETL study. These models were then used  to estimate capital costs and the 
+dependency of dry cooling system performance parameters on ambient air conditions  [9, 24]. 
+The resulting performance model of dry cooling systems can account for several major 
+relationships: turbine backpressure as a function of air dry -bulb temperature; steam cycle heat 
+rate as a function of turbine backpressure ; exhaust steam temperature as a function of turbine 
+backpressure ; and dry cooling system parasitic load as a function of the initial temperature 
+difference (ITD) between the turbine exhaust steam and ambient air. ITD is a critical parameter 
+affecting the dry cooling system performance and cost [8].  
+The NETL capital cost estimates for  dry cooling system s under the designated conditions 
+were used to update  the previously-developed IECM cost model, which was based on data 
+published in 2005  [8]. The more recent NETL data indicated  a significant decrease in the capital 
+cost of dry cooling systems  since the early 2000s [24]. Details of the analytical models are 
+available in a research report [24] and are also briefly summarized in section S2 of the SI. 
+ 
+12 
+ 
+2.4 Integrated Environmental Control Model for Assessing Coal-Fired EGUs  
+These new analytical models of dry cooling systems have been incorporated in the IECM. 
+The enhanced IECM provides systematic estimates of the fuel consumption, water consumption 
+rate, net capacity, efficiency, and levelized cost of electricity generation (LCOE) of existing 
+EGUs before and after dry cooling systems are retrofitted. The size of a dry cooling system is 
+determined for coal-fired EGUs based on unit nameplate capacity and annual average ambient 
+air conditions , and for NGCC units based on steam turbine capacity and annual average ambient 
+air conditions . Analogous to the carbon dioxide avoidance cost, a widely used cost metric for 
+evaluating carbon capture technologies [25], the cost of water savings by dry cooling at each 
+EGU is calculated based on the annual average water consumption intensity and LCOE: 
+CWS =
+LCOEDry − LCOEExisting
+WCExisting − WCDry
+ (1) 
+where, CWS is the cost of water savings by dry cooling deployment ($/ gallon of water saved); 
+LCOE is the levelized cost of electricity generation for existing or retrofitted EGUs ($/MWh); 
+and WC is the unit-level water consumption intensity for existing or retrofitted EGUs 
+(gallons/MWh). This metric measures the overall expense per unit of water consumption savings, 
+including all capital investment and operating and maintenance costs required for dry cooling 
+systems while reducing water consumption due to evaporative losses in wet towers.  
+The enhanced IECM is further applied to quantify potential  shortfalls in net capacity from 
+dry cooling deployment on a monthly basis.  The performance of existing EGUs with wet cooling 
+towers is evaluated based on the  monthly averages for net electricity generation, net heat rate, 
+and ambient air conditions.  To evaluate the performance of existing EGUs retrofitted with dry 
+cooling, fuel consumption and operating hours within a month are kept constant for the pre- and 
+13 
+ 
+post-retrofit cases . However, the monthly average heat rate is adjusted for changes in the turbine 
+backpressure , which may be elevated by the dry cooling technology, especially in hot months 
+[9].  As site-specific data on  turbine backpressure are not reported in any available databases, an 
+analytical model was  derived from the NETL study to estimate the backpressure as a function of 
+air dry-bulb temperature for both the wet and dry cooling systems at existing coal-fired power 
+plants [9]. The backpressure function and the heat rate adjustment factor for dry cooling  systems 
+employed at existing coal -fired power plants are provided in SI Section S3.  
+For existing NGCC units, the steam cycle heat rate is a key parameter that affects the 
+cooling duty and process design [1]. However, its value is not reported in power plant databases. 
+Thus, it was estimated based on the net  plant heat rate using a steam cycle heat rate adjustment 
+function derived from the NETL study  [9], which reports the ratio of steam cycle heat rate to net 
+unit heat rate. This ratio is also given as a function of ambient air dry -bulb temperature, allowing 
+the development of a model to also correct for changes in ambient air dry-bulb temperature over 
+the year. Details of these analytical performance models are summarized in section S4 of the SI. 
+ 
+3. Results 
+This section first present s the results of a cost-effectiveness analysis of dry cooling retrofits 
+based  on annual average values. Then, the changes in net generating capacity from dry cooling 
+retrofits are presented  on a monthly basis to assess seasonal as well as annual average cha nges in 
+regional generating capacity . 
+ 
+14 
+ 
+3.1 Major Assumptions for Retrofit Analysis 
+To model and evaluate existing fossil fuel-fired EGUs using wet cooling systems, a number 
+of assumptions  are required. Major assumptions for this study include the following: nominal 
+values of all plant and ambient air parameters are based on the year 2017  (the most recent year 
+for which all required data were available) ; unit age in 2017 is estimated relative to the unit 
+online year; unit retirement age is assumed to be  50 years for coal-fired EGUs and 30 years for 
+gas-fired EGUs; unit size is based on nameplate capacity; multiple units within a power plant 
+burn the same  fuel; for LCOE calculations, all existing equipment is treated as fully amortized in 
+calculating the incremental cost of dry cooling retrofits ; and, where unit-specific data are not 
+available  from the databases cited earlier, IECM default values are used (e.g., cooling water 
+temperatures, cycle s of concentration, auxiliary cooling duty).  
+To assess dry cooling retrofits, we make  several additional assumptions: dry cooling is 
+considered  to be a mature technology with no inherent cost or technology barriers that would be 
+considered prohibitive  as a candidate for retrofit applications; for each EGU, the nameplate 
+(gross) capacity  and capacity factor are kept constant for the pre - and post-retrofit cases; the size 
+of a dry cooling system is estimated based on a nnual average ambient air conditions, as noted 
+earlier; and, dry cooling system capital costs are amortized over 30 years, or over the remaining 
+life of the unit if less than 30 years (based on the assumed retirement age). In the absence of 
+current site-specific data,  the IECM default water price of $1.1/kgal, which falls within the price 
+range reported by a study on western regions [26], is used for all case studies.  A sensitivity 
+analysis later considers the impacts of alternative water prices and additional capital costs 
+associated with site-specific retrofit factors. 
+ 
+15 
+ 
+3.2 Cost-Effectiveness Analysis of Dry Cooling Retrofits  
+We first evaluate existing fossil fuel-fired EGUs using wet cooling towers prior to dry 
+cooling retrofits. Fig.1 and Fig.2 show major performance and cost results based on IECM 
+annual average simulations. For existing coal-fired units using wet cooling towers, the annual 
+average  water consumption intensity varies from 405 to 772 gallon/MWh-net. For existing 
+NGCC units with wet cooling towers it varies from 215 to 357  gallon/MWh-net. The variation is 
+due mainly to differences in  unit efficiency (heat rate) and ambient air conditions, as well as 
+FGD type (for coal plants) [1,8]. The LCOE of each unit, excluding sunk capital costs,  varies 
+from $30.1 to $58.3/MWh  for coal-fired EGUs and $30.5 to $56.2/MWh for NGCC units, 
+largely because of differences in  unit capacity factors and other parameters [27]. These LCOE 
+values, thus, reflect only the current operating and maintenance (O&M) costs (including fuel 
+cost) of each unit, assuming that all capital costs are fully amortized (which simplifies the 
+calculation of added cost due to dry cooling retrofits, which is the main focus of this study). 
+For dry cooling systems, the steam condenser operates at a higher temperature than for wet 
+recirculating cooling tower systems as the theoretical cooling capability is constrained by the  
+higher air dry-bulb temperature rather than the air wet-bulb temperature. The resulting increase 
+in steam turbine exhaust temperature into the ACC  increases the steam turbine backpressure, 
+which increases the steam cycle heat rate  and the plant parasitic load, especially for “off-design” 
+ambient air conditions  [8-9]. The higher exhaust steam temperature into the ACC also affects the 
+ITD for dry cooling  [8]. As discussed in Section S2 of the SI, the backpressure change with dry 
+cooling is minor when the air dry-bulb temperature is less than about 60 °F [9]. SI Table S5 and 
+Table S6, respectively , summarize the ITD design values for all the coal- and gas-based retrofit 
+cases, which are based on a nnual average ambient conditions.  
+16 
+ 
+Fig.1 also shows the performance and cost results for existing coal-fired EGUs after retrofit 
+with dry cooling systems based on annual average ambient conditions . As the annual average 
+dry-bulb air temperature adopted for designing the dry cooling systems is less than 60 °F for all 
+but one EGU (where it is 64.8 °F, see Table 1), dry cooling retrofits only slightly decrease the 
+net generating efficiency  of each unit, with a corresponding small increase in coal consumption 
+to maintain the same net electrical output as the pre -retrofit case. For the region as a whole, dry 
+cooling deployment at all 12 coal-fired EGUs reduces total annual water consumption by 93% 
+while increasing the unit-level LCOE by an average of $5.4/MWh (a 12% average increase 
+based on the calculated LCOEs) . We note that the capital cost of dry cooling assumes no 
+significant site-specific difficulties that would add a premium to the cost of a new plant 
+installation. A later sensitivity analysis shows the impact of alternative retrofit cost factor 
+assumptions.  
+ 
+ 
+ 
+ 
+ 
+ 
+17 
+ 
+     
+                                         (a)                                                                        (b) 
+ 
+                                         (c)                                                                         (d) 
+Fig. 1. Performance and cost measures for existing coal-fired EGUs with wet and dry cooling 
+systems based on annul averages : (a) net plant efficiency , (b) fuel use, (c) plant water 
+consumption intensity , and (d) levelized cost of electricity generation. Note that units 1-8 
+continue to consume wate r for wet FGD systems (see Table 1). 
+ 
+ 
+ 
+Fig.2 shows similar performance and cost results for existing NGCC units based on annual 
+average ambient conditions . For any given unit, the natural gas consumption is fixed before and 
+after retrofitting with dry cooling. On an annual basis, dry cooling retrofits slightly decrease the 
+net generating efficiency  of each unit. As discussed later, however, the change in net efficiency 
+or energy penalty from dry cooling deployment  on existing NGCC or coal EGUs varies month to 
+month due to seasonal changes in ambient conditions. For the region as a whole, dry cooling 
+deployment at all 14 NGCC units eliminates fresh water consumption but increases the unit-level 
+LCOE by $6.7/MWh (18% on average based on fully amortized plants).   
+ 
+26
+28
+30
+32
+34
+36
+38
+1 2 3 4 5 6 7 8 9 10 11 12
+Net Plant Efficiency (%)
+Unit Study ID
+Wet Cooling Dry Cooling
+50
+100
+150
+200
+250
+300
+350
+1 2 3 4 5 6 7 8 9 10 11 12
+Fuel Use (ton/hr)
+Unit Study ID
+Wet Cooling Dry Cooling
+0
+200
+400
+600
+800
+1000
+1 2 3 4 5 6 7 8 9 10 11 12
+Plant Water Consumption 
+Intensity (gallon/MWh)
+Unit Study ID
+Wet Cooling Dry Cooling
+25
+35
+45
+55
+65
+75
+1 2 3 4 5 6 7 8 9 10 11 12
+Levelized Cost of Electricity  
+(2017$/MWh)
+Unit Study ID
+Wet Cooling Dry Cooling
+18 
+ 
+  
+                                         (a)                                                                        (b) 
+  
+                                         (c)                                                                         (d) 
+Fig. 2. Performance and cost measures for existing NGCC units with wet and dry cooling 
+systems based on annul averages: (a) net plant efficiency, (b) fuel use, (c) plant water 
+consumption intensity, and (d) levelized cost of electricity generation.  Note: the capital cost of 
+NGCC power plants prior to retrofits is updated in the IECM based on an NETL report published 
+in 2018 [9]; and the fuel used at NGCC units are identical for the pre- and post-retrofit cases. 
+ 
+In terms of the cost of water savings, the average for 12 coal-fired EGUs is found to be $9.6 
+per thousand gallons of consumptive water saved. Fig.3 shows the cost of consumptive water 
+saved by dry cooling for each coal-fired EGU on an annual basis. Due to differences in unit 
+attributes and ambient air conditions, this cost ranges from $6.1 to $13.9 per thousand gallons of 
+consumptive water saved. Fig.3 also shows the linear fit between the cost of water savings and 
+each of six site-specific attributes as a single explanatory variable. While no single factor 
+explains all or most of the variat ion (as indicated by the low R2 values except for capacity 
+36
+38
+40
+42
+44
+46
+48
+50
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Net Plant Efficiency (%)
+Unit Study ID
+Wet Cooling Dry Cooling
+0
+1000
+2000
+3000
+4000
+5000
+6000
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Fuel Use (MBtu/hr)
+Unit Study ID
+0
+200
+400
+600
+800
+1000
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Plant Water Conumption Intensity 
+(gallon/MWh)
+Unit Study ID
+Wet Cooling
+25
+35
+45
+55
+65
+75
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Levelized Cost of Electricity 
+(2017$/MWh)
+Unit Study ID
+Wet Cooling Dry Cooling
+19 
+ 
+factor), among the variables shown, the capacity factor has the largest impact on the cost of 
+water saved , with higher capacity factors resulting in lower average cost as the capital 
+investment in dry cooling is amortized over a larger number of MWh generated. The cost of 
+water savings also is negatively correlated with increasing unit size, higher net efficiency, and 
+higher relative humidity  in ambient air, but positively correlated with increasing air dry-bulb 
+temperature and  unit age.  
+The cost of water savings  on average for 14 NGCC units is found to be $22.5  per thousand 
+gallons of water consumption saved . Fig.4 shows the cost of water savings for each NGCC unit 
+on an annual basis, which ranges from $8.6 to $50.9 per thousand gallons of consumptive water 
+saved . Fig.4 also shows the linear fit between the cost of water savings and each  of site-specific 
+attributes. Among the variables shown , the capacity factor again has the largest impact on the 
+cost of water saved . Similar to the coal-based retrofit cases, the cost of water savings is also 
+negatively correlated with increasing unit size, higher net efficiency, and higher relative 
+humidity, but positively correlated with increasing air dry-bulb temperature and unit age.  
+The Spearman's rank  correlation between the cost of consumptive water savings and the 
+power plant characteristics , which measures monotonic linear or nonlinear relationships, was 
+also evaluated for both coal - and gas-based retrofit cases. The coefficients given in Table 3 
+further indicate that capacity factor and unit age are the most important characteristics affecting 
+the cost of water consumption sav ings for both coal- and gas-based retrofit cases. 
+20 
+ 
+ 
+(a)                                                                           (b) 
+ 
+                                          (c)                                                                           (d) 
+   
+                                          (e)                                                                            (f) 
+Fig. 3. Correlation of the  annual average cost of water consumption saved with selected site-
+specific parameters  of existing coal-fired EGUs: (a) nameplate capacity, (b) net plant efficiency, 
+(c) capacity factor , (d) unit age, (e) annual average air dry-bulb temperature, and (f) annual 
+average relative humidity .  
+ 
+ 
+R² = 0.357
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+0 200 400 600
+Cost of Water Consumption 
+Saved ($/kgal)
+Nameplate Capacity (MW)
+R² = 0.276
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+20 25 30 35 40
+Cost of Water Consumption 
+Saved ($/kgal)
+Net Plant Efficiency (%)
+R² = 0.568
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+40 50 60 70 80
+Cost of Water Consumption 
+Saved ($/kgal)
+Capacity Factor (%)
+R² = 0.375
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+5 15 25 35 45
+Cost of Water Consumption 
+Saved ($/kgal)
+Unit Age (yr)
+R² = 0.251
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+50 55 60 65 70
+Cost of Water Consumption 
+Saved ($/kgal)
+Annual Average Air Dry-Bulb Temperature (oF)
+R² = 0.206
+0.0
+3.0
+6.0
+9.0
+12.0
+15.0
+35 40 45 50
+Cost of Water Consumption 
+Saved ($/kgal)
+Annual Average Relative Humidity (%)
+21 
+ 
+  
+                                         (a)                                                                        (b) 
+  
+                                         (c)                                                                         (d) 
+   
+                                         (e)                                                                            (f) 
+Fig. 4. Correlation of the  annual average cost of water consumption saved with selected site-
+specific parameters of existing NGCC units: (a) nameplate capacity , (b) net plant efficiency, (c) 
+capacity factor , (d) unit age, (e) annual average air dry-bulb temperature, and (f) annual average 
+relative humidity .  
+ 
+ 
+ 
+R² = 0.165
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+0 200 400 600 800
+Cost of Water Consumption Saved 
+($/kgal)
+Nameplate Capacity (MW)
+R² = 0.113
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+35 40 45 50
+Cost of CWater onsumption Saved 
+($/kgal)
+Net Plant Efficiency (%)
+R² = 0.923
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+10 20 30 40 50 60
+Cost of Water Consumption Saved 
+($/kgal)
+Capacity Factor (%)
+R² = 0.212
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+12 14 16 18 20
+Cost of Water Consumption Saved 
+($/kgal)
+Unit Age (yr)
+R² = 0.139
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+40 50 60 70 80 90
+Cost of Water Consumption Saved 
+($/kgal)
+Annual Average Air Dry Bulb Temperature (oF)
+R² = 0.137
+0.0
+10.0
+20.0
+30.0
+40.0
+50.0
+60.0
+20 30 40 50 60
+Cost of Water Consumption Saved  
+($/kgal)
+Annual Average Relative Humidity (%)
+22 
+ 
+ 
+Table 3. Spearman’s rank correlation  coefficients of water consumption savings cost with 
+power plant characteristics   
+Power Plant Characteristics  Coal-Based Retrofit  Gas-Based Retrofit  
+Nameplate capacity  -0.601  -0.147  
+Net plant efficiency  -0.434  -0.204  
+Capacity factor  -0.734  -0.969  
+Unit age 0.650  0.681  
+Annual average air dry -bulb temperature 0.626  0.356  
+Annual average relative humidity  -0.618  -0.356  
+ 
+3.3 Monthly Change in Net Generating Capacity with Dry Cooling  
+The magnitude of the parasitic load and heat rate penalty imposed by retrofitting dry cooling 
+systems is sensitive to ambient air conditions, especially during hot summer months. Thus, the 
+potential for a region -wide shortfall in net generating capacity from dry cooling deployment is 
+evaluated based on monthly average conditions.  
+The change in monthly net capacity  with dry cooling is calculated on a unit-by-unit basis 
+using the IECM and then aggregated to the regional level. For this study, additional assumptions 
+include the following : monthly fuel use and operating hours are kept constant for the pre- and 
+post-retrofit cases; the monthly heat rate for each unit is adjusted from the current wet cooling 
+system value based on  the monthly air dry-bulb temperature; the monthly parasitic load for dry 
+cooling is evaluated based on the monthly air dry-bulb temperature and steam turbine exhaust 
+temperature.  
+SI Fig.S1 shows the monthly  variation in net heat rate of each coal-fired EGU using current 
+wet towers, while SI Fig.S2 shows similar data for NGCC units with wet towers. The figures 
+show no seasonal pattern  or consistent behavior across units over the study year. In contrast, 
+Fig.5a shows a clear seasonal pattern for the monthly average air temperature at each coal plant 
+location, with the highest levels occurring in June or July and the lowest level in January or 
+23 
+ 
+December. Air temperature s above 60 °F have a pronounced effect on the turbine backpressure, 
+which, in turn, affects the steam  turbine exhaust temperature, as noted earlier. Fig.5b shows the 
+monthly exhaust steam temperature by coal-fired power plant over the year. Here, there is a clear 
+seasonal pattern that reaches its highest level in June or July. Recall that this steam temperature 
+together with the ambient air temperature determines the ITD , which, in turn, governs the size 
+and energy penalty of the dry cooling system. In general, the resulting ITDs for each EGU were 
+found to reach their highest levels in January and December and their lowest levels in the 
+warmer months from May to September  (see SI Fig.S3). Low values of ITD incur higher energy 
+penalties as heat transfer from exhaust steam to ambient air becomes more difficult.   
+Fig. 5c shows the difference between the operating and  design ITD for each of the six coal-
+fired power plants over the year. As seen, the operating ITDs in winter are significantly higher 
+than the design ITDs at all plants, which lower s the parasitic loads of dry cooling compared to 
+those at the design condition. In contrast, the operating ITDs in summer months are lower than 
+the design ITDs at four  of the six coal-fired power plants, which elevates the parasitic loads of 
+dry cooling. As shown in Fig.6, there are similar trends in the difference betwe en the operating 
+and design ITDs of dry cooling systems retrofitted at existing NGCC units.  
+ 
+24 
+ 
+ 
+(a) 
+ 
+(b) 
+ 
+(c) 
+Fig. 5. Monthly operating conditions of existing coal -fired EGUs (a) air dry-bulb air 
+temperature ; (b) exhaust steam temperature (out of turbine); (c) difference between operating and 
+design ITDs. 
+ 
+ 
+0
+20
+40
+60
+80
+100
+1 2 3 4 5 6 7 8 9 10 11 12
+Air Dry-Bulb Temperature (oF)
+Month
+NM1 NM2 AZ1 AZ2 AZ3 AZ4
+Plant Study ID
+100
+110
+120
+130
+140
+1 2 3 4 5 6 7 8 9 10 11 12
+Exhaust Steam Temperature (oF)
+Month
+NM1 NM2 AZ1 AZ2 AZ3 AZ4
+Plant Study ID
+-10
+-5
+0
+5
+10
+15
+20
+25
+1 2 3 4 5 6 7 8 9 10 11 12
+Difference between Operating and 
+Design ITDs (oF)
+Month
+NM1 NM2 AZ1 AZ2 AZ3 AZ4
+Plant Study ID
+25 
+ 
+ 
+Fig. 6. Difference between operating and design ITDs  of dry cooling systems retrofitted at 
+existing NGCC units 
+ 
+ 
+Fig.7a and Fig.7b show the resulting change in monthly net capacity after dry cooling 
+deployment at each coal-fired EGU on an absolute and relative basis, respectively. There is a 
+clear seasonal pattern  showing slight gains in net capacity in January and December, but larger 
+decreases from April to October, with the maximum decrease occurring in mid-summer. The 
+magnitudes of these changes depend  on how much the operating ITD differs from the design 
+ITD. The abso lute change in net capacity in Fig.7a is also related to the unit size. On a relative 
+basis, the largest unit-level shortfall in net capacity reaches a high of 2.7% in July (Fig.7b).  On a 
+regional basis, the monthly change in total net capacity after dry cooling retrofits at existing coal-
+fired units varies from +8 MW in winter to -79 MW in summer  on an absolute basis, or +0.2 to -
+2.0% on a relative basis , with the largest decrease occurring in July. On an annual basis, the 
+average reduction in net regiona l capacity with dry cooling retrofits is estimated to be 32 MW, or 
+0.7% of the total regional coal-fired nameplate capacity. 
+ 
+-10
+-5
+0
+5
+10
+15
+20
+25
+1 2 3 4 5 6 7 8 9 10 11 12
+Difference between Operating and 
+Design ITDs (oF)
+Month 
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Unit Study ID
+26 
+ 
+ 
+(a) 
+ 
+(b) 
+Fig. 7. Monthly change in net capacity  from dry cooling deployment on existing coal-fired 
+EGUs: (a) absolute change in net capacity; (b) relative change in net capacity.  
+ 
+ 
+Fig.8a and Fig.8b show similar results for NGCC units. The change in monthly net capacity 
+after dry cooling retrofits also shows a season al pattern similar to that at coal-fired units. The 
+estimated monthly shortfall in total net regional capacity due to dry cooling varies from 23 to 
+167 MW on an absolute basis, or 0.3 to 2.2% on a relative basis . Again, the largest decreases in 
+regional water consum ption and net regional capacity occur in June and July. Over the year, the 
+average reduction in monthly regional capacity of NGCC units is estimated at 86 MW, or 1.2% 
+-15
+-12
+-9
+-6
+-3
+0
+3
+6
+9
+12
+15
+1 2 3 4 5 6 7 8 9 10 11 12
+Absolute Change in Net Capacity 
+(MW)
+Month
+1 2 3 4 5 6 7 8 9 10 11 12
+Unit Study ID
+-5%
+-4%
+-3%
+-2%
+-1%
+0%
+1%
+2%
+3%
+4%
+5%
+1 2 3 4 5 6 7 8 9 10 11 12
+Relative Change in Net Capacity 
+Month
+1 2 3 4 5 6 7 8 9 10 11 12
+Unit Study ID
+27 
+ 
+of total regional gas-fired nameplate capacity, which is slightly higher than the annual average 
+decrease on a percentage basis for coal-fired EGUs in the region, due mainly to the higher steam 
+cycle heat rate of NGCC units.  
+ 
+ 
+(a) 
+ 
+(b) 
+Fig. 8. Monthly change in net capacity from dry cooling deployment on existing NGCC units: 
+(a) absolute change in net capacity ; (b) relative change in net capacity.  
+ 
+ 
+-24
+-21
+-18
+-15
+-12
+-9
+-6
+-3
+0
+3
+6
+1 2 3 4 5 6 7 8 9 10 11 12
+Absoluate Change in Net Capacity 
+(MW)
+Month 
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Unit Study ID
+-5%
+-4%
+-3%
+-2%
+-1%
+0%
+1%
+2%
+3%
+4%
+5%
+1 2 3 4 5 6 7 8 9 10 11 12
+Relative Change in Net Capacity (%)
+Month 
+1 2 3 4 5 6 7 8 9 10 11 12 13 14
+Unit Study ID
+28 
+ 
+4. Discussion 
+This study investigated the performance and cost impacts of switch ing from wet cooling to dry 
+cooling at existing fossil fuel -fired power plants in order to reduce consumptive water use in dry 
+or arid regions. Case studies for power plants in  three western U.S. states evaluated the cost and 
+cost-effectiveness of retrofitting current dry cooling technology and the associated reduction in 
+consumptive water use. For the region as a whole, a 93% reduction in annual power plant water 
+consumption at existing coal-fired units was achieved at an average increase of $5.4/MWh 
+(approximately 12%) in the LCOE. This corresponds to an average cost of $9.6 per thousand 
+gallons of consumptive water saved. For existing NGCC units with wet cooling, retrofits of dry 
+cooling increase  the LCOE by $6.7/MWh (approximately 18%) while fully eliminating water 
+consumption  at an average cost of $22. 5 per thousand gallons of water saved. 
+Across the existing units modeled  in this study, the cost and cost-effectiveness of water 
+saving by dry cooling retrofits was found to vary by roughly a factor of two for coal-fired EGUs 
+and a factor of  five for NGCC units due to differences in plant attributes and ambient air 
+conditions. In general, improvements in plant efficiency and increases in capacity factor were 
+most influential in  lowering the cost of water savings.  
+As noted earlier, the cost of water savings by dry cooling is also affected by two parameters 
+whose site-specific values were unavailable: the unit price of water and the “retrofit factor” for 
+dry cooling system capital cost . Increased water prices tend to enhance the economic viability of 
+dry cooling retrofits in water-stressed regions [28]. For example, a sensitivity analysis for one 
+coal-fired EGU in this study (unit Study ID 3) shows that when the water price is varied from 0 
+(free water) to $2.5/kgal, the cost of consumptive water saved by dry cooling decreases by 39% 
+from $8. to $5.1/kgal  (see SI Fig. S5). In addition, other studies suggest that if rights to the water 
+29 
+ 
+saved by dry cooling deployment could be transferred or leased to other users in western states, 
+the revenue could offset the cost of retrofit to some extent, which may change with location as 
+water rights vary by state [28]. 
+In contrast, the cost of dry cooling retrofits is adversely affected if site-specific factors such 
+as space limitations and/or the need for modifications to the steam turbine or other plant 
+equipment resulted in substantially higher capital costs relative to the cost of a new greenfield 
+installation. Such added costs are commonly represented by a “retrofit factor” multiplier applied 
+to the nominal cost for new plant. For example, a dry cooling system retrofit factor of 1.5 means 
+a capital cost increase of 50 percent over the nominal dry system cost. The average cost of water 
+saved would  then increase roughly in proportion since capital cost dominates the economics of 
+dry cooling. In this study, a retrofit factor of 1. 25 (similar to average factor for flue gas 
+desulfurization system retrofits  at U.S. power plants [30]) would increase the average cost of 
+water saved by about 23% from $9.6 to $11.7/kgal for existing coal-fired EGUs, and from $22.5 
+to $27.6/kgal for existing NGCC units . Quantifying such retrofit factors, however, would require 
+a detailed engineering assessment of each power plant site  and cooling system modeled, which is 
+beyond the scope of this study; nor were site-specific retrofit studies available in the literature. 
+Therefore, p ending further study of individual plant sites to determine a degree of retrofit 
+difficulty (if any) , the costs and sensitivity results reported here serve as a foundation for future 
+refinements.  
+To further illustrate the variability in site-specific  cost and water consumption savings of dry 
+cooling, Fig.9a and Fig.9b exhibit two “supply curves” for the 12 modeled coal-fired EGUs and 
+14 NGCC units. The cost of water savings increases nonlinearly with cumulative annual water 
+savings (Fig.9a) as well as with cumulative  gross generating capacity  (Fig.9b).  These results 
+30 
+ 
+show that 54% (2,522 MWg) of the coal-fired regional gross capacity  has a cost of water savings 
+of less than $10/kgal, corresponding to a 51% reduction in regional water consumption by these 
+plants. Further, 90% of the coal-fired capacity has a cost of less than $12/kgal, corresponding to 
+an 82% reduction in regional water consumption. For NGCC plants with wet cooling towers, 
+about 75 % of the gross capacity has a water savings cost of less than $20/kgal, corresponding to 
+an 80% reduction in regional water consumption by those plants. In comparison between coal- 
+and gas-fired power plants , the unit cost of water saved at NGCC plants is higher than for PC 
+plants, mainly because of their lower capacity factors and shorter lifetime for amortizing the dry 
+cooling system capital cost. Differences in cooling duty and other site -specific factors also 
+contribute to higher costs at NGCC units.  
+While dry cooling deployment would alleviate power plant vulnerabilities to water shortage  
+[10], it would also reduce regional  net generating capacity over most of the year. Results for the 
+study region indicate the largest monthly shortfall would occur in July, with a reduction of  nearly 
+2% of the current (pre -retrofit) coal-fired gross capacity and 2.2% of the current gas-fired gross 
+capacity. Fig.9c also shows the regional supply curve for the worst -case (July) reduction in net 
+summer capacity versus cum ulative annual water savings for both coal and gas plant retrofit 
+cases. Although the shortfall in monthly net capacity at the unit level is less than 3% for the coal-
+based plants and less than 4% for the gas -based plants, note that while net plant capacity with dry 
+cooling is reduced  with increasing ambient air temperature , the gross plant capacity remains 
+constant over the year (by definition) .  
+ 
+ 
+ 
+31 
+ 
+ 
+(a) 
+ 
+(b) 
+ 
+(c) 
+Fig. 9. Supply curves for dry cooling retrofits: (a) cost of water consumption saved vs. 
+cumulative  annual water consumption  saved; (b) cost of water consumption saved vs. cumulative 
+(regional nameplate ) generating capacity; (c) cumulative net capacity reductions in July vs. 
+cumulative  annual water consumption  saved. 
+0
+10
+20
+30
+40
+50
+60
+0% 20% 40% 60% 80% 100%
+Cost of Water Consumption Saved
+($/kgal)
+Cumulative Annual Water Consumption Saved 
+(% of Regional Total)
+Coal Fleet
+Gas Fleet
+100%  =  14.5 billion gallon for Coal Fleet 
+7.1 billion gallon for Gas Fleet
+0
+10
+20
+30
+40
+50
+60
+0% 20% 40% 60% 80% 100%
+Cost of Water Consumption Saved
+($/kgal)
+Cumulative Generating Capacity (% of Regional Total)
+Coal Fleet
+Gas Fleet
+100%  =  4700 MW for Coal Fleet 
+7495 MW for Gas Fleet
+0.0%
+0.5%
+1.0%
+1.5%
+2.0%
+2.5%
+0% 20% 40% 60% 80% 100%
+Cumulative Net Capacity Reductions in 
+July (% of Regional gross capacity )
+Cumulative Annual Water Consumption Saved 
+(% of Regional Total)
+Coal Fleet
+Gas Fleet
+32 
+ 
+We also note that in the western United States, the daily maximum temperatures in summer 
+are often higher than 100 °F, which is above the monthly average temperatures shown in Fig.5a. 
+Thus, the shortfall in net capacity during the hottest hours  of the year could be larger than the 
+monthly  average shortfall, with possible effects on short-term unit commitments and dispatch 
+[32]. A derating analysis on a daily or even hourly basis is, thus, recommended for a future study 
+to quantify such short -term shortfalls in net capacity. Such an analysis, however, would require  
+short-term (daily or hourly) unit-level data, which are not currently available in utility databases 
+such as those used for this study.   
+ 
+5. Conclusions 
+Motivated by increasing concerns about the availability of fresh water in dry or arid regions, this 
+study investigated the technical, economic, and water savings impacts of retrofitting dry cooling 
+systems in lieu of wet cooling towers at existing fossil f uel-fired power plants in a three-state 
+region of the western U.S. The analysis of 12 coal -fired units and 14 gas-fired units quantified 
+tradeoffs between water savings, cost increases, and reductions in net plant capacity, which were 
+found to vary with ge nerating unit characteristics, especially fuel price, net efficiency, and 
+capacity factor . Retrofits of dry cooling systems in lieu of wet cooling towers were found to 
+reduce regional consumptive water use by 93% for coal-fired plants and 100% for gas-fired 
+combined cycle plants,  but increased the LCOE by an average of 12% ($5.4/MWh) and 18% 
+($6.7/MWh) for PC and  NGCC units, respectively. This translates to a regional average cost of 
+consumptive  water savings estimated at $9.6 and $22.5 per thousand gallons of water saved at 
+existing coal- and gas-fired units, respectively. This cost may increase with a more detailed 
+analysis of site -specific retrofit difficulty. Over a calendar year, the monthly change in net 
+33 
+ 
+regional generating capacity after dry cooling retrofits exhibits a clear seasonal pattern, with the 
+largest capacity shortfalls occurring in hot summer months . This monthly average reduction in 
+net regional capacity is estimated to be 0.7% and 1.2% of the regional nameplate  (gross) capacity 
+for coal- and gas-based units, respectively. The shortfall in net capacity during the hottest days or 
+hours, however, could be much larger than the monthly shortfall. A derating analysis on a daily 
+basis is recommended to quantify such short -term shortfalls in net capacity, although this would 
+require daily or hourly data that are not currently available . 
+Correlations between the cost of water consumption savings and the selected power plant 
+characteristics  indicate that the most promising candidates for dry cooling retrofits are coal- and 
+gas-fired EGUs that are large and relatively new, with high net efficiency  and high capacity 
+factors. Policies regarding water pricing and water rights transfers can further enhance the 
+visibility of dry cooling retrofits in water -stressed regions.  
+In summary, limited freshwater supplies in dry or arid regions has prompted increased 
+interest in advanced cooling systems for thermoelectric power plants  [5, 32]. However, the 
+retrofit of dry cooling systems in lieu of current wet systems produces tradeoffs in water use 
+reduction, net capacity reduction, and economic cost, all of which vary with unit attributes and 
+ambient air conditions. To make both water use and energy production  more efficient and 
+sustainable, utility decision -makers and other stakeholders must understand and quantify these 
+tradeoffs in technical, environmental, and economic impacts. To achieve the best outcomes, such 
+tradeoffs for alternative cooling options should be incorporated in a multi-criteria decision -
+making framework using analysis results of the type illustrated in this study .  
+ 
+34 
+ 
+CRediT authorship contribution statement 
+Haibo Zhai: Conceptualization, Methodology, Formal analysis, Investigation, Writing - original 
+draft, Writing - review & editing, Supervision, and Project administration; Edward S. Rubin: 
+Conceptualization, Methodology, Formal analysis, Investigation, Writing - review & editing, 
+Supervision , and Project administration; Eric J. Grol: Conceptualization, Methodology, 
+Investigation, and Writing - review & editing; Andrew C. O'Connell: Methodology and Writing 
+- review & editing; Zitao Wu: Formal analysis and Investigation; Eric G. Lewis: Methodology 
+and Writing - review & editing.  
+ 
+Disclaimer  
+This report was prepared as an account of work sponsored by an agency of the United States 
+Government. Neither the United States Government nor any agency thereof, nor any of their 
+employees, makes any warranty, express or implied, or assumes any legal liability or 
+responsibility for the accuracy, completeness, or usefulness of any inform ation, apparatus, 
+product, or process disclosed, or represents that its use would not infringe privately owned rights. 
+Reference herein to any specific commercial product, process, or service by trade name, 
+trademark, manufacturer, or otherwise does not ne cessarily constitute or imply its endorsement, 
+recommendation, or favoring by the United States Government or any agency thereof. The views 
+and opinions of authors expressed herein do not necessarily state or reflect those of the United 
+States Government o r any agency thereof. 
+ 
+35 
+ 
+Acknowledgements   
+NETL support contractor  contributions to this work were funded by the National Energy 
+Technology Laboratory under the Mission Execution and Strategic Analysis contract (DE -
+FE0025912) for support services.  The authors acknowledge Marc J. Turner and Mark C. Woods 
+for assistance with the project.  
+ 
+References  
+[1]  Zhai, H, Rubin, ES, Versteeg, PL. Water use at pulverized coal power plants with 
+postcombustion carbon capture and storage. Environ. Sci. Technol. 2011; 
+45(6):2479 −2485. 
+[2]  Peer, RA, Sanders, KT. The water consequences of a transitioning US power sector. Appl. 
+Energy 2018 ; 210:613−622. 
+[3]  Energy Information Administration. Some U.S. electricity generating plants use dry 
+cooling. August 2018. Available at 
+https://www.eia.gov/todayinenergy/detail.php?id=36773 . Accessed in 2019. 
+[4]  Liu, L, Hejazi, M, Iyer, G, Forman, BA. Implications of water constraints on electricity 
+capacity expansion in the United States. Nat. Sustain. 2019; 2(3):206−213. 
+[5]  Nouri, N, Balali, F, Nasiri, A, Seifoddini, H, Otieno, W. Water withdrawal and 
+consumption reduction for electrical energy generation systems. Appl. Energy 2019; 
+248:196−206. 
+[6]  Voisin, N. Sensitivity of Western US power system dynamics to droughts compo unded 
+with fuel price variability. Appl. Energy 2019; 247:745−754. 
+36 
+ 
+[7]  Tidwell, VC, Bailey, M, Zemlick, KM, Moreland, BD. Water supply as a constraint on 
+transmission expansion planning in the Western interconnection. Environ. Res. Lett. 2016 ; 
+11(12):124001. 
+[8]  Zhai, H, Rubin, ES. Performance and cost of wet and dry cooling systems for pulverized 
+coal power plants with and without carbon capture and storage. Energy Policy 2010; 
+38(10): 5653 −5660. 
+[9]  National Energy Technology Laboratory. Cost and Performance Impact of Dry and Hybrid 
+Cooling on Fossil Energy Power Systems. DOE/NETL-2018/1870 , Pittsburgh, PA, June 
+2018.  
+[10] Tidwell, VC, Macknick, J, Zemlick, K, Sanchez, J, Woldeyesus, T. Transitioning to zero 
+freshwater withdrawal in the US for thermoelectric generation. Appl. Energy 2014; 131: 
+508−516. 
+[11] Loew, A, Jaramillo, P, Zhai, H. Marginal costs of water savings from cooling system 
+retrofits: a case study for Texas power plants. Environ. Res. Lett. 2016; 11(10):104004. 
+[12] Webster, M, Donohoo, P , Palmintier, B. Water–CO2 trade-offs in electricity generation 
+planning. Nat. Clim. Chang. 2013 ; 3(12):1029−1032. 
+[13] Liu, L, Hejazi, M, Patel, P, Kyle, P, Davies, E, Zhou, Y, Edmonds, J. Water demands for 
+electricity generation in the US: Modeling different scenarios for the wat er–energy nexus. 
+Technol. Forecast. Soc. Change  2015; 94:318−334. 
+[14] Hickman, W, Muzhikyan, A, Farid, AM. The synergistic role of renewable energy 
+integration into the unit commitment of the energy water nexus. Renewable Energy 2017; 
+108:220−229. 
+37 
+ 
+[15] Santhosh, A, Farid, AM, Youcef -Toumi, K. Real-time economic dispatch for the supply 
+side of the ene rgy-water nexus. Appl. Energy 2014; 122:42−52. 
+[16] Miara, A, Macknick, JE, Vörösmarty, CJ; Tidwell, VC, Newmark, R, Fekete, B. Climate 
+and water resource change impacts and adaptation potential for US power supply. Nat. 
+Clim. Chang. 2017 ; 7(11):793−798. 
+[17] Tidwell, VC, Gunda, T, Gayoso, N. Plant-level characteristics could aid in the assessment 
+of water-related threats to the electric power sector. Appl. Energy 2021; 282:116161. 
+[18] Carnegie Mellon University. Integrated Environmental Control Model (IECM) v11.4, 
+2020 . Available at https://www.cmu.edu/epp/iecm/index.html. 
+[19] ABB. ABB Ability™ Velocity Suite. Available at 
+https://www.velocitysuiteonline.com/RDWeb/Pages/en -
+US/login.aspx?ReturnUrl=/RDWeb/Pages/en -US/Default.aspx. Accessed in 2019. 
+[20] Energy Information Administration. Form EIA-923 detailed data with previous form data 
+(EIA-906/920) , Available at https://www.eia.gov/electricity/data/eia923/. Accessed in 
+2019.  
+[21] Energy Information Administration. Form EIA-860 detailed data with previous form data 
+(EIA-860A/86 0B), available at https://www.eia.gov/electricity/data/eia860/. Accessed in 
+2019.  
+[22] U.S. Environmental Protection Agency. National Electric Energy Data System (NEEDS) 
+v6. 2, Available at https://www.epa.gov/airmarkets/national -electric-energy-data-system-
+needs -v6. Accessed in 2019. 
+38 
+ 
+[23] National Climatic Data Center. Local Climatological Data; Available at 
+https://www.ncdc.noaa.gov/data -access/land-based-station-data/land-based-
+datasets/qual ity-controlled-local-climatological-data-qclcd. Accessed in 2019.  
+[24] Zhai, H, Rubin, ES. Update of Dry Cooling Functionality in IECM Model . Prepared for 
+National Energy Technology Laboratory, Pittsburgh, PA, July 2019.  
+[25] Rubin, ES. Understanding the pitfalls of CCS cost estimates. Int. J. Greenhouse Gas 
+Control 2012 ; 10:181−190. 
+[26] Electric Power Research Institute.  Use of Alternate Water Sources for Power Plant 
+Cooling. Report 1014935.  Palo Alto, CA, 2008.  
+[27] Zhai, H, Rubin, ES. Comparative performance and cost assessments of coal -and natural-
+gas-fired power plants under a CO 2 emission performance standard regulation. Energy 
+Fuels 2013 ; 27(8):4290−4301. 
+[28] DeNooyer, TA , Peschel, JM, Zhang, Z, Stillwell, AS. Integrating water resources and 
+power generation: The energy –water nexus in Illinois. Appl. Energy 2016; 162:363−371. 
+[29] Stillwell, AS, Webber, ME. Novel methodology for evaluating economic feasibility of low-
+water cooling technology retrofits at power plants. Water Policy 2013; 15(2):292−308. 
+[30] Emmel, T, Jones, J. Retrofit Costs for Lime/Limestone FGD and Lime Spray Drying at 
+Coal-Fired Utility Boilers. Report No. EPA/600/D-90/217, U.S. Environmental Protection 
+Agency, Washington, D.C., May 2002.  
+[31] Sanders, KT, Blackhurst, MF; King, CW, Webber, ME. The impact of water use fees on 
+dispatching and water requirements for water -cooled power plants in Texas. Environ. Sci. 
+Technol.  2014 ; 48(12):7128−7134. 
+39 
+ 
+[32] Electric Power Research Institute. Water Use for Electricity Generation and Other Sectors: 
+Recent Changes (1985 -2005) and Future Projections (2005-2030). 1023676, 2011, Palo 
+Alto, CA, 2011.  

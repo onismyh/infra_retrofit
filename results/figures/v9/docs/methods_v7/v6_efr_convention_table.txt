@@ -1,0 +1,36 @@
+====================================================================================================
+ENVIRONMENTAL-FLOW CONVENTIONS: what each one implies for the 2030 verdict
+====================================================================================================
+
+  All rows use the SAME demand (the solved fleet at 2030) and the SAME 20-member dry-season
+  runoff. Only the ALLOWANCE differs. `usable` = extractable x (1 - reservation), applied to the
+  basin's dry-season flow. The national dry-season share of annual flow is 0.297, so the
+  effective share of ANNUAL runoff offered to power is usable x 0.297.
+
+  convention                            usable  x annual  basins over  GW over  % fleet   Hai s*  Hai neg
+  as solved: Richter 0.20 x (1-0.85)    0.0300    0.0089       4         763.1    57.5%   -0.081   13/20
+  Richter 0.20, power takes it all      0.2000    0.0594       1         162.2    12.2%   -0.081   13/20
+  China-law 0.638 x (1-0.830)           0.1085    0.0322       1         162.2    12.2%   +0.661    0/20
+  China-law 0.526 x (1-0.85)            0.0789    0.0234       1         162.2    12.2%   +0.589    0/20
+  Jin et al. 2022, 0.40 x (1-0.85)      0.0600    0.0178       3         581.8    43.8%   +0.460    0/20
+  Jin et al. 2022, 0.40, no reservation  0.4000    0.1188       0           0.0     0.0%   +0.460    0/20
+
+  notes
+    as solved: Richter 0.20 x (1-0.85)   the paper's composition; multiplies a cumulative-depletion ceiling by a share of a different allowance
+    Richter 0.20, power takes it all     the ceiling with no reservation -- the s* = 0 reference
+    China-law 0.638 x (1-0.830)          Yellow River official quota 370/580 as the allowance, 307.09/370 as the non-power share
+    China-law 0.526 x (1-0.85)           consumption-basis official allowance with the measured non-power share
+    Jin et al. 2022, 0.40 x (1-0.85)     40% extractable adopted for China by the closest comparator study
+    Jin et al. 2022, 0.40, no reservation upper bound on what any published convention would offer power
+
+  READING IT. The paper solves the tightest convention in the table by a factor of 2.6 against
+  China's own law and 2.0 against the closest comparator study, and it offers power
+  0.89% of annual runoff. The four-basin / 54% verdict is a property of THAT choice.
+
+  What survives every convention: the Hai's critical reservation share s* does not depend on the
+  reservation at all -- s* is defined against the extractable fraction alone -- so the row that
+  matters for the scarcity claim is the EXTRACTABLE column. At Richter 0.20 the Hai is negative in
+  13 of 20 members. At Jin's 0.40 it is not. The 'capture turns allocation into scarcity' result is
+  therefore a statement about a 20% depletion ceiling, and it must be stated with that number
+  attached rather than as a general claim about the Hai.
+

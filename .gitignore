@@ -1,0 +1,17 @@
+# 源数据（20 GB 栅格 / netCDF），不入库
+data/
+
+# 归档区（2.4 GB，2026-09-06 从主线移出，见 _archive_20260906/README.md）
+_archive_20260906/
+
+# 可再生的缓存与构建产物
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 机器本地 / 按 .claude/rules/security.md 不入库
+.claude/settings.json
+.claude/settings.local.json

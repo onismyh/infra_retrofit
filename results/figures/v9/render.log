@@ -1,0 +1,483 @@
+===== plot_ed_biomass_sourcing.py exit=0 7s =====
+  [ok] ed_fig4_biomass_sourcing -> extended/
+  2030:   0.79 EJ  self 100.0%  haul  30.2 km  utilisation   2.6%
+  2040:  24.17 EJ  self  91.9%  haul  67.2 km  utilisation  80.4%
+  2050:  26.23 EJ  self  89.3%  haul  78.5 km  utilisation  87.3%
+  2060:  25.62 EJ  self  89.7%  haul  75.3 km  utilisation  85.2%
+
+===== plot_ed_fleet_atlas.py exit=0 7s =====
+  [ok] ed_fig1_fleet_atlas -> extended/
+  sites 350, units 3,623, capacity 1,416.3 GW
+  constrained basins: 775.5 GW (54.8%), 169 sites
+              ֱ����ȴ:   465.3 GW
+              ѭ����ȴ:   703.0 GW
+            ���䣨���䣩:   248.0 GW
+
+===== plot_ed_hai_closeup.py exit=1 3s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_hai_closeup.py", line 240, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_hai_closeup.py", line 218, in main
+    panel_ledger(ax_led, h, budget)
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_hai_closeup.py", line 140, in panel_ledger
+    .read_text(encoding="utf-8"))
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\000. Paper work\\ú�����claude\\_v9tree\\results\\figures\\v6\\v6_s_star_ensemble.json'
+
+===== plot_ed_multihop_matching.py exit=0 25s =====
+  [ok] ed_fig14_multihop_matching -> extended/
+ED14 - multihop matching, map year 2050
+  panel_co2: n_hub_matched=136, gw_matched=432.7, gw_total=1416.3, n_edge=217, flow=3422.1, n_sink_used=62, n_sink_total=89, inj=1276.4, inj_off=476.0, captured=1276.4
+  panel_fuel: n_hub_bio=249, gw_bio=657.5, n_hub_nh3=0, gw_nh3=0.0, n_bio_node=9414, bio_pj=26226.4, bio_km=78.5, nh3_kt=0.0, gw_total=1416.3
+  panel_water: gw_wet=494.5, gw_air=333.9, gw_retire=587.9, n_wet=180, n_air=97, n_retire=73, withdraw_e8=35.8, n_water_node=207, gw_total=1416.3
+  basin ratio (treat): {'A': 0.58, 'C': 1.0, 'D': 0.65, 'E': 0.77, 'F': 0.15, 'G': 0.04, 'H': 0.25, 'J': 0.01, 'K': 0.25}
+            case      chain   matched      total    n  n_total      air  n_air
+0           不考虑水  CO$_2$ 管网  429.2180  1416.2608  135      350      NaN    NaN
+1           不考虑水  生物质 / 氨供给  657.3510  1416.2608  248      350      NaN    NaN
+2           不考虑水       湿冷取水  670.4140  1416.2608  230      350  178.572   50.0
+3  考虑水（s = 0.85）  CO$_2$ 管网  432.6738  1416.2608  136      350      NaN    NaN
+4  考虑水（s = 0.85）  生物质 / 氨供给  657.5490  1416.2608  249      350      NaN    NaN
+5  考虑水（s = 0.85）       湿冷取水  494.5020  1416.2608  180      350  333.888   97.0
+            case  year     captured      inj_on     inj_off        bio_pj  withdraw_e8      air_gw  n_sink
+0           不考虑水  2030     0.000000    0.000000    0.000000    178.430761    55.403529   66.373111       0
+1           不考虑水  2040  1280.740842  804.700842  476.040000  24190.367013    70.019721   51.933859      62
+2           不考虑水  2050  1281.693774  805.653774  476.040000  26261.959770    55.005863   12.206125      72
+3           不考虑水  2060  1281.195028  805.155028  476.040000  25771.585625    50.686487    0.500184      71
+4  考虑水（s = 0.85）  2030     0.000000    0.000000    0.000000    788.830423    38.581439  322.371387       0
+5  考虑水（s = 0.85）  2040  1224.634486  748.594486  476.040000  24168.971856    44.844365  359.041682      56
+6  考虑水（s = 0.85）  2050  1276.353515  800.313515  476.040000  26226.449522    35.796408  177.848813      62
+7  考虑水（s = 0.85）  2060  1270.174296  796.161664  474.012632  25619.407800    41.381446   57.617442      61
+
+===== plot_ed_province_transition.py exit=0 4s =====
+  [ok] ed_fig8_province_transition -> extended/
+  [ok] ed_fig9_province_response -> extended/
+  provincial response, 2030 conversion (GW):
+    Shandong             +58.6
+    Hebei                +32.8
+    Henan                +30.0
+    Xinjiang             +27.7
+    Inner Mongolia       +27.2
+    Gansu                +12.7
+    Shanxi               +11.5
+    Shaanxi               +8.4
+    national total +221.3
+
+===== plot_ed_reversion.py exit=0 1s =====
+  [ok] ed_fig5_reversion -> extended/
+  treatment:
+      operated  stock   wet  pct_wet
+year                                
+2030     322.4  322.4   0.0      0.0
+2040     358.4  360.6   2.2      0.6
+2050     168.9  207.0  38.0     18.4
+2060      53.7  144.4  90.8     62.8
+  control:
+      operated  stock   wet  pct_wet
+year                                
+2030     101.1  101.1   0.0      0.0
+2040      99.9  111.6  11.7     10.5
+2050      46.1   83.5  37.4     44.8
+2060      16.9   52.3  35.4     67.6
+  2040->2060 fall 304.7 GW = retirement 216.1 (71%) + reversion 88.6 (29%)
+
+===== plot_ed_sensitivity.py exit=0 1s =====
+  [skip] SA_discount_3pct not solved
+  [skip] SA_discount_8pct not solved
+  [skip] SA_carbon_low not solved
+  [skip] SA_carbon_high not solved
+  [skip] SA_retire_cost_250 not solved
+  [skip] SA_retire_cost_500 not solved
+  [skip] SA_retire_cost_650 not solved
+  [skip] SA_retire_cost_1000 not solved
+  [skip] SA_biomass_cost_150 not solved
+  [skip] SA_biomass_cost_200 not solved
+  [skip] SA_injectivity_half not solved
+  [skip] SA_ccs_capex_low not solved
+  [skip] SA_ccs_capex_high not solved
+  [skip] SA_retire_cap_010 not solved
+  [skip] SA_retire_cap_025 not solved
+  [skip] SA_air_capex_low not solved
+  [skip] SA_air_capex_high not solved
+  [skip] SA_air_penalty_high not solved
+  [skip] SA_pipe_mid not solved
+  [skip] SA_pipe_full not solved
+  [skip] SA_ammonia_cost_50 not solved
+  [skip] SA_ammonia_cost_70 not solved
+  [ok] ed_fig7_sensitivity -> extended/
+
+  0 of 0 clear the 0.3277% floor
+
+===== plot_ed_sink_network.py exit=1 1s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_sink_network.py", line 356, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_sink_network.py", line 319, in main
+    old_sinks, new_sinks = _read(OLD_INPUTS, "storage_hubs.csv"), _read(NEW_INPUTS, "storage_hubs.csv")
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_sink_network.py", line 73, in _read
+    return pd.read_csv(root / name, encoding="utf-8-sig")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\admin\\AppData\\Local\\Temp\\claude\\D--000--Paper-work-----claude\\418e9a0e-653c-4db6-ae30-e465c22295d1\\scratchpad\\netfix_root\\inputs\\storage_hubs.csv'
+
+===== plot_ed_source_sink_matching.py exit=1 7s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_source_sink_matching.py", line 434, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_source_sink_matching.py", line 342, in main
+    c = scatter_panel(ax_c, sink_injection, True, "��ע����", r"Mt yr$^{-1}$")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_source_sink_matching.py", line 226, in scatter_panel
+    sx, sy = getter(x), getter(y)
+                        ^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_source_sink_matching.py", line 121, in sink_injection
+    return injection(scen, year)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_abatement.py", line 106, in injection
+    d = pd.read_csv(RES / scen / "storage_utilization.csv")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\000. Paper work\\ú�����claude\\_v9tree\\results\\WA_cwatm_126_dry_wd085_seed2\\storage_utilization.csv'
+
+===== plot_ed_variance_decomposition.py exit=0 2s =====
+Extended Data - variance decomposition of basin water availability
+  [skip] WA_cwatm_370_dry_wd085: stale 24-column vintage, not used for binding marks
+  ensemble: 2 hydrology x 5 GCM x 2 SSP = 20 members, saturated (one observation per cell)
+  basins with unserved demand in the solved binding runs: C,E,K
+  [ok] ed_variance_decomposition -> extended/
+
+2060 variance decomposition -- 枯水期——约束真正作用的口径 (% of total SS)
+           GCM  水文模型   SSP  GCM x 水文模型  GCM x SSP  水文模型 x SSP  三重交互  model share %  SS closure %  SSP delta %  SSP min %  SSP max %  drying
+basin                                                                                                                                      
+A         17.4  75.4   1.3         1.0        3.6         0.5   0.7           93.9         100.0          5.0      -16.5       25.9       2
+C         13.7  39.5   1.3         5.2       34.6         0.1   5.5           58.4         100.0         -5.3      -26.9       68.6       6
+D          4.5  89.6   0.9         0.5        4.1         0.0   0.3           94.6         100.0         -3.2      -23.7       12.2       5
+E         51.0   6.4   0.0        18.8       18.8         1.0   4.0           76.2         100.0         -4.7      -14.9       61.3       6
+K         12.0  82.9   1.2         0.6        2.8         0.1   0.4           95.6         100.0          3.4       -6.4       21.0       3
+F         20.2  35.8   8.9         8.3       24.6         0.6   1.5           64.4         100.0         -3.8      -26.9        9.6       6
+H          9.8  82.1   1.3         2.2        4.1         0.0   0.6           94.0         100.0         -5.8      -25.9       16.9       8
+G         50.9  24.0  15.2         3.4        6.2         0.0   0.2           78.3         100.0        -12.6      -22.0       -1.4      10
+J         70.3  14.1   0.2         0.7       13.7         0.8   0.2           85.1         100.0          0.7      -16.3        9.4       5
+National  15.0  66.7   3.6         4.3        9.8         0.1   0.4           86.0         100.0         -2.2      -19.5        7.0       7
+
+2060 variance decomposition -- 年均值——多数文献使用的口径 (% of total SS)
+           GCM  水文模型   SSP  GCM x 水文模型  GCM x SSP  水文模型 x SSP  三重交互  model share %  SS closure %  SSP delta %  SSP min %  SSP max %  drying
+basin                                                                                                                                      
+A         94.5   0.9   0.1         0.8        3.0         0.1   0.6           96.2         100.0         -0.3       -7.1        7.3       6
+C         38.3   4.7   0.7         7.1       46.3         0.0   2.9           50.1         100.0         -5.3      -25.8       68.2       6
+D         54.7   0.0   8.4         5.7       31.0         0.1   0.1           60.4         100.0        -15.3      -25.5       16.5       6
+E         54.3   2.2   3.4        13.1       25.8         0.1   1.1           69.5         100.0         -9.4      -14.0       30.0       8
+K         89.6   0.0   0.9         4.0        4.6         0.4   0.5           93.6         100.0         -1.3       -8.7        6.1       6
+F         64.2   0.2   1.5        12.7       20.2         0.4   0.8           77.1         100.0         -3.6      -12.4       16.4       6
+H         54.6   0.4  20.2         7.5       17.1         0.2   0.1           62.5         100.0         -6.6      -20.6        2.8       8
+G         76.5   0.2   8.4         2.7       12.0         0.1   0.2           79.4         100.0        -11.7      -16.9        5.3       7
+J         92.9   0.2   0.8         1.2        4.7         0.0   0.1           94.3         100.0         -0.6       -9.1        3.3       7
+National  71.6   0.5   6.1         7.8       13.8         0.0   0.3           79.9         100.0         -6.4      -10.5        7.6       8
+
+model spread (GCM + hydrology + their interaction) vs SSP main effect
+  枯水期——约束真正作用的口径
+    A          model  93.9%  SSP   1.3%  model wins
+    C          model  58.4%  SSP   1.3%  model wins <- unserved demand here
+    D          model  94.6%  SSP   0.9%  model wins
+    E          model  76.2%  SSP   0.0%  model wins <- unserved demand here
+    K          model  95.6%  SSP   1.2%  model wins <- unserved demand here
+    F          model  64.4%  SSP   8.9%  model wins
+    H          model  94.0%  SSP   1.3%  model wins
+    G          model  78.3%  SSP  15.2%  model wins
+    J          model  85.1%  SSP   0.2%  model wins
+    National   model  86.0%  SSP   3.6%  model wins
+    -> model spread exceeds the SSP main effect in 10 of 10 rows
+  年均值——多数文献使用的口径
+    A          model  96.2%  SSP   0.1%  model wins
+    C          model  50.1%  SSP   0.7%  model wins <- unserved demand here
+    D          model  60.4%  SSP   8.4%  model wins
+    E          model  69.5%  SSP   3.4%  model wins <- unserved demand here
+    K          model  93.6%  SSP   0.9%  model wins <- unserved demand here
+    F          model  77.1%  SSP   1.5%  model wins
+    H          model  62.5%  SSP  20.2%  model wins
+    G          model  79.4%  SSP   8.4%  model wins
+    J          model  94.3%  SSP   0.8%  model wins
+    National   model  79.9%  SSP   6.1%  model wins
+    -> model spread exceeds the SSP main effect in 10 of 10 rows
+
+sum-of-squares closure check (must be 100.0 for every row)
+  枯水期——约束真正作用的口径                                       min 100.0000  max 100.0000
+  年均值——多数文献使用的口径                                       min 100.0000  max 100.0000
+
+===== plot_ed_water_abatement.py exit=1 1s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_abatement.py", line 486, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_abatement.py", line 388, in main
+    sinks = panel_a(fig, ax_a, cax, LEGEND_ANCHOR)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_abatement.py", line 169, in panel_a
+    arms = pd.DataFrame({a: injection(f"{a}_wd085") for a in ARMS})
+                            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_abatement.py", line 106, in injection
+    d = pd.read_csv(RES / scen / "storage_utilization.csv")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\000. Paper work\\ú�����claude\\_v9tree\\results\\WA_cwatm_370_dry_wd085\\storage_utilization.csv'
+
+===== plot_ed_water_basis.py exit=0 3s =====
+  [ok] ed_fig3_water_basis -> extended/
+  capacity-weighted intensity by technology (m3/MWh):
+               Air ( 249.6 GW)  ȡˮ��=  2.234  ȡˮ����=  0.846  ��ˮ��=  0.433
+      once-through ( 486.2 GW)  ȡˮ��= 34.343  ȡˮ����=  0.717  ��ˮ��=  0.439
+     recirculating ( 680.5 GW)  ȡˮ��=  7.000  ȡˮ����=  2.267  ��ˮ��=  1.491
+  constrained 1.087 vs unconstrained 0.768 m3/MWh  (1.42x)
+
+===== plot_ed_water_on_off.py exit=1 4s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 596, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 490, in main
+    curves = panel_b(ax_b)
+             ^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 216, in panel_b
+    ctrl = np.array([[national(a, y)["�����������"] for y in YEARS] for a in ARMS])
+                      ^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 130, in national
+    p = hub_frame(scen, year)
+        ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 112, in hub_frame
+    p = _plants(scen)
+        ^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_ed_water_on_off.py", line 102, in _plants
+    return pd.read_csv(RES / scen / "plant_detail.csv")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "E:\anaconda3\Lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\000. Paper work\\ú�����claude\\_v9tree\\results\\WA_cwatm_370_dry\\plant_detail.csv'
+
+===== plot_ed_who_converts.py exit=0 7s =====
+  [ok] ed_fig2_who_converts -> extended/
+  national response +221.5 GW over 83 of 350 sites
+    top  10 sites:  39.2%
+    top  25 sites:  71.6%
+    top  50 sites:  92.2%
+  constrained-basin share 98.5%
+
+===== plot_fig1_water_footprint.py exit=0 7s =====
+  [ok] fig1_water_footprint -> root/
+
+panel a - capacity-weighted intensity by cooling system (m3/MWh)
+               capacity_gw  withdrawal  withdrawal_ccs  quota  quota_ccs  consumption  consumption_ccs
+cooling                                                                                               
+once-through       465.274      90.847         158.315  0.406      0.614        0.530            0.738
+recirculating      702.960       2.036           4.065  2.543      4.015        1.667            3.139
+air                248.027       0.193           0.396  0.509      0.654        0.157            0.303
+  quota inversion: once-through 0.406 < air 0.509 < recirculating 2.543, while once-through withdrawal is 45x recirculating
+
+panel b - abatement basis (2060, capture 90%, CCS energy penalty 0.0750)
+  ccs 0.7319 tCO2/MWh, beccs 1.1382 tCO2/MWh, biomass 0.3736 tCO2/MWh, ammonia 0.1640 tCO2/MWh
+      cooling pathway   base  retrofit  increment  incremental_m3_per_t  total_m3_per_t
+ once-through     ccs 0.5297    0.7380     0.2083                0.2846          1.0084
+ once-through   beccs 0.5297    0.7380     0.2083                0.1830          0.6484
+ once-through biomass 0.5297    0.5297     0.0000                0.0000          1.4180
+ once-through ammonia 0.5297    0.5350     0.0053                0.0323          3.2624
+recirculating     ccs 1.6668    3.1391     1.4723                2.0118          4.2893
+recirculating   beccs 1.6668    3.1391     1.4723                1.2936          2.7580
+recirculating biomass 1.6668    1.6668     0.0000                0.0000          4.4616
+recirculating ammonia 1.6668    1.6835     0.0167                0.1016         10.2651
+          air     ccs 0.1574    0.3028     0.1454                0.1987          0.4138
+          air   beccs 0.1574    0.3028     0.1454                0.1278          0.2661
+          air biomass 0.1574    0.1574     0.0000                0.0000          0.4213
+          air ammonia 0.1574    0.1590     0.0016                0.0096          0.9694
+  incremental spread: 0.0096 to 2.0118 m3/tCO2 = 210x
+
+panel c - per-basin summary
+       n_sites  capacity_gw  already_air_share  ccs_m3_per_t  pct_median  pct_min  pct_max  n_drying  dry_season_1e8  allowance_1e8  ccs_demand_1e8  stress_pct
+basin                                                                                                                                                          
+A           48        96.69               0.23          1.39       -0.31    -7.15     7.34         6          544.23          16.33            7.98       48.88
+C           36       177.29               0.25          1.32       -5.27   -25.79    68.19         6           84.22           2.53           16.19      640.64
+D           51       271.60               0.57          0.98      -15.27   -25.52    16.49         6          220.94           6.63           19.17      289.26
+E           32       181.01               0.00          1.51       -9.37   -13.95    30.04         8          411.82          12.35           19.23      155.62
+K           48       134.79               0.17          1.63       -1.34    -8.73     6.10         6          561.39          16.84           17.13      101.74
+F           76       312.75               0.01          0.92       -3.61   -12.44    16.41         6         3573.18         107.20           22.61       21.09
+H           43       156.20               0.00          0.63       -6.61   -20.63     2.78         8         1240.18          37.21            7.87       21.15
+G           16        85.93               0.00          0.17      -11.72   -16.91     5.34         7          909.73          27.29            1.38        5.05
+  fleet capacity-weighted CCS water price: 1.080 m3/tCO2
+  basins over the extractable dry-season flow: ['C', 'D', 'E', 'K']  (765 GW)
+  below-median SSP gap AND above-mean CCS water price: ['E'] (181 GW)
+
+===== plot_fig2_constraint_response.py exit=1 1s =====
+Fig 2 - a presumptive environmental-flow allowance the northern fleet already exceeds
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig2_constraint_response.py", line 1038, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig2_constraint_response.py", line 850, in main
+    require_current_vintage(scenario)
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig2_constraint_response.py", line 184, in require_current_vintage
+    raise FileNotFoundError(f"{path} - run {scenario} first")
+FileNotFoundError: D:\000. Paper work\ú�����claude\_v9tree\results\WA_cwatm_370_dry_wd085\plant_detail.csv - run WA_cwatm_370_dry_wd085 first
+
+===== plot_fig3_attribution.py exit=0 2s =====
+panel (a) scenario screening
+  [skip] WA_cwatm_126_dry_noair: not solved yet
+  [skip] WA_cwatm_126_annual: not solved yet
+  [skip] WA_wgap_126_dry: not solved yet
+  [skip] WA_cwatm_370_dry: not solved yet
+panel (b) scenario screening
+  [skip] WA_cwatm_126_dry_wd085_air1000: not solved yet
+  [skip] WA_cwatm_126_dry_wd085_air1370: not solved yet
+  [skip] WA_cwatm_126_dry_wd085_noair: not solved yet
+  [WIDTH] fig3_attribution: 249.2 mm > 183 mm. Widest artists:
+             77.6 mm  Cost was dropped as the attribution metric: across these
+             55.5 mm  Model 'uncertainty' was mostly bias
+             53.7 mm  Change vs main case (cwatm 126 dry), %
+             47.5 mm  Cooling separates the factors; / retirement and capture do
+  [ok] fig3_attribution -> root/
+
+panel a -- physical outcomes vs WA_cwatm_126_dry
+  anchor: conversion 101.1 GW, water 52.9e8 m3 (2030); capture 1278.0 Mt, retirement 739.6 GW (2060)
+                    label      group  d_cost_pct  rel_converted_gw  rel_water_1e8  rel_capture_mt  rel_retire_gw
+Water constrained\nat all constraint       -0.54            -34.32           4.79            0.25           1.15
+
+  MIP gap across these runs: +/-0.95% -- the cost spread is 0.54-0.54%
+    Air-cooling conversion, 2030 (GW)            spans  34.3-  34.3%  -> separates the factors
+    Water consumption, 2030 (10$^8$ m$^3$)       spans   4.8-   4.8%  -> does NOT separate the factors
+    CO$_2$ captured, 2060 (Mt)                   spans   0.3-   0.3%  -> does NOT separate the factors
+    Early retirement, 2060 (GW)                  spans   1.2-   1.2%  -> does NOT separate the factors
+
+panel b -- binding water constraint
+                    label  converted_gw  water_1e8  unserved_1e8  unserved_pct  retire_gw  cost_Ttn  slack_share
+    Main case\nshare 0.60        101.05      52.87           0.0           0.0     739.63     12.93          0.0
+Water binding\nshare 0.85        322.37      38.58           0.0           0.0     747.26     13.26          0.0
+
+panel c -- WaterGAP2 / CWatM runoff ratio by basin (GCM mean, raw range)
+basin  before  after  before_min  before_max
+    A   0.924  0.958       0.909       0.929
+    C   1.873  0.965       1.758       1.969
+    D   0.952  1.016       0.866       1.015
+    E   1.431  1.037       1.359       1.526
+    K   1.124  0.974       1.077       1.162
+    F   1.301  1.017       1.266       1.350
+    H   0.940  1.004       0.932       0.954
+    G   0.991  1.014       0.977       1.001
+    J   1.214  1.004       1.195       1.252
+
+  cross-basin spread   before 0.95   after 0.08
+
+factorial completeness (hydrology x SSP x accounting)
+  cwatm  ssp126  dry     WA_cwatm_126_dry         usable
+  cwatm  ssp370  dry     WA_cwatm_370_dry         not solved
+  wgap   ssp126  dry     WA_wgap_126_dry          not solved
+  wgap   ssp370  dry     WA_wgap_370_dry          not solved
+  cwatm  ssp126  annual  WA_cwatm_126_annual      not solved
+  cwatm  ssp370  annual  WA_cwatm_370_annual      not solved
+  wgap   ssp126  annual  WA_wgap_126_annual       not solved
+  wgap   ssp370  annual  WA_wgap_370_annual       not solved
+  -> 1/8 cells usable; the factorial is INCOMPLETE and is not presented as one
+
+===== plot_fig3_mechanism.py exit=1 1s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig3_mechanism.py", line 1184, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig3_mechanism.py", line 1126, in main
+    values = {name: outcomes(name) for name in names}
+                    ^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig3_mechanism.py", line 233, in outcomes
+    detail = pd.read_csv(_require_current_vintage(name))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig3_mechanism.py", line 191, in _require_current_vintage
+    raise FileNotFoundError(f"{detail} - solve {name} before plotting")
+FileNotFoundError: D:\000. Paper work\ú�����claude\_v9tree\results\WA_cwatm_370_dry_wd085\plant_detail.csv - solve WA_cwatm_370_dry_wd085 before plotting
+
+===== plot_fig4_network_reconfiguration.py exit=1 1s =====
+Fig 4 - the no-regret pipeline core
+
+Scenario admission (26-column vintage only, gated on the CSV header):
+  [skip] WA_wgap_126_dry: not solved yet
+  [skip] WA_wgap_126_dry_nobias: not solved yet
+  [skip] WA_cwatm_370_dry: not solved yet
+  [skip] WA_cwatm_370_dry_nobias: not solved yet
+  [skip] WA_cwatm_370_dry_wd085: not solved yet
+
+  ensemble n = 2: WA_cwatm_126_dry, WA_cwatm_126_dry_wd085
+  reference, excluded from the frequency count: BASE
+  [skip] WA_cwatm_126_dry_wd085_seed2: not solved yet
+  [skip] WA_cwatm_126_dry_wd085_seed3: not solved yet
+  [skip] WA_cwatm_126_dry_wd085_seed4: not solved yet
+
+  THE CORE STATISTIC AGAINST ITS OWN NULL
+    2 water scenarios          core/union 176/282  core carries 82.6% of 2060 work
+    seed replicates            NOT AVAILABLE -- the core is UNCONTROLLED
+the degeneracy-floor control needs both a bias-variant pair and a binding/non-binding pair; one is missing
+
+===== plot_fig5_pathway_succession.py exit=1 1s =====
+Traceback (most recent call last):
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig5_pathway_succession.py", line 1070, in <module>
+    main()
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig5_pathway_succession.py", line 918, in main
+    trajectories = {name: trajectory(name) for name in names}
+                          ^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig5_pathway_succession.py", line 271, in trajectory
+    detail = pd.read_csv(_require_current_vintage(name))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\000. Paper work\ú�����claude\_v9tree\scripts\plot_fig5_pathway_succession.py", line 232, in _require_current_vintage
+    raise FileNotFoundError(f"{detail} - solve {name} before plotting")
+FileNotFoundError: D:\000. Paper work\ú�����claude\_v9tree\results\WA_cwatm_126_dry_wd085_noair\plant_detail.csv - solve WA_cwatm_126_dry_wd085_noair before plotting
+

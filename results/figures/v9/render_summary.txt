@@ -1,0 +1,32 @@
+  ok  plot_ed_biomass_sourcing.py (7s)
+  ok  plot_ed_fleet_atlas.py (7s)
+  FAIL plot_ed_hai_closeup.py (3s)
+  ok  plot_ed_multihop_matching.py (25s)
+  ok  plot_ed_province_transition.py (4s)
+  ok  plot_ed_reversion.py (1s)
+  ok  plot_ed_sensitivity.py (1s)
+  FAIL plot_ed_sink_network.py (1s)
+  FAIL plot_ed_source_sink_matching.py (7s)
+  ok  plot_ed_variance_decomposition.py (2s)
+  FAIL plot_ed_water_abatement.py (1s)
+  ok  plot_ed_water_basis.py (3s)
+  FAIL plot_ed_water_on_off.py (4s)
+  ok  plot_ed_who_converts.py (7s)
+  ok  plot_fig1_water_footprint.py (7s)
+  FAIL plot_fig2_constraint_response.py (1s)
+  ok  plot_fig3_attribution.py (2s)
+  FAIL plot_fig3_mechanism.py (1s)
+  FAIL plot_fig4_network_reconfiguration.py (1s)
+  FAIL plot_fig5_pathway_succession.py (1s)
+old figures frozen: 38; new figures copied: 24; scenarios archived: ['BASE', 'WA_cwatm_126_dry', 'WA_cwatm_126_dry_wd085']
+plot scripts: 20 run, 9 failed
+  FAIL plot_ed_hai_closeup.py exit=1
+  FAIL plot_ed_sink_network.py exit=1
+  FAIL plot_ed_source_sink_matching.py exit=1
+  FAIL plot_ed_water_abatement.py exit=1
+  FAIL plot_ed_water_on_off.py exit=1
+  FAIL plot_fig2_constraint_response.py exit=1
+  FAIL plot_fig3_mechanism.py exit=1
+  FAIL plot_fig4_network_reconfiguration.py exit=1
+  FAIL plot_fig5_pathway_succession.py exit=1
+DONE

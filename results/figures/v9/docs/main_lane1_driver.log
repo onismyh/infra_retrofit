@@ -1,0 +1,22 @@
+=== START WA_cwatm_126_dry 2026-08-22T05:33:09-04:00 seed=none threads=8 gap=reg ===
+=== END   WA_cwatm_126_dry rc=0 2026-08-22T11:45:52-04:00 ===
+=== START WA_cwatm_126_dry_wd085 2026-08-22T11:45:52-04:00 seed=none threads=8 gap=reg ===
+=== END   WA_cwatm_126_dry_wd085 rc=0 2026-08-22T13:05:40-04:00 ===
+=== START WA_cwatm_370_dry_wd085 2026-08-22T13:05:41-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_cwatm_370_dry_wd085 rc=0 2026-08-22T14:05:17-04:00 ===
+=== START BASE 2026-08-22T14:05:17-04:00 seed=none threads=8 gap=0.03 ===
+=== END   BASE rc=0 2026-08-22T14:45:35-04:00 ===
+=== START WA_cwatm_370_dry 2026-08-22T14:45:35-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_cwatm_370_dry rc=0 2026-08-22T15:43:54-04:00 ===
+=== START WA_wgap_126_dry 2026-08-22T15:43:54-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_wgap_126_dry rc=0 2026-08-22T16:22:42-04:00 ===
+=== START WA_cwatm_370_dry_nobias 2026-08-22T16:22:42-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_cwatm_370_dry_nobias rc=0 2026-08-22T17:05:00-04:00 ===
+=== START WA_wgap_126_dry_nobias 2026-08-22T17:05:00-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_wgap_126_dry_nobias rc=0 2026-08-22T17:40:01-04:00 ===
+=== START WA_wgap_126_dry_wd085 2026-08-22T17:40:01-04:00 seed=none threads=8 gap=0.03 ===
+=== END   WA_wgap_126_dry_wd085 rc=0 2026-08-22T18:23:33-04:00 ===
+=== SKIP  WA_cwatm_126_dry_wd085_air1000 (already solved at 2.0 pp) ===
+=== SKIP  WA_cwatm_126_dry_wd085_air1370 (already solved at 2.0 pp) ===
+=== SKIP  WA_cwatm_126_dry_wd085_noair_capfree (already solved at 2.0 pp) ===
+=== MAIN LANE1 COMPLETE 2026-08-22T18:23:34-04:00 ===

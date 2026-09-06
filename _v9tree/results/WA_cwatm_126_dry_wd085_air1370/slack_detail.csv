@@ -1,0 +1,8 @@
+year,constraint_type,node_id,province,slack_value,unit
+2040,water_supply,WC_0044_0018_K,新疆维吾尔族自治区,1637514.8291337425,m3
+2040,water_supply,WC_0046_0021_K,新疆维吾尔族自治区,99708.17863654435,m3
+2040,edge_capacity,edge_01529,,0.01999999999999958,Mtpa
+2050,water_supply,WC_0044_0018_K,新疆维吾尔族自治区,1236953.3511759099,m3
+2060,biomass_supply,B06923,内蒙古自治区,0.1466422884233154,GJ
+2060,water_supply,WC_0044_0018_K,新疆维吾尔族自治区,2635801.720522531,m3
+2060,edge_capacity,edge_02807,,0.03999999928683495,Mtpa

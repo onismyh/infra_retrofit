@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coal-retrofit"
+version = "0.1.0"
+description = "Preprocessing and experiment scaffolding for coal power retrofit analysis."
+requires-python = ">=3.11"
+dependencies = [
+  "geopandas",
+  "gurobipy",
+  "networkx",
+  "numpy",
+  "openpyxl",
+  "pandas",
+  "pyproj",
+  "rasterio",
+  "scikit-learn",
+  "scipy",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
