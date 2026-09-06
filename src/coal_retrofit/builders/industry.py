@@ -38,6 +38,7 @@ from ..constants_industry import (
     SECTOR_REFINERY,
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
+    SECTORS_OUT_OF_SCOPE,
     SECTORS_WITH_UNIFORM_RETIREMENT,
     water_quota,
 )
@@ -237,16 +238,18 @@ def _load_coal_chemical() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _assign_uniform_ages(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
-    """Fill missing commissioning years by spreading ages uniformly over the asset life.
+def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
+    """Fill missing commissioning years, by a regime that depends on what the sector knows.
 
-    Sectors without observed years (ammonia, methanol, refinery, coal chemicals) get ages
-    spread evenly across [0, life] by a deterministic quantile ladder, ordered by source_id.
-    This is the maximum-entropy assumption given no age data, and it is deterministic rather
-    than sampled so two runs are bit-identical (`.claude/rules/experiment-reproducibility.md`).
+    Partially observed sectors (cement, steel) draw their gaps from their OWN observed year
+    distribution: the fill reproduces the observed empirical quantiles, so the sector's age
+    profile is preserved rather than flattened. Sectors with no observed year at all
+    (`SECTORS_WITH_UNIFORM_RETIREMENT`) get ages spread evenly over [0, life].
 
-    `commission_year_observed` stays False for every row filled this way, so any figure that
-    reads plant age can exclude them instead of quietly treating a synthetic year as data.
+    Both fills are deterministic quantile ladders ordered by `source_id` — not sampled — so
+    two runs are bit-identical (`.claude/rules/experiment-reproducibility.md`).
+    `commission_year_observed` stays False for every filled row, so any figure that reads
+    plant age can exclude them instead of treating a synthetic year as data.
     """
     frame = frame.copy()
     frame["commission_year_observed"] = frame["commission_year"].notna()
@@ -255,19 +258,20 @@ def _assign_uniform_ages(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
         missing = group.index[group["commission_year"].isna()]
         if len(missing) == 0:
             continue
-        # Sectors in SECTORS_WITH_UNIFORM_RETIREMENT have NO observed years at all; steel and
-        # cement are partially observed and only their gaps are filled. Both cases use the
-        # same flat uniform ladder, as instructed — filling a partially observed sector from
-        # its own observed age distribution instead would use more information, but it is a
-        # different assumption and is not made here without being asked for.
-        logger.info("%s: filling %d/%d commissioning years uniformly over %d-year life",
-                    sector, len(missing), len(group), life)
         ordered = frame.loc[missing].sort_values("source_id").index
-        # i/(n-1) over [0, 1] -> ages 0..life, so the oldest cohort is exactly at end of life.
-        fractions = np.linspace(0.0, 1.0, num=len(ordered)) if len(ordered) > 1 else np.array([0.5])
-        frame.loc[ordered, "commission_year"] = (
-            base_year - np.rint(fractions * life)
-        ).astype("int64")
+        fractions = (np.linspace(0.0, 1.0, num=len(ordered)) if len(ordered) > 1
+                     else np.array([0.5]))
+        observed = group.loc[group["commission_year"].notna(), "commission_year"]
+        if str(sector) in SECTORS_WITH_UNIFORM_RETIREMENT or observed.empty:
+            years = base_year - np.rint(fractions * life)
+            how = "uniform over %d-year life" % life
+        else:
+            # Empirical-quantile fill: reproduce the observed distribution of this sector.
+            years = np.rint(np.quantile(observed.astype(float).to_numpy(), fractions))
+            how = "empirical quantiles of %d observed years" % len(observed)
+        frame.loc[ordered, "commission_year"] = years.astype("int64")
+        logger.info("%s: filled %d/%d commissioning years by %s",
+                    sector, len(missing), len(group), how)
     frame["commission_year"] = frame["commission_year"].astype("Int64")
     frame["asset_life_years"] = frame["sector"].map(ASSET_LIFETIME_YEARS).astype(int)
     return frame
@@ -305,6 +309,7 @@ def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFra
          _load_refinery(), _load_coal_chemical()],
         ignore_index=True,
     )
+    frame = frame[~frame["sector"].isin(SECTORS_OUT_OF_SCOPE)].reset_index(drop=True)
     before = len(frame)
     frame = frame[
         frame["latitude"].between(3.0, 54.0) & frame["longitude"].between(73.0, 136.0)
@@ -315,7 +320,7 @@ def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFra
     frame["sector_zh"] = frame["sector"].map(SECTOR_LABELS_ZH)
     frame["has_h2_route"] = frame["sector"].map(SECTOR_HAS_H2_ROUTE)
     frame.loc[~frame["has_h2_route"], "h2_demand_kt_per_year"] = 0.0
-    frame = _assign_uniform_ages(frame, base_year)
+    frame = _assign_missing_years(frame, base_year)
     frame = _apply_water(frame)
     return frame[CANONICAL_COLUMNS]
 

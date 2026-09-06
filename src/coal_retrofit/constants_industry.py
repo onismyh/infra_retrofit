@@ -31,15 +31,20 @@ SECTOR_METHANOL: Final = "methanol"
 SECTOR_REFINERY: Final = "refinery"
 SECTOR_COAL_CHEM: Final = "coal_chemical"
 
+# Refinery and modern coal chemicals are OUT OF SCOPE for now (author's call, 2026-09-06).
+# The decisive reason is data: neither GB/T 18916.3-2022 (石油炼制) nor the coal-chemical
+# quota tables were obtainable, so their water intensity could only have been guessed — and
+# water is this study's binding constraint. Their loaders and keys are kept so that supplying
+# the two quotas is all it takes to switch them back on.
 INDUSTRY_SECTORS: Final[tuple[str, ...]] = (
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
     SECTOR_CEMENT,
     SECTOR_AMMONIA,
     SECTOR_METHANOL,
-    SECTOR_REFINERY,
-    SECTOR_COAL_CHEM,
 )
+
+SECTORS_OUT_OF_SCOPE: Final[frozenset[str]] = frozenset({SECTOR_REFINERY, SECTOR_COAL_CHEM})
 
 SECTOR_LABELS_ZH: Final[dict[str, str]] = {
     SECTOR_STEEL_BF: "钢铁（高炉-转炉）",
@@ -139,12 +144,17 @@ H2_DEMAND_BASIS: Final[dict[str, str]] = {
 
 
 # --- Asset life, for retirement ------------------------------------------------------------
-# The point-source library has commissioning years for cement (1984-2025, complete) and part
-# of steel (BOF 55%, EAF 35%); ammonia, methanol, refinery and coal-chemicals have NONE.
-# Where the year is missing the stock is retired UNIFORMLY: ages are assumed spread evenly
-# over [0, life], so a constant 1/life of the sector's capacity reaches end of life each
-# year. That is the maximum-entropy assumption given no age data — it is not a claim about
-# the real age profile, and it must not be read as one.
+# Two regimes, because the sectors differ in what is known about them:
+#
+#   PARTIALLY OBSERVED (cement 99.6%, steel BOF 55% / EAF 35%) -> gaps are filled from that
+#     sector's OWN observed year distribution, by deterministic quantile draw. The observed
+#     half is real information about the sector's age profile and a flat ladder would throw
+#     it away, biasing the stock older or younger than it is.
+#   NOT OBSERVED AT ALL (ammonia, methanol) -> ages spread evenly over [0, life], so a
+#     constant 1/life of capacity reaches end of life each year. Maximum-entropy given no
+#     age data; it is not a claim about the real age profile and must not be read as one.
+#
+# Both fills are deterministic, never sampled, so two runs are bit-identical.
 ASSET_LIFETIME_YEARS: Final[dict[str, int]] = {
     SECTOR_STEEL_BF: 30,
     SECTOR_STEEL_EAF: 30,
@@ -157,7 +167,7 @@ ASSET_LIFETIME_YEARS: Final[dict[str, int]] = {
 
 # Sectors whose retirement schedule is a uniform-age assumption rather than observed years.
 SECTORS_WITH_UNIFORM_RETIREMENT: Final[frozenset[str]] = frozenset(
-    {SECTOR_AMMONIA, SECTOR_METHANOL, SECTOR_REFINERY, SECTOR_COAL_CHEM}
+    {SECTOR_AMMONIA, SECTOR_METHANOL}
 )
 
 
