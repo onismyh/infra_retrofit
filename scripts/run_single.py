@@ -344,6 +344,51 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     # Carbon Price
     "SA_carbon_low": ({"carbon_price_cny_per_t_by_year": (60.0, 250.0, 440.0, 630.0)}, {}),
     "SA_carbon_high": ({"carbon_price_cny_per_t_by_year": (240.0, 1000.0, 1760.0, 2520.0)}, {}),
+
+    # === v9.1: the official 用水总量控制指标 basis ("_oq") ================================
+    # These REPLACE the `_wd085` family rather than extend it, and results from the two
+    # families MUST NOT be differenced -- they are not the same model. Under `_wd085` the
+    # whole water rule is one node constraint on CONSUMPTION whose right-hand side is
+    # `qtot x 0.20 x 0.15`; under `_oq` it is two constraints on two bases:
+    #
+    #     node   <= qtot x 0.20                      environmental flow, on consumption
+    #     basin  <= 用水总量控制指标 - 非电既有取水   allocation, on withdrawal
+    #
+    # `existing_withdrawal_share` is absent on purpose. It was the assumed allocation rule;
+    # the basin cap reads the real one off 国办发〔2013〕2号 instead, which is what de-aliases
+    # it from `WATER_EXTRACTABLE_FRACTION`. Setting both would double-count the allocation.
+    #
+    # Basin caps come from inputs/water_basin_caps.csv (scripts/build_water_basin_caps.py).
+    # The apportionment-key sensitivity (demand-weighted vs area-weighted province->basin
+    # split, which flips the sign of the Northwest residual) is a REBUILD of that file, not a
+    # scenario knob: rebuild with kind="area" and re-solve under the same ids into a separate
+    # tree. See docs/官方指标口径水预算.md §3.1.
+    #
+    # mip_gap 0.01 throughout: these are the headline family for v9.1.
+    "WA_cwatm_126_dry_oq": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    "WA_cwatm_370_dry_oq": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp370", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    # The independent hydrology replicate, for the same reason the `_wd085` family needed one:
+    # without it every run in which water binds comes from CWatM, and "water binds" cannot be
+    # told apart from "CWatM". Note this matters LESS under `_oq` than it did before -- the
+    # binding side is now the basin cap, which carries no hydrology at all -- so these two
+    # runs are also the test of exactly that claim.
+    "WA_wgap_126_dry_oq":  ({"water_mode": "grid_supply", "water_scenario_id": "watergap2-2e|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    "WA_wgap_370_dry_oq":  ({"water_mode": "grid_supply", "water_scenario_id": "watergap2-2e|gfdl-esm4|ssp370", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    # Cooling frozen under the official cap. Sharper here than under `_wd085`: on the
+    # withdrawal basis, converting a once-through condenser removes ~90 m3/MWh instead of the
+    # ~1 m3/MWh it removes on consumption, so dry conversion is the dominant compliance lever
+    # against the cap. Forbidding it is what measures that.
+    "WA_cwatm_126_dry_oq_noair": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota", "allow_air_cooling_retrofit": False}),
+    # Retirement cap lifted on both sides of the headline contrast, for the reason recorded in
+    # the `_capfree` block above: every capped run sits at exactly 0.15, so a retirement
+    # difference read off the capped pair is measuring the cap.
+    "WA_cwatm_126_dry_oq_capfree": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "max_new_retirement_share_per_period": 0.50, "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    # Seed replicates: the degeneracy floor for v9.1. Never relax mip_gap here -- the family
+    # measures how far the answer drifts on seed alone, and a loose gap would be read as
+    # degeneracy (CLAUDE.md 二.2).
+    "WA_cwatm_126_dry_oq_seed2": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    "WA_cwatm_126_dry_oq_seed3": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
+    "WA_cwatm_126_dry_oq_seed4": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
 }
 
 

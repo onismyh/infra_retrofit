@@ -159,6 +159,27 @@ class OptimizationAssumptions:
     # 329:129765 (SWITCH-China). Power is ~8% of China's withdrawal but only ~1% of its
     # consumption (Zhang et al. 2017, JCLP 161:1171-1179).
     existing_withdrawal_share: float = 0.0
+    # Which water budget the availability constraint is built from.
+    #
+    #   "runoff"          v9 and earlier. available = qtot x 0.20 x (1 - existing_withdrawal_
+    #                     share). The two factors are ALIASED (see `_water_available_by_node`),
+    #                     so nothing distinguishes the environmental-flow standard from the
+    #                     allocation rule, and for the north China basins the denominator --
+    #                     local natural runoff -- is smaller than actual use, which is financed
+    #                     by inter-basin transfer and groundwater.
+    #   "official_quota"  v9.1 onward. The two rules become two separate constraints on two
+    #                     different bases, each binding the quantity it is actually written
+    #                     about:
+    #                        node  <= qtot x 0.20          environmental flow, on CONSUMPTION
+    #                                                      (a depletion rule)
+    #                        basin <= 用水总量控制指标 - 非电既有取水
+    #                                                      allocation, on WITHDRAWAL
+    #                                                      (what the 公报 meters)
+    #                     `existing_withdrawal_share` is then unused: the allocation rule is
+    #                     read off 国办发〔2013〕2号 instead of being assumed.
+    #                     Basin caps come from `inputs/water_basin_caps.csv`
+    #                     (`scripts/build_water_basin_caps.py`).
+    water_budget: str = "runoff"
     # Apply the basin bias-correction factors when serving water to the solver. The factors
     # (`.basin_bias_factors` in builders/water.py, estimated from each model's `historical`
     # run against third-survey basin totals) are baked into `available_water_m3_per_year` in

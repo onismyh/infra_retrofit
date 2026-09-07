@@ -172,7 +172,34 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         assumptions.cooling_baseline_water_intensity
     )
     plants["source_dataset"] = "inputs/plants.csv"
+    # Level-1 basin of the hub's own location, for the official-quota cap. Attribution is by
+    # location rather than by the basin of the node a hub draws from, because that is how the
+    # withdrawal permit is issued. Computed once here: it is a spatial join, and redoing it per
+    # planning year per scenario would cost more than the whole rest of the preparation.
+    if str(getattr(assumptions, "water_budget", "runoff")) == "official_quota":
+        from ..builders.water import _assign_basin_codes
+
+        located = plants.rename(columns={"centroid_latitude": "latitude",
+                                         "centroid_longitude": "longitude"})
+        plants["basin_code"] = _assign_basin_codes(paths, located)
     return plants
+
+
+def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumptions) -> pd.DataFrame:
+    """Official 用水总量控制指标 per basin per planning year; empty unless that budget is on."""
+    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+        return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
+    path = paths.inputs_dir / "water_basin_caps.csv"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. water_budget='official_quota' needs it; run "
+            "scripts/build_water_basin_caps.py."
+        )
+    caps = pd.read_csv(path)
+    missing = {"basin_code", "planning_year", "residual_m3_per_year"} - set(caps.columns)
+    if missing:
+        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    return caps
 
 
 def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
@@ -367,6 +394,7 @@ def prepare_inputs(
     biomass, biomass_links = _prepare_biomass(paths, scenario, assumptions, plants)
     ammonia_supply, ammonia_links = _prepare_ammonia_supply(paths, scenario, assumptions, plants)
     water_nodes, water_links, water_availability = _prepare_water(paths, plants, assumptions)
+    water_basin_caps = _prepare_basin_caps(paths, assumptions)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
     network = build_runtime_network(paths, plants, storages, scenario, assumptions)
     return PreparedInputs(
@@ -379,6 +407,7 @@ def prepare_inputs(
         water_nodes=water_nodes,
         water_links=water_links,
         water_availability=water_availability,
+        water_basin_caps=water_basin_caps,
         network=network,
         available_ammonia_years=available_ammonia_years,
     )
@@ -454,12 +483,120 @@ def _water_available_by_node(
     # identified by any experiment in this study and must not be claimed.
     # Fig 2(b) is the right place for this: its x-axis is the residual share, and it
     # should be read as such rather than as a pure allocation-policy axis.
-    usable = WATER_EXTRACTABLE_FRACTION * (1.0 - float(assumptions.existing_withdrawal_share))
+    # Under the official-quota budget the allocation rule has moved out of here and into the
+    # basin cap constraint, which reads it off 国办发〔2013〕2号 rather than assuming it. What
+    # is left at the node is the environmental-flow rule alone -- and that de-aliases the two
+    # factors the comment above says cannot otherwise be told apart.
+    if str(getattr(assumptions, "water_budget", "runoff")) == "official_quota":
+        usable = WATER_EXTRACTABLE_FRACTION
+    else:
+        usable = WATER_EXTRACTABLE_FRACTION * (1.0 - float(assumptions.existing_withdrawal_share))
     return np.array(
         [float(lookup.get(str(node_id), 0.0)) * usable * scenario.water_multiplier
          for node_id in nodes["water_node_id"].astype(str)],
         dtype=np.float64,
     )
+
+
+def _withdrawal_matrices(
+    prepared: PreparedInputs,
+    scenario: OptimizationScenario,
+    assumptions: OptimizationAssumptions,
+    water_intensity: np.ndarray,
+    air_water_intensity: np.ndarray,
+    year: int,
+) -> tuple[np.ndarray | None, np.ndarray | None, float]:
+    """Per-pathway WITHDRAWAL intensity, m3/MWh, for the basin cap. None when it is inactive.
+
+    Mirrors the consumption matrices pathway for pathway, so the two constraints see the same
+    fleet through two different meters. The capture pathways take the table's own with-capture
+    withdrawal rather than a multiplier, for the same reason the consumption matrix does.
+
+    Retire is zero on both bases. Biomass and ammonia co-firing keep the base cooling system, so
+    they inherit the base withdrawal scaled by the same co-firing multipliers used for
+    consumption -- the fuel changes, the condenser does not.
+    """
+    from ..builders.water_quota import calibrated_withdrawal_intensities
+
+    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+        return None, None, 1.0
+    if scenario.water_mode == "no_water":
+        return None, None, 1.0
+
+    plants = prepared.plants
+    hours = plants["province_mode"].astype(str).map(assumptions.province_operating_hours)
+    hours = hours.fillna(assumptions.capacity_factor * 8760.0)
+    generation = plants["total_capacity_mw"].astype(float) * hours
+    base, capture, air_base, air_capture, factor = calibrated_withdrawal_intensities(
+        plants, generation
+    )
+    base_np = base.to_numpy()
+    capture_np = capture.to_numpy()
+
+    withdrawal = np.zeros_like(water_intensity)
+    withdrawal[:, PATHWAY_INDEX["unabated"]] = base_np
+    withdrawal[:, PATHWAY_INDEX["retire"]] = 0.0
+    withdrawal[:, PATHWAY_INDEX["ccs"]] = capture_np * scenario.ccs_water_multiplier_adjustment
+    withdrawal[:, PATHWAY_INDEX["biomass"]] = base_np * assumptions.biomass_water_multiplier
+    withdrawal[:, PATHWAY_INDEX["beccs"]] = capture_np * scenario.beccs_water_multiplier_adjustment
+    withdrawal[:, PATHWAY_INDEX["ammonia"]] = base_np * assumptions.ammonia_water_multiplier
+
+    air_base_np = air_base.to_numpy()
+    air_capture_np = air_capture.to_numpy()
+    air_withdrawal = np.zeros_like(withdrawal)
+    air_withdrawal[:, PATHWAY_INDEX["unabated"]] = air_base_np
+    air_withdrawal[:, PATHWAY_INDEX["retire"]] = 0.0
+    air_withdrawal[:, PATHWAY_INDEX["ccs"]] = air_capture_np * scenario.ccs_water_multiplier_adjustment
+    air_withdrawal[:, PATHWAY_INDEX["biomass"]] = air_base_np * assumptions.biomass_water_multiplier
+    air_withdrawal[:, PATHWAY_INDEX["beccs"]] = air_capture_np * scenario.beccs_water_multiplier_adjustment
+    air_withdrawal[:, PATHWAY_INDEX["ammonia"]] = air_base_np * assumptions.ammonia_water_multiplier
+    air_withdrawal = np.minimum(air_withdrawal, withdrawal)
+
+    logger.info(
+        "water: official-quota budget active for %d, once-through calibration k=%.3f, "
+        "fleet withdrawal/consumption at unabated = %.1fx",
+        year, factor,
+        float(withdrawal[:, PATHWAY_INDEX["unabated"]].sum()
+              / max(water_intensity[:, PATHWAY_INDEX["unabated"]].sum(), 1e-9)),
+    )
+    return withdrawal, air_withdrawal, factor
+
+
+def _basin_cap_data(
+    prepared: PreparedInputs,
+    assumptions: OptimizationAssumptions,
+    scenario: OptimizationScenario,
+    year: int,
+) -> tuple[np.ndarray | None, np.ndarray | None, list[str]]:
+    """(membership, residual_m3, basin codes) for the basin cap. (None, None, []) when inactive.
+
+    Plants are attributed to basins by LOCATION (`plants.basin_code`, set in `_prepare_plants`),
+    not by the basin of the node they draw from. That is how the withdrawal permit is actually
+    issued -- a plant in Hebei counts against the Hai cap whichever side of a basin line its
+    intake sits on -- and it keeps the constraint exact in the pathway dimension, which
+    attributing through links could not be: link flows are not split by pathway, and the
+    withdrawal/consumption ratio moves ~80x between once-through and dry cooling.
+    """
+    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+        return None, None, []
+    if scenario.water_mode == "no_water":
+        return None, None, []
+
+    caps = prepared.water_basin_caps
+    caps = caps[caps["planning_year"].astype(int) == int(year)]
+    if caps.empty:
+        raise ValueError(f"water_basin_caps.csv has no rows for planning year {year}")
+
+    plant_basins = prepared.plants["basin_code"].astype(str).to_numpy()
+    codes = [str(code) for code in caps["basin_code"]]
+    membership = np.zeros((len(codes), len(plant_basins)), dtype=np.float64)
+    for row, code in enumerate(codes):
+        membership[row, :] = (plant_basins == code).astype(np.float64)
+    unmatched = int(len(plant_basins) - membership.sum())
+    if unmatched:
+        raise ValueError(f"{unmatched} hubs fell outside every basin in water_basin_caps.csv")
+    residual = caps["residual_m3_per_year"].astype(float).to_numpy() * scenario.water_multiplier
+    return membership, residual, codes
 
 
 def _water_scenario_family(mode: str) -> str:
@@ -787,6 +924,16 @@ def _build_year_matrices(
     # saving because its freshwater draw is already zero.
     air_water_intensity = np.minimum(air_water_intensity, water_intensity)
 
+    # Withdrawal twins of the two matrices above, on the 水资源公报 scale. Only built when the
+    # basin cap is active: it is the only constraint that acts on withdrawal, because it is the
+    # only one written against a quantity that counts once-through condenser flow.
+    withdrawal_intensity, air_withdrawal_intensity, once_through_factor = _withdrawal_matrices(
+        prepared, scenario, assumptions, water_intensity, air_water_intensity, year
+    )
+    basin_membership, basin_residual, basin_codes = _basin_cap_data(
+        prepared, assumptions, scenario, year
+    )
+
     # Fraction of each hub already dry-cooled: it needs no conversion and pays no capex.
     already_air_share = (
         prepared.plants["already_air_share"].astype(float).clip(0.0, 1.0).to_numpy()
@@ -913,6 +1060,14 @@ def _build_year_matrices(
         "water_link_cost_cny_per_m3": water_data["link_cost_cny_per_m3"],
         "water_intensity": water_intensity,
         "air_water_intensity": air_water_intensity,
+        # Withdrawal twins + the basin cap. All None/empty unless water_budget is
+        # 'official_quota'; the solver adds the basin constraint only when they are present.
+        "withdrawal_intensity": withdrawal_intensity,
+        "air_withdrawal_intensity": air_withdrawal_intensity,
+        "once_through_calibration": once_through_factor,
+        "water_basin_membership": basin_membership,
+        "water_basin_available_m3": basin_residual,
+        "water_basin_codes": basin_codes,
         "already_air_share": already_air_share,
         "air_retrofit_capex_per_plant": air_retrofit_capex_per_plant,
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,

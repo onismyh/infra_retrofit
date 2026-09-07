@@ -23,8 +23,7 @@ from coal_retrofit.builders.water import _assign_basin_codes
 from coal_retrofit.builders.water_quota import (
     basin_caps,
     basin_reserved_withdrawal,
-    once_through_calibration,
-    once_through_withdrawal,
+    calibrated_withdrawal_intensities,
     province_basin_shares,
 )
 from coal_retrofit.constants_water_quota import (
@@ -51,19 +50,13 @@ def fleet_water_by_basin(paths: ProjectPaths) -> tuple[pd.DataFrame, float]:
     hours = hours.fillna(assumptions.capacity_factor * 8760.0)
     generation = plants["total_capacity_mw"].astype(float) * hours
 
-    raw_once_through = once_through_withdrawal(plants, generation)
-    factor = once_through_calibration(plants, generation)
-    total_withdrawal = generation * plants["withdrawal_intensity_m3_per_mwh"].astype(float)
-    # Everything that is not once-through keeps its own intensity; only the once-through part is
-    # rescaled. Clipping guards the handful of hubs where the blended column, built from the unit
-    # mix, sits marginally below the reconstructed once-through term.
-    other = (total_withdrawal - raw_once_through).clip(lower=0.0)
+    base, _, _, _, factor = calibrated_withdrawal_intensities(plants, generation)
 
     located = plants.rename(columns={"centroid_latitude": "latitude",
                                      "centroid_longitude": "longitude"})
     plants["basin_code"] = _assign_basin_codes(paths, located)
-    plants["withdrawal_calibrated"] = (raw_once_through * factor + other) / 1e8
-    plants["withdrawal_raw"] = total_withdrawal / 1e8
+    plants["withdrawal_calibrated"] = generation * base / 1e8
+    plants["withdrawal_raw"] = generation * plants["withdrawal_intensity_m3_per_mwh"].astype(float) / 1e8
     plants["quota"] = generation * plants["quota_intensity_m3_per_mwh"].astype(float) / 1e8
     plants["consumption"] = generation * plants["consumption_intensity_m3_per_mwh"].astype(float) / 1e8
     columns = ["withdrawal_calibrated", "withdrawal_raw", "quota", "consumption"]

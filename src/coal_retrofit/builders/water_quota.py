@@ -38,7 +38,7 @@ import netCDF4
 import numpy as np
 import pandas as pd
 
-from ..constants import COMBUSTION_CLASS_MAP, WATER_INTENSITY_BY_TECH_M3_PER_MWH
+
 from ..constants_water_quota import (
     BASIN_NAMES_ZH,
     BASIN_WITHDRAWAL_2025_1E8_M3,
@@ -172,6 +172,25 @@ def basin_caps(
     return caps
 
 
+def _once_through_component(plants: pd.DataFrame, capture: bool) -> pd.Series:
+    """Freshwater once-through withdrawal intensity per hub, m3/MWh, before calibration.
+
+    Read straight off the column `builders/plants.finalize_water_intensities` writes, which is
+    the exact per-unit difference `_intensity_all - _intensity_fresh`. Do NOT reconstruct it
+    from `dominant_combustion` x `capacity_mw_once_through`: a hub's dominant steam cycle is
+    often not the steam cycle of its once-through units, and that reconstruction was wrong by
+    24% on the fleet total (404 vs 530 1e8 m3/yr), silently, because the error is one-sided
+    only after clipping.
+    """
+    column = ("once_through_withdrawal_ccs_intensity_m3_per_mwh" if capture
+              else "once_through_withdrawal_intensity_m3_per_mwh")
+    if column not in plants.columns:
+        raise KeyError(
+            f"plants.csv lacks {column}. Rebuild it: python scripts/build_plant_inputs.py --hubs"
+        )
+    return plants[column].astype(float)
+
+
 def once_through_withdrawal(plants: pd.DataFrame, generation_mwh: pd.Series) -> pd.Series:
     """Freshwater once-through withdrawal per hub, m3/yr, on the model's raw (US) intensities.
 
@@ -183,26 +202,41 @@ def once_through_withdrawal(plants: pd.DataFrame, generation_mwh: pd.Series) -> 
     Seawater-cooled hubs return zero: the 公报 excludes 海水直接利用量, and `builders/plants.py`
     already zeroes their condenser flow, so both sides of the calibration exclude the same fleet.
     """
-    once_through_rows = {
-        combustion: values["withdrawal"]
-        for (combustion, cooling), values in WATER_INTENSITY_BY_TECH_M3_PER_MWH.items()
-        if cooling == "once-through"
-    }
-    # `dominant_combustion` carries raw GEM labels: "CFB", and "<class>/CCS" where the suffix
-    # describes the retrofit state, not the steam cycle. COMBUSTION_CLASS_MAP is the same
-    # normalisation `builders/plants.py` applies before looking up the intensity table.
-    normalised = (
-        plants["dominant_combustion"].astype(str)
-        .str.split("/").str[0].str.strip().str.lower()
-        .map(COMBUSTION_CLASS_MAP)
-    )
-    intensity = normalised.map(once_through_rows)
-    if intensity.isna().any():
-        unmapped = sorted(plants.loc[intensity.isna(), "dominant_combustion"].astype(str).unique())
-        raise ValueError(f"combustion classes with no once-through intensity row: {unmapped}")
-    share = plants["capacity_mw_once_through"].astype(float) / plants["total_capacity_mw"].astype(float)
-    freshwater = ~plants["seawater_cooled"].astype(bool)
-    return generation_mwh * share * intensity * freshwater.astype(float)
+    return generation_mwh * _once_through_component(plants, capture=False)
+
+
+def calibrated_withdrawal_intensities(
+    plants: pd.DataFrame, generation_mwh: pd.Series
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, float]:
+    """Per-hub withdrawal intensities on the 水资源公报 scale, m3/MWh.
+
+    Returns (base, capture, air_base, air_capture, factor). Since
+
+        calibrated = blended + once_through_component x (k - 1)
+
+    the calibration is generation-free once `k` is known, which is what lets it be applied to
+    intensities and hence to a per-pathway matrix.
+
+    The two air-cooled variants carry NO once-through term at all: a converted condenser has no
+    pass-through flow, so on the withdrawal basis dry conversion removes ~90 m3/MWh rather than
+    the ~1 m3/MWh it removes on the consumption basis. That gap is the whole reason the basin cap
+    has to see a per-pathway matrix and not a per-hub ratio, and it is why every column here is
+    read off `plants.csv` -- weighted by each unit's own steam cycle -- rather than rebuilt from
+    the hub's dominant one.
+    """
+    factor = once_through_calibration(plants, generation_mwh)
+    base = (plants["withdrawal_intensity_m3_per_mwh"].astype(float)
+            + _once_through_component(plants, capture=False) * (factor - 1.0)).clip(lower=0.0)
+    capture = (plants["withdrawal_ccs_intensity_m3_per_mwh"].astype(float)
+               + _once_through_component(plants, capture=True) * (factor - 1.0)).clip(lower=0.0)
+    for column in ("air_withdrawal_intensity_m3_per_mwh", "air_withdrawal_ccs_intensity_m3_per_mwh"):
+        if column not in plants.columns:
+            raise KeyError(
+                f"plants.csv lacks {column}. Rebuild it: python scripts/build_plant_inputs.py --hubs"
+            )
+    air_base = plants["air_withdrawal_intensity_m3_per_mwh"].astype(float)
+    air_capture = plants["air_withdrawal_ccs_intensity_m3_per_mwh"].astype(float)
+    return base, capture, air_base, air_capture, factor
 
 
 def once_through_calibration(plants: pd.DataFrame, generation_mwh: pd.Series) -> float:
@@ -246,3 +280,93 @@ def basin_reserved_withdrawal(exclude_all_industry: bool = False) -> dict[str, f
             base += row["industry"] - row["thermal_once_through"]
         reserved[code] = base
     return reserved
+
+
+def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
+    """Withdrawal of the industrial point sources the model decides, 亿 m3/yr, by basin.
+
+    Those sources sit inside the 公报's 工业用水 figure, so once industry becomes a decision
+    agent its water would be charged twice: once in `basin_reserved_withdrawal`, once by the
+    model re-spending it. This carve-out is what makes the two consistent.
+
+    Returns an empty mapping when `inputs/industry_sources.csv` has not been built, which is the
+    coal-only configuration and needs no carve-out.
+    """
+    path = paths.inputs_dir / "industry_sources.csv"
+    if not path.exists():
+        logger.info("industry_sources.csv absent; no industrial carve-out from the reservation")
+        return {}
+    from .water import _assign_basin_codes
+
+    sources = pd.read_csv(path)
+    sources["basin_code"] = _assign_basin_codes(paths, sources)
+    by_basin = sources.groupby("basin_code")["water_m3_per_year"].sum() / 1e8
+    return {str(code): float(value) for code, value in by_basin.items()}
+
+
+def write_basin_caps(paths: ProjectPaths, kind: WeightKind = "demand") -> pd.DataFrame:
+    """Write `inputs/water_basin_caps.csv`: the institutional half of the water constraint.
+
+    One row per (basin, planning year). `residual_m3_per_year` is what the model's own sources
+    -- coal hubs, and industrial point sources once they enter -- may withdraw between them:
+
+        residual = 用水总量控制指标 - (生活 + 农业 + 生态 + 非电工业) + 已建模工业的现状取水
+
+    Held flat after 2030: 国办发〔2013〕2号 sets no later target and extrapolating it would be
+    inventing policy.
+
+    OVER-SUBSCRIBED BASINS. The Northwest already withdraws more (729亿 m3 in 2025) than its
+    apportioned 2030 cap (641亿), so `cap - reserved` is NEGATIVE there. Writing that through
+    would make the constraint unsatisfiable no matter what the model does, and since the basin
+    slack is penalised at the same big-M as the node slack, an ~85亿 m3 permanent violation would
+    dominate the objective and drive decisions everywhere else in the country for a reason that
+    has nothing to do with them.
+
+    Neither is clipping at zero honest on its own -- it would silently delete the finding. What
+    the red-line policy actually implies is that an over-cap basin must shrink, and that everyone
+    in it shrinks, not just power. So the reservation is scaled PRO RATA by `cap / actual`
+    wherever `actual > cap`, which is equivalent to holding every user to the same compliance
+    ratio. The unscaled figure survives in `residual_uncapped_1e8_m3` and the ratio in
+    `compliance_ratio`, so the over-subscription is reported rather than hidden.
+    """
+    from ..constants import PLANNING_YEARS
+
+    caps_by_year = {year: basin_caps(paths, year, kind) for year in PLANNING_YEARS}
+    reserved = basin_reserved_withdrawal()
+    carve_out = modelled_industry_withdrawal(paths)
+    rows = []
+    for year in PLANNING_YEARS:
+        for code in sorted(BASIN_NAMES_ZH):
+            cap = caps_by_year[year][code]
+            actual = BASIN_WITHDRAWAL_2025_1E8_M3[code]["total"]
+            industry = carve_out.get(code, 0.0)
+            uncapped = cap - reserved[code] + industry
+            ratio = min(1.0, cap / actual) if actual > 0 else 1.0
+            residual = cap - reserved[code] * ratio + industry * ratio
+            if ratio < 1.0:
+                logger.warning(
+                    "basin %s (%s) withdraws %.0f against a cap of %.0f 1e8 m3; reservation "
+                    "scaled pro rata by %.3f, raw residual %.1f -> %.1f",
+                    code, BASIN_NAMES_ZH[code], actual, cap, ratio, uncapped, residual,
+                )
+            rows.append({
+                "basin_code": code,
+                "basin_name": BASIN_NAMES_ZH[code],
+                "planning_year": year,
+                "cap_1e8_m3": round(cap, 3),
+                "actual_2025_1e8_m3": round(actual, 3),
+                "reserved_1e8_m3": round(reserved[code], 3),
+                "modelled_industry_1e8_m3": round(industry, 3),
+                "compliance_ratio": round(ratio, 4),
+                "residual_uncapped_1e8_m3": round(uncapped, 3),
+                "residual_1e8_m3": round(residual, 3),
+                "residual_m3_per_year": residual * 1e8,
+                "apportionment_weight": kind,
+                "source": "国办发〔2013〕2号 附件1 + 2025年中国水资源公报 表9",
+                "basis": "withdrawal (用水量, 新水取用量)",
+            })
+    frame = pd.DataFrame(rows)
+    destination = paths.inputs_dir / "water_basin_caps.csv"
+    frame.to_csv(destination, index=False, encoding="utf-8-sig")
+    logger.info("wrote %d rows to %s", len(frame), destination)
+    return frame

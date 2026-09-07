@@ -197,8 +197,8 @@ def _hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[s
     """
     out = {f"{key}_intensity_{variant}": 0.0 for key in WATER_KEYS for variant in ("all", "fresh")}
     out["quota_intensity_m3_per_mwh"] = 0.0
-    out["air_consumption_intensity_m3_per_mwh"] = 0.0
-    out["air_consumption_ccs_intensity_m3_per_mwh"] = 0.0
+    for basis in ("consumption", "consumption_ccs", "withdrawal", "withdrawal_ccs"):
+        out[f"air_{basis}_intensity_m3_per_mwh"] = 0.0
     out["already_air_share"] = 0.0
     if total_capacity <= 0:
         return out
@@ -222,14 +222,16 @@ def _hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[s
                 out["quota_intensity_m3_per_mwh"] += (float(unit_capacity) / total_capacity) * quota
     # What this hub's intensity would be if its condensers were converted to dry cooling.
     # Same steam cycles, air rows of the same table, so the difference is attributable to
-    # the cooling system alone.
+    # the cooling system alone. All four bases, weighted by each unit's OWN steam cycle --
+    # deriving the withdrawal pair downstream as `air_consumption x ratio(dominant_combustion)`
+    # is not the same number and put five already-dry hubs above their own base withdrawal.
     for comb, index in units.groupby(combustion).groups.items():
         entry = WATER_INTENSITY_BY_TECH_M3_PER_MWH.get((comb, "air"))
         if entry is None:
             continue
         share = float(capacity.loc[index].sum()) / total_capacity
-        out["air_consumption_intensity_m3_per_mwh"] += share * entry["consumption"]
-        out["air_consumption_ccs_intensity_m3_per_mwh"] += share * entry["consumption_ccs"]
+        for basis in ("consumption", "consumption_ccs", "withdrawal", "withdrawal_ccs"):
+            out[f"air_{basis}_intensity_m3_per_mwh"] += share * entry[basis]
     out["already_air_share"] = float(capacity[cooling == "air"].sum()) / total_capacity
     return {k: round(v, 4) for k, v in out.items()}
 
@@ -254,6 +256,23 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
         plants["quota_intensity_m3_per_mwh"]
         + (plants["consumption_ccs_intensity_m3_per_mwh"] - plants["consumption_intensity_m3_per_mwh"]).clip(lower=0.0)
     ).round(4)
+    # Freshwater once-through condenser flow, isolated. `_intensity_all` sums every cooling
+    # class and `_intensity_fresh` sums all but once-through, so the difference IS the
+    # once-through term -- exactly, per unit, at each unit's own steam cycle. Seawater hubs get
+    # zero because their published column already is the fresh variant.
+    #
+    # It is kept because it is the only part of the withdrawal column that has to be
+    # recalibrated: the once-through rows of WATER_INTENSITY_BY_TECH_M3_PER_MWH are Macknick
+    # (2011) US values and disagree with the 水资源公报 by a factor of two, while the
+    # recirculating and air rows agree to 5-14%. See `builders/water_quota`. Reconstructing it
+    # downstream from `dominant_combustion` x `capacity_mw_once_through` is NOT equivalent and
+    # was wrong by 24% on the fleet total: the hub's dominant steam cycle is often not the
+    # steam cycle of its once-through units.
+    for key in ("withdrawal", "withdrawal_ccs"):
+        plants[f"once_through_{key}_intensity_m3_per_mwh"] = (
+            (plants[f"{key}_intensity_all"] - plants[f"{key}_intensity_fresh"])
+            .where(~seawater, 0.0).clip(lower=0.0).round(4)
+        )
     return plants.drop(columns=[f"{k}_intensity_{v}" for k in WATER_KEYS for v in ("all", "fresh")])
 
 

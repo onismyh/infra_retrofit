@@ -357,7 +357,9 @@ def _solve_joint_multi_period(
             ammonia_node_count,
             f"ammonia_node_limit_{year_suffix}",
         )
-        # Water node limit — only add when water constraints are active (not no_water mode)
+        # Water node limit — only add when water constraints are active (not no_water mode).
+        # This is the PHYSICAL half: the environmental-flow rule, acting on consumption, which
+        # is the quantity a depletion rule is written about.
         if year_data["water_available_m3"] is not None:
             _add_vector_upper_bound(
                 model,
@@ -366,6 +368,52 @@ def _solve_joint_multi_period(
                 water_node_count,
                 f"water_node_limit_{year_suffix}",
             )
+        # Basin cap — the INSTITUTIONAL half, active only under water_budget='official_quota'.
+        # It acts on WITHDRAWAL because that is what 用水总量控制指标 meters (the 水资源公报
+        # counts once-through condenser flow inside 工业用水), and it is written per basin
+        # because the cap is a basin budget, not a per-intake limit. The two halves are the
+        # de-aliased successors of `WATER_EXTRACTABLE_FRACTION x (1 - existing_withdrawal_share)`,
+        # whose product was the only thing the solver used to see.
+        basin_membership = year_data.get("water_basin_membership")
+        water_basin_slack_m3 = None
+        if basin_membership is not None:
+            withdrawal = year_data["withdrawal_intensity"]
+            air_withdrawal = year_data["air_withdrawal_intensity"]
+            allow_air = bool(year_data["allow_air_cooling_retrofit"])
+            generation = year_data["generation_by_pathway"]
+            flow_scale = float(year_data.get("water_flow_scale", 1.0))
+            plant_withdrawal = [
+                gp.quicksum(
+                    float(generation[plant_idx, path_idx])
+                    * (
+                        float(withdrawal[plant_idx, path_idx]) * share[plant_idx, path_idx]
+                        - (
+                            float(withdrawal[plant_idx, path_idx]
+                                  - air_withdrawal[plant_idx, path_idx])
+                            * air_share[plant_idx, path_idx]
+                            if allow_air
+                            else 0.0
+                        )
+                    )
+                    / flow_scale
+                    for path_idx in range(len(PATHWAYS))
+                )
+                for plant_idx in range(plant_count)
+            ]
+            basin_count = basin_membership.shape[0]
+            water_basin_slack_m3 = model.addMVar(
+                basin_count, lb=0.0, name=f"water_basin_slack_m3_{year_suffix}"
+            )
+            basin_available = year_data["water_basin_available_m3"] / flow_scale
+            for basin_idx in range(basin_count):
+                members = np.flatnonzero(basin_membership[basin_idx])
+                if members.size == 0:
+                    continue
+                model.addConstr(
+                    gp.quicksum(plant_withdrawal[int(p)] for p in members)
+                    <= float(basin_available[basin_idx]) + water_basin_slack_m3[basin_idx],
+                    name=f"water_basin_limit_{year_data['water_basin_codes'][basin_idx]}_{year_suffix}",
+                )
         model.addConstrs(
             (
                 storage_use_mtpa[storage_idx]
@@ -412,6 +460,7 @@ def _solve_joint_multi_period(
                 "biomass_slack_gj": biomass_slack_gj,
                 "ammonia_slack_kg": ammonia_slack_kg,
                 "water_slack_m3": water_slack_m3,
+                "water_basin_slack_m3": water_basin_slack_m3,
                 "injectivity_slack_mtpa": injectivity_slack_mtpa,
                 "storage_slack_mt": storage_slack_mt,
                 "edge_slack_mtpa": edge_slack_mtpa,
@@ -709,6 +758,11 @@ def _solve_joint_multi_period(
             + payload["biomass_slack_gj"].sum() * 2_000.0 * _bio_scale
             + payload["ammonia_slack_kg"].sum() * 1_000.0 * _amm_scale
             + payload["water_slack_m3"].sum() * 1_000.0 * _wat_scale
+            # Same unit penalty as the node slack: violating the allocation cap and
+            # violating the environmental-flow limit must cost the same, or the solver
+            # would rank one institution above the other for a purely numerical reason.
+            + (payload["water_basin_slack_m3"].sum() * 1_000.0 * _wat_scale
+               if payload.get("water_basin_slack_m3") is not None else 0.0)
             + payload["injectivity_slack_mtpa"].sum() * assumptions.slack_penalty_cny_per_unit
             + payload["storage_slack_mt"].sum() * assumptions.slack_penalty_cny_per_unit
             + payload["edge_slack_mtpa"].sum() * assumptions.slack_penalty_cny_per_unit
@@ -886,6 +940,8 @@ def _solve_joint_multi_period(
                         "biomass_slack_gj": np.zeros(len(prepared.biomass)),
                         "ammonia_slack_kg": np.zeros(len(p["year_data"]["ammonia_nodes"])),
                         "water_slack_m3": np.zeros(len(p["year_data"]["water_nodes"])),
+                        "water_basin_slack_m3": np.zeros(
+                            len(p["year_data"].get("water_basin_codes") or [])),
                         "injectivity_slack_mtpa": np.zeros(storage_count),
                         "storage_slack_mt": np.zeros(storage_count),
                         "edge_slack_mtpa": np.zeros(edge_count),
@@ -937,6 +993,13 @@ def _solve_joint_multi_period(
                 "biomass_slack_gj": _var_value(payload["biomass_slack_gj"], biomass_node_count) * _bio_s,
                 "ammonia_slack_kg": _var_value(payload["ammonia_slack_kg"], ammonia_node_count) * _amm_s,
                 "water_slack_m3": _var_value(payload["water_slack_m3"], water_node_count) * _wat_s,
+                # Which basin cap bound, and by how much. Zero-length when the official-quota
+                # budget is off, so downstream readers see an array either way.
+                "water_basin_slack_m3": (
+                    _var_value(payload["water_basin_slack_m3"],
+                               len(year_data["water_basin_codes"])) * _wat_s
+                    if payload.get("water_basin_slack_m3") is not None else np.zeros(0)),
+                "water_basin_codes": list(year_data.get("water_basin_codes") or []),
                 "injectivity_slack_mtpa": _var_value(payload["injectivity_slack_mtpa"], storage_count),
                 "storage_slack_mt": _var_value(payload["storage_slack_mt"], storage_count),
                 "edge_slack_mtpa": _var_value(payload["edge_slack_mtpa"], edge_count),

@@ -48,6 +48,9 @@ class PreparedInputs:
     water_nodes: pd.DataFrame
     water_links: pd.DataFrame
     water_availability: pd.DataFrame
+    # Official 用水总量控制指标 per basin per planning year, empty when the file has not
+    # been built. Only read when `assumptions.water_budget == 'official_quota'`.
+    water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
 
