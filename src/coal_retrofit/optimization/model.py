@@ -145,7 +145,7 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             )
         )
         storage_tables.append(_build_storage_table(prepared, year, year_solution["storage_use_mtpa"], state_before, interval_years))
-        supply_tables.append(_build_supply_table(prepared, year, year_data, year_solution["biomass_flow_gj"], year_solution["ammonia_flow_kg"], year_solution["water_flow_m3"]))
+        supply_tables.append(_build_supply_table(prepared, year, year_data, year_solution["biomass_flow_gj"], year_solution["ammonia_flow_kg"], year_solution["water_flow_m3"], year_solution["slacks"].get("water_basin_use_m3")))
         sanity_tables.append(_build_sanity_checks(year, year_solution["slacks"], pathways, province_table))
         cost_tables.append(_build_cost_breakdown(year, year_solution["cost_breakdown_cny"]))
         plant_detail_tables.append(_build_plant_detail_table(

@@ -376,6 +376,7 @@ def _solve_joint_multi_period(
         # whose product was the only thing the solver used to see.
         basin_membership = year_data.get("water_basin_membership")
         water_basin_slack_m3 = None
+        water_basin_use_m3 = None
         if basin_membership is not None:
             withdrawal = year_data["withdrawal_intensity"]
             air_withdrawal = year_data["air_withdrawal_intensity"]
@@ -404,15 +405,26 @@ def _solve_joint_multi_period(
             water_basin_slack_m3 = model.addMVar(
                 basin_count, lb=0.0, name=f"water_basin_slack_m3_{year_suffix}"
             )
+            # Named variable for the basin's own withdrawal rather than an anonymous expression.
+            # Nine extra columns, and it makes the quantity the whole official-quota basis turns
+            # on extractable and reportable instead of something results.py has to rebuild from
+            # `share` and `air_share`.
+            water_basin_use_m3 = model.addMVar(
+                basin_count, lb=0.0, name=f"water_basin_use_m3_{year_suffix}"
+            )
             basin_available = year_data["water_basin_available_m3"] / flow_scale
             for basin_idx in range(basin_count):
                 members = np.flatnonzero(basin_membership[basin_idx])
-                if members.size == 0:
-                    continue
+                code = year_data["water_basin_codes"][basin_idx]
                 model.addConstr(
-                    gp.quicksum(plant_withdrawal[int(p)] for p in members)
+                    water_basin_use_m3[basin_idx]
+                    == gp.quicksum(plant_withdrawal[int(p)] for p in members),
+                    name=f"water_basin_use_{code}_{year_suffix}",
+                )
+                model.addConstr(
+                    water_basin_use_m3[basin_idx]
                     <= float(basin_available[basin_idx]) + water_basin_slack_m3[basin_idx],
-                    name=f"water_basin_limit_{year_data['water_basin_codes'][basin_idx]}_{year_suffix}",
+                    name=f"water_basin_limit_{code}_{year_suffix}",
                 )
         model.addConstrs(
             (
@@ -461,6 +473,7 @@ def _solve_joint_multi_period(
                 "ammonia_slack_kg": ammonia_slack_kg,
                 "water_slack_m3": water_slack_m3,
                 "water_basin_slack_m3": water_basin_slack_m3,
+                "water_basin_use_m3": water_basin_use_m3,
                 "injectivity_slack_mtpa": injectivity_slack_mtpa,
                 "storage_slack_mt": storage_slack_mt,
                 "edge_slack_mtpa": edge_slack_mtpa,
@@ -942,6 +955,9 @@ def _solve_joint_multi_period(
                         "water_slack_m3": np.zeros(len(p["year_data"]["water_nodes"])),
                         "water_basin_slack_m3": np.zeros(
                             len(p["year_data"].get("water_basin_codes") or [])),
+                        "water_basin_use_m3": np.zeros(
+                            len(p["year_data"].get("water_basin_codes") or [])),
+                        "water_basin_codes": list(p["year_data"].get("water_basin_codes") or []),
                         "injectivity_slack_mtpa": np.zeros(storage_count),
                         "storage_slack_mt": np.zeros(storage_count),
                         "edge_slack_mtpa": np.zeros(edge_count),
@@ -1000,6 +1016,10 @@ def _solve_joint_multi_period(
                                len(year_data["water_basin_codes"])) * _wat_s
                     if payload.get("water_basin_slack_m3") is not None else np.zeros(0)),
                 "water_basin_codes": list(year_data.get("water_basin_codes") or []),
+                "water_basin_use_m3": (
+                    _var_value(payload["water_basin_use_m3"],
+                               len(year_data["water_basin_codes"])) * _wat_s
+                    if payload.get("water_basin_use_m3") is not None else np.zeros(0)),
                 "injectivity_slack_mtpa": _var_value(payload["injectivity_slack_mtpa"], storage_count),
                 "storage_slack_mt": _var_value(payload["storage_slack_mt"], storage_count),
                 "edge_slack_mtpa": _var_value(payload["edge_slack_mtpa"], edge_count),

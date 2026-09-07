@@ -480,7 +480,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         province_tables.append(prov_table)
         edge_tables.append(_build_edge_table(prepared, year, ys["edge_flow_mtpa"], ys["build_edge"], ys["new_cap_mtpa"], state_before, assumptions))
         storage_tables.append(_build_storage_table(prepared, year, ys["storage_use_mtpa"], state_before, interval_years))
-        supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"]))
+        supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"].get("water_basin_use_m3")))
         cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"]))
         sanity_tables.append(_build_sanity_checks(year, ys["slacks"], pw_table, prov_table))
         plant_detail_tables.append(_build_plant_detail_table(
