@@ -107,6 +107,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import matplotlib.patheffects as pe
+import matplotlib.ticker as mticker
 from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -716,11 +717,26 @@ def panel_c(ax, table):
     ax.set_xticks(xs)
     ax.set_xticklabels(labels, fontsize=5.8)
     ax.set_xlim(-0.55, len(stats) - 0.45)
-    ax.set_ylabel("相对不考虑水的倍数", fontsize=6.2, labelpad=2.0)
+    ax.set_ylabel("相对不考虑水的倍数（对数轴）", fontsize=6.2, labelpad=2.0)
+    # 对数轴，且范围显式给：线性轴上 4.6 倍的那一点会被自动范围切掉，而 0.99 与 1.07 两条
+    # 又会一起压在 1.0 那根线上——三个量共用一根轴的前提就是每十倍等距。
+    _all = [v for s in stats for v in
+            (1.0, float(table.loc[s, "ctrl"]) / float(table.loc[s, "base"]),
+             float(table.loc[s, "treat"]) / float(table.loc[s, "base"]))]
+    ax.set_yscale("log")
+    _lo, _hi = min(_all) / 1.18, max(_all) * 1.30
+    ax.set_ylim(_lo, _hi)
+    # 显式刻度：这个范围内唯一的十进位刻度就是 1，默认只会给出一个标签加一排无标注的次刻度。
+    _cand = [0.5, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0]
+    ax.set_yticks([v for v in _cand if _lo <= v <= _hi])
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(
+        lambda v, _pos: f"{v:g}"))
+    ax.yaxis.set_minor_locator(mticker.NullLocator())
     ax.tick_params(axis="y", labelsize=5.8)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
-    ax.legend(fontsize=5.1, loc="upper left", frameon=False, handlelength=0.9,
+    # 左下：空冷那一列从 1.0 一路冲到顶，左上正好被它的处理组点占住。
+    ax.legend(fontsize=5.1, loc="lower left", frameon=False, handlelength=0.9,
               handletextpad=0.4, borderaxespad=0.2, labelspacing=0.28)
 
 

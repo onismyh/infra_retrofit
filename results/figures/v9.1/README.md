@@ -131,18 +131,38 @@ v9.1（`_oq` 族）把这一条拆成两条，各自约束它本来就是在讲�
 生态流量档的响应全部落在黄河与西北内陆河；总量指标档几乎全部落在西北内陆河，
 黄河反而把一部分改造让回去。**两档的作用点不同，这正是拆开它们的意义。**
 
-### 三之四、逐图状态
+### 三之四、逐图状态（`_v91tree/render_probe.sh` 实测，9/19 情景时）
 
-| 图 | 状态 | 说明 |
-|---|---|---|
-| Fig 1 水足迹 | ✅ 可画（不依赖求解） | 面板 c 的流域压力已改为两档并列，各按自己的口径 |
-| Fig 2 约束响应 | 🔄 面板 b 已验证可画；a、c 待求解 | **b、c 已重做**，见 §五.6 |
-| Fig 3 机理 | 🔄 待 `_oq_noair`、`_oq_air*` | 已改用两档阶梯标签 |
-| Fig 4 网络重构 | 🔄 待三臂 + seed 族 | |
-| Fig 5 路径演替 | 🔄 待 `_oq_capfree` / `_oq_noair_capfree` | 新增 `_oq_capfree` 才使冻结对比回到单因子 |
-| ED 流域特写 | ✅ 已出图 | `plot_ed_basin_closeup.py`（取代 `plot_ed_hai_closeup.py`） |
-| ED 水开关 / 减排 / 源汇匹配 | 🔄 待 seed 族 | |
-| ED 敏感性 | ❌ 不画 | 需 22 个 `SA_*`，v9 也从未求解，非回归 |
+| 图 | 脚本 | 状态 | 备注 |
+|---|---|---|---|
+| Fig 1 水足迹 | `plot_fig1_water_footprint` | ✅ | 不依赖求解；面板 c 的流域压力已改为两档并列 |
+| Fig 2 约束响应 | `plot_fig2_constraint_response` | ✅ | b、c 已重做；c 的地板待 seed 族 |
+| Fig 3 机理 | `plot_fig3_mechanism` | ✅ | 阶梯标签改为两档；面板 a、c 的标题改为计算得出 |
+| Fig 4 网络重构 | `plot_fig4_network_reconfiguration` | ⏳ | 待 seed 族 |
+| Fig 5 路径演替 | `plot_fig5_pathway_succession` | ⏳ | 待 `_oq_envonly_nobias` 两个与 `_oq_capfree` |
+| ED 流域特写 | `plot_ed_basin_closeup` | ✅ | **新图**，取代 `plot_ed_hai_closeup`（已删除） |
+| ED 水量口径 | `plot_ed_water_basis` | ✅ | 分组标签由"超出配额"改为"北方缺水流域" |
+| ED 谁在改造 | `plot_ed_who_converts` | ✅ | 两个标题改为计算得出（38%→75%，海河→黄河/西北） |
+| ED 机队总览 / 汇网络 / 多跳匹配 | `plot_ed_fleet_atlas` / `plot_ed_sink_network` / `plot_ed_multihop_matching` | ✅ | |
+| ED 生物质来源 / 回退 / 分省转型 / 方差分解 / 敏感性 | 同名脚本 | ✅ | |
+| ED 水开关 | `plot_ed_water_on_off` | ⏳ | 待 seed 族 |
+| ED 减排—水 | `plot_ed_water_abatement` | ⏳ | 待 seed 族 |
+| ED 源汇匹配 | `plot_ed_source_sink_matching` | ⏳ | 待 seed 族 |
+| Fig 3 归因 / ED 源汇分年 | `plot_fig3_attribution` / `plot_ed_source_sink_matching_years` | ⛔ | `render_version.py` 的 SKIP 名单，v9 起即不在图序列内 |
+
+> `plot_ed_sensitivity` 需要 22 个 `SA_*` 情景，v9 也从未求解过，因此**不是回归**；
+> 它当前能出图，但画的是空的敏感性轴。
+
+### 三之五、三级阶梯（2040 年空冷与退役、2060 年捕集，三臂中位数）
+
+| 量 | BASE | 仅生态流量 | ＋总量指标 | 第一步 | 第二步 |
+|---|---|---|---|---|---|
+| 空冷改造容量（GW，2040） | 30.5 | 67.7 | 140.4 | **+37.2** | **+72.7** |
+| CO₂ 捕集量（Mt，2060） | 797.0 | 793.1 | 787.4 | −3.9 | −5.7 |
+| 提前退役容量（GW，2040） | 2.8 | 2.9 | 3.0 | +0.1 | +0.1 |
+
+简并度地板待 seed 族求解后回填。**在地板测出来之前，上表任何一步都不得称为"效应"**——
+按 CLAUDE.md §二.4 的既有结论，本模型上只有目标函数与空冷转换量越过过各自的地板。
 
 ## 四、相对 v9 哪些数字变了
 
