@@ -127,19 +127,19 @@ PEAK_YEAR = 2040   # where conversion peaks and the timing effect is most resolv
 
 # --- the runs -----------------------------------------------------------------
 # "NOT BINDING" WAS FALSE, AND IT IS THE CONTROL SIDE OF THE HEADLINE CONTRAST.
-# Measured from this run's own resource_use.csv at 2030: 33 of 373 water nodes sit at
-# >=99.9% of their budget, and those saturated nodes carry 20.1% of the fleet's water
-# demand. At 2040 it is 54 nodes and 27.9%. The basin AGGREGATE is only 3.5%, which is
-# where the "not binding" label came from -- and using a basin aggregate to declare a
-# node-level constraint slack is precisely the error Fig 3(c) exists to expose, applied
-# to this paper's own control.
-# It matters quantitatively, not just semantically: 2030 dry-cooling conversion runs
-# BASE 89.5 -> s=0 166.2 -> s=0.85 411.1 GW, so 76.7 GW (24%) of the constraint-driven
-# conversion already happens in the "control" and is differenced away by the headline.
-# The honest description is a LADDER OF BINDING INTENSITY, not an on/off switch.
-PRICED = "WA_cwatm_126_dry"   # water accounted, nothing reserved: 33/373 nodes already at a limit
-BINDS = "WA_cwatm_126_dry_wd085"               # non-power share reserved -> binds
-FROZEN = "WA_cwatm_126_dry_wd085_noair"        # binding, dry-cooling retrofit forbidden
+# A LADDER OF BINDING INTENSITY, not an on/off switch. The control is not "water off": it
+# already enforces the environmental-flow rule (node <= runoff x 0.20, consumption basis) at
+# every node, so part of any response happens inside the control and is differenced away by
+# the headline. Never declare that control slack from a basin AGGREGATE -- a node-level
+# constraint can bind at many nodes while the basin total looks comfortable, which is exactly
+# the error Fig 3(c) exists to expose, applied to this paper's own control.
+# The two rungs also price two DIFFERENT institutions on two different water bases:
+# environmental flow on consumption, 用水总量控制指标 on withdrawal. The v9 node counts and
+# conversion volumes once quoted here were measured on the aliased 0.03 budget and are NOT
+# carried forward; main() prints the v9.1 values.
+PRICED = "WA_cwatm_126_dry_oq_envonly"      # 仅生态流量（节点，耗水口径）
+BINDS = "WA_cwatm_126_dry_oq"               # ＋用水总量控制指标（流域，取水口径）
+FROZEN = "WA_cwatm_126_dry_oq_noair"        # 同上，且禁止空冷改造
 
 # Hartley's d2: E[range of k iid normal draws] = d2(k) * sigma. Module scope because
 # both floor_test and report need it -- report previously hardcoded the k=3 factor
@@ -161,44 +161,44 @@ PANEL_A_RUNS = [
 # band pools them; treat its width as an upper bound, not a calibrated scale. Renamed to say what
 # it is -- a sensitivity to the bias correction -- and used as a deliberately hard bar, never
 # as evidence of absence when a treatment fails to clear it.
-BIAS_PAIRS = [("WA_wgap_126_dry", "WA_wgap_126_dry_nobias"),
-              ("WA_cwatm_370_dry", "WA_cwatm_370_dry_nobias")]
+BIAS_PAIRS = [("WA_wgap_126_dry_oq_envonly", "WA_wgap_126_dry_oq_envonly_nobias"),
+              ("WA_cwatm_370_dry_oq_envonly", "WA_cwatm_370_dry_oq_envonly_nobias")]
 # Treatment: does water bind. Held to pairs that differ ONLY by the reservation, so each pair
 # is one hydrology model x one SSP. The WaterGAP2 pairs de-confound "water binds" from "CWatM";
 # without them every binding run in the study came from a single hydrology model.
-BIND_PAIRS = [("WA_cwatm_126_dry", "WA_cwatm_126_dry_wd085"),
-              ("WA_cwatm_370_dry", "WA_cwatm_370_dry_wd085"),
-              ("WA_wgap_126_dry", "WA_wgap_126_dry_wd085")]
-# A fourth pair (WA_wgap_370_dry -> _wd085) is deliberately ABSENT: its control is a legacy
-# 24-column run with no air-cooling mechanism at all, so pairing it with a current-build
-# treatment would read a code change as a water effect. `_wd085` for it has been solved on the
-# current build; the pair activates as soon as its control is re-solved to match.
-# Treatment: is the retrofit available. NOTE: the frozen run sits EXACTLY on the exogenous
-# early-retirement cap (share_retire = 0.150000 at 2030 and 0.300000 at 2040, i.e. 1x and 2x
-# `max_new_retirement_share_per_period` = 0.15) and buys its remaining shortfall at the big-M
-# water penalty (18.5% of its objective, against 3.45% for the binding run). Its magnitude is
-# therefore a LOWER BOUND set partly by two exogenous constants, not a free optimum. The
-# `*_capfree` run relaxes the cap to test this; where it exists it is reported alongside.
-CAPFREE = "WA_cwatm_126_dry_wd085_noair_capfree"
-# The capped frozen run is NOT the one to quote. Relaxing the cap to 0.50 barely changes what
-# the fleet does (2040 retirement 30.0000% -> 31.0282% of generation, i.e. the model wanted
-# only ~1 pp more) but it removes the artefact: the big-M purchase of unserved water collapses
-# from 18.52% of the objective to 1.05%, and the capture loss settles at 122 Mt rather than
-# 150 Mt. So the effect SURVIVES the diagnostic -- it was not manufactured by the cap -- and
-# the honest magnitude is the one measured on the near-clean run. Preferred where solved.
+BIND_PAIRS = [("WA_cwatm_126_dry_oq_envonly", "WA_cwatm_126_dry_oq"),
+              ("WA_cwatm_370_dry_oq_envonly", "WA_cwatm_370_dry_oq"),
+              ("WA_wgap_126_dry_oq_envonly", "WA_wgap_126_dry_oq")]
+# A fourth hydrology arm (WaterGAP2 x SSP3-7.0) is deliberately ABSENT from v9.1: it was
+# never part of the minimal scenario closure this round solves, and half a pair is worse than
+# no pair -- pairing a v9.1 treatment with anything solved on another build would read a code
+# change as a water effect. Add both rungs together or not at all.
+# Treatment: is the retrofit available. NOTE: in v9 the frozen run sat EXACTLY on the
+# exogenous early-retirement cap `max_new_retirement_share_per_period` = 0.15 and bought its
+# remaining shortfall at the big-M water penalty, which made its magnitude a LOWER BOUND set
+# partly by two exogenous constants rather than a free optimum. Re-check that on the v9.1
+# solves before quoting it. The `*_capfree` runs relax the cap to 0.50 to test exactly this,
+# and BOTH sides of the contrast are solved so the comparison stays one-factor.
+CAPFREE = "WA_cwatm_126_dry_oq_noair_capfree"
+# Where the capped frozen run leans on the big-M purchase of unserved water, it is NOT the
+# one to quote: the cap-relaxed run is the near-clean measurement and is preferred where
+# solved. On v9 relaxing the cap barely moved the fleet (2040 retirement 30.00% -> 31.03% of
+# generation) while collapsing the slack share from 18.52% to 1.05%, i.e. the effect survived
+# the diagnostic rather than being manufactured by the cap. Those are v9 numbers; the v9.1
+# equivalents are printed by main() and are what this figure quotes.
 FROZEN_PAIRS = [(BINDS, FROZEN)]
 # Seed replicates: identical model, identical parameters, different Gurobi search path. This
 # is the ONLY construction here that measures degeneracy rather than physics.
-SEED_RUNS = ["WA_cwatm_126_dry_wd085_seed2", "WA_cwatm_126_dry_wd085_seed3",
-             "WA_cwatm_126_dry_wd085_seed4", "WA_cwatm_126_dry_wd085_seed5",
-             "WA_cwatm_126_dry_wd085_seed6"]
+SEED_RUNS = ["WA_cwatm_126_dry_oq_seed2", "WA_cwatm_126_dry_oq_seed3",
+             "WA_cwatm_126_dry_oq_seed4", "WA_cwatm_126_dry_oq_seed5",
+             "WA_cwatm_126_dry_oq_seed6"]
 # CONTROL-SIDE replicates. The floor is compared against a difference of two runs, so
 # measuring it on the treatment side alone assumes the control is equally degenerate and
 # inflates by sqrt(2) to cover it. With both sides replicated the two variances add
 # directly and no assumption is needed. Loaded when present; the sqrt(2) fallback stands
 # when they are not.
-CTRL_SEED_RUNS = ["WA_cwatm_126_dry_seed2", "WA_cwatm_126_dry_seed3",
-                  "WA_cwatm_126_dry_seed4"]
+CTRL_SEED_RUNS = ["WA_cwatm_126_dry_oq_envonly_seed2", "WA_cwatm_126_dry_oq_envonly_seed3",
+                  "WA_cwatm_126_dry_oq_envonly_seed4"]
 
 SHARES = ["share_unabated", "share_biomass", "share_ccs", "share_beccs",
           "share_ammonia", "share_retire"]
@@ -243,9 +243,11 @@ def _require_current_vintage(name: str) -> Path:
 def _admit(name: str) -> dict:
     """Validity verdict, admitting a slack-only failure as Fig 3 does.
 
-    Every `*_wd085` run leans ~3.45% of its objective on the big-M penalty for water it could
-    not serve. That is the result this figure reports, not an artefact, so slack-only failures
-    are admitted. Any other failure mode -- NaN objective, non-optimal status -- still raises.
+    A run that cannot serve its water demand inside the allowance leans on the big-M penalty.
+    That is the result this figure reports, not an artefact, so slack-only failures are
+    admitted. Under v9.1 there are two such channels, the node (environmental flow) and the
+    basin (用水总量控制指标). Any other failure mode -- NaN objective, non-optimal status --
+    still raises.
     """
     verdict = scenario_validity(name)
     if verdict["ok"] or "slack penalty" in verdict["reason"]:
@@ -933,7 +935,7 @@ def main() -> None:
             # left BINDS at max_new_retirement_share_per_period = 0.15 while its comparator sat
             # at 0.50, so a single reported effect moved TWO factors: whether the dry-cooling
             # retrofit is allowed, and where the retirement cap is. The one-factor comparator
-            # (`WA_cwatm_126_dry_wd085_capfree`) exists and is solved, so this costs nothing.
+            # (`WA_cwatm_126_dry_oq_capfree`) is in the v9.1 closure, so this costs nothing.
             # LOAD IT BEFORE ASKING WHETHER IT EXISTS. The cap-free runs were only added to
             # `trajectories` further down in main(), AFTER this check, so the branch below always
             # took the warning path and the frozen contrast stayed confounded -- moving the

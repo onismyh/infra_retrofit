@@ -1,33 +1,37 @@
 # -*- coding: utf-8 -*-
-"""附录图：考虑水 vs 不考虑水 —— 影响落在哪些区域，以及是否鲁棒。
+"""附录图：水约束的三级阶梯 —— 影响落在哪些区域，以及是否鲁棒。
 
 这张图回答一个问题：把水资源约束放进模型，和完全不放，差别到底在哪。
 
-口径不是我定的，是 `scripts/run_single.py` 里写死的三档：
+v9.1 起口径换成官方指标口径，档位由 `scripts/run_single.py` 写死，是一条**三级阶梯**
+而不是 v9 的开/关两档：
 
     BASE                    water_mode="no_water"                  完全不考虑水
-    WA_*_dry                水约束在，existing_withdrawal_share=0   流域可取用量全给电力
-    WA_*_dry_wd085          同上，但 s=0.85，电力只留 15%           处理组
+    WA_*_dry_oq_envonly     节点 <= 径流 x 0.20（耗水口径）        仅生态流量  ← 对照组
+    WA_*_dry_oq             再加：流域取水 <= 用水总量控制指标      叠加总量指标 ← 处理组
+                            - 非电既有取水（取水口径）
 
-第二档的存在是这张图的关键。run_single.py 自己的注释就写着"at 0.0 ... `WA_*_dry`
-lands within the MIP gap of BASE" —— 也就是说，**"考虑水有多大影响"这个问题没有单一答案，
-它完全取决于你假设电力能占用多少存量取水权。** 这正是本图的主线：
+阶梯本身就是换口径的目的。v9 的 `*_wd085` 把生态流量标准与配额规则混叠成一个乘积
+（0.20 x (1-0.85) = 0.03），没有任何实验能分辨是哪一条在起作用；这里
+BASE→envonly 给第一条定价、envonly→oq 给第二条定价，各自独立。两条约束还落在
+**两个不同的水量口径**上：生态流量约束的是耗水（消耗性取用），总量控制指标考核的是
+取水（《中国水资源公报》口径，含直流冷却的过流量）。
 
-    a  成本：s=0 与不考虑水的可证区间跨零（分辨不出）；s=0.85 为 [+1.00, +5.44]%
-    b  空冷改造逐年：效应是前置的，2040 年从 46 GW 推到 356 GW（与 fig3/fig5 同口径）
-    c  空间：309 GW 的增量里 97.5% 落在海河、黄河、西北内陆河、淮河四个北方流域
-    d  取水净减 36%（70.6 -> 45.0 亿 m3），减量全部落在五个北方流域，南方几乎不动
-    e  鲁棒性：上述结论逐项对各自的简并度地板检验；捕集量与各路径容量全在噪声内
+    a  成本：BASE→envonly 与 envonly→oq 两级各自的可证区间
+    b  空冷改造逐年：效应的时间分布
+    c  空间：增量落在哪些流域（预期集中在总量指标偏紧的北方流域）
+    d  取水的净变化，按流域分解
+    e  鲁棒性：上述结论逐项对各自的简并度地板检验
 
 所有差值都配了简并度地板（CLAUDE.md §2.4）：floor = 1.96*sqrt(2)*range/d2(k)，
 range 来自同一模型仅换随机种子的复现族。没有越过地板的量，本图一律标为"未分辨"，
 而不是"无效应"——这两件事不一样。
 
 成本的区间不用种子族，用可证边界（§2.3）：lo = (LB_t - INC_c)/INC_c，
-hi = (INC_t - LB_c)/LB_c。因为 BASE 的 gap（1.70%）与处理组（2.55%）不同，
-点估计相减没有意义，只有边界相减是可证的。
+hi = (INC_t - LB_c)/LB_c。两档的 MIP gap 不同，点估计相减没有意义，只有边界相减可证。
 
-数据源：重建输入版本（103 个汇、连通性修复网络），与 v9 其余图同源。
+数据源：v9.1 输入版本（103 个汇、连通性修复网络、inputs/water_basin_caps.csv）。
+**v9.1 与 v9 的结果不得相减**——不是同一个模型（CLAUDE.md §二.6）。
 """
 from __future__ import annotations
 
@@ -62,14 +66,27 @@ from plot_style import (  # noqa: E402
     BASIN_NAMES_ZH,
     DOUBLE_COL,
     RESULTS_DIR,
+    ARMS,
+    BASE_SCENARIO,
+    SEED_ARM,
+    SEEDS,
+    treat_of,
+    hub_frame,
+    national,
 )
 
 # --- 口径 --------------------------------------------------------------------------------
-BASE = "BASE"
-# 三个水文臂。同一个处理组开关（s=0.85）配三套水文强迫，用来看结论是否依赖水文模型的选择。
-ARMS = ["WA_cwatm_126_dry", "WA_cwatm_370_dry", "WA_wgap_126_dry"]
-SEED_ARM = "WA_cwatm_126_dry"          # 只有这一臂跑了种子复现族
-SEEDS = (2, 3, 4)
+# 情景名不在本文件里写死了：v9.1 把 v9 的"开/关一对"换成三级阶梯，名字统一由 plot_style
+# 组装（见那里的 CTRL_SUFFIX / TREAT_SUFFIX）。ARMS 装的是**控制臂**的完整情景名，
+# treat_of(a) 给出它的处理臂搭档。
+#
+#   BASE                完全无水规则
+#   <臂>_oq_envonly     只有生态流量规则（节点，耗水口径）
+#   <臂>_oq             再加官方用水总量控制指标（流域，取水口径）
+#
+# 三个水文臂配同一个处理开关，用来看结论是否依赖水文模型的选择——注意在 v9.1 下这件事
+# 的分量比 v9 小：真正咬住的是流域上限，它根本不含水文。这三臂正是对该说法的检验。
+BASE = BASE_SCENARIO
 YEARS = [2030, 2040, 2050, 2060]
 PEAK = 2040                            # 效应峰值年，横截面面板都用它
 D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534}
@@ -78,8 +95,8 @@ D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534}
 # 三档口径各一色。处理组用强调红 #CC3311 —— §3.3 把这个色分配给"空冷改造"，
 # 而本图的主角正好就是空冷改造，所以是同一件事，不是借色。
 C_BASE = "#969696"      # 不考虑水：中性灰
-C_S0 = "#6BAED6"        # s=0：取水蓝（浅）
-C_S085 = "#CC3311"      # s=0.85：强调红
+C_ENV = "#6BAED6"        # s=0：取水蓝（浅）
+C_OQ = "#CC3311"      # 叠加用水总量指标：强调红
 C_GAIN = "#CC3311"      # d 面板：取水增加
 C_LOSS = "#08519C"      # d 面板：取水减少（Blues 深端 = 耗水色）
 GRID = "#9AA0A6"
@@ -98,45 +115,9 @@ RES = RESULTS_DIR
 # =========================================================================================
 # 读数
 # =========================================================================================
-def _plants(scen: str) -> pd.DataFrame:
-    return pd.read_csv(RES / scen / "plant_detail.csv")
-
-
-def hub_frame(scen: str, year: int) -> pd.DataFrame:
-    """机组级表，附上流域码与三个派生容量列。
-
-    流域用 plot_style.assign_basin（最近多边形，覆盖全部 350 个 hub），
-    而不是"取水量最大的水节点所属流域"——后者只覆盖 338 个（12 个 hub 当年不取水），
-    两者在共同覆盖的 338 个上一致率 93.5%，差异都在流域交界带。
-    """
-    p = _plants(scen)
-    p = p[p["year"] == year].copy()
-    p["basin"] = assign_basin(p)
-    cap = p["capacity_mw"] / 1000.0
-    p["cap_gw"] = cap
-    # air_cooled_share 是"相对该 hub 尚未改造的湿冷容量的改造进度"，不是总空冷份额
-    # （plot_fig3_mechanism.py:248 的口径）。直接乘容量会把 248 GW 已空冷的底数混进来，
-    # 2030 年 BASE 会从 45 GW 虚报成 153 GW。ED12 / ED13 都从这里导入，改这一处即可。
-    p["air_gw"] = p["capacity_mw"] / 1000.0 * (1.0 - p["already_air_share"]) * p["air_cooled_share"]
-    p["ret_gw"] = p["share_retire"] * cap
-    p["ccs_gw"] = p["share_ccs"] * cap
-    p["beccs_gw"] = p["share_beccs"] * cap
-    p["bio_gw"] = p["share_biomass"] * cap
-    p["wat_e8"] = p["water_use_m3"] / 1e8
-    return p
-
-
-def national(scen: str, year: int) -> dict:
-    p = hub_frame(scen, year)
-    return {
-        "空冷改造容量": float(p["air_gw"].sum()),
-        "取水量": float(p["wat_e8"].sum()),
-        "退役容量": float(p["ret_gw"].sum()),
-        "捕集量": float(p["captured_mt"].sum()),
-        "CCS 容量": float(p["ccs_gw"].sum()),
-        "BECCS 容量": float(p["beccs_gw"].sum()),
-        "生物质容量": float(p["bio_gw"].sum()),
-    }
+# hub_frame / national 现由 plot_style 提供（上面已导入并在本模块 re-export，
+# plot_ed_water_abatement 与 plot_ed_source_sink_matching 的既有导入不受影响）。
+# 定义只此一份：air_gw 那条公式一旦被复制就会各自漂移，见 plot_style.hub_frame 的说明。
 
 
 def basin_series(scen: str, year: int, col: str) -> pd.Series:
@@ -171,8 +152,8 @@ def certified(treat: str, ctrl: str) -> tuple[float, float]:
 # =========================================================================================
 def panel_a(ax) -> list[tuple]:
     rows = [
-        ("考虑水，流域可取用量\n全部给电力（s = 0）", SEED_ARM, C_S0),
-        ("考虑水，电力只留 15%\n存量取水权（s = 0.85）", f"{SEED_ARM}_wd085", C_S085),
+        ("仅生态流量\n（节点，耗水口径）", SEED_ARM, C_ENV),
+        ("＋用水总量控制指标\n（流域，取水口径）", treat_of(SEED_ARM), C_OQ),
     ]
     out = []
     for i, (label, scen, colour) in enumerate(rows):
@@ -214,12 +195,12 @@ def panel_a(ax) -> list[tuple]:
 def panel_b(ax) -> dict:
     base = [national(BASE, y)["空冷改造容量"] for y in YEARS]
     ctrl = np.array([[national(a, y)["空冷改造容量"] for y in YEARS] for a in ARMS])
-    treat = np.array([[national(f"{a}_wd085", y)["空冷改造容量"] for y in YEARS] for a in ARMS])
+    treat = np.array([[national(treat_of(a), y)["空冷改造容量"] for y in YEARS] for a in ARMS])
 
     ax.plot(YEARS, base, color=C_BASE, lw=1.5, marker="o", ms=2.6,
             label="不考虑水", zorder=5)
-    for arr, colour, name in ((ctrl, C_S0, "考虑水，s = 0"),
-                              (treat, C_S085, "考虑水，s = 0.85")):
+    for arr, colour, name in ((ctrl, C_ENV, "仅生态流量"),
+                              (treat, C_OQ, "＋用水总量指标")):
         # 带 = 三个水文臂的极差。结论不该依赖于选了哪个水文模型，这条带就是在给这个说法作证。
         ax.fill_between(YEARS, arr.min(axis=0), arr.max(axis=0), facecolor=colour,
                         alpha=0.20, lw=0, zorder=3)
@@ -229,16 +210,16 @@ def panel_b(ax) -> dict:
     i = YEARS.index(PEAK)
     ratio = np.median(treat, axis=0)[i] / base[i]
     # 三条曲线把画面切成的空隙都很窄，斜引线放哪都会压到某条线上。改用竖直差值标记：
-    # 在 2040 处从"不考虑水"拉到"s=0.85"，文字放右下那片真正空的三角区。
+    # 在 2040 处从"不考虑水"拉到"＋用水总量指标"，文字放右下那片真正空的三角区。
     # 差值本来就是竖直方向的量，这样标注也更贴切。
     peak_t = float(np.median(treat, axis=0)[i])
     ax.annotate("", xy=(PEAK, peak_t), xytext=(PEAK, base[i]),
-                arrowprops=dict(arrowstyle="<->", color=C_S085, lw=0.7,
+                arrowprops=dict(arrowstyle="<->", color=C_OQ, lw=0.7,
                                 shrinkA=1.5, shrinkB=1.5), zorder=6)
     # 2030-2040 之间红线（~315-356）与蓝线（~95）之间是整片空白，注释放那里；
     # 右上角是图例，右下的红线下降段正好穿过 2050 的点，两处都放不下。
     ax.text(2031.0, 0.58 * peak_t, f"{PEAK} 年 {ratio:.1f} 倍\n{base[i]:.0f} → {peak_t:.0f} GW",
-            fontsize=5.4, color=C_S085, ha="left", va="center", zorder=6)
+            fontsize=5.4, color=C_OQ, ha="left", va="center", zorder=6)
 
     ax.set_xticks(YEARS)
     ax.set_ylabel("累计空冷改造容量（GW）", fontsize=6.2, labelpad=2)
@@ -261,10 +242,10 @@ def panel_b(ax) -> dict:
 # =========================================================================================
 def panel_c(fig, ax, cax) -> pd.DataFrame:
     b_air = basin_series(BASE, PEAK, "air_gw")
-    t_air = pd.concat([basin_series(f"{a}_wd085", PEAK, "air_gw") for a in ARMS],
+    t_air = pd.concat([basin_series(treat_of(a), PEAK, "air_gw") for a in ARMS],
                       axis=1).median(axis=1)
     seeds_c = [basin_series(s, PEAK, "air_gw") for s in seed_scenarios(SEED_ARM)]
-    seeds_t = [basin_series(s, PEAK, "air_gw") for s in seed_scenarios(f"{SEED_ARM}_wd085")]
+    seeds_t = [basin_series(s, PEAK, "air_gw") for s in seed_scenarios(treat_of(SEED_ARM))]
 
     codes = sorted(set(b_air.index) | set(t_air.index))
     rows = []
@@ -297,7 +278,7 @@ def panel_c(fig, ax, cax) -> pd.DataFrame:
     # 机组级：在不考虑水时完全没有空冷、在处理组下转了的 hub。地图上的点回答
     # "是哪些厂址在动"，流域填充回答"总量在哪个流域"。
     hb = hub_frame(BASE, PEAK).set_index("plant_id")
-    ht = hub_frame(f"{SEED_ARM}_wd085", PEAK).set_index("plant_id")
+    ht = hub_frame(treat_of(SEED_ARM), PEAK).set_index("plant_id")
     both = hb.index.intersection(ht.index)
     newly = ht.loc[both][(hb.loc[both, "air_cooled_share"] < 0.01)
                          & (ht.loc[both, "air_cooled_share"] > 0.50)]
@@ -345,10 +326,10 @@ def panel_c(fig, ax, cax) -> pd.DataFrame:
 # =========================================================================================
 def panel_d(ax) -> pd.DataFrame:
     b_w = basin_series(BASE, PEAK, "wat_e8")
-    t_w = pd.concat([basin_series(f"{a}_wd085", PEAK, "wat_e8") for a in ARMS],
+    t_w = pd.concat([basin_series(treat_of(a), PEAK, "wat_e8") for a in ARMS],
                     axis=1).median(axis=1)
     seeds_c = [basin_series(s, PEAK, "wat_e8") for s in seed_scenarios(SEED_ARM)]
-    seeds_t = [basin_series(s, PEAK, "wat_e8") for s in seed_scenarios(f"{SEED_ARM}_wd085")]
+    seeds_t = [basin_series(s, PEAK, "wat_e8") for s in seed_scenarios(treat_of(SEED_ARM))]
 
     rows = []
     for k in sorted(set(b_w.index) | set(t_w.index)):
@@ -409,26 +390,26 @@ def panel_e(ax) -> pd.DataFrame:
     keys = list(national(BASE, PEAK).keys())
     b = national(BASE, PEAK)
     c = {k: np.median([national(a, PEAK)[k] for a in ARMS]) for k in keys}
-    t = {k: np.median([national(f"{a}_wd085", PEAK)[k] for a in ARMS]) for k in keys}
+    t = {k: np.median([national(treat_of(a), PEAK)[k] for a in ARMS]) for k in keys}
     sc = [national(s, PEAK) for s in seed_scenarios(SEED_ARM)]
-    st = [national(s, PEAK) for s in seed_scenarios(f"{SEED_ARM}_wd085")]
+    st = [national(s, PEAK) for s in seed_scenarios(treat_of(SEED_ARM))]
 
     rows = []
     for k in keys:
         f = max(floor_of([x[k] for x in sc]), floor_of([x[k] for x in st]))
         r0 = abs(c[k] - b[k]) / f if f > 1e-9 else 0.0
         r85 = abs(t[k] - b[k]) / f if f > 1e-9 else 0.0
-        rows.append({"stat": k, "floor": f, "r_s0": r0, "r_s085": r85,
-                     "d_s0": c[k] - b[k], "d_s085": t[k] - b[k]})
-    tab = pd.DataFrame(rows).sort_values("r_s085", ascending=True).reset_index(drop=True)
+        rows.append({"stat": k, "floor": f, "r_env": r0, "r_oq": r85,
+                     "d_env": c[k] - b[k], "d_oq": t[k] - b[k]})
+    tab = pd.DataFrame(rows).sort_values("r_oq", ascending=True).reset_index(drop=True)
 
     y = np.arange(len(tab))
     h = 0.34
-    ax.barh(y + h / 2 + 0.02, tab["r_s085"], height=h, color=C_S085,
-            edgecolor="white", lw=0.3, zorder=3, label="s = 0.85 相对不考虑水")
-    ax.barh(y - h / 2 - 0.02, tab["r_s0"], height=h, color=C_S0,
-            edgecolor="white", lw=0.3, zorder=3, label="s = 0 相对不考虑水")
-    for yi, v in zip(y, tab["r_s085"]):
+    ax.barh(y + h / 2 + 0.02, tab["r_oq"], height=h, color=C_OQ,
+            edgecolor="white", lw=0.3, zorder=3, label="＋总量指标 相对不考虑水")
+    ax.barh(y - h / 2 - 0.02, tab["r_env"], height=h, color=C_ENV,
+            edgecolor="white", lw=0.3, zorder=3, label="仅生态流量 相对不考虑水")
+    for yi, v in zip(y, tab["r_oq"]):
         # 只标越过地板的。未越过的柱子长度 0.2-0.8，标签起点会正好压在 1.0 的地板虚线上；
         # 而它们的具体倍数不承载结论 —— "未分辨"就是全部信息，图注已说明它不等于无效应。
         if v <= 1.0:
@@ -453,7 +434,7 @@ def panel_e(ax) -> pd.DataFrame:
     ax.spines["bottom"].set_color(SPINE)
     ax.legend(fontsize=4.8, frameon=False, loc="lower right", handlelength=1.1,
               handletextpad=0.5, labelspacing=0.26, borderpad=0.2)
-    n = int((tab["r_s085"] > 1.0).sum())
+    n = int((tab["r_oq"] > 1.0).sum())
     ax.set_title(f"{len(tab)} 项里 {n} 项越过地板；未越过 ≠ 无效应", fontsize=6.6, pad=4.0)
     return tab
 
@@ -521,12 +502,12 @@ def caption(cost, curves, air, water, robust) -> str:
     else:
         strength_txt = f"{len(sep)} 个流域里最弱的{weak_name}也有 {weak_ratio:.1f} 倍地板；"
     wat_b = national(BASE, PEAK)["取水量"]
-    wat_t = float(np.median([national(f"{a}_wd085", PEAK)["取水量"] for a in ARMS]))
-    n_rob = int((robust["r_s085"] > 1.0).sum())
-    n_rob0 = int((robust["r_s0"] > 1.0).sum())
+    wat_t = float(np.median([national(treat_of(a), PEAK)["取水量"] for a in ARMS]))
+    n_rob = int((robust["r_oq"] > 1.0).sum())
+    n_rob0 = int((robust["r_env"] > 1.0).sum())
     bits = (
         f"三档口径由 run_single.py 定义：不考虑水（BASE，water_mode=no_water）；",
-        f"考虑水但把流域可取用量全部给电力（s = 0）；考虑水且电力只留 15% 存量取水权（s = 0.85）。",
+        f"只加生态流量约束（节点取用 ≤ 径流 20%，耗水口径）；再叠加流域用水总量控制指标（取水口径）。",
         f"面板 a 的区间是可证边界 —— BASE 的 MIP gap 是 1.70%，处理组是 2.55%，",
         f"两次求解的点估计相减没有意义，只有 lo=(LB_t-INC_c)/INC_c、hi=(INC_t-LB_c)/LB_c 可证。",
         f"s = 0 那一档跨零，也就是说把整个流域配额都交给电力时，加不加水约束分辨不出；",
@@ -536,12 +517,12 @@ def caption(cost, curves, air, water, robust) -> str:
         f"c、d、e 都取 {PEAK} 年这个峰值年的横截面。c 的填充是流域尺度的增量，",
         f"深色描边表示越过简并度地板（{len(sep)} 个流域：{names}，占全国增量 {share:.1f}%）；"
         f"{strength_txt}",
-        f"圈点是在不考虑水时完全没有空冷、在 s = 0.85 下转过一半以上的厂址。",
+        f"圈点是在不考虑水时完全没有空冷、在叠加用水总量指标后转过一半以上的厂址。",
         f"d 显示水是被净减掉的，不是搬到南方：全国 {wat_b:.1f} 降到 {wat_t:.1f} 亿 m3，"
         f"减量 {wat_b - wat_t:.1f} 全部落在北方五流域，长江与珠江的变化都在地板之内。"
         f"e 把 {len(robust)} 项全国统计量放在同一个无量纲轴上：",
         f"横轴是差值除以该统计量自身的简并度地板（1.96·√2·极差/d2(k)，极差取自仅换随机种子的",
-        f"4 次复现）。s = 0.85 一侧 {n_rob} 项越过，s = 0 一侧 {n_rob0} 项越过。",
+        f"4 次复现）。叠加总量指标一侧 {n_rob} 项越过，仅生态流量一侧 {n_rob0} 项越过。",
         f"未越过地板不等于无效应，只是本组求解分辨不出。",
     )
     return cjk_fill(" ".join(bits), width=178)
@@ -557,7 +538,7 @@ def report(cost, curves, air, water, robust) -> None:
 
     print()
     print("面板 b  空冷改造容量（GW），三臂中位数")
-    print(f"  {'年份':<8}{'不考虑水':>12}{'s=0':>12}{'s=0.85':>12}{'倍数':>10}")
+    print(f"  {'年份':<8}{'不考虑水':>12}{'仅生态流量':>12}{'＋总量指标':>12}{'倍数':>10}")
     for j, y in enumerate(YEARS):
         b = curves["base"][j]
         c = float(np.median(curves["ctrl"], axis=0)[j])
@@ -566,7 +547,7 @@ def report(cost, curves, air, water, robust) -> None:
 
     print()
     print(f"面板 c  {PEAK} 年空冷改造增量，按流域（GW）")
-    print(f"  {'流域':<14}{'不考虑水':>10}{'s=0.85':>10}{'Δ':>10}{'地板':>9}{'倍数':>8}  判定")
+    print(f"  {'流域':<14}{'不考虑水':>10}{'＋总量指标':>10}{'Δ':>10}{'地板':>9}{'倍数':>8}  判定")
     for k, r in air.sort_values("delta", ascending=False).iterrows():
         print(f"  {BASIN_NAMES_ZH[k]:<14}{r['base']:>10.1f}{r['treat']:>10.1f}"
               f"{r['delta']:>10.1f}{r['floor']:>9.1f}{r['ratio']:>8.2f}"
@@ -584,12 +565,12 @@ def report(cost, curves, air, water, robust) -> None:
 
     print()
     print(f"面板 e  {PEAK} 年全国统计量对地板的倍数")
-    print(f"  {'统计量':<14}{'不考虑水':>11}{'Δ(s=0)':>11}{'Δ(s=0.85)':>12}"
+    print(f"  {'统计量':<14}{'不考虑水':>11}{'Δ(生态)':>11}{'Δ(＋总量)':>12}"
           f"{'地板':>10}{'倍数(0)':>10}{'倍数(0.85)':>12}")
     b = national(BASE, PEAK)
-    for _, r in robust.sort_values("r_s085", ascending=False).iterrows():
-        print(f"  {r['stat']:<14}{b[r['stat']]:>11.1f}{r['d_s0']:>11.1f}"
-              f"{r['d_s085']:>12.1f}{r['floor']:>10.2f}{r['r_s0']:>10.2f}{r['r_s085']:>12.2f}")
+    for _, r in robust.sort_values("r_oq", ascending=False).iterrows():
+        print(f"  {r['stat']:<14}{b[r['stat']]:>11.1f}{r['d_env']:>11.1f}"
+              f"{r['d_oq']:>12.1f}{r['floor']:>10.2f}{r['r_env']:>10.2f}{r['r_oq']:>12.2f}")
 
 
 if __name__ == "__main__":

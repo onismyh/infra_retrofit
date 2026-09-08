@@ -18,7 +18,7 @@ ED12 用汇个数、注入量、管长等标量回答"匹配变了没有"。这�
 
     BASE                    water_mode="no_water"                  完全不考虑水
     WA_*_dry                水约束在，existing_withdrawal_share=0   流域可取用量全给电力
-    WA_*_dry_wd085          同上，但 s=0.85，电力只留 15%           处理组
+    WA_*_dry_oq             再加流域用水总量控制指标（取水口径）    处理组
 
 两张地图用**完全相同**的线宽标度与点面积标度，否则并排看没有意义。
 散点面板里的灰点是零假设：同一口径仅换随机种子的两两配对，它给出"什么都不改
@@ -56,13 +56,14 @@ from plot_style import (  # noqa: E402
     safe_log_axis,
     cjk_fill,
     DOUBLE_COL,
+    treat_of,
 )
 from plot_ed_water_on_off import (  # noqa: E402
     BASE, ARMS, SEED_ARM, floor_of, seed_scenarios, hub_frame,
 )
 from plot_ed_water_abatement import injection, network, HUBS, INPUTS  # noqa: E402
 
-TREAT = f"{SEED_ARM}_wd085"
+TREAT = treat_of(SEED_ARM)
 ANALYSIS_YEAR = 2060
 
 # --- 配色（CLAUDE.md §3.3）----------------------------------------------------------------
@@ -73,8 +74,8 @@ SRC_OFF_C = "#D5DADE"     # 未接入的厂址：更淡一档。350 个 hub 里�
                           # 画上去是机队底图 —— 没有它，读者会以为管网覆盖了全部煤电
 EXCL_C = "#CC3311"        # 只在本情景启用的管段：强调红，与 c/d/e 里"差异"的红同义
 C_BASE = "#969696"
-C_S0 = "#6BAED6"
-C_S085 = "#CC3311"
+C_ENV = "#6BAED6"
+C_OQ = "#CC3311"
 NULL_C = "#BDBDBD"
 GRID = "#9AA0A6"
 SPINE = "#5A5A5A"
@@ -232,7 +233,7 @@ def scatter_panel(ax, getter, log: bool, label: str, unit: str) -> dict:
 
     keep = (b > ACTIVE) | (t > ACTIVE)
     ax.scatter(np.maximum(b[keep], lo), np.maximum(t[keep], lo), s=5.5,
-               facecolor="none", edgecolor=C_S085, linewidth=0.55, zorder=4)
+               facecolor="none", edgecolor=C_OQ, linewidth=0.55, zorder=4)
 
     hi = float(max(b.max(), t.max())) * 1.6
     ax.plot([lo, hi], [lo, hi], color=SPINE, lw=0.6, ls=(0, (3, 2)), zorder=3)
@@ -253,7 +254,7 @@ def scatter_panel(ax, getter, log: bool, label: str, unit: str) -> dict:
     nulls = null_pairs(getter, TREAT) + null_pairs(getter, SEED_ARM)
     n_l1 = [x["l1"] for x in nulls]
     ax.set_xlabel(f"不考虑水的{label}（{unit}）", fontsize=5.8, labelpad=1.5)
-    ax.set_ylabel(f"考虑水 s = 0.85（{unit}）", fontsize=5.8, labelpad=1.5)
+    ax.set_ylabel(f"＋用水总量指标（{unit}）", fontsize=5.8, labelpad=1.5)
     ax.tick_params(labelsize=5.0, length=1.6, pad=1.2)
     ax.grid(lw=0.22, alpha=0.18, color=GRID)
     ax.set_axisbelow(True)
@@ -278,16 +279,16 @@ def panel_e(ax) -> pd.DataFrame:
     for i, (name, getter) in enumerate(levels):
         B = getter(BASE)
         ctrl = [disagreement(B, getter(a))["l1"] for a in ARMS]
-        treat = [disagreement(B, getter(f"{a}_wd085"))["l1"] for a in ARMS]
+        treat = [disagreement(B, getter(treat_of(a)))["l1"] for a in ARMS]
         nulls = [x["l1"] for x in null_pairs(getter, TREAT) + null_pairs(getter, SEED_ARM)]
         y = len(levels) - 1 - i
         ax.barh(y, max(nulls) - min(nulls), left=min(nulls), height=0.42,
                 color=NULL_C, alpha=0.65, zorder=2,
                 label="仅换随机种子的零假设" if i == 0 else None)
-        ax.scatter(ctrl, [y + 0.16] * 3, s=11, facecolor=C_S0, edgecolor="white",
-                   linewidth=0.35, zorder=4, label="考虑水，s = 0" if i == 0 else None)
-        ax.scatter(treat, [y - 0.16] * 3, s=11, facecolor=C_S085, edgecolor="white",
-                   linewidth=0.35, zorder=4, label="考虑水，s = 0.85" if i == 0 else None)
+        ax.scatter(ctrl, [y + 0.16] * 3, s=11, facecolor=C_ENV, edgecolor="white",
+                   linewidth=0.35, zorder=4, label="仅生态流量" if i == 0 else None)
+        ax.scatter(treat, [y - 0.16] * 3, s=11, facecolor=C_OQ, edgecolor="white",
+                   linewidth=0.35, zorder=4, label="＋用水总量指标" if i == 0 else None)
         rows.append({"level": name.replace("\n", ""), "ctrl": ctrl, "treat": treat,
                      "null_lo": min(nulls), "null_hi": max(nulls),
                      "clears": min(treat) > max(nulls)})
@@ -337,7 +338,7 @@ def main() -> None:
 
     a = draw_matching(fig, ax_a, BASE, f"不考虑水（BASE），{ANALYSIS_YEAR} 年",
                       [0.775, 0.015, 0.170, 0.230], other=TREAT)
-    b = draw_matching(fig, ax_b, TREAT, f"考虑水（s = 0.85），{ANALYSIS_YEAR} 年",
+    b = draw_matching(fig, ax_b, TREAT, f"＋用水总量指标，{ANALYSIS_YEAR} 年",
                       [0.775, 0.015, 0.170, 0.230], other=BASE)
     c = scatter_panel(ax_c, sink_injection, True, "汇注入量", r"Mt yr$^{-1}$")
     d = scatter_panel(ax_d, edge_flows, False, "管段流量", r"Mt yr$^{-1}$")
@@ -380,7 +381,7 @@ def caption(a, b, c, d, e) -> str:
         f"a、b 展示该年的源汇匹配格局，",
         f"**两图共用同一条线宽标度与同一条点面积标度**，否则并排比较没有意义：",
         f"不考虑水时 {a['n_edge']} 条活跃管段、{a['n_sink']} 个在用封存汇；",
-        f"s = 0.85 时 {b['n_edge']} 条、{b['n_sink']} 个。",
+        f"叠加用水总量指标后 {b['n_edge']} 条、{b['n_sink']} 个。",
         f"灰点是全部 350 个煤电厂址：深灰接入源汇网络（{a['n_src']} / {b['n_src']} 个）、"
         f"浅灰未接入（{a['n_src_off']} / {b['n_src_off']} 个）—— 管网覆盖的只是机队的一部分。",
         f"**红色是只在本图这一口径下启用的管段** —— a 有 {a['n_excl']} 条（承担 {a['flow_excl']:.0f} Mt），",
@@ -409,14 +410,14 @@ def report(a, b, c, d, e) -> None:
     print(f"面板 a / b  {ANALYSIS_YEAR} 年源汇匹配格局")
     print(f"  {'':22}{'活跃管段':>10}{'管道总长(km)':>14}{'输送量(Mt)':>12}"
           f"{'在用汇':>8}{'注入量(Mt)':>12}")
-    for lab, s in (("不考虑水 BASE", a), ("考虑水 s=0.85", b)):
+    for lab, s in (("不考虑水 BASE", a), ("＋用水总量指标", b)):
         print(f"  {lab:22}{s['n_edge']:>10}{s['km']:>14.0f}{s['flow']:>12.1f}"
               f"{s['n_sink']:>8}{s['inj']:>12.1f}   仅本口径启用 "
               f"{s['n_excl']:>3} 条 / {s['flow_excl']:.1f} Mt"
               f"   厂址 接入 {s['n_src']} / 未接入 {s['n_src_off']}")
 
     print()
-    print("面板 c / d  1:1 对比（不考虑水 vs s=0.85）")
+    print("面板 c / d  1:1 对比（不考虑水 vs ＋用水总量指标）")
     for name, r in (("汇注入量", c), ("管段流量", d)):
         print(f"  {name:10} R² {r['d']['r2']:.4f}   Σ|Δ|/总量 {r['d']['l1']:5.1f}%   "
               f"开关翻转 {r['d']['flip']:3d}   [零假设 Σ|Δ| {r['null_l1'][0]:.1f}-{r['null_l1'][1]:.1f}%]")

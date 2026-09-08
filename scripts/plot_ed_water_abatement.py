@@ -19,7 +19,7 @@ ED11 讲的是水约束改变了什么（冷却方式与取水）。这张图讲
 
     BASE                    water_mode="no_water"                  完全不考虑水
     WA_*_dry                水约束在，existing_withdrawal_share=0   流域可取用量全给电力
-    WA_*_dry_wd085          同上，但 s=0.85，电力只留 15%           处理组
+    WA_*_dry_oq             再加流域用水总量控制指标（取水口径）    处理组
 
 为什么用"两组极差的间隙 / 地板"而不是"点差值 / 地板"：处理组内部有三个水文臂，
 对照组也有三个，如果两组的取值范围本来就重叠，那么"处理组比对照组高"这句话
@@ -59,6 +59,7 @@ from plot_style import (  # noqa: E402
     DOUBLE_COL,
     RESULTS_DIR,
     PATHWAY_COLORS,
+    treat_of,
 )
 from plot_ed_water_on_off import (  # noqa: E402
     BASE, ARMS, SEED_ARM, YEARS, PEAK, hub_frame, floor_of, seed_scenarios,
@@ -73,8 +74,8 @@ INPUTS = Path(__file__).resolve().parents[1] / "inputs"
 
 # --- 配色 ---------------------------------------------------------------------------------
 C_BASE = "#969696"
-C_S0 = "#6BAED6"
-C_S085 = "#CC3311"
+C_ENV = "#6BAED6"
+C_OQ = "#CC3311"
 GRID = "#9AA0A6"
 SPINE = "#5A5A5A"
 # 汇的一致性：被几个处理臂用到。0/3 -> 3/3，离散四档，显式 BoundaryNorm（§3.3(3)）。
@@ -146,9 +147,9 @@ CONTRAST = ("空冷改造容量（GW）", r"取水量（$10^8$ m$^3$）")
 def two_group_test(year: int = PEAK) -> pd.DataFrame:
     """fig4 口径：两组极差的间隙 / 简并度地板。重叠时间隙为 0。"""
     ctrl = [sink_stats(a, year) for a in ARMS]
-    treat = [sink_stats(f"{a}_wd085", year) for a in ARMS]
+    treat = [sink_stats(treat_of(a), year) for a in ARMS]
     sc = [sink_stats(s, year) for s in seed_scenarios(SEED_ARM)]
-    st = [sink_stats(s, year) for s in seed_scenarios(f"{SEED_ARM}_wd085")]
+    st = [sink_stats(s, year) for s in seed_scenarios(treat_of(SEED_ARM))]
     rows = []
     for k in sink_stats(BASE, year):
         c = [x[k] for x in ctrl]
@@ -166,7 +167,7 @@ def two_group_test(year: int = PEAK) -> pd.DataFrame:
 # =========================================================================================
 def panel_a(fig, ax, cax, legend_anchor) -> dict:
     b = injection(BASE)
-    arms = pd.DataFrame({a: injection(f"{a}_wd085") for a in ARMS})
+    arms = pd.DataFrame({a: injection(treat_of(a)) for a in ARMS})
     idx = b.index.union(arms.index)
     b = b.reindex(idx).fillna(0.0)
     arms = arms.reindex(idx).fillna(0.0)
@@ -179,7 +180,7 @@ def panel_a(fig, ax, cax, legend_anchor) -> dict:
 
     # 种子翻转数：同一口径仅换随机种子，有多少汇会开关。这是 flip 的零假设参照。
     seed_flip = {}
-    for stem, lab in ((SEED_ARM, "s0"), (f"{SEED_ARM}_wd085", "s085")):
+    for stem, lab in ((SEED_ARM, "env"), (treat_of(SEED_ARM), "oq")):
         S = pd.DataFrame({x: injection(x).reindex(idx).fillna(0.0)
                           for x in seed_scenarios(stem)})
         na = (S > 0.01).sum(axis=1)
@@ -245,17 +246,17 @@ def panel_a(fig, ax, cax, legend_anchor) -> dict:
 def panel_b(ax) -> dict:
     base = [hub_frame(BASE, y)["captured_mt"].sum() for y in CAP_YEARS]
     ctrl = np.array([[hub_frame(a, y)["captured_mt"].sum() for y in CAP_YEARS] for a in ARMS])
-    treat = np.array([[hub_frame(f"{a}_wd085", y)["captured_mt"].sum() for y in CAP_YEARS]
+    treat = np.array([[hub_frame(treat_of(a), y)["captured_mt"].sum() for y in CAP_YEARS]
                       for a in ARMS])
     seeds = np.array([[hub_frame(s, y)["captured_mt"].sum() for y in CAP_YEARS]
-                      for s in seed_scenarios(f"{SEED_ARM}_wd085")])
+                      for s in seed_scenarios(treat_of(SEED_ARM))])
 
     # 种子包络先画、画在最下：它是"什么都不改、只换随机种子"能漂多远的标尺。
     ax.fill_between(CAP_YEARS, seeds.min(axis=0), seeds.max(axis=0), facecolor="#D9D9D9",
                     alpha=0.75, lw=0, zorder=2, label="仅换随机种子的包络（4 次复现）")
     ax.plot(CAP_YEARS, base, color=C_BASE, lw=1.5, marker="o", ms=2.6, zorder=5, label="不考虑水")
-    for arr, colour, name in ((ctrl, C_S0, "考虑水，s = 0"),
-                              (treat, C_S085, "考虑水，s = 0.85")):
+    for arr, colour, name in ((ctrl, C_ENV, "仅生态流量"),
+                              (treat, C_OQ, "＋用水总量指标")):
         ax.fill_between(CAP_YEARS, arr.min(axis=0), arr.max(axis=0), facecolor=colour,
                         alpha=0.20, lw=0, zorder=3)
         ax.plot(CAP_YEARS, np.median(arr, axis=0), color=colour, lw=1.6, marker="o", ms=2.6,
@@ -282,7 +283,7 @@ def panel_b(ax) -> dict:
 # 面板 c：减排路径构成
 # =========================================================================================
 def panel_c(ax) -> pd.DataFrame:
-    groups = [("不考虑水", [BASE]), ("s = 0", ARMS), ("s = 0.85", [f"{a}_wd085" for a in ARMS])]
+    groups = [("不考虑水", [BASE]), ("仅生态流量", ARMS), ("＋总量指标", [treat_of(a) for a in ARMS])]
     rows = []
     for lab, scens in groups:
         vals = {}
@@ -323,7 +324,7 @@ def panel_d(ax) -> pd.DataFrame:
     y = np.arange(len(tab))
     # 对照组（空冷、取水）用强调红，减排/源汇用中性灰蓝 —— 判定靠位置（越没越过 1.0），
     # 颜色只用来分"这是被检验的量"还是"这是拿来比的参照"。
-    colours = [C_S085 if c else "#7FA8C9" for c in tab["contrast"]]
+    colours = [C_OQ if c else "#7FA8C9" for c in tab["contrast"]]
     stub = 0.012 * max(tab["ratio"].max(), 1.6)
     ax.barh(y, [max(v, stub) for v in tab["ratio"]], height=0.58, color=colours,
             edgecolor="white", lw=0.3, zorder=3)
@@ -348,7 +349,7 @@ def panel_d(ax) -> pd.DataFrame:
     ax.spines["bottom"].set_linewidth(0.4)
     ax.spines["bottom"].set_color(SPINE)
     ax.legend(handles=[Patch(facecolor="#7FA8C9", label="减排与源汇统计量"),
-                       Patch(facecolor=C_S085, label="对照：冷却与取水")],
+                       Patch(facecolor=C_OQ, label="对照：冷却与取水")],
               loc="lower right", fontsize=4.8, frameon=False, handlelength=1.1,
               handletextpad=0.5, labelspacing=0.26, borderpad=0.2)
     n = int((tab["ratio"] > 1.0).sum())
@@ -430,7 +431,7 @@ def caption(sinks, cap, stack, test) -> str:
     ctr = test[test["contrast"]].sort_values("ratio", ascending=False)
     bits = (
         f"口径与 ED11 相同，由 run_single.py 定义：不考虑水（BASE）；考虑水但流域可取用量",
-        f"全部给电力（s = 0）；考虑水且电力只留 15% 存量取水权（s = 0.85）。",
+        f"只加生态流量约束（耗水口径）；再叠加流域用水总量控制指标（取水口径）。",
         f"a 的点是封存汇，面积正比于不考虑水时的注入量，颜色是三个水文臂",
         f"（CWatM SSP1-2.6 / CWatM SSP3-7.0 / WaterGAP SSP1-2.6）中有几个也用到它。",
         f"{sinks['core_n']} 个汇被两种口径共同使用并承担 {sinks['core_share']:.1f}% 的注入量；",
@@ -438,7 +439,7 @@ def caption(sinks, cap, stack, test) -> str:
         f"三臂彼此就不一致的有 {sinks['flip']} 个，而**什么都不改、只换随机种子**",
         f"就能翻转 {_span(sinks['seed_flip'])} 个 —— 两者同量级，",
         f"所以边缘上的汇进汇出读不出水的信号。b 中 {PEAK} 年捕集量 {b:.0f}（不考虑水）对",
-        f"{t:.0f} Mt（s = 0.85），而仅换种子的复现族当年就横跨 {sd.min():.0f}–{sd.max():.0f} Mt。",
+        f"{t:.0f} Mt（叠加总量指标），而仅换种子的复现族当年就横跨 {sd.min():.0f}–{sd.max():.0f} Mt。",
         f"d 用的检验比 ED11 面板 e 更严：横轴是**对照三臂与处理三臂两组取值范围的间隙**",
         f"除以该统计量的简并度地板（1.96·√2·极差/d2(k)，极差取自仅换种子的 4 次复现），",
         f"两组范围重叠时间隙记为 0。{len(ab)} 项减排与源汇统计量里，{clear_txt}",
@@ -457,11 +458,11 @@ def report(sinks, cap, stack, test) -> None:
     print(f"  两种口径共同使用的核心 {sinks['core_n']} 个，承担 {sinks['core_share']:.2f}% 的注入量")
     print(f"  仅不考虑水使用 {sinks['only_b']} 个；仅考虑水使用 {sinks['only_t']} 个")
     print(f"  三臂之间自相矛盾 {sinks['flip']} 个；仅换随机种子翻转 "
-          f"{sinks['seed_flip']['s0']}（s=0）/ {sinks['seed_flip']['s085']}（s=0.85）个")
+          f"{sinks['seed_flip']['env']}（仅生态流量）/ {sinks['seed_flip']['oq']}（＋总量指标）个")
 
     print()
     print("面板 b  捕集量（Mt/yr），三臂中位数")
-    print(f"  {'年份':<8}{'不考虑水':>12}{'s=0':>12}{'s=0.85':>12}{'种子包络':>20}")
+    print(f"  {'年份':<8}{'不考虑水':>12}{'仅生态流量':>12}{'＋总量指标':>12}{'种子包络':>20}")
     for j, y in enumerate(CAP_YEARS):
         sd = cap["seeds"][:, j]
         print(f"  {y:<8}{cap['base'][j]:>12.1f}{float(np.median(cap['ctrl'], axis=0)[j]):>12.1f}"

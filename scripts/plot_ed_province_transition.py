@@ -43,7 +43,7 @@ from matplotlib.patches import Patch
 import ed_plant_data as EP
 from plot_style import MM, save_fig, PROV_ZH
 
-CONTROL, TREAT = "WA_cwatm_126_dry", "WA_cwatm_126_dry_wd085"
+CONTROL, TREAT = "WA_cwatm_126_dry_oq_envonly", "WA_cwatm_126_dry_oq"
 YEARS = (2030, 2040, 2050, 2060)
 # 配色改用 .claude/CLAUDE.md §3.3 的同族同色系表：Greys 浅端=未改造、深端=CCS；
 # Greens 浅端=生物质掺烧、深端=BECCS；退役用中性灰。原先的 Tol bright 系已停用。

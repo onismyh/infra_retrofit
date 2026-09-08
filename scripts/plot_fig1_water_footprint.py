@@ -95,10 +95,12 @@ LEGEND_SIZE = 6.4
 INPUTS = ROOT / "inputs"
 TARGET_CRS = "EPSG:2380"  # matches plot_style.assign_basin and plot_spatial.py
 HERO_YEAR = 2060  # the year the emission target binds, so the year CCS is actually built
-# Non-power reservation carried by the plotted `*_wd085` scenarios (run_single.py:99-104).
-# Must stay identical to the value in plot_fig2_constraint_response.py -- both figures draw
-# the same limit line, so they must define it the same way.
-EXISTING_WITHDRAWAL_SHARE = 0.85
+# v9.1: there is no reservation SHARE any more. The non-power claim is not assumed, it is
+# read off 国办发〔2013〕2号 附件1 + 2025年中国水资源公报 表9 in inputs/water_basin_caps.csv,
+# and it lives on the WITHDRAWAL basis, not the consumption basis the environmental-flow
+# rule uses. The two rungs are therefore two different numbers on two different bases, and
+# this figure reports both rather than one aliased product (see docs/官方指标口径水预算.md).
+BASIN_CAPS_CSV = "water_basin_caps.csv"
 COOLINGS = ("once-through", "recirculating", "air")
 COOLING_LABELS = ("直流冷却", "循环冷却", "空冷（干冷）")
 
@@ -357,15 +359,29 @@ def panel_b(ax, hero: pd.DataFrame) -> None:
 
 
 # ── panel (c) ────────────────────────────────────────────────────────────────
-def basin_drying() -> pd.DataFrame:
-    """Ensemble drying signal and dry-season allowance per level-1 basin, 2060.
+def basin_drying(year: int = HERO_YEAR, ssp: str | None = "ssp370") -> pd.DataFrame:
+    """Ensemble drying signal and dry-season allowance per level-1 basin.
 
     20 members = 2 hydrology models x 5 GCMs x 2 SSPs, so 10 hydrology-GCM combinations
     each give one paired SSP3-7.0 / SSP1-2.6 ratio. The median of those 10 is the signal;
     the min and max are the spread, which for the Hai is enormous and reported as such.
+
+    THE SLICE IS A PARAMETER, NOT A CONSTANT, and every caller has to name it. The drying
+    SIGNAL is always the paired SSP3-7.0 / SSP1-2.6 ratio -- that is what a drying signal is
+    -- but the dry-season ALLOWANCE depends on which members you stand on:
+
+        year=2060, ssp="ssp370"   Fig 1's hero year, the year the emission target binds and
+                                  the year CCS is actually built. Hai 16.84.
+        year=2030, ssp=None       Fig 2(b) and the basin closeup: the standing fleet is still
+                                  nearly intact, so the constraint is tightest, and the median
+                                  is taken over all 20 members rather than one SSP. Hai 15.76.
+
+    Those are different numbers for the same basin and neither is wrong. What would be wrong
+    is two figures quoting them as though they were the same, which is what an implicit slice
+    allowed.
     """
     frame = pd.read_csv(INPUTS / "water_availability.csv")
-    frame = frame[frame["planning_year"].astype(int) == HERO_YEAR]
+    frame = frame[frame["planning_year"].astype(int) == int(year)]
     paired = (
         frame.groupby(["basin_code", "hydrology_model", "gcm", "ssp"])["available_water_m3_per_year"]
         .sum().unstack("ssp")
@@ -374,12 +390,14 @@ def basin_drying() -> pd.DataFrame:
     out = paired.groupby("basin_code")["pct"].agg(["median", "min", "max", "count"])
     out.columns = ["pct_median", "pct_min", "pct_max", "n_members"]
     out["n_drying"] = paired.groupby("basin_code")["pct"].apply(lambda s: int((s < 0).sum()))
-    hot = frame[frame["ssp"] == "ssp370"]
+    hot = frame if ssp is None else frame[frame["ssp"] == ssp]
     for column, label in (("available_water_m3_per_year", "annual"),
                           ("dry_season_water_m3_per_year", "dry_season")):
+        # 分组键里带上 ssp：ssp=None 时不加它就会把两个 SSP 的水量加起来，
+        # 得到的是"两倍的水"，而不是 20 个成员的中位数。
+        keys = ["basin_code", "hydrology_model", "gcm"] + (["ssp"] if ssp is None else [])
         out[f"{label}_1e8"] = (
-            hot.groupby(["basin_code", "hydrology_model", "gcm"])[column].sum()
-            .groupby("basin_code").median() / 1e8
+            hot.groupby(keys)[column].sum().groupby("basin_code").median() / 1e8
         )
     return out
 
@@ -400,6 +418,24 @@ def site_table(assumptions, scenario) -> pd.DataFrame:
     plants["ccs_demand_1e8"] = (
         plants["generation_mwh"] * plants["consumption_ccs_intensity_m3_per_mwh"] / 1e8
     )
+    # The withdrawal counterpart, on the basis the 用水总量控制指标 is actually metered on.
+    # It goes through the SAME once-through calibration the solver uses, so the numerator
+    # here and the numerator inside the basin constraint are the same quantity. The raw
+    # `withdrawal_ccs_intensity_m3_per_mwh` column would undercount the fleet by the
+    # calibration factor and make every basin look comfortably inside its allocation.
+    from coal_retrofit.builders.water_quota import calibrated_withdrawal_intensities
+
+    base_intensity, capture_intensity, _, _, _ = calibrated_withdrawal_intensities(
+        plants, plants["generation_mwh"]
+    )
+    plants["ccs_withdrawal_1e8"] = plants["generation_mwh"] * capture_intensity / 1e8
+    # As-built counterparts of both bases. Without them the stress columns answer "how big
+    # would the claim be if everything were retrofitted" but not "is the basin already over",
+    # and those are different questions with different answers.
+    plants["base_demand_1e8"] = (
+        plants["generation_mwh"] * plants["consumption_intensity_m3_per_mwh"] / 1e8
+    )
+    plants["base_withdrawal_1e8"] = plants["generation_mwh"] * base_intensity / 1e8
     return plants
 
 
@@ -520,6 +556,9 @@ def basin_summary(sites: pd.DataFrame, drying: pd.DataFrame) -> pd.DataFrame:
         capacity_gw=("capacity_gw", "sum"),
         n_sites=("plant_id", "size"),
         ccs_demand_1e8=("ccs_demand_1e8", "sum"),
+        ccs_withdrawal_1e8=("ccs_withdrawal_1e8", "sum"),
+        base_demand_1e8=("base_demand_1e8", "sum"),
+        base_withdrawal_1e8=("base_withdrawal_1e8", "sum"),
     )
     frame["ccs_m3_per_t"] = grouped.apply(
         lambda g: float(np.average(g["ccs_m3_per_t"], weights=g["capacity_gw"])),
@@ -530,27 +569,36 @@ def basin_summary(sites: pd.DataFrame, drying: pd.DataFrame) -> pd.DataFrame:
         include_groups=False,
     )
     frame = frame.join(drying, how="left")
-    # The budget offered to power, matching what the solver actually enforces
-    # (`data_prep.py:437-439`) and therefore what Fig 2 draws:
+    # Two rungs, two bases -- reported side by side and never combined into one number.
     #
-    #   dry-season flow x WATER_EXTRACTABLE_FRACTION x (1 - existing_withdrawal_share)
+    # (1) ENVIRONMENTAL FLOW, on CONSUMPTION. What `*_oq_envonly` enforces per node:
+    #        dry-season flow x WATER_EXTRACTABLE_FRACTION
+    #     Richter et al. (2012) River Res. Applic. 28(8):1312-1321 -- protecting 80% of daily
+    #     flows maintains ecological integrity, so 20% is offered to consumptive users. There
+    #     is NO second factor here: v9's `(1 - existing_withdrawal_share)` was an ASSUMED
+    #     allocation rule, and multiplying it in aliased the depletion standard with the
+    #     allocation rule so that no result could say which one was binding.
     #
-    # The first factor is the environmental-flow reserve: Richter et al. (2012) River Res.
-    # Applic. 28(8):1312-1321, protecting 80% of daily flows maintains ecological integrity.
-    # The second reserves the non-power share of that allowance -- agriculture, households
-    # and other industry. Omitting it would offer power the whole basin allowance as though
-    # no other user existed, and would put this panel on a different definition of the same
-    # limit line from Fig 2, which is the first inconsistency a reviewer would find.
-    #
-    # NOTE: 0.85 is a scenario override carried by the plotted `*_wd085` runs, not the
-    # assumptions default (which is 0.0), so it has to be stated here. It is the one number
-    # in this figure with no literature citation -- see plan/nature_water_storyline_and_figures.md
-    # (T1b), where a per-basin derivation from the 2025 水资源公报 was attempted and rejected
-    # as degenerate. Treat it as a declared assumption and keep it identical to Fig 2.
-    frame["allowance_1e8"] = (
-        frame["dry_season_1e8"] * WATER_EXTRACTABLE_FRACTION * (1.0 - EXISTING_WITHDRAWAL_SHARE)
+    # (2) ALLOCATION, on WITHDRAWAL. What `*_oq` adds per basin:
+    #        用水总量控制指标 - 非电既有取水
+    #     read from inputs/water_basin_caps.csv. The 公报 meters WITHDRAWAL (用水量, including
+    #     the once-through pass-through), so this rung must be compared against the fleet's
+    #     calibrated withdrawal, not against its consumption. Comparing the consumption
+    #     numerator to this denominator would understate the fleet's claim about five-fold.
+    frame["env_allowance_1e8"] = frame["dry_season_1e8"] * WATER_EXTRACTABLE_FRACTION
+    frame["env_stress_pct"] = frame["ccs_demand_1e8"] / frame["env_allowance_1e8"] * 100.0
+    frame["env_stress_base_pct"] = frame["base_demand_1e8"] / frame["env_allowance_1e8"] * 100.0
+
+    caps = pd.read_csv(INPUTS / BASIN_CAPS_CSV)
+    caps = caps[caps["planning_year"] == caps["planning_year"].min()]
+    residual = caps.set_index("basin_code")["residual_1e8_m3"].astype(float)
+    frame["quota_residual_1e8"] = residual.reindex(frame.index)
+    frame["quota_stress_pct"] = (
+        frame["ccs_withdrawal_1e8"] / frame["quota_residual_1e8"] * 100.0
     )
-    frame["stress_pct"] = frame["ccs_demand_1e8"] / frame["allowance_1e8"] * 100.0
+    frame["quota_stress_base_pct"] = (
+        frame["base_withdrawal_1e8"] / frame["quota_residual_1e8"] * 100.0
+    )
     return frame.reindex([b for b in BASIN_ORDER if b in frame.index])
 
 
@@ -623,14 +671,19 @@ def _report(intensities, hero, sites, summary, assumptions, scenario) -> None:
 
     print("\npanel c - per-basin summary")
     columns = ["n_sites", "capacity_gw", "already_air_share", "ccs_m3_per_t", "pct_median",
-               "pct_min", "pct_max", "n_drying", "dry_season_1e8", "allowance_1e8",
-               "ccs_demand_1e8", "stress_pct"]
+               "pct_min", "pct_max", "n_drying", "dry_season_1e8", "env_allowance_1e8",
+               "ccs_demand_1e8", "env_stress_pct", "env_stress_base_pct",
+               "quota_residual_1e8", "ccs_withdrawal_1e8", "quota_stress_pct",
+               "quota_stress_base_pct"]
     print(summary[columns].round(2).to_string())
     print(f"  fleet capacity-weighted CCS water price:"
           f" {np.average(sites['ccs_m3_per_t'], weights=sites['capacity_gw']):.3f} m3/tCO2")
-    over = summary[summary["stress_pct"] > 100]
-    print(f"  basins over the extractable dry-season flow: {list(over.index)}"
-          f"  ({over['capacity_gw'].sum():.0f} GW)")
+    over_env = summary[summary["env_stress_pct"] > 100]
+    print(f"  rung 1 (env. flow, consumption): over the extractable dry-season flow:"
+          f" {list(over_env.index)}  ({over_env['capacity_gw'].sum():.0f} GW)")
+    over_quota = summary[summary["quota_stress_pct"] > 100]
+    print(f"  rung 2 (用水总量控制指标, withdrawal): over the basin residual:"
+          f" {list(over_quota.index)}  ({over_quota['capacity_gw'].sum():.0f} GW)")
     dry_and_thirsty = summary[
         (summary["pct_median"] < summary["pct_median"].median())
         & (summary["ccs_m3_per_t"] > np.average(sites["ccs_m3_per_t"], weights=sites["capacity_gw"]))

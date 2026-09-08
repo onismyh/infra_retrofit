@@ -11,10 +11,10 @@
   b  燃料：生物质节点 → 机组（绿色辐条，线宽 ∝ 供给量）；若有氨供给则为橙色辐条。
   c  水：水源节点 → 机组（蓝色辐条，线宽 ∝ 取水量）；底图按流域填色 = 电力取水 / 配额。
      机组填色 = 湿冷取水 / 已转空冷 / 退役。
-  d  同年匹配台账：三条链各自"匹配到多少装机、多少个 hub"，不考虑水 vs s = 0.85 并列。
+  d  同年匹配台账：三条链各自"匹配到多少装机、多少个 hub"，不考虑水 vs ＋用水总量指标 并列。
   e–g 四个年份的链路量：CO₂（捕集、陆上注入、海上注入）、生物质（PJ）、取水（亿 m³）。
 
-地图年份取 2050：捕集已成规模而机组尚未大批退役。两种口径的地图只画 s = 0.85；
+地图年份取 2050：捕集已成规模而机组尚未大批退役。两种口径的地图只画叠加用水总量指标一档；
 不考虑水的差异全部进 d–g 的数字里，因为 ED13 已证明两种口径的空间格局肉眼不可分。
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ from coal_retrofit.constants import WATER_EXTRACTABLE_FRACTION  # noqa: E402
 
 MAP_YEAR = 2050
 YEARS = (2030, 2040, 2050, 2060)
-CASES = ((BASE, "不考虑水", "#969696", (0, (2.2, 1.4))), (TREAT, "考虑水（s = 0.85）", "#CC3311", "-"))
+CASES = ((BASE, "不考虑水", "#969696", (0, (2.2, 1.4))), (TREAT, "＋用水总量指标", "#CC3311", "-"))
 WATER_SCEN_ID = "cwatm|gfdl-esm4|ssp126"
 EXISTING_SHARE = 0.85
 USABLE = float(WATER_EXTRACTABLE_FRACTION) * (1.0 - EXISTING_SHARE)
@@ -537,7 +537,7 @@ def caption(rec: dict, t: pd.DataFrame, s: pd.DataFrame) -> str:
     over = [k for k, v in c["ratio"].items() if v > 1.0]
     over_txt = "无流域超出配额" if not over else f"超出配额的流域：{'、'.join(over)}"
     return (
-        f"注：三张地图均为考虑水（s = 0.85）口径 {MAP_YEAR} 年。a：{a['n_hub_matched']} 个 hub（{a['gw_matched']:.0f} GW，"
+        f"注：三张地图均为＋用水总量指标口径 {MAP_YEAR} 年。a：{a['n_hub_matched']} 个 hub（{a['gw_matched']:.0f} GW，"
         f"占在役 {a['gw_total']:.0f} GW 的 {100 * a['gw_matched'] / a['gw_total']:.0f}%）接入管网，"
         f"{a['n_edge']} 条管段输送 {a['flow']:.0f} Mt，{a['n_sink_used']} / {a['n_sink_total']} 个汇在用，"
         f"海上注入 {a['inj_off']:.0f} Mt（{100 * a['inj_off'] / max(a['inj'], 1e-9):.0f}%）。"

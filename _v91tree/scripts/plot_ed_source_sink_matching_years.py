@@ -31,7 +31,7 @@ from plot_ed_source_sink_matching import (  # noqa: E402
 YEARS = (2040, 2050, 2060)
 ROWS = (
     (BASE, "不考虑水\n（BASE）"),
-    (TREAT, "考虑水\n（s = 0.85）"),
+    (TREAT, "＋用水总量\n指标"),
 )
 
 
@@ -107,7 +107,7 @@ def main() -> None:
     save_fig(fig, "ed_fig14_source_sink_matching_years", subdir="extended")
     print("ED14 - source-sink matching by year")
     for record in records:
-        label = "BASE" if record["scenario"] == BASE else "s=0.85"
+        label = "BASE" if record["scenario"] == BASE else "＋总量指标"
         print(f"  {record['year']} {label:6}  {record['n_edge']:3d} edges  "
               f"{record['n_sink']:2d} sinks  {record['flow']:.1f} Mt flow")
 

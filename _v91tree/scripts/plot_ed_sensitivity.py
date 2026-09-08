@@ -37,9 +37,9 @@ from plot_style import MM, RESULTS_DIR, save_fig
 RESULTS = RESULTS_DIR
 D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534}
 BASE_DRY = "BASE"
-WATER_HEAD = "WA_cwatm_126_dry"          # baseline of the water-constrained SA entries
+WATER_HEAD = "WA_cwatm_126_dry_oq_envonly"          # baseline of the water-constrained SA entries
 WATER_SEEDS = (2, 3, 4)                  # its seed family -> the floor
-TREAT_HEAD = "WA_cwatm_126_dry_wd085"    # second family, printed for reference only
+TREAT_HEAD = "WA_cwatm_126_dry_oq"    # second family, printed for reference only
 TREAT_SEEDS = (2, 3, 4, 5, 6)
 
 # Grouped so each parameter shows both arms around zero, which is what makes a tornado readable.

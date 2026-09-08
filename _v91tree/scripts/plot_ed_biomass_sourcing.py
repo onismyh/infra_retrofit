@@ -46,7 +46,7 @@ from matplotlib.lines import Line2D
 import ed_plant_data as EP
 from plot_style import BASIN_NAMES_ZH, MM, save_fig
 
-SCENARIO = "WA_cwatm_126_dry_wd085"
+SCENARIO = "WA_cwatm_126_dry_oq"
 MAP_YEAR = 2050
 YEARS = (2030, 2040, 2050, 2060)
 CONSTRAINED_C = "#CC3311"

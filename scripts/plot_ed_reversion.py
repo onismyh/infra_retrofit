@@ -37,7 +37,7 @@ from matplotlib.lines import Line2D
 
 from plot_style import MM, save_fig
 
-TREAT, CONTROL = "WA_cwatm_126_dry_wd085", "WA_cwatm_126_dry"
+TREAT, CONTROL = "WA_cwatm_126_dry_oq", "WA_cwatm_126_dry_oq_envonly"
 YEARS = (2030, 2040, 2050, 2060)
 STOCK_C = "#4477AA"
 OP_C = "#CC3311"

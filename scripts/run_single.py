@@ -406,6 +406,12 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     "WA_cwatm_126_dry_oq_noair": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota", "allow_air_cooling_retrofit": False}),
     # Every capped run in the study sits at EXACTLY max_new_retirement_share_per_period, so a
     # retirement difference read off the capped pair measures the cap. Lifted to 0.50 here.
+    # BOTH sides of the frozen-cooling contrast need the cap in the same place, or the single
+    # reported effect moves TWO factors at once -- whether the dry-cooling retrofit is allowed
+    # AND where the retirement cap sits. plot_fig5_pathway_succession pairs
+    # `<BINDS>_capfree` against `<BINDS>_noair_capfree` for exactly that reason and falls back
+    # to a confounded pair with a printed warning when the former is missing.
+    "WA_cwatm_126_dry_oq_capfree": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "max_new_retirement_share_per_period": 0.50, "mip_gap": 0.01}, {"water_budget": "official_quota"}),
     "WA_cwatm_126_dry_oq_noair_capfree": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "max_new_retirement_share_per_period": 0.50, "mip_gap": 0.01}, {"water_budget": "official_quota", "allow_air_cooling_retrofit": False}),
 
     # --- air-cooling capex sweep ----------------------------------------------------------

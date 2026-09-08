@@ -1,83 +1,92 @@
-"""Fig 2 - a presumptive environmental-flow allowance that China's northern coal fleet
-already exceeds, and what capture would do to the overshoot.
+"""Fig 2 - two water institutions, on two water bases, and which of them the coal fleet
+actually runs into.
 
-THE FRAMING CHANGED TWICE, AND BOTH TIMES BECAUSE THIS FIGURE REFUTED ITSELF.
-v1-v3 claimed dry-season water "sets a hard spatial ceiling" that capture demand "crosses".
-A ceiling is a physical limit, and panel (a) refutes that reading: at 2030, with NO capture
-anywhere and cooling exactly as built, the fleet's demand is already 258% of the allowance in
-the Hai and 136% in the Yellow. Those plants run today. A limit the observed system exceeds
-is not a limit; it is a STANDARD that is not met. v4 adopted that.
+v9.1 CHANGED WHAT THIS FIGURE IS ABOUT, because it changed what the model enforces.
 
-v5 goes one step further, because a data-integrity fix moved the number that decided it. The
-dry-season budget was built as a sum of per-grid-cell minima -- each cell free to pick its own
-low-flow quarter -- instead of the basin's total flow in the basin's own low-flow quarter:
-sum(min) where the constraint needs min(sum). The understatement was 2.25x in the Hai, 2.13x
-in the Northwest Interior, 1.47x in the Yellow and 1.19x in the Huai, against 1.03-1.11x in
-the four basins the study calls safe -- i.e. the error was largest exactly where the answer
-was. On the corrected budget the Hai's critical reservation share moves from s* = -0.63 to
-s* = +0.18, and the headline changes with it: the fleet does not run out of water, it runs
-out of SHARE.
+Through v9 the water rule was a single node constraint whose right-hand side was
+`dry-season runoff x 0.20 x (1 - 0.85)`. Those two factors are an environmental-flow
+STANDARD and an allocation RULE, and multiplying them ALIASED the two: 0.85 at a 20%
+extractable fraction is arithmetically the same model as 0 at 3%, so no result the study
+could produce was able to say which of the two a response belonged to. The figure's old
+panels (b) and (c) swept that reservation share and solved for a critical share s*, which
+made the aliasing the subject rather than removing it.
+
+v9.1 splits them into two constraints on two bases, and the split is what this figure now
+reports:
+
+  rung 1  ENVIRONMENTAL FLOW, on CONSUMPTION.  node <= dry-season runoff x 0.20
+          Richter et al. (2012) River Res. Applic. 28(8):1312-1321 -- protecting 80% of
+          daily flows maintains ecological integrity. A depletion rule. Enforced by the
+          `*_oq_envonly` runs.
+  rung 2  ALLOCATION, on WITHDRAWAL.  basin <= 用水总量控制指标 - 非电既有取水
+          国办发〔2013〕2号 附件1 (the 最严格水资源管理制度 caps, which sum exactly to the
+          national 6350/6700/7000 亿 m3) net of what the 2025 水资源公报 表9 records other
+          users already taking. Added by the `*_oq` runs.
+
+The bases are not interchangeable and are never combined. The 公报 meters 用水量, which
+INCLUDES the once-through condenser pass-through (直流火(核)电 453.8亿 m3 is a sub-column of
+工业用水); the 取水定额 standard excludes it, and the fleet's consumption is smaller again by
+another order of magnitude. Comparing a consumption numerator against an allocation
+denominator understates the fleet's claim roughly five-fold, which is why rung 2 is drawn
+against the CALIBRATED withdrawal the solver itself constrains.
 
     What this figure claims:
-    (1) Measured against a presumptive environmental-flow allowance -- 20% of dry-season
-        renewable runoff, net of the share reserved to non-power users -- three northern
-        basins ALREADY operate beyond that allowance before any capture, and capture tips a
-        fourth over. Together they carry ~765 GW, 54% of the standing fleet.
-    (2) Capture roughly doubles the overshoot in every one of them (2030, 20-member median:
-        Hai 258% -> 547%, Yellow 136% -> 293%, Huai 101% -> 216%, NW Interior 83% -> 183%).
-    (3) THE OVERSHOOT IS ALLOCATION, NOT SCARCITY. Every basin's critical reservation share
-        is POSITIVE in every planning year, with and without capture: at s = 0 -- power
-        taking the entire extractable dry-season allowance -- nothing exceeds anything. The
-        Hai breaches only above s* = 0.18, the Yellow above 0.56; China's measured non-power
-        reservation is 0.85. Capture's effect is to CUT the reservation a basin can tolerate,
-        roughly halving s* wherever it binds. Panel (b) is that curve.
+    (1) The two rungs do not agree about which basin is tightest. That disagreement is a
+        result, not a nuisance: a depletion rule and an allocation rule are different
+        institutions and a basin can sit comfortably inside one while breaching the other.
+    (2) On the allocation rung the breach is not created by capture. It is there in the
+        standing fleet, and capture roughly doubles it -- the same shape the old figure
+        claimed, but now on the basis China's own red-line policy is written against, and in
+        a different and much smaller set of basins.
+    (3) The fleet's response to each rung is priced separately (panel c). BASE -> envonly is
+        the environmental-flow standard's price; envonly -> oq is the allocation rule's.
+        Neither is quoted unless it clears its own degeneracy floor.
 
     What it does NOT claim, and must not be read as claiming:
-    (a) that the fleet is physically unable to obtain this water. It plainly does obtain it.
-        The allowance is computed on LOCAL RENEWABLE DRY-SEASON RUNOFF only, from unrouted
-        `qtot`, so it is a firm-yield rule for a system with ZERO storage. The Hai's actual
-        dry-season supply is dominated by reservoir regulation, the South-North Water
-        Transfer, groundwater and reclaimed water, none of which this model represents. The
-        residual gap between 258% and observed operation is the size of that omission, and it
-        is the single largest methodological caveat in the paper.
-    (b) that the allowance is a well-determined number. It is 0.20 x (1 - s), and those two
-        factors are ALIASED -- s = 0.85 at 20% extractable is the same model as s = 0 at 3%
-        (see data_prep.py where `usable` is formed). The figure is about the SIZE of the
-        residual share left to power, not about which of its two factors sets it.
-    (c) that 0.20 x (1 - 0.85) is a coherent composition. Richter's 20% is a ceiling on
-        CUMULATIVE depletion; the 0.85 is a share of China's own allocation quota, which is
-        itself 53-64% of natural runoff. Multiplying them holds the share fixed while
-        shrinking the pie 2.6x. The defensible alternatives and what they give are in the
-        v5 README; this figure reports the composition the model solves.
+    (a) that the fleet is physically unable to obtain this water. Rung 1 is computed on LOCAL
+        RENEWABLE DRY-SEASON RUNOFF from unrouted `qtot`, i.e. a firm-yield rule for a system
+        with ZERO storage. Northern basins are supplied by reservoir regulation, the
+        South-North Water Transfer, groundwater and reclaimed water, none of which the
+        hydrology represents. Rung 2 does not have this problem -- the official caps are
+        written against delivered supply, transfers and groundwater included -- and that is
+        the main reason the study moved onto it.
+    (b) that the Northwest's four-digit utilisation is a robust multiple. Its 2025 metered
+        withdrawal already exceeds its own 2030 cap, so the raw residual is negative and the
+        plotted denominator is the pro-rata-scaled one. The breach is real; the multiple is
+        an artefact of dividing by a near-zero residual, and the panel says so on its face.
+    (c) that rung 2's per-basin caps are published numbers. 附件1 allocates by PROVINCE. The
+        province-to-basin split here is demand-weighted on the ISIMIP grid; area weighting
+        flips the sign of the Northwest residual and is reported as a sensitivity. See
+        docs/官方指标口径水预算.md.
 
-  (a) effective dry-season supply vs coal water demand, every level-1 basin that hosts coal
-      capacity (8 of 9 -- Southwest Rivers has none), 2030 and 2060, with the 20-member
-      ensemble as box/whisker on supply and the demand shown three ways (as-built unabated,
-      as-built full-capture, and what the solver actually realised). The grey unabated line
-      sitting above the supply box in four basins IS the falsification of the old framing,
-      and it is drawn rather than buried.
-  (b) share of coal capacity in basins beyond the allowance, as a function of the reservation
-      share, with the critical share s* solved analytically so the axis costs no extra solves
-  (c) the allowance test per basin: full-capture demand as a multiple of supply, ranked north
-      to south, against the standing capacity behind each basin
+  (a) rung 1 in volume: effective dry-season allowance vs coal water demand, every level-1
+      basin that hosts coal capacity (8 of 9 -- Southwest Rivers has none), 2030 and 2060,
+      with the 20-member ensemble as box/whisker on supply and demand shown three ways
+      (as-built unabated, as-built full-capture, and what the solver actually realised).
+  (b) both rungs as utilisations, per basin, on a log axis: bar = all units retrofitted,
+      tick = the fleet as built, reference line at 100% of that rung's own allowance.
+  (c) the three-rung response BASE -> 仅生态流量 -> ＋用水总量指标, for dry-cooling
+      conversion, capture and early retirement, each normalised to BASE and each carrying
+      the seed family's degeneracy floor.
 
 The ensemble box/whisker in (a) is the physical spread of the resource -- five GCMs and two
 hydrology models disagreeing about how much water a basin has -- not a sensitivity of this
 paper's model, so it belongs in the main figure. The attribution of that spread to GCM,
-hydrology model and SSP is a variance decomposition and has moved to Extended Data
+hydrology model and SSP has moved to Extended Data
 (`scripts/plot_ed_variance_decomposition.py`), where uncertainty decompositions belong.
 
-Two facts drive every number here and both were checked against solved output rather than
-assumed:
+Two facts drive every number in panel (a) and both were checked against solved output rather
+than assumed:
 
 1. `_dry` scenarios read `dry_season_water_m3_per_year`, NOT the annual column. Reproducing
    the solver's own `available` column from the dry-season column matches to 5.6e-16
-   relative; the annual column is 4.3x too high. Every panel therefore compares against the
-   dry-season budget, which is the quantity the constraint actually acts on.
-2. The stored availability is raw physical runoff. The budget the solver sees is
-   `dry_season x WATER_EXTRACTABLE_FRACTION x (1 - existing_withdrawal_share)`
-   (data_prep.py:382-439). Both factors are applied here, the first sourced from the package
-   and the second pinned to the value the plotted runs carry.
+   relative; the annual column is 4.3x too high.
+2. The stored availability is raw physical runoff; the budget the solver sees is
+   `dry_season x WATER_EXTRACTABLE_FRACTION` (data_prep.py, under `water_budget="official
+   _quota"`). One factor now, not two.
+
+Panel (b) does not re-derive its numbers: it calls Fig 1's `site_table`/`basin_summary`, so
+the two main figures cannot quote different stresses for the same basin.
 
 Usage:  python scripts/plot_fig2_constraint_response.py
 """
@@ -97,6 +106,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.patheffects as pe
 from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -112,6 +122,13 @@ from plot_style import (  # noqa: E402
     BASIN_ORDER,
     assign_basin,
     assert_same_vintage,
+    national,
+    degeneracy_floor,
+    seeds_of,
+    treat_of,
+    BASE_SCENARIO,
+    ARMS,
+    SEED_ARM,
 )
 
 apply_style()
@@ -124,28 +141,31 @@ CEILING_YEAR = 2030
 
 # The solved pair. Both carry existing_withdrawal_share=0.85, which is what makes the
 # availability constraint bind at all (run_single.py:99-100).
-SOLVED = {"ssp126": "WA_cwatm_126_dry_wd085", "ssp370": "WA_cwatm_370_dry_wd085"}
+SOLVED = {"ssp126": "WA_cwatm_126_dry_oq", "ssp370": "WA_cwatm_370_dry_oq"}
 # Adaptation frozen. Not plotted -- it is a counterfactual, not part of the claim -- but its
 # unserved volume is printed, because it is the cleanest evidence that the ceiling is real.
-FROZEN = "WA_cwatm_126_dry_wd085_noair"
+FROZEN = "WA_cwatm_126_dry_oq_noair"
 # Member the solves pin (run_single.py:99). It is a drying GCM, so it is marked in panel (a)
 # rather than left to look like the ensemble centre.
 SOLVED_MEMBER = "cwatm|gfdl-esm4|ssp126"
 
-# Non-power reservation carried by the plotted `*_wd085` scenarios (run_single.py:99-104).
-# Must stay identical to plot_fig1_water_footprint.py:63-67 -- both figures draw the same
-# limit line, so they must define it the same way.
-EXISTING_WITHDRAWAL_SHARE = 0.85
-# Panel (b) sweeps this parameter instead of fixing it. Supply scales exactly as (1 - s),
-# so the sweep is analytic and needs no extra solves; the solved runs at 0.56/0.70/0.85/
-# 0.90 are the check that the fleet's RESPONSE follows the same staircase.
-RESERVATION_GRID = np.round(np.arange(0.0, 0.951, 0.01), 3)
+# v9.1: there is no reservation SHARE. The non-power claim is not assumed here, it is read
+# off 国办发〔2013〕2号 附件1 + 2025年中国水资源公报 表9 into inputs/water_basin_caps.csv, and
+# it lives on the WITHDRAWAL basis rather than the consumption basis the environmental-flow
+# rule uses. The two rungs are two numbers on two bases and are never multiplied together.
+# Panel (b) reports both; the derivation is Fig 1's and is imported, not repeated.
 
 SSPS = ["ssp126", "ssp370"]
 EXPECTED_MEMBERS = 20  # 2 hydrology x 5 GCM x 2 SSP
 
 # Colours held locally, not added to plot_style: sibling figure scripts are editing that
 # module concurrently.
+# 两档水规则的配色（CLAUDE.md §3.3）：耗水深蓝 / 取水浅蓝，同族分深浅正好对应
+# "同一条水、两种计量口径"，不是两件无关的事；上限线用强调红。
+C_BASE_RUNG = "#969696"    # 不考虑水：中性灰
+C_ENV_RUNG = "#08519C"     # 生态流量档（耗水口径）：Blues 深端
+C_QUOTA_RUNG = "#6BAED6"   # 用水总量指标档（取水口径）：Blues 浅端
+C_LIMIT = "#CC3311"        # 配额上限线
 C126 = "#4477AA"
 C370 = "#CC3311"
 DEMAND_UN = "#999999"
@@ -171,7 +191,8 @@ def solver_params() -> tuple[float, float]:
 
 
 EXTRACTABLE, CF_BOOST = solver_params()
-USABLE = EXTRACTABLE * (1.0 - EXISTING_WITHDRAWAL_SHARE)
+# The node budget is the environmental-flow rule ALONE (see above): no second factor.
+USABLE = EXTRACTABLE
 
 
 def require_current_vintage(scenario: str) -> None:
@@ -393,14 +414,14 @@ def panel_a(ax, avail: pd.DataFrame, basins: list[str]) -> pd.DataFrame:
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels, fontsize=6.5)
     # BOTH SERIES ON THIS AXIS, IN THE SAME UNITS, BUT NOT THE SAME QUANTITY. The boxes are
-    # dry-season runoff already multiplied by the extractable fraction and by (1 - s), i.e.
-    # 3.0% of the basin's dry-season water; the demand lines are the fleet's full consumption.
+    # dry-season runoff already multiplied by the extractable fraction, i.e. 20% of the
+    # basin's dry-season water; the demand lines are the fleet's full consumption.
     # That is the comparison the constraint makes, but a label reading "dry-season water"
     # invited the reader to take the boxes for the basin's water -- the Hai plots at 1.6
     # against a dry-season flow of 89.6. The label now names the allowance, not the resource.
-    ax.set_ylabel("电力部门配额，与针对它的需求" + "\n"
+    ax.set_ylabel("生态流量配额，与针对它的耗水需求" + "\n"
                   + r"（$10^8$ m$^3$ yr$^{-1}$；配额 = 枯水期径流 "
-                  + rf"$\times$ {EXTRACTABLE:.2f} $\times$ (1 - {EXISTING_WITHDRAWAL_SHARE:.2f})）",
+                  + rf"$\times$ {EXTRACTABLE:.2f}）",
                   fontsize=6.6, linespacing=1.3)
     for centre, year in zip(group_centres, (2030, 2060)):
         ax.text(centre, -0.155, str(year), transform=ax.get_xaxis_transform(),
@@ -431,171 +452,6 @@ def panel_a(ax, avail: pd.DataFrame, basins: list[str]) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def reservation_curve(avail: pd.DataFrame, year: int, fleet_gw: pd.Series) -> pd.DataFrame:
-    """Standing capacity beyond the allowance as a function of the non-power reservation share.
-
-    `existing_withdrawal_share` is the one parameter that creates the binding constraint, so
-    leaving it at a single value makes the whole result look like a tuned dial. It is not a
-    physical quantity -- it is an allocation rule -- so the defensible object is the curve,
-    not a point on it. Supply scales exactly as (1 - s), so the curve is analytic in s and
-    needs no extra solves: a basin crosses at its own s* = 1 - demand / (dry-season runoff x
-    extractable), and the fleet-level curve is the staircase those crossings trace out.
-    """
-    supply_full = basin_supply(avail, year) / (1.0 - EXISTING_WITHDRAWAL_SHARE)
-    demand = basin_demand(SOLVED["ssp126"], year)
-    rows = []
-    for state in ("unabated", "full_capture"):
-        for member in supply_full.columns:
-            for share in RESERVATION_GRID:
-                over = [
-                    b for b in demand.index
-                    if b in supply_full.index
-                    and demand.loc[b, state] > supply_full.loc[b, member] * (1.0 - share)
-                ]
-                rows.append({"state": state, "member": member, "share": share,
-                             "gw": float(fleet_gw.reindex(over).fillna(0.0).sum())})
-    return pd.DataFrame(rows)
-
-
-def critical_shares(avail: pd.DataFrame, year: int) -> pd.DataFrame:
-    """Per-basin s*, the reservation share at which the basin exceeds its own allowance."""
-    supply_full = basin_supply(avail, year) / (1.0 - EXISTING_WITHDRAWAL_SHARE)
-    demand = basin_demand(SOLVED["ssp126"], year)
-    rows = []
-    for basin in supply_full.index:
-        values = supply_full.loc[basin].astype(float).to_numpy()
-        for state in ("unabated", "full_capture"):
-            star = 1.0 - demand[state].get(basin, np.nan) / values
-            rows.append({
-                "basin": basin, "state": state,
-                "s_star_median": float(np.median(star)),
-                "s_star_p10": float(np.percentile(star, 10)),
-                "s_star_p90": float(np.percentile(star, 90)),
-                "share_members_negative": float((star < 0).mean()),
-            })
-    return pd.DataFrame(rows).set_index(["state", "basin"])
-
-
-# -- panel (b) ---------------------------------------------------------------
-def panel_b(ax, avail: pd.DataFrame, fleet_gw: pd.Series) -> pd.DataFrame:
-    """The allowance against the allocation rule that sets it, not against time.
-
-    Replaces the year-series panel of earlier drafts. That panel held the reservation share
-    fixed at 0.85 and varied the year, which is the one axis along which nothing is contested;
-    it also carried a twin axis whose zero did not align with the left one. This panel varies
-    the contested parameter instead and reports two facts that do not depend on where it sits.
-    """
-    curve = reservation_curve(avail, CEILING_YEAR, fleet_gw)
-    stars = critical_shares(avail, CEILING_YEAR)
-    total = float(fleet_gw.sum())
-
-    for state, colour, label in (
-        ("unabated", DEMAND_UN, "机组按现状配置（无捕集）"),
-        ("full_capture", DEMAND_CAP, "全部机组捕集"),
-    ):
-        sub = curve[curve["state"] == state]
-        band = sub.groupby("share")["gw"]
-        share = np.asarray(sorted(sub["share"].unique()))
-        median = band.median().reindex(share).to_numpy()
-        lo = band.quantile(0.10).reindex(share).to_numpy()
-        hi = band.quantile(0.90).reindex(share).to_numpy()
-        ax.fill_between(share, lo, hi, color=colour, alpha=0.16, lw=0, step="post")
-        ax.step(share, median, where="post", lw=1.5, color=colour, label=label)
-
-    # The plateau: the range of reservation shares over which the four-basin verdict is the
-    # SAME verdict. Its width is the answer to "you tuned the dial".
-    med_cap = curve[curve["state"] == "full_capture"].groupby("share")["gw"].median()
-    at_085 = float(med_cap.reindex([EXISTING_WITHDRAWAL_SHARE]).iloc[0])
-    plateau = med_cap.index[np.isclose(med_cap.to_numpy(), at_085)]
-    ax.axvspan(float(plateau.min()), float(plateau.max()), color=DEMAND_CAP, alpha=0.055, lw=0,
-               zorder=0)
-    # 放在黑色阶梯（≈0.6 total）与顶部 0.85 标注（占 0.85–1.0 total）之间的空带；
-    # 原来 +0.045 total 直接压在阶梯线上。
-    ax.annotate(
-        f"在 {plateau.min():.2f}–{plateau.max():.2f} 区间内\n结论一致",
-        xy=(float(np.mean([plateau.min(), plateau.max()])), at_085 + 0.20 * total),
-        ha="center", va="bottom", fontsize=5.6, color="#555555")
-
-    # THE CORRECTION THAT MOVED THIS PANEL'S HEADLINE. Until 2026-08-18 the dry-season budget
-    # was built as a sum of per-grid-cell minima rather than the basin's own low-flow quarter
-    # (sum(min) instead of min(sum) -- see builders/water.py), which understated the Hai by
-    # 2.25x and the Northwest Interior by 2.13x, i.e. most in exactly the basins this panel is
-    # about. On that basis the Hai's critical share was s* = -0.63: it exceeded its allowance
-    # even when power took the ENTIRE extractable dry-season flow, and this panel said so with
-    # a dashed line across its own y-axis. On the corrected basis s* = +0.28. At s = 0 NO
-    # basin, in any planning year, with or without capture, exceeds its allowance. The
-    # staircase therefore starts at zero, and every GW it reports is the consequence of an
-    # allocation decision rather than of hydrology. That is a stronger claim than the one it
-    # replaces, and it is the one the constraint can actually support.
-    cap_stars = stars.loc['full_capture', 's_star_median'].sort_values()
-    first_basin = str(cap_stars.index[0])
-    first_share = float(cap_stars.iloc[0])
-    # THE CROSSING CAN SIT BELOW ZERO, AND WHEN IT DOES THE PANEL MEANS THE OPPOSITE.
-    # `first_share` is the smallest median s* across basins under full capture. On the
-    # corrected basis that is the Hai at -0.08: capture exceeds the allowance there even when
-    # power is given the ENTIRE extractable share. Two things followed from not handling it.
-    # The marker was drawn at x = -0.08 with clip_on=False against an xlim starting at 0.0, so
-    # it showed as an orphan glyph in the left margin while annotate's default annotation_clip
-    # silently dropped the text explaining it. And the title still asserted 'scarcity is not
-    # the binding constraint' 30 mm from panel (c) reporting that capture turns allocation into
-    # scarcity in that same basin. The figure cancelled itself.
-    if first_share > ax.get_xlim()[0]:
-        ax.plot([first_share], [0.0], marker='^', ms=4.2, color=DEMAND_CAP, mec='white',
-                mew=0.5, zorder=8)
-        ax.annotate(
-            f"s = {first_share:.2f} 以下没有任何\n流域超出其配额\n"
-            f"（最先越线：{BASIN_NAMES_ZH.get(first_basin, first_basin)}）",
-            xy=(first_share, 0.0), xytext=(first_share + 0.04, 0.36 * total),
-            fontsize=5.6, color=DEMAND_CAP, va="bottom", linespacing=1.2,
-            arrowprops=dict(arrowstyle="-", lw=0.6, color=DEMAND_CAP, shrinkA=0, shrinkB=2))
-    else:
-        ax.annotate(
-            f"{BASIN_NAMES_ZH.get(first_basin, first_basin)}在 s = 0 时"
-            f"\n就已超出配额（s* 中位数 = {first_share:+.2f}）："
-            f"\n零预留下捕集依然越线",
-            xy=(0.0, 0.0), xytext=(0.035, 0.36 * total),
-            fontsize=5.6, color=DEMAND_CAP, va="bottom", linespacing=1.2,
-            arrowprops=dict(arrowstyle="-", lw=0.6, color=DEMAND_CAP, shrinkA=0, shrinkB=2))
-
-    # 两条竖线的标注都右对齐贴线。0.56 的三行标注若也放在顶部，会向左伸进左上角的图例
-    # （NW 评审 §2.3 指出的重叠）；把它压到 0.66 total，那里是阶梯尚未抬升的空白区。
-    for share, style, text, y_frac in (
-        (EXISTING_WITHDRAWAL_SHARE, "-", "0.85\n取水统计\n实测值", 0.995),
-        (0.559, (0, (1, 1.6)), "0.56\n全国口径；\n海河/黄河/淮河/西北内陆河 >1", 0.66),
-    ):
-        ax.axvline(share, ls=style, lw=0.9, color=C126, alpha=0.85, zorder=2)
-        ax.annotate(text, xy=(share - 0.008, total * y_frac), fontsize=5.4, color=C126,
-                    ha="right", va="top", linespacing=1.15)
-
-    ax.set_xlim(0.0, 0.95)
-    ax.set_ylim(0, total)
-    # THE AXIS IS THE RESIDUAL SHARE, AND IT HAS TWO READINGS THE MODEL CANNOT SEPARATE.
-    # `usable = 0.20 x (1 - s)`, so s = 0.85 at a 20% extractable fraction is arithmetically
-    # the same model as s = 0 at 3%. Labelling this axis purely as an allocation-policy dial
-    # therefore over-claims: every point on it is equally a statement about how strict the
-    # environmental-flow standard is. The label now says what the axis is -- the share NOT
-    # left to power -- and the caption carries both readings.
-    ax.set_xlabel("枯水期径流中不可供电力使用的份额\n"
-                  "（其他用水户，或更严格的生态流量标准——\n"
-                  "模型无法区分二者）", fontsize=6.6, linespacing=1.3)
-    ax.set_ylabel("超出流域配额的\n煤电容量（GW）", fontsize=7.2)
-    # Derived, not asserted -- see the crossing block above for why a fixed string was wrong.
-    if first_share > 0.0:
-        ax.set_title("起约束作用的不是资源稀缺——" + chr(10) + "而是分配",
-                     fontsize=8.0)
-    else:
-        ax.set_title("除一个流域外，分配主导所有流域——" + chr(10) +
-                     f"在{BASIN_NAMES_ZH.get(first_basin, first_basin)}流域，"
-                     "捕集使其转为资源稀缺", fontsize=8.0)
-    right = ax.twinx()
-    right.spines["right"].set_visible(True)
-    right.set_ylim(0, 100)
-    right.set_ylabel("占全国煤电容量（%）", fontsize=6.4, color="#555555")
-    right.tick_params(axis="y", labelsize=6, colors="#555555")
-    ax.legend(frameon=False, fontsize=6, loc="upper left", handlelength=1.6)
-    return stars
-
-# -- panel (c) ---------------------------------------------------------------
 def allowance_ratio_table(avail: pd.DataFrame, basins: list[str],
                           fleet_gw: pd.Series) -> pd.DataFrame:
     """Full-capture demand as a multiple of the allowance -- DATA ONLY, no longer drawn.
@@ -625,223 +481,212 @@ def allowance_ratio_table(avail: pd.DataFrame, basins: list[str],
     return pd.DataFrame(rows).set_index("basin")
 
 
-def panel_c(ax, avail: pd.DataFrame, basins: list[str], fleet_gw: pd.Series) -> pd.DataFrame:
-    """The critical reservation share s*, per basin, across the whole 20-member ensemble.
+def two_rung_utilisation() -> pd.DataFrame:
+    """Per-basin utilisation on both v9.1 water rungs, computed from inputs alone.
 
-    WHAT THIS PANEL REPLACED AND WHY. It used to plot full-capture demand as a MULTIPLE of
-    dry-season supply -- the same two numbers, but expressed as a ratio against an allowance
-    that is itself a policy choice. A reader could not tell from it whether a basin is over the
-    line because there is not enough water or because power is not given enough of it. s* is
-    the same information rotated onto the axis that decides:
+    DELEGATES TO FIG 1 rather than re-deriving. Both main figures quote the same basin
+    stress numbers, and two independent derivations of one quantity is the first
+    inconsistency a reviewer finds. Fig 1 owns the derivation; this reads it.
 
-        s* = 1 - demand / (dry-season runoff x extractable fraction)
-
-    the non-power reservation share at which a basin's coal water demand exactly exhausts the
-    environmental-flow allowance. s* > 0.85 means the basin is inside the allowance at China's
-    measured reservation. 0 < s* < 0.85 means it breaches, but would not if power were given
-    the whole extractable share -- an ALLOCATION outcome. s* < 0 means it breaches even at zero
-    reservation -- genuine SCARCITY.
-
-    AND IT CHANGES THE PAPER'S CLAIM, WHICH IS WHY IT IS DRAWN ON THE ENSEMBLE AND NOT ON THE
-    SOLVED MEMBER. Computed on the single solved member (cwatm|gfdl-esm4|ssp126), s* is
-    positive everywhere, and v5 concluded that the constraint is allocation throughout. Across
-    all 20 members that is true for TODAY'S FLEET -- s* > 0 in 20 of 20 members, every basin,
-    every planning year, minimum +0.127 -- but NOT for full capture in the Hai, where s* is
-    negative in 13 of 20 members at 2030 and 12 of 20 at 2040 (9 of 10 WaterGAP2 members, 4 of
-    10 CWatM, both SSPs). Capture does not merely tighten an allocation constraint; in one
-    basin it converts the problem into a scarcity problem. One member cannot show that.
+    Columns used here, all in %:
+        env_stress_pct        full-capture CONSUMPTION / (dry-season runoff x 0.20)
+        env_stress_base_pct   as-built     CONSUMPTION / same
+        quota_stress_pct      full-capture calibrated WITHDRAWAL / basin residual allocation
+        quota_stress_base_pct as-built     calibrated WITHDRAWAL / same
     """
-    year_frame = avail[avail["planning_year"] == CEILING_YEAR]
-    dry = (year_frame.groupby(["basin_code", "scenario_id"])
-           ["dry_season_water_m3_per_year"].sum().unstack("scenario_id") / 1e8)
-    demand = basin_demand(SOLVED["ssp126"], CEILING_YEAR)
-    order = [b for b in basins if b in dry.index and b in demand.index]
-    rows = []
-    y = np.arange(len(order))[::-1]
-    for yi, b in zip(y, order):
-        allowance = dry.loc[b].astype(float).to_numpy() * EXTRACTABLE
-        for state, off, colour, marker in (("unabated", +0.24, DEMAND_UN, "o"),
-                                           ("full_capture", -0.24, DEMAND_CAP, "D")):
-            s = 1.0 - float(demand.loc[b, state]) / allowance
-            # Thick bar = 10-90% of the ensemble, thin line = full range, marker = median. The
-            # full range is drawn because in the Hai the tail IS the result, not an outlier.
-            ax.plot([np.percentile(s, 10), np.percentile(s, 90)], [yi + off] * 2,
-                    color=colour, lw=1.5, solid_capstyle="butt", zorder=4)
-            ax.plot([s.min(), s.max()], [yi + off] * 2, color=colour, lw=0.5, alpha=0.55,
-                    zorder=3)
-            # "as built" is drawn HOLLOW. Filled grey against filled black at 3.6 pt read as
-            # one weight, and on the four right-hand rows the pair merged into a single dot.
-            ax.plot([np.median(s)], [yi + off], marker=marker, ms=3.6,
-                    mfc=("none" if state == "unabated" else colour), mec=colour, mew=0.8,
-                    zorder=5)
-            n_neg = int((s < 0).sum())
-            if n_neg:
-                ax.text(s.min() - 0.035, yi + off, f"{n_neg}/{len(s)}", fontsize=5.0,
-                        color=colour, ha="right", va="center", fontweight="bold")
-            rows.append({"basin": b, "state": state, "median": float(np.median(s)),
-                         "p10": float(np.percentile(s, 10)), "p90": float(np.percentile(s, 90)),
-                         "min": float(s.min()), "max": float(s.max()),
-                         "members_negative": n_neg, "n_members": int(len(s)),
-                         "fleet_gw": float(fleet_gw.get(b, 0.0))})
-    table = pd.DataFrame(rows).set_index(["state", "basin"])
+    from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+    import plot_fig1_water_footprint as f1
 
-    ax.axvspan(-1.05, 0.0, color=DEMAND_CAP, alpha=0.075, lw=0, zorder=0)
-    ax.axvline(0.0, color=DEMAND_CAP, lw=1.0, zorder=6)
-    ax.axvline(EXISTING_WITHDRAWAL_SHARE, color=C126, lw=1.0, ls=(0, (3, 2)), zorder=6)
-    ax.text(-0.03, len(order) - 0.34, "资源稀缺\n零预留时\n即已越线",
-            fontsize=5.0, color=DEMAND_CAP, ha="right", va="bottom", linespacing=1.15)
-    ax.text(EXISTING_WITHDRAWAL_SHARE - 0.03, len(order) - 0.34,
-            f"中国实测的\n存量取水占比 {EXISTING_WITHDRAWAL_SHARE:.2f}",
-            fontsize=5.0, color=C126, ha="right", va="bottom", linespacing=1.15)
-    ax.set_yticks(y)
-    ax.set_yticklabels([f"{BASIN_NAMES_ZH.get(b, b)}" for b in order], fontsize=6.2)
-    for tick, b in zip(ax.get_yticklabels(), order):
-        if float(table.loc[("full_capture", b), "median"]) < EXISTING_WITHDRAWAL_SHARE:
-            tick.set_fontweight("bold")
-    # Was (-1.05, 1.0). The leftmost ink is the Hai full-capture range minimum at about
-    # -0.63, so a third of the axis carried nothing while the informative right-hand rows
-    # were crushed against 1.0.
-    ax.set_xlim(-0.72, 1.02)
-    ax.set_ylim(-0.62, len(order) + 0.62)
-    ax.set_xlabel(f"临界预留份额 s*，{CEILING_YEAR} 年\n"
-                  f"（20 个水文成员；标记 = 中位数，色块 = 10–90%，横线 = 全距）",
-                  fontsize=6.4, linespacing=1.3)
-    ax.tick_params(labelsize=5.6, length=1.8)
-    ax.grid(axis="x", lw=0.3, alpha=0.30)
-    ax.set_axisbelow(True)
-    for side in ("top", "right", "left"):
-        ax.spines[side].set_visible(False)
-    key = ("full_capture", "C")
-    hai = table.loc[key] if key in table.index else None
-    if hai is not None and int(hai["members_negative"]):
-        # NAME THE STANDARD IN THE TITLE. The scarcity result depends on the EXTRACTABLE
-        # FRACTION, not on the reservation: s* is defined against extractable alone. At Richter's
-        # 0.20 the Hai is negative in 13 of 20 members; at the 0.40 Jin et al. (2022) adopt for
-        # China it is +0.46 and no member is negative. A title saying 'capture turns allocation
-        # into scarcity' without the 0.20 attached over-claims: the finding is about how strict
-        # the standard is. Full comparison in v6_efr_convention_table.txt.
-        ax.set_title(f"在 {EXTRACTABLE:.0%} 取水上限下，捕集使一个流域" + chr(10) +
-                     f"从分配问题转为资源稀缺问题" + chr(10) +
-                     f"（{int(hai["n_members"])} 个成员中有 {int(hai["members_negative"])} 个）",
-                     fontsize=6.9, linespacing=1.22)
-    else:
-        ax.set_title("每一次越线都是分配选择的结果", fontsize=7.2)
-    ax.legend(handles=[Line2D([], [], color=DEMAND_UN, marker="o", ls="none", ms=3.4,
-                              label="现状冷却，无捕集"),
-                       Line2D([], [], color=DEMAND_CAP, marker="D", ls="none", ms=3.4,
-                              label="全部机组捕集")],
-              fontsize=5.4, frameon=False, loc="lower right", bbox_to_anchor=(0.99, 0.01),
-              handletextpad=0.5, labelspacing=0.28)
-    return table
+    assumptions = OptimizationAssumptions()
+    scenario = OptimizationScenario(experiment_id="fig2", description="fig2")
+    # CEILING_YEAR and the full 20-member ensemble, named explicitly. Fig 1(c) stands on its
+    # own 2060 / SSP3-7.0 hero year, which is a different and equally valid slice; the ED
+    # basin closeup stands on this one. See plot_fig1_water_footprint.basin_drying.
+    drying = f1.basin_drying(CEILING_YEAR, None)
+    return f1.basin_summary(f1.site_table(assumptions, scenario), drying)
 
 
-def _panel_c_ratio_superseded(ax, avail: pd.DataFrame, basins: list[str], fleet_gw: pd.Series):
-    """The allowance test per basin: full-capture demand as a multiple of dry-season supply."""
-    supply_now = basin_supply(avail, CEILING_YEAR)
-    demand_now = basin_demand(SOLVED["ssp126"], CEILING_YEAR)
-    supply_end = basin_supply(avail, 2060)
-    demand_end = basin_demand(SOLVED["ssp126"], 2060)
+def panel_b(ax, util: pd.DataFrame) -> pd.DataFrame:
+    """Both water rungs, per basin, as a share of their own allowance.
 
-    rows = []
-    for basin in basins:
-        if basin not in supply_now.index or basin not in demand_now.index:
-            continue
-        ratios = demand_now.loc[basin, "full_capture"] / supply_now.loc[basin].astype(float)
-        end = demand_end.loc[basin, "full_capture"] / supply_end.loc[basin].astype(float)
-        rows.append(
-            {
-                "basin": basin, "median": float(ratios.median()),
-                "min": float(ratios.min()), "max": float(ratios.max()),
-                "median_2060": float(end.median()),
-                "fleet_gw": float(fleet_gw.get(basin, 0.0)),
-                "flow_gw": float(demand_now.loc[basin, "capacity_mw"]) / 1000.0,
-                "crosses": bool(ratios.min() > 1.0),
-                "crosses_median": bool(ratios.median() > 1.0),
-            }
-        )
-    table = pd.DataFrame(rows).set_index("basin")
+    TWO RUNGS, TWO BASES, ONE AXIS -- and that is only legitimate because both bars are
+    RATIOS against their own denominator. The volumes behind them are not comparable: the
+    environmental-flow rule acts on CONSUMPTION against 20% of dry-season runoff, the
+    用水总量控制指标 acts on WITHDRAWAL against what the basin's allocation leaves after
+    non-power users. Putting the two volumes on one axis would be exactly the aliasing this
+    revision exists to undo; putting the two utilisations on one axis is the comparison.
 
-    y = np.arange(len(table))[::-1]
-    colours = [OVER if c else UNDER for c in table["crosses_median"]]
-    # NO BARS ON A LOG AXIS. A bar encodes a value by its LENGTH, measured from the axis
-    # origin; on a log axis that origin is wherever xlim happens to start, so the ink is
-    # log(value / xmin) and every ratio the reader takes off the page is an artefact of a
-    # number that is not in the data. At the xlim this panel used, the Hai bar was 6.6x the
-    # Southeast Rivers bar in ink while the values differ by 115x; moving the invisible floor
-    # from 0.03 to 0.003 redrew that ratio as 2.5x without changing a datum, and at 0.1 the
-    # Southeast bar would have pointed backwards. plot_fig1_water_footprint.py forbids this
-    # in its own panel (b) and was fixed there; this panel kept the defect. Position encodes
-    # the median, a line encodes the 20-member range -- neither depends on the origin.
-    ax.hlines(y, table["min"], table["max"], color=colours, lw=2.4, alpha=0.55, zorder=3)
-    ax.plot(table["min"], y, marker="|", ls="none", ms=4.0, mew=0.9, color="#333333", zorder=4)
-    ax.plot(table["max"], y, marker="|", ls="none", ms=4.0, mew=0.9, color="#333333", zorder=4)
-    ax.scatter(table["median"], y, s=26, c=colours, edgecolor="white", linewidth=0.5,
-               zorder=6)
-    ax.plot(table["median_2060"], y, marker="D", ls="none", ms=3.2, mfc="white",
-            mec="#111111", mew=0.7, zorder=5)
-    ax.axvline(1.0, color="black", lw=0.9, zorder=6)
+    Log x: the values span 0.4% to 1078%, three decades. On a linear axis every basin but one
+    collapses onto the spine.
+
+    The open marker on each bar is the AS-BUILT claim, the bar is the claim if every unit took
+    capture. The gap between them is what capture costs the basin; whether the marker is
+    already past 100% is a different and more important fact, and the panel has to show both
+    or it answers only one of the two questions.
+    """
+    rows = [b for b in BASIN_ORDER if b in util.index]
+    y = np.arange(len(rows))
+    h = 0.36
+    series = [
+        ("env", "生态流量档（耗水／枯水期径流 20%）", C_ENV_RUNG, +h / 2),
+        ("quota", "用水总量指标档（取水／流域残余配额）", C_QUOTA_RUNG, -h / 2),
+    ]
+    left = 0.25
+    for key, label, colour, off in series:
+        full = util.loc[rows, f"{key}_stress_pct"].astype(float).to_numpy()
+        built = util.loc[rows, f"{key}_stress_base_pct"].astype(float).to_numpy()
+        ax.barh(y + off, np.maximum(full - left, 1e-9), height=h, left=left,
+                color=colour, edgecolor="white", lw=0.3, zorder=3, label=label)
+        # 白描边 + 深芯的双层竖线：条带颜色深浅不一，单色标记在其中一档上会看不见。
+        ax.scatter(built, y + off, s=16, marker="|", color="white", linewidths=1.2, zorder=5)
+        ax.scatter(built, y + off, s=16, marker="|", color="#222222", linewidths=0.6, zorder=6)
+        # 千分位逗号在 SimHei 下占一个全角位，"1,078" 会被顶到画幅外；直接不加分隔符。
+        for basin, yi, v in zip(rows, y + off, full):
+            note = "\n残余配额近零" if (key == "quota" and basin == "K") else ""
+            # 白色描边：长江 86、珠江 74、海河 96 三条的标签正好落在 100% 虚线上，
+            # 不加 halo 就是红虚线穿过数字。移动标签会破坏"标签紧跟条端"的读法。
+            ax.text(v * 1.12, yi, f"{v:.0f}{note}", va="center", ha="left",
+                    fontsize=5.2, color="#333333", zorder=7, linespacing=1.35,
+                    path_effects=[pe.withStroke(linewidth=1.6, foreground="white")])
+
+    ax.axvline(100.0, color=C_LIMIT, lw=0.9, ls=(0, (3, 2)), zorder=4)
+    ax.text(100.0, -0.60, "配额上限", fontsize=5.4, color=C_LIMIT, ha="center", va="bottom")
 
     ax.set_xscale("log")
-    ax.set_xlim(0.03, 40)
-    # Pin the ticks: LogLocator also lays out 10^2 and 10^3 labels past xlim, which are never
-    # drawn but still carry a window extent, and savefig(bbox_inches='tight') grows the canvas
-    # to include them -- 30 mm of phantom width on a 183 mm column.
-    ax.set_xticks([0.1, 1.0, 10.0])
-    ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
-    ax.set_ylim(-0.70, len(table) + 0.85)
+    ax.set_xlim(left, 6000.0)
+    ax.set_xticks([1, 10, 100, 1000])
+    ax.set_xticklabels(["1", "10", "100", "1 000"])
+    ax.set_ylim(len(rows) - 0.35, -0.75)
     ax.set_yticks(y)
-    ax.set_yticklabels(
-        [f"{BASIN_NAMES_ZH.get(b, b)}" for b in table.index], fontsize=6.4
-    )
-    for tick, crosses in zip(ax.get_yticklabels(), table["crosses_median"]):
-        if crosses:
-            tick.set_fontweight("bold")
-    # Two lines, not one: as a single line this label ran to the last pixel column of the
-    # canvas and was clipped mid-word ("...1.0 = the ceilin"). bbox_inches='tight' cannot
-    # catch that -- a clipped artist has no extent beyond the canvas, so the width guard
-    # reports "clean" while the label is cut.
-    # rf-string, not f. In a plain f-string the sequence dollar-backslash-t-i-m-e-s is
-    # parsed as a TAB escape, so the axis rendered "(imes)" -- a real typo that survived
-    # three figure revisions because it looks like LaTeX in the source.
-    ax.set_xlabel(rf"全量捕集需求 / 枯水期供给（$\times$ 倍）“ ”\n"
-                  rf"{CEILING_YEAR} 年；1.0 = 配额线", fontsize=7, linespacing=1.3)
+    ax.set_yticklabels([BASIN_NAMES_ZH.get(b, b) for b in rows], fontsize=6.0)
+    ax.set_xlabel("占本档配额的比例（%，对数轴）", fontsize=6.2, labelpad=1.5)
+    ax.tick_params(axis="x", labelsize=5.8)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(fontsize=5.1, loc="lower right", frameon=False, handlelength=1.4,
+              handletextpad=0.5, borderaxespad=0.2, labelspacing=0.30)
 
-    # Standing capacity behind each basin, printed at a fixed x so the column reads as a table.
-    for yi, (basin, row) in zip(y, table.iterrows()):
-        ax.text(0.985, yi, f"{row['fleet_gw']:.0f} GW", transform=ax.get_yaxis_transform(),
-                ha="right", va="center", fontsize=5.9,
-                fontweight="bold" if row["crosses_median"] else "normal",
-                color="#111111" if row["crosses_median"] else "#666666")
-    ax.text(0.985, len(table) - 0.55, "在役容量", transform=ax.get_yaxis_transform(),
-            ha="right", va="bottom", fontsize=5.4, color="#555555")
+    # THE NORTHWEST'S DENOMINATOR IS NOT A CLEAN NUMBER, AND THE PANEL SAYS SO -- on the bar
+    # label itself, above. Its 2025 metered withdrawal (729.0) already exceeds its own 2030
+    # 用水总量控制指标 (641.2), so the raw residual is NEGATIVE (-85.5). write_basin_caps
+    # scales every user's claim pro rata (x0.8795) to fit the cap, which leaves 2.1 -- and
+    # dividing by a near-zero residual is what produces four digits. The overshoot is real;
+    # its exact multiple is not. The full sentence is in the figure footnote: an arrow drawn
+    # across the panel to carry it collided with the Yangtze row and its own value label.
+    return util.loc[rows, ["env_stress_base_pct", "env_stress_pct",
+                           "quota_stress_base_pct", "quota_stress_pct"]]
 
-    crossing = table.index[table["crosses_median"]].tolist()
-    crossing_gw = table.loc[crossing, "fleet_gw"].sum()
-    total_gw = float(fleet_gw.sum())
-    # Broken across three lines and stepped down to 7.2 pt: as one long line this title was the
-    # widest artist on the canvas and pushed the saved figure past the 183 mm column.
-    ax.set_title(
-        f"{len(crossing)} 个北方流域（{'、'.join(BASIN_NAMES_ZH.get(b, b) for b in crossing)}）\n"
-        f"有 {crossing_gw:.0f} GW 超出配额\n"
-        f"占全国在役 {total_gw:,.0f} GW 的 {100 * crossing_gw / total_gw:.0f}%",
-        fontsize=7.2, linespacing=1.25,
-    )
-    handles = [
-        Line2D([], [], color=OVER, marker="o", ls="none", ms=4.0, mec="white", mew=0.5,
-               label="超出配额"),
-        Line2D([], [], color=UNDER, marker="o", ls="none", ms=4.0, mec="white", mew=0.5,
-               label="配额之内"),
-        Line2D([], [], color="#333333", lw=0.8, label="20 个成员的全距"),
-        Line2D([], [], color="#111111", marker="D", ls="none", ms=3.2, mfc="white", mew=0.7,
-               label="2060 年中位数"),
-    ]
-    # Only the two colour keys. Whisker and diamond are already named in the caption, and a
-    # 4-entry legend at ncol=2 ran under the right-hand "86 GW" standing-fleet label.
-    ax.legend(handles=handles[:2], frameon=False, fontsize=5.9, ncol=1, loc="lower left",
-              bbox_to_anchor=(0.30, 0.01), handlelength=1.4, labelspacing=0.2)
-    ax.grid(axis="x", lw=0.3, alpha=0.3)
-    ax.set_axisbelow(True)
-    return table
+
+LADDER_STATS = [
+    ("空冷改造容量", "空冷改造\n容量", 2040, "GW"),
+    ("捕集量", "CO$_2$\n捕集量", 2060, "Mt"),
+    ("退役容量", "提前退役\n容量", 2040, "GW"),
+]
+
+
+def ladder_table():
+    """The three-rung response BASE -> envonly -> oq, each step against its own floor.
+
+    THE TWO STEPS PRICE TWO DIFFERENT INSTITUTIONS, which is the whole reason the water budget
+    moved onto the official basis. BASE->envonly is the environmental-flow standard (a
+    depletion rule, on consumption); envonly->oq is the 用水总量控制指标 (an allocation rule,
+    on withdrawal). Under v9 the two were multiplied into one factor and no result could say
+    which of them a response belonged to.
+
+    Every step is reported against its own degeneracy floor (CLAUDE.md 二.4). A step that does
+    not clear the floor is 未分辨 -- which is neither zero nor an effect. The floor is taken as
+    the LARGER of the two arms' seed families: a floor measured on one run cannot judge a
+    difference of two, and the looser of the pair is the one that has to be cleared.
+    """
+    needed = [BASE_SCENARIO] + ARMS + [treat_of(a) for a in ARMS]
+    missing = [n for n in needed if not (RESULTS_DIR / n / "plant_detail.csv").exists()]
+    if missing:
+        print(f"  [panel c] not yet solved, skipped: {', '.join(missing)}")
+        return None
+
+    seed_names = seeds_of(SEED_ARM) + seeds_of(treat_of(SEED_ARM))
+    have_seeds = all((RESULTS_DIR / n / "plant_detail.csv").exists() for n in seed_names)
+    if not have_seeds:
+        print("  [panel c] seed replicates incomplete -- steps drawn WITHOUT a degeneracy "
+              "floor, and no step may be called an effect until the floor exists")
+
+    rows = []
+    for key, _label, year, unit in LADDER_STATS:
+        base = national(BASE_SCENARIO, year)[key]
+        ctrl = [national(a, year)[key] for a in ARMS]
+        treat = [national(treat_of(a), year)[key] for a in ARMS]
+        floor = float("nan")
+        if have_seeds:
+            floor = max(
+                degeneracy_floor([national(n, year)[key] for n in seeds_of(SEED_ARM)]),
+                degeneracy_floor([national(n, year)[key] for n in seeds_of(treat_of(SEED_ARM))]),
+            )
+        rows.append({"stat": key, "year": year, "unit": unit, "base": float(base),
+                     "ctrl": float(np.median(ctrl)), "treat": float(np.median(treat)),
+                     "ctrl_lo": float(min(ctrl)), "ctrl_hi": float(max(ctrl)),
+                     "treat_lo": float(min(treat)), "treat_hi": float(max(treat)),
+                     "floor": float(floor)})
+    frame = pd.DataFrame(rows).set_index("stat")
+    frame["step_env"] = frame["ctrl"] - frame["base"]
+    frame["step_quota"] = frame["treat"] - frame["ctrl"]
+    frame["env_resolved"] = frame["step_env"].abs() > frame["floor"]
+    frame["quota_resolved"] = frame["step_quota"].abs() > frame["floor"]
+    return frame
+
+
+def panel_c(ax, table):
+    """Each quantity's response to the two rungs, normalised so one axis can carry all three.
+
+    Normalised to BASE = 1 because the three quantities are GW, Mt and GW-of-retirement and
+    share no unit. The absolute values are printed, never read off this panel.
+
+    The grey band is the degeneracy floor under the same normalisation: a point whose band
+    reaches its predecessor is a step the solver's own search-path spread can produce on its
+    own, and it is labelled 未分辨 rather than drawn as a result.
+    """
+    if table is None:
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "面板 c 需 BASE 与两档水情景全部求解完成后绘制",
+                ha="center", va="center", fontsize=6.0, color="#888888",
+                transform=ax.transAxes)
+        return
+
+    stats = [s for s, *_ in LADDER_STATS if s in table.index]
+    labels = [lab for s, lab, *_ in LADDER_STATS if s in table.index]
+    xs = np.arange(len(stats))
+    rung_x = (-0.26, 0.0, 0.26)
+    colours = (C_BASE_RUNG, C_ENV_RUNG, C_QUOTA_RUNG)
+    names = ("不考虑水", "仅生态流量", "＋用水总量指标")
+
+    for i, stat in enumerate(stats):
+        r = table.loc[stat]
+        base = float(r["base"])
+        vals = [1.0, float(r["ctrl"]) / base, float(r["treat"]) / base]
+        ax.plot([xs[i] + dx for dx in rung_x], vals, color="#AAAAAA", lw=0.7, zorder=2)
+        if np.isfinite(r["floor"]):
+            f = float(r["floor"]) / base
+            for dx, v in zip(rung_x[1:], vals[1:]):
+                ax.add_patch(plt.Rectangle((xs[i] + dx - 0.085, v - f / 2), 0.17, f,
+                                           facecolor="#CCCCCC", edgecolor="none",
+                                           alpha=0.55, zorder=3))
+        for j, (dx, v, colour) in enumerate(zip(rung_x, vals, colours)):
+            ax.scatter(xs[i] + dx, v, s=22, color=colour, edgecolor="white", lw=0.4,
+                       zorder=5, label=names[j] if i == 0 else None)
+        for j, key in enumerate(("env_resolved", "quota_resolved")):
+            if not bool(r[key]):
+                ax.text(xs[i] + rung_x[j + 1], vals[j + 1], " 未分辨", fontsize=4.8,
+                        color="#B02418", va="bottom", ha="center", zorder=6)
+
+    ax.axhline(1.0, color="#BBBBBB", lw=0.6, ls=(0, (2, 2)), zorder=1)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels, fontsize=5.8)
+    ax.set_xlim(-0.55, len(stats) - 0.45)
+    ax.set_ylabel("相对不考虑水的倍数", fontsize=6.2, labelpad=2.0)
+    ax.tick_params(axis="y", labelsize=5.8)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(fontsize=5.1, loc="upper left", frameon=False, handlelength=0.9,
+              handletextpad=0.4, borderaxespad=0.2, labelspacing=0.28)
 
 
 def main() -> None:
@@ -860,9 +705,10 @@ def main() -> None:
     if dropped:
         print(f"  basins with no coal capacity, reported but not plotted: "
               f"{', '.join(f'{b} {BASIN_NAMES_ZH.get(b, b)}' for b in dropped)}")
-    print(f"  supply = dry season x {EXTRACTABLE:.2f} extractable x "
-          f"(1 - {EXISTING_WITHDRAWAL_SHARE:.2f} non-power reservation) = "
-          f"{USABLE:.4f} of raw dry-season runoff")
+    print(f"  rung 1 supply = dry season x {EXTRACTABLE:.2f} extractable "
+          f"= {USABLE:.4f} of raw dry-season runoff (consumption basis)")
+    print("  rung 2 supply = 用水总量控制指标 - 非电既有取水, from inputs/water_basin_caps.csv "
+          "(withdrawal basis)")
 
     # Was DOUBLE_COL[0] * 1.45 = 265 mm. Nature Water's double column is 183 mm, and a figure
     # submitted at 265 mm is scaled by 0.69 in production, dropping every 5.3 pt label to 3.7 pt
@@ -876,11 +722,11 @@ def main() -> None:
     ax_c = fig.add_subplot(bottom[1])
 
     table_a = panel_a(ax_a, avail, basins)
-    stars = panel_b(ax_b, avail, fleet_gw)
-    # Two objects: the ratio table the report and Extended Data quote, and the s* table the
-    # panel draws. They are the same two numbers on two different axes.
+    util = two_rung_utilisation()
+    table_b = panel_b(ax_b, util)
     ceiling = allowance_ratio_table(avail, basins, fleet_gw)
-    sstar = panel_c(ax_c, avail, basins, fleet_gw)
+    table_c = ladder_table()
+    panel_c(ax_c, table_c)
 
     for ax, letter, xoff, yoff in (
         (ax_a, "a", -0.052, 1.11), (ax_b, "b", -0.170, 1.16), (ax_c, "c", -0.245, 1.16)
@@ -891,17 +737,19 @@ def main() -> None:
     # Wrapped, not one long line: `savefig(bbox_inches="tight")` grows the canvas to whatever
     # the widest artist needs, so an unwrapped footnote silently doubles the figure width.
     note = (
-        f"供给 = 枯水期径流 x {EXTRACTABLE:.2f} 可取用比例（Richter et al. 2012, "
-        f"doi:10.1002/rra.1511）x (1 - {EXISTING_WITHDRAWAL_SHARE:.2f} 非电力预留)，"
-        f"与图 1 口径一致。集合为 2 个水文模型 x 5 个 GCM x 2 个 SSP = {EXPECTED_MEMBERS} 个成员；"
-        f"箱线表示水资源本身的物理离散度，不是本模型的敏感性。"
-        f"面板 a、c 中的需求把冷却方式固定在现状配置，因此是“适应之前”的配额检验；"
-        f"a 中的绿色菱形是模型在完成空冷改造后的实际取水，c 中的空心菱形是 2060 年中位数，"
-        f"届时北方相当一部分机组已经退役。"
-        f"集合离散度对 GCM、水文模型与 SSP 的归因见附录图"
-        f"（plot_ed_variance_decomposition.py）。"
+        f"水规则分两档，落在两个不同的水量口径上，二者不相乘也不合并："
+        f"生态流量档为节点耗水 ≤ 枯水期径流 x {EXTRACTABLE:.2f}（Richter et al. 2012, "
+        f"doi:10.1002/rra.1511）；用水总量指标档为流域取水 ≤ 用水总量控制指标"
+        f"（国办发〔2013〕2号 附件1）扣除非电既有取水（2025年中国水资源公报 表9）。"
+        f"面板 a 为生态流量档，与图 1 口径一致；面板 b 两档并列，条为全部机组加装捕集后的用量，"
+        f"竖线标记为现状机组的用量。集合为 2 个水文模型 x 5 个 GCM x 2 个 SSP = "
+        f"{EXPECTED_MEMBERS} 个成员，箱线表示水资源本身的物理离散度，不是本模型的敏感性；"
+        f"归因见附录图（plot_ed_variance_decomposition.py）。"
+        f"面板 a 中的需求把冷却方式固定在现状配置，因此是“适应之前”的配额检验，"
+        f"绿色菱形是模型完成空冷改造后的实际取水。"
+        f"面板 c 的每一步都配简并度地板，未越过地板者标为“未分辨”，不作为效应。"
         f"图中为 {len(present)} 个一级流域中承载煤电容量的 {len(basins)} 个。"
-        f"面板 c 中超出配额的流域：{'、'.join(BASIN_NAMES_ZH.get(b, b) for b in crossing)}。"
+        f"生态流量档超出配额的流域：{'、'.join(BASIN_NAMES_ZH.get(b, b) for b in crossing) or '无'}。"
     )
     fig.text(0.075, 0.004, cjk_fill(note, width=175), fontsize=5.3, color="#555555",
              va="bottom", linespacing=1.45)
@@ -920,32 +768,43 @@ def main() -> None:
                   f"full-capture {row['full_capture'] / row['supply_median'] * 100:6.0f}%   "
                   f"realised {row['realised'] / row['supply_median'] * 100:6.0f}%")
 
-    print("\npanel b -- critical reservation share s* per basin "
-          f"({CEILING_YEAR}; a basin exceeds its allowance when the non-power reservation "
-          "exceeds s*)")
-    print(stars.round(3).to_string())
-    curve = reservation_curve(avail, CEILING_YEAR, fleet_gw)
-    med = curve.groupby(["state", "share"])["gw"].median()
-    total_gw = float(fleet_gw.sum())
-    for state in ("unabated", "full_capture"):
-        series = med.loc[state]
-        steps, last = [], None
-        for share, gw in series.items():
-            if last is None or not np.isclose(gw, last):
-                steps.append(f"{share:.2f}->{gw:.0f}GW")
-                last = gw
-        print(f"    {state:<13} staircase: " + "  ".join(steps))
-        at = float(series.reindex([EXISTING_WITHDRAWAL_SHARE]).iloc[0])
-        flat = series.index[np.isclose(series.to_numpy(), at)]
-        print(f"    {'':<13} at 0.85: {at:.0f} GW ({at / total_gw * 100:.0f}% of "
-              f"{total_gw:.0f} GW), unchanged over {flat.min():.2f}-{flat.max():.2f}")
-    never = stars.loc["full_capture"]
-    never = never[never["s_star_median"] < 0.0]
-    for basin, row in never.iterrows():
-        print(f"    {basin} {BASIN_NAMES_ZH.get(basin, basin)}: s* = "
-              f"{row['s_star_median']:.2f} < 0 -- full capture does not fit even if the power "
-              f"sector took ALL extractable dry-season water "
-              f"({row['share_members_negative'] * 100:.0f}% of {EXPECTED_MEMBERS} members)")
+    print("\npanel b -- both rungs, per basin, as a share of their own allowance (%)")
+    print(table_b.round(1).to_string())
+    _over_env = table_b.index[table_b["env_stress_pct"] > 100.0].tolist()
+    _over_quota = table_b.index[table_b["quota_stress_pct"] > 100.0].tolist()
+    _built_env = table_b.index[table_b["env_stress_base_pct"] > 100.0].tolist()
+    _built_quota = table_b.index[table_b["quota_stress_base_pct"] > 100.0].tolist()
+    print(f"    rung 1 环境流量 (consumption): over at full capture "
+          f"{', '.join(_over_env) or 'none'}; already over as built "
+          f"{', '.join(_built_env) or 'none'}")
+    print(f"    rung 2 用水总量控制指标 (withdrawal): over at full capture "
+          f"{', '.join(_over_quota) or 'none'}; already over as built "
+          f"{', '.join(_built_quota) or 'none'}")
+    print(f"    capacity behind the rung-2 breach: "
+          f"{sum(fleet_gw.get(b, 0.0) for b in _over_quota):.0f} GW of {fleet_gw.sum():.0f} GW")
+
+    # WHICH RUNG BINDS IS THE RESULT OF THE RECODE, so it is computed and printed rather than
+    # asserted. Under v9 the two rules were one product and this question had no answer.
+    print()
+    print("  WHICH INSTITUTION IS THE BINDING ONE?")
+    print("    The two rungs disagree about which basin is tightest, and that disagreement is")
+    print("    itself a finding: the environmental-flow standard is a DEPLETION rule measured")
+    print("    on consumption, the 用水总量控制指标 is an ALLOCATION rule measured on the")
+    print("    withdrawal the 公报 actually meters, and a basin can be comfortable on one")
+    print("    while breaching the other.")
+    _tight_env = table_b["env_stress_pct"].idxmax()
+    _tight_quota = table_b["quota_stress_pct"].idxmax()
+    print(f"    tightest on rung 1: {_tight_env} {BASIN_NAMES_ZH.get(_tight_env, '')} "
+          f"{table_b.loc[_tight_env, 'env_stress_pct']:.0f}%")
+    print(f"    tightest on rung 2: {_tight_quota} {BASIN_NAMES_ZH.get(_tight_quota, '')} "
+          f"{table_b.loc[_tight_quota, 'quota_stress_pct']:.0f}%")
+    if "K" in table_b.index and _tight_quota == "K":
+        print("    CAVEAT ON THE NORTHWEST: its 2025 metered withdrawal already exceeds its own")
+        print("    2030 用水总量控制指标, so the raw residual is NEGATIVE and the published")
+        print("    figure is the pro-rata-scaled one (inputs/water_basin_caps.csv carries both,")
+        print("    residual_uncapped_1e8_m3 and residual_1e8_m3). The overshoot is a real")
+        print("    statement about that basin's own红线; its exact multiple is not a robust")
+        print("    number, because the denominator is near zero by construction.")
 
     print("\n  unserved coal water demand, solved runs (Mm3)")
     for ssp, scenario in SOLVED.items():
@@ -957,60 +816,28 @@ def main() -> None:
           + f"   basins {','.join(unserved_basins(FROZEN)) or 'none'}")
     print("    (noair is not plotted; it is the counterfactual that shows the ceiling is real "
           "when dry-cooling conversion is forbidden)")
-    # COMPUTED, NOT QUOTED. These percentages were hardcoded string literals through three
-    # revisions of this figure, and after the dry-season aggregation fix of 2026-08-18 every
-    # one of them was wrong by roughly the correction factor of its own basin. They are now
-    # read off the same 20-member distribution panel (c) draws, so the two cannot drift apart
-    # again.
-    _sup = basin_supply(avail, CEILING_YEAR)
-    _dem = basin_demand(SOLVED["ssp126"], CEILING_YEAR)
-    _over = [b for b in ("C", "D", "K", "E") if b in _sup.index and b in _dem.index]
-    _un = {b: 100.0 * _dem.loc[b, "unabated"] / float(_sup.loc[b].median()) for b in _over}
-    _cap = {b: 100.0 * _dem.loc[b, "full_capture"] / float(_sup.loc[b].median()) for b in _over}
-    _stars = critical_shares(avail, CEILING_YEAR).loc["full_capture", "s_star_median"]
-    print()
-    print("  THE ALLOWANCE IS ALREADY EXCEEDED WITHOUT ANY CAPTURE, and that is the honest")
-    print("  framing of this figure. With cooling exactly as built and zero capture anywhere,")
-    print(f"  {CEILING_YEAR} demand runs " + ", ".join(
-          f"{_un[b]:.0f}% {BASIN_NAMES_ZH.get(b, b)}" for b in _over) + " of the allowance.")
-    print("  Those plants operate today, so this is a STANDARD THAT IS NOT MET, not a physical")
-    print("  limit that cannot be crossed. What capture does is roughly double the overshoot:")
-    print("    " + " / ".join(f"{_cap[b]:.0f}% {b}" for b in _over))
-    # ENSEMBLE, NOT ONE MEMBER. The v5 text below this line asserted that s* is positive in
-    # every basin and year and concluded the constraint is allocation throughout. That is what
-    # the SOLVED member says. Across all 20 members it is true for the unabated fleet and false
-    # for full capture in the Hai, which is the one basin the paper is about -- so the claim is
-    # now computed over the ensemble and split by state.
-    _av = avail[avail["planning_year"] == CEILING_YEAR]
-    _dry = (_av.groupby(["basin_code", "scenario_id"])
-            ["dry_season_water_m3_per_year"].sum().unstack("scenario_id") / 1e8)
-    print()
-    print("  IS THE OVERSHOOT SCARCITY OR ALLOCATION? The critical reservation share")
-    print("    s* = 1 - demand / (dry-season runoff x extractable)")
-    print("  answers it directly. s* > 0 means the basin fits inside the allowance when power")
-    print("  takes the WHOLE extractable share, so any breach at s = 0.85 is an allocation")
-    print("  outcome. s* < 0 means it breaches at ANY reservation -- genuine scarcity.")
-    for _state, _lab in (("unabated", "as built, no capture"),
-                         ("full_capture", "capture on every unit")):
-        _neg_tot = _n_tot = 0
-        _line = []
-        for _b in _over:
-            if _b not in _dry.index:
-                continue
-            _s = 1.0 - float(_dem.loc[_b, _state]) / (_dry.loc[_b].astype(float).to_numpy()
-                                                      * EXTRACTABLE)
-            _neg_tot += int((_s < 0).sum()); _n_tot += len(_s)
-            _line.append(f"{_b} {np.median(_s):+.2f}"
-                         + (f" ({int((_s < 0).sum())}/{len(_s)} neg)" if (_s < 0).any() else ""))
-        print(f"    {_lab:22s} s* median: " + "  ".join(_line))
-        print(f"    {'':22s} members with s* < 0: {_neg_tot} of {_n_tot}")
-    print("  So the present-day overshoot is entirely allocation -- no basin, in any of the 20")
-    print("  members, breaches at zero reservation with cooling as built. Attaching capture to")
-    print("  the whole fleet does NOT merely tighten that: in the Hai it crosses into scarcity")
-    print("  in the majority of members, and in that basin no allocation rule can fix it.")
-    print("  The residual gap to observed operation is what the supply side omits -- reservoir")
-    print("  regulation, the South-North Water Transfer, groundwater, reclaimed water.")
-    print(f"\npanel c -- allowance test, {CEILING_YEAR} (full-capture demand / dry-season supply)")
+
+    print("\npanel c -- the three-rung response, BASE -> 仅生态流量 -> ＋用水总量指标")
+    if table_c is None:
+        print("    not drawn: the required scenarios are not all solved yet")
+    else:
+        print(table_c.round(2).to_string())
+        for _stat, _r in table_c.iterrows():
+            _u = _r["unit"]
+            print(f"    {_stat} ({int(_r['year'])}, {_u}): "
+                  f"{_r['base']:.1f} -> {_r['ctrl']:.1f} -> {_r['treat']:.1f}   "
+                  f"step1 {_r['step_env']:+.1f} "
+                  f"({'分辨得出' if _r['env_resolved'] else '未分辨'}), "
+                  f"step2 {_r['step_quota']:+.1f} "
+                  f"({'分辨得出' if _r['quota_resolved'] else '未分辨'}), "
+                  f"floor {_r['floor']:.1f}")
+        print("    A step below its floor is 未分辨 -- neither zero nor an effect. CLAUDE.md 二.4")
+        print("    also records that on this model only the objective and the air-cooling")
+        print("    conversion have ever cleared their floors; treat any other resolved step as")
+        print("    a claim that needs checking, not as a default.")
+
+    print(f"\nrung-1 allowance test, {CEILING_YEAR} "
+          f"(full-capture consumption / dry-season environmental-flow allowance)")
     print(ceiling.round(2).to_string())
     crossing_gw = ceiling.loc[crossing, "fleet_gw"].sum()
     flow_gw = ceiling.loc[crossing, "flow_gw"].sum()

@@ -71,7 +71,7 @@ EXPECTED_MEMBERS = len(HYDROLOGY) * len(GCMS) * len(SSPS)
 
 # Runs used only to mark which basins actually ran short of water, so the reader can see that
 # the basins where model spread dominates are the basins that decide the answer.
-BINDING_RUNS = ["WA_cwatm_126_dry_wd085", "WA_cwatm_370_dry_wd085"]
+BINDING_RUNS = ["WA_cwatm_126_dry_oq", "WA_cwatm_370_dry_oq"]
 
 C126 = "#4477AA"
 C370 = "#CC3311"

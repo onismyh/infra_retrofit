@@ -40,7 +40,7 @@ from matplotlib.lines import Line2D
 import ed_plant_data as EP
 from plot_style import BASIN_NAMES_ZH, MM, save_fig
 
-CONTROL, TREATMENT, YEAR = "WA_cwatm_126_dry", "WA_cwatm_126_dry_wd085", 2030
+CONTROL, TREATMENT, YEAR = "WA_cwatm_126_dry_oq_envonly", "WA_cwatm_126_dry_oq", 2030
 _NET_GW = 0.0
 BASIN_COLOUR = {"C": "#CC3311", "D": "#EE7733", "E": "#CCBB44", "K": "#AA3377"}
 QUIET = "#B7BEC6"

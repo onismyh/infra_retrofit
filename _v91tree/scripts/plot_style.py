@@ -84,6 +84,49 @@ PATHWAY_ORDER = ["unabated", "biomass", "ccs", "beccs", "ammonia", "retire"]
 SCENARIO_COLORS = {"low": "#4477AA", "base": "#666666", "high": "#CC3311"}
 DIVERGING = {"neg": "#0077BB", "pos": "#CC3311"}
 
+# --- Scenario family: v9.1, the official 用水总量控制指标 basis -----------------------------
+# The figures used to hard-code v9's `_wd085` names. v9.1 replaces that on/off pair with a
+# three-rung ladder, and every script now composes its names from here, so a basis change is
+# one edit instead of twenty:
+#
+#   BASE_SCENARIO       no water rule at all
+#   <arm> + CTRL_SUFFIX  node  <= qtot x 0.20                     environmental flow, on
+#                                                                 consumption (a depletion rule)
+#   <arm> + TREAT_SUFFIX + basin <= 用水总量控制指标 - 非电既有取水  allocation, on withdrawal
+#
+# `ARMS` holds the CONTROL scenario names, not bare stems, because that is how the figures use
+# them; `treat_of` maps a control name to its treatment partner.
+#
+# NEVER put a `_wd085` result on the same axes as an `_oq*` one, and never difference them:
+# the two have different constraint structures, so the difference is not a physical quantity
+# (CLAUDE.md 二.6).
+BASE_SCENARIO = "BASE"
+ARM_STEMS = ["WA_cwatm_126_dry", "WA_cwatm_370_dry", "WA_wgap_126_dry"]
+SEED_ARM_STEM = "WA_cwatm_126_dry"
+SEEDS = (2, 3, 4)          # k = 4 with the base run; d2 = 2.059 (CLAUDE.md 二.4)
+CTRL_SUFFIX = "_oq_envonly"
+TREAT_SUFFIX = "_oq"
+
+ARMS = [f"{stem}{CTRL_SUFFIX}" for stem in ARM_STEMS]
+SEED_ARM = f"{SEED_ARM_STEM}{CTRL_SUFFIX}"
+
+
+def treat_of(control_name: str) -> str:
+    """Treatment partner of a control scenario name: `..._oq_envonly` -> `..._oq`.
+
+    Raises:
+        ValueError: when `control_name` is not a control arm, which would otherwise silently
+            produce a name that does not exist and fail much later as a missing-file error.
+    """
+    if not control_name.endswith(CTRL_SUFFIX):
+        raise ValueError(f"{control_name!r} is not a control arm (expected suffix {CTRL_SUFFIX!r})")
+    return control_name[: -len(CTRL_SUFFIX)] + TREAT_SUFFIX
+
+
+def seeds_of(name: str) -> list[str]:
+    """The seed replicate family of a scenario, base run first."""
+    return [name] + [f"{name}_seed{i}" for i in SEEDS]
+
 # Region grouping (6 regions)
 REGIONS = {
     "North":         ["Inner Mongolia", "Shanxi", "Shandong", "Hebei", "Henan", "Beijing", "Tianjin"],
@@ -1009,3 +1052,68 @@ def assign_basin(frame, lon_col: str = "centroid_longitude", lat_col: str = "cen
     joined = gpd.sjoin_nearest(points, basins[["code", "geometry"]], how="left")
     joined = joined[~joined.index.duplicated()]
     return joined["code"].astype(str)
+
+
+# =========================================================================================
+# 机组级结果聚合（多张图共用，定义只此一份）
+# =========================================================================================
+D2_FACTORS = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534}
+
+
+def hub_frame(scenario: str, year: int, results_dir=None):
+    """One scenario-year's 350 hubs, with basin code and the derived capacity columns.
+
+    LIVES HERE, NOT IN A FIGURE SCRIPT, because three figures read `air_gw` and the formula
+    is easy to get wrong in a way that does not look wrong. `air_cooled_share` is the retrofit
+    PROGRESS against the hub's still-wet capacity, not its total dry share; multiplying it by
+    total capacity folds the 248 GW that was built air-cooled into the "converted" number and
+    reports 2030 BASE as 153 GW instead of 45 GW.
+
+    Basin comes from `assign_basin` (nearest polygon, all 350 hubs) rather than "the basin of
+    the water node it withdraws most from", which covers only 338 -- 12 hubs withdraw nothing
+    in a given year. The two agree on 93.5% of the shared 338, and disagree only at divides.
+    """
+    import pandas as pd
+
+    root = RESULTS_DIR if results_dir is None else results_dir
+    p = pd.read_csv(root / scenario / "plant_detail.csv")
+    p = p[p["year"] == year].copy()
+    p["basin"] = assign_basin(p)
+    cap = p["capacity_mw"] / 1000.0
+    p["cap_gw"] = cap
+    p["air_gw"] = cap * (1.0 - p["already_air_share"]) * p["air_cooled_share"]
+    p["ret_gw"] = p["share_retire"] * cap
+    p["ccs_gw"] = p["share_ccs"] * cap
+    p["beccs_gw"] = p["share_beccs"] * cap
+    p["bio_gw"] = p["share_biomass"] * cap
+    p["wat_e8"] = p["water_use_m3"] / 1e8
+    return p
+
+
+def national(scenario: str, year: int, results_dir=None) -> dict:
+    """Fleet totals for one scenario-year, on the columns every water figure reports."""
+    p = hub_frame(scenario, year, results_dir)
+    return {
+        "空冷改造容量": float(p["air_gw"].sum()),
+        "取水量": float(p["wat_e8"].sum()),
+        "退役容量": float(p["ret_gw"].sum()),
+        "捕集量": float(p["captured_mt"].sum()),
+        "CCS 容量": float(p["ccs_gw"].sum()),
+        "BECCS 容量": float(p["beccs_gw"].sum()),
+        "生物质容量": float(p["bio_gw"].sum()),
+    }
+
+
+def degeneracy_floor(values) -> float:
+    """1.96*sqrt(2)*range/d2(k) -- the spread a seed family alone can produce.
+
+    CLAUDE.md 二.4: a difference that does not clear this is NOT an effect, and must be
+    reported as 未分辨 rather than as zero. k is the number of replicates.
+    """
+    import math
+
+    values = list(values)
+    k = len(values)
+    if k < 2:
+        return float("nan")
+    return 1.96 * math.sqrt(2.0) * (max(values) - min(values)) / D2_FACTORS[k]

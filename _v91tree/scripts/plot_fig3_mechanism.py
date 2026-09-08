@@ -34,10 +34,12 @@ Three things are deliberately NOT in this figure:
 
 Two admissions the figure has to make in public, because both would otherwise be hidden:
 
-  1. The `*_wd085` runs fail `plot_style.scenario_validity`: ~3.45% of their objective is
-     the penalty on water demand the solver could not serve. They are the entire point of
-     the figure, so they are admitted -- but the unserved volume is drawn as a component of
-     the cost bar in (a), as its own channel in (b), and per basin in (c).
+  1. A run may fail `plot_style.scenario_validity` by leaning on the slack penalty for water
+     demand it could not serve. Such runs are the entire point of the figure, so they are
+     admitted -- but the unserved volume is drawn as a component of the cost bar in (a), as
+     its own channel in (b), and per basin in (c). Under v9.1 there are TWO slack channels,
+     the node (environmental flow) and the basin (用水总量控制指标), penalised at the same
+     rate so the solver cannot rank one institution above the other for a numerical reason.
   2. Because that penalty is a big-M (1 000 CNY/m3 in `solver.py:618`, ~125x the delivered
      water cost the model actually pays), the +5.71% headline splits into +2.06% of real
      spending and +3.65% of penalty. Both readings are drawn. The conclusion survives
@@ -101,21 +103,20 @@ END_YEAR = 2060    # where retirement and capture have played out
 
 # --- the five solved runs this figure rests on -------------------------------
 NOWATER = "BASE"                              # water priced, basin availability not enforced
-PRICED = "WA_cwatm_126_dry"                   # availability enforced, nothing reserved for others
-BINDS = "WA_cwatm_126_dry_wd085"              # non-power share reserved -> the constraint binds
-BINDS_HOT = "WA_cwatm_370_dry_wd085"          # same, under SSP3-7.0
-FROZEN = "WA_cwatm_126_dry_wd085_noair"       # binding, dry-cooling retrofit forbidden
+PRICED = "WA_cwatm_126_dry_oq_envonly"     # 生态流量约束（节点，耗水口径）
+BINDS = "WA_cwatm_126_dry_oq"              # 再叠加用水总量控制指标（流域，取水口径）
+BINDS_HOT = "WA_cwatm_370_dry_oq"          # 同上，SSP3-7.0
+FROZEN = "WA_cwatm_126_dry_oq_noair"       # 叠加总量指标，且禁止空冷改造
 # Air-retrofit capex sweep. Reported to stdout as a robustness check, NEVER drawn: a
 # sensitivity belongs in Extended Data, not in a Nature main figure.
-CAPEX_CHECK = ["WA_cwatm_126_dry_wd085_air1000", "WA_cwatm_126_dry_wd085_air1370"]
+CAPEX_CHECK = ["WA_cwatm_126_dry_oq_air1000", "WA_cwatm_126_dry_oq_air1370"]
 
-# `existing_withdrawal_share` override carried by every `*_wd085` run (run_single.py:99-104).
-# Held identical to plot_fig1_water_footprint.py and plot_fig2_constraint_response.py -- the
-# three figures draw the same limit line and must define it the same way. It is the one
-# number in this figure with no literature citation; see plan/*.md (T1b), where a per-basin
-# derivation from the 2025 水资源公报 was attempted and rejected as degenerate.
-WITHDRAWAL_SHARE = 0.85
-USABLE = WATER_EXTRACTABLE_FRACTION * (1.0 - WITHDRAWAL_SHARE)
+# v9.1: the node budget is the environmental-flow rule ALONE. v9 multiplied in an assumed
+# non-power reservation `(1 - 0.85)`, which aliased the depletion standard with the
+# allocation rule so that no result could say which was binding. The allocation now enters
+# as its own basin constraint on the WITHDRAWAL basis, read off 用水总量控制指标, and is not
+# folded into this factor. Held identical to plot_fig1_water_footprint.py.
+USABLE = WATER_EXTRACTABLE_FRACTION
 
 # Panel (c) reproduces Fig 1(c)'s stress definition exactly -- same year, same SSP, same
 # intensity basis -- so the two main figures cannot quote different numbers for the same
@@ -137,9 +138,9 @@ C_OVER = "#CC3311"
 C_UNDER = "#BBBBBB"
 
 CONTRASTS = [
-    ("流域水量\n是否纳入核算", NOWATER, PRICED, C_ACCOUNT, "accounted"),
-    ("是否预留配额中的\n非电力份额", PRICED, BINDS, C_RESERVE, "reserved"),
-    ("SSP1-2.6 → SSP3-7.0\n（已预留配额）", BINDS, BINDS_HOT, C_CLIMATE, "SSP3-7.0"),
+    ("是否施加\n生态流量约束", NOWATER, PRICED, C_ACCOUNT, "accounted"),
+    ("是否叠加用水\n总量控制指标", PRICED, BINDS, C_RESERVE, "quota"),
+    ("SSP1-2.6 → SSP3-7.0\n（含总量指标）", BINDS, BINDS_HOT, C_CLIMATE, "SSP3-7.0"),
 ]
 
 PHYSICAL = [
@@ -149,15 +150,14 @@ PHYSICAL = [
 ]
 
 LADDER = [
-# THE "NOT BINDING" CONTROL IS BINDING. Measured from WA_cwatm_126_dry's own
-# resource_use.csv at 2030: 33 of 373 water nodes are at >=99.9% of budget, carrying
-# 20.1% of fleet water demand (2040: 54 nodes, 27.9%). The basin AGGREGATE is 3.5%,
-# which is where the old label came from -- declaring a node-level constraint slack from
-# a basin aggregate is the exact error panel (c) exists to expose. 2030 conversion runs
-# BASE 89.5 -> s=0 166.2 -> s=0.85 411.1 GW, so 24% of the constraint-driven conversion
-# sits inside the control and is differenced away. It is a ladder, not a switch.
-    ("水量已核算，\n20% 的需求达到约束", PRICED, C_UNDER),
-    ("已预留配额，\n水约束起作用", BINDS, C_CONV),
+# A LADDER, NOT A SWITCH. The control is not "water off": it already enforces the
+# environmental-flow rule at every node, so part of any response is inside it and is
+# differenced away. The rungs are BASE -> envonly -> oq, and they price two DIFFERENT
+# institutions on two different water bases (see docs/官方指标口径水预算.md).
+# The per-rung numbers that used to be quoted here were v9 measurements on the aliased
+# 0.03 budget and are NOT carried forward; the v9.1 values are printed by main().
+    ("仅生态流量约束\n（节点，耗水口径）", PRICED, C_UNDER),
+    ("＋用水总量控制指标\n（流域，取水口径）", BINDS, C_CONV),
     ("……且禁止\n空冷改造", FROZEN, C_SHORT),
 ]
 
@@ -202,11 +202,11 @@ def _require_current_vintage(name: str) -> Path:
 def _admit(name: str) -> dict:
     """Validity verdict, admitting a slack-only failure and reporting the volume.
 
-    `scenario_validity` rejects a run leaning more than 1% of its objective on slack. Every
-    `*_wd085` run does (about 3.45%), because reserving the non-power share leaves water
-    demand the solver cannot serve -- which is the result, not an artefact. Slack-only
-    failures are therefore admitted here and their unserved volume is drawn. Any other
-    failure mode (NaN objective, non-optimal status) still raises.
+    `scenario_validity` rejects a run leaning more than 1% of its objective on slack. A run
+    that cannot serve its water demand inside the allowance leans on the big-M penalty --
+    which is the result, not an artefact. Slack-only failures are therefore admitted here and
+    their unserved volume is drawn. Any other failure mode (NaN objective, non-optimal
+    status) still raises.
     """
     verdict = scenario_validity(name)
     if verdict["ok"] or "slack penalty" in verdict["reason"]:
@@ -448,7 +448,7 @@ def panel_a_cost(ax, table: pd.DataFrame) -> None:
 
     ax.set_xticks(x)
     # short 既是内部键也是刻度文字；只在这里映射成中文，键本身不动（下游按它取数）。
-    _SHORT_ZH = {"accounted": "纳入核算", "reserved": "预留配额", "SSP3-7.0": "SSP3-7.0"}
+    _SHORT_ZH = {"accounted": "生态流量", "quota": "总量指标", "SSP3-7.0": "SSP3-7.0"}
     ax.set_xticklabels([_SHORT_ZH.get(v, v) for v in table["short"]], fontsize=6.0)
     ax.set_xlim(-0.62, len(table) - 0.38)
     ax.set_ylabel("系统成本变化（%）", fontsize=7)
@@ -770,8 +770,8 @@ def panel_c(ax_stress, ax_conv, table: pd.DataFrame) -> None:
     ax_conv.legend(
         handles=[
             Patch(facecolor="#EEEEEE", label="可供改造的湿冷容量（可改造池）"),
-            Patch(facecolor=C_UNDER, label="已改造，未预留配额"),
-            Patch(facecolor=C_CONV, label="已改造，已预留配额"),
+            Patch(facecolor=C_UNDER, label="已改造，仅生态流量"),
+            Patch(facecolor=C_CONV, label="已改造，＋总量指标"),
             Patch(facecolor="white", edgecolor="none",
                   label="红色：配额无法满足的需求"),
         ],
@@ -899,8 +899,8 @@ def report(values: dict[str, dict[str, float]], contrasts: pd.DataFrame,
     print("=" * 100)
     print(ladder.round(2).to_string(index=False))
     ref, binds, frozen = values[PRICED], values[BINDS], values[FROZEN]
-    print(f"\n  more binding vs less binding -- NOT on vs off: the s=0 control already has "
-          f"33 of 373 nodes at their\n  limit, carrying 20.1% of demand. Conversion "
+    print(f"\n  more binding vs less binding -- NOT on vs off: the envonly control already "
+          f"enforces the environmental-flow\n  rule at every node. Conversion "
           f"{ref['converted_gw']:.1f} -> {binds['converted_gw']:.1f} GW "
           f"({binds['converted_gw'] / ref['converted_gw']:.2f}x), retirement {END_YEAR} "
           f"{ref['retire_gw_end']:.1f} -> {binds['retire_gw_end']:.1f} GW "
@@ -1160,7 +1160,8 @@ def main() -> None:
         cjk_fill(
             f"供给电力的配额 = 枯水期流域径流 x {WATER_EXTRACTABLE_FRACTION:.2f} 可取用比例"
             f"（Richter et al. 2012, doi:10.1002/rra.1511）x "
-            f"(1 - {WITHDRAWAL_SHARE:.2f} 非电力预留)；该预留是明示的假设，不是逐流域实测值。"
+            f"；非电力用水不再按假设份额扣除，而是作为流域取水总量约束单列，"
+            f"上限取自国办发〔2013〕2号 用水总量控制指标扣除非电既有取水。"
             f"在预留后的配额下，模型完全满足 {NEAR_YEAR} 年的水约束：未满足需求为 "
             f"{binds['unserved_mm3']:.1f} Mm$^3$，占 {binds['unserved_pct']:.2f}%。"
             f"在订正后的枯水期口径下，全国唯一残余缺口是西北内陆河一个节点在 2040–2060 年的 "

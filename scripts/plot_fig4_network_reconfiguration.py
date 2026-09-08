@@ -124,44 +124,45 @@ MAP_YEAR = 2060
 # 8272.3 Mm3 against 4806-5075 in the current code, i.e. a different feasible set. Pooling the
 # two vintages would read a code change as a water signal.
 ENSEMBLE = [
-    "WA_cwatm_126_dry",
-    "WA_wgap_126_dry",
-    "WA_wgap_126_dry_nobias",
-    "WA_cwatm_370_dry",
-    "WA_cwatm_370_dry_nobias",
-    "WA_cwatm_126_dry_wd085",
-    "WA_cwatm_370_dry_wd085",
+    "WA_cwatm_126_dry_oq_envonly",
+    "WA_wgap_126_dry_oq_envonly",
+    "WA_wgap_126_dry_oq_envonly_nobias",
+    "WA_cwatm_370_dry_oq_envonly",
+    "WA_cwatm_370_dry_oq_envonly_nobias",
+    "WA_cwatm_126_dry_oq",
+    "WA_cwatm_370_dry_oq",
 ]
 # No water constraint at all. Never folded into the frequency count; used only to ask whether
 # the core survives dropping the water constraint entirely.
 REFERENCE = "BASE"
-# Water binds in BOTH the s=0 and the s=0.85 runs; the difference is intensity, not
-# presence. At 2030 the s=0 run already has 33 of 373 water nodes at >=99.9% of budget
-# carrying 20.1% of fleet demand, against 113 nodes and 46.2% at s=0.85. The old comment
-# here ("water genuinely binds only in the wd085 pair") read a 3.5% basin AGGREGATE as
-# slack, which is the error Fig 3(c) exists to expose. The treatment is therefore a
-# step UP in binding intensity, not a switch from off to on.
-BINDING = ["WA_cwatm_126_dry_wd085", "WA_cwatm_370_dry_wd085"]
+# The control is NOT "water off": `*_oq_envonly` already enforces the environmental-flow
+# rule at every node, so the treatment is a step UP in binding intensity, not a switch from
+# off to on. Never declare the control slack from a basin AGGREGATE -- a node-level
+# constraint can bind at many nodes while the basin total looks comfortable, which is the
+# error Fig 3(c) exists to expose. The v9 node counts that used to be quoted here were
+# measured on the aliased 0.03 budget and are not carried forward.
+BINDING = ["WA_cwatm_126_dry_oq", "WA_cwatm_370_dry_oq"]
 NON_BINDING = [s for s in ENSEMBLE if s not in BINDING]
 
-# `scenario_validity` rejects a run leaning >1% of its objective on slack. The wd085 pair sits
-# at ~3.45%, so it fails that gate, yet it is the only pair in which water actually binds.
-# Admitted explicitly, never silently: the slack share and the unserved volume are printed on
-# the figure and in the report. What stays excluded is anything whose slack makes the solution
-# non-physical:
+# `scenario_validity` rejects a run leaning >1% of its objective on slack. A binding water
+# rule can push a run past that gate, and such a run is admitted explicitly, never silently:
+# the slack share and the unserved volume are printed on the figure and in the report. What
+# stays excluded is anything whose slack makes the solution non-physical:
 #   RQ3_retire_only  objective is NaN (infeasible_or_unbounded)
 #   RQ3_ccs_only     91% of the objective is slack penalty
-#   *_wd085_noair    18.5% slack, 14.3% of 2030 water demand unserved -> its +51% objective is
-#                    a penalty artefact, not an economic cost, so it is not plotted
-SLACK_EXCEPTION = {"WA_cwatm_126_dry_wd085": 0.05, "WA_cwatm_370_dry_wd085": 0.05}
+#   *_oq_noair       cooling frozen: if its slack share makes the objective a penalty
+#                    artefact rather than an economic cost, it is not plotted
+# The 0.05 tolerances below were set on the v9 runs; re-check them against the v9.1 solves
+# before reading any objective difference off this figure.
+SLACK_EXCEPTION = {"WA_cwatm_126_dry_oq": 0.05, "WA_cwatm_370_dry_oq": 0.05}
 
 # Pairs differing only by the bias-correction switch: same hydrology, same SSP, objectives
 # within 0.007%. Anything these two disagree about is solver arbitrariness by construction.
-FLOOR_PAIRS = [("WA_wgap_126_dry", "WA_wgap_126_dry_nobias"),
-               ("WA_cwatm_370_dry", "WA_cwatm_370_dry_nobias")]
+FLOOR_PAIRS = [("WA_wgap_126_dry_oq_envonly", "WA_wgap_126_dry_oq_envonly_nobias"),
+               ("WA_cwatm_370_dry_oq_envonly", "WA_cwatm_370_dry_oq_envonly_nobias")]
 # Pairs differing only by whether water binds.
-TREATMENT_PAIRS = [("WA_cwatm_126_dry", "WA_cwatm_126_dry_wd085"),
-                   ("WA_cwatm_370_dry", "WA_cwatm_370_dry_wd085")]
+TREATMENT_PAIRS = [("WA_cwatm_126_dry_oq_envonly", "WA_cwatm_126_dry_oq"),
+                   ("WA_cwatm_370_dry_oq_envonly", "WA_cwatm_370_dry_oq")]
 
 # Colours held locally, not added to plot_style: sibling figure scripts are editing that
 # module concurrently.
@@ -964,20 +965,22 @@ def panel_base_attribution(ax, counts, n: int, base_ids: set, lengths) -> dict:
             "len_pct_in_base": shared_len_pct, "core_share_pct": core_share}
 
 
-SEED_NULL_RUNS = ["WA_cwatm_126_dry_wd085", "WA_cwatm_126_dry_wd085_seed2",
-                  "WA_cwatm_126_dry_wd085_seed3", "WA_cwatm_126_dry_wd085_seed4"]
+SEED_NULL_RUNS = ["WA_cwatm_126_dry_oq", "WA_cwatm_126_dry_oq_seed2",
+                  "WA_cwatm_126_dry_oq_seed3", "WA_cwatm_126_dry_oq_seed4"]
 
 
 def seed_null(counts_fn, work_fn):
     """Run this figure's own core statistic on replicates of ONE scenario.
 
-    THE STATISTIC HAD NO NULL, AND THE NULL BEATS THE EFFECT. `WA_cwatm_126_dry_wd085_seed{2,3,4}`
-    are true replicates: identical model fingerprint 0xbe7b31c2, identical variable and
+    THE STATISTIC HAD NO NULL, AND THE NULL BEATS THE EFFECT. `WA_cwatm_126_dry_oq_seed{2,3,4}`
+    are true replicates: identical model, identical variable and
     constraint counts, thread count pinned, only the Gurobi seed differing. Every run in this
     study terminates at node_count = 1, so each solution is a root heuristic and the spread is
     pure search-path degeneracy. Running selection_count and work_share_by_threshold on those
     four replicates gives a core that is LARGER and carries MORE of the 2060 work than the
-    seven water scenarios do:
+    water scenarios do. The two lines below are the v9 MEASUREMENT and are kept only to show
+    the shape of the finding; both are recomputed at run time and the v9.1 values are what
+    the figure and the report actually quote. Do not cite these for v9.1:
 
         4 seed replicates of ONE scenario   core/union 106/167   core carries 86.0% of work
         7 water scenarios                   core/union  95/185   core carries 78.4% of work
