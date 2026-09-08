@@ -180,6 +180,17 @@ class OptimizationAssumptions:
     #                     Basin caps come from `inputs/water_basin_caps.csv`
     #                     (`scripts/build_water_basin_caps.py`).
     water_budget: str = "runoff"
+    # Basin cap on/off, honoured only under water_budget='official_quota'. Off leaves the
+    # environmental-flow node limit alone, which is the CONTROL arm of the v9.1 design:
+    #
+    #   BASE                 no water rule at all
+    #   *_oq_envonly         environmental flow only          (this flag False)
+    #   *_oq                 environmental flow + allocation  (this flag True)
+    #
+    # The ladder is what the de-aliasing bought. Under 'runoff' the two rules are one product
+    # and no experiment can separate them; here BASE->envonly prices the environmental-flow
+    # standard and envonly->oq prices the allocation rule, each on its own.
+    apply_basin_cap: bool = True
     # Apply the basin bias-correction factors when serving water to the solver. The factors
     # (`.basin_bias_factors` in builders/water.py, estimated from each model's `historical`
     # run against third-survey basin totals) are baked into `available_water_m3_per_year` in

@@ -522,6 +522,8 @@ def _withdrawal_matrices(
         return None, None, 1.0
     if scenario.water_mode == "no_water":
         return None, None, 1.0
+    if not bool(getattr(assumptions, "apply_basin_cap", True)):
+        return None, None, 1.0
 
     plants = prepared.plants
     hours = plants["province_mode"].astype(str).map(assumptions.province_operating_hours)
@@ -580,6 +582,9 @@ def _basin_cap_data(
     if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
         return None, None, []
     if scenario.water_mode == "no_water":
+        return None, None, []
+    if not bool(getattr(assumptions, "apply_basin_cap", True)):
+        logger.info("water: official-quota budget with the basin cap OFF (environmental flow only)")
         return None, None, []
 
     caps = prepared.water_basin_caps

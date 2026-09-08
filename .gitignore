@@ -21,3 +21,8 @@ __pycache__/
 # never be mistaken for a published one (CLAUDE.md 二.6).
 /results/*
 !/results/figures/
+
+# v9.1 solve tree: inputs are a frozen copy, data is a junction to the main data/.
+# Deposited results live in results/figures/v9.1/ via scripts/render_version.py.
+_v91tree/results/
+_v91tree/data
