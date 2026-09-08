@@ -188,9 +188,15 @@ def panel_adapted(ax, fleet: pd.DataFrame) -> pd.DataFrame:
     con, unc = g[g["constrained"]], g[~g["constrained"]]
     # The two means are 0.32 m3/MWh apart, which at this scale is close enough that two centred
     # labels at the same height overprinted each other. Stagger them and hang each off its line.
-    for sub, colour, name, ha, dy in ((con, CONSTRAINED_C, "超出配额", "left", 0.55),
-                                      (unc, QUIET, "配额之内", "right", -0.05)):
+    # NOT "超出配额" / "配额之内". CONSTRAINED_BASINS is a GEOGRAPHIC set -- the four northern
+    # water-scarce basins C/D/E/K -- not a model verdict. Under v9.1 the basin that actually
+    # breaches its allocation is K alone, and the one that comes nearest the environmental-flow
+    # line is C; labelling all four "超出配额" states a result the model does not produce.
+    _means = {}
+    for sub, colour, name, ha, dy in ((con, CONSTRAINED_C, "北方缺水流域", "left", 0.55),
+                                      (unc, QUIET, "其余流域", "right", -0.05)):
         w = (sub["cons"] * sub["gw"]).sum() / sub["gw"].sum()
+        _means[name] = float(w)
         ax.axvline(w, color=colour, lw=0.9, ls=(0, (3, 2)), zorder=3)
         pad = 0.012 * ax.get_xlim()[1] * (1 if ha == "left" else -1)
         ax.annotate(f"{name} {w:.2f}", xy=(w + pad, len(g) - 0.30 + dy), fontsize=5.2,
@@ -210,8 +216,16 @@ def panel_adapted(ax, fleet: pd.DataFrame) -> pd.DataFrame:
     ax.set_axisbelow(True)
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    ax.set_title("四个缺水流域的单位电量耗水只高出 1.4 倍；其中规模最大的黄河流域\n"
-                 "强度反而最低，因为它已有 56% 采用空冷",
+    # 两个数都从本面板自己的表里读，不写死：1.4 与 56% 是 v9 的测量值。
+    _ratio = _means["北方缺水流域"] / _means["其余流域"]
+    _big = con.loc[con["gw"].idxmax()]
+    _name = BASIN_NAMES_ZH.get(_big["basin_code"], _big["basin_name"])
+    _least = con.loc[con["cons"].idxmin(), "basin_code"] == _big["basin_code"]
+    _why = (f"其中规模最大的{_name}流域\n强度反而最低，因为它已有 "
+            f"{100 * float(_big['air']):.0f}% 采用空冷") if _least else \
+           (f"其中规模最大的{_name}流域空冷占比已达 "
+            f"{100 * float(_big['air']):.0f}%")
+    ax.set_title(f"四个北方缺水流域的单位电量耗水只高出 {_ratio:.1f} 倍；{_why}",
                  fontsize=6.8, linespacing=1.25)
     return g
 

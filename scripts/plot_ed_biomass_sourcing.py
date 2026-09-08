@@ -185,7 +185,9 @@ def panel_growth(ax, f: pd.DataFrame, util: pd.DataFrame) -> None:
     ax2.tick_params(labelsize=5.6, length=1.8, colors="#AA3377")
     ax2.spines["top"].set_visible(False)
     ax2.spines["right"].set_color("#AA3377")
-    ax.set_title("到 2050 年，用量已达全国资源\n上限的 87%",
+    # 数就是同一根轴上画出的那条曲线的峰值，标题不写死。
+    _peak_i = int(np.nanargmax(u))
+    ax.set_title(f"到 {YEARS[_peak_i]} 年，用量已达全国资源\n上限的 {u[_peak_i]:.0f}%",
                  fontsize=6.8, linespacing=1.25)
 
 

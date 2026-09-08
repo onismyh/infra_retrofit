@@ -128,7 +128,8 @@ def figure_transition(t: pd.DataFrame) -> None:
                loc="lower center", bbox_to_anchor=(0.5, 0.005), handlelength=1.3,
                handletextpad=0.5, columnspacing=1.4)
     fig.text(0.050, 0.995,
-             "水资源预留约束下的分省转型路径，按容量排序的前 20 个省。堆叠为完全划分："
+             "水资源约束（生态流量 ＋ 用水总量控制指标）下的分省转型路径，按容量排序的前 20 个省。"
+             "堆叠为完全划分："
              "\n每个厂址-年份的各路径份额之和恰为 1.000000；横轴为 2030–2060 年；各面板纵轴独立。",
              fontsize=7.0, linespacing=1.3, va="top")
     save_fig(fig, "ed_fig8_province_transition", subdir="extended")
@@ -194,8 +195,13 @@ def figure_response(t: pd.DataFrame, c: pd.DataFrame, show: list) -> None:
     # source-sink network moves the national retirement difference from -1.5 to +7.9 to -3.3 GW
     # and the capture difference from -1.2 to +10.9 to -10.7 Mt/yr, while the objective effect
     # moves by 0.002 pp. Only the conversion response is stable across those three families.
+    # 1/50 是 v9 的测量值。比值从本图画出的同三列自己算，口径一换它没有理由仍然成立。
+    _mag = {c: float(d[c].abs().sum()) for c in ("d_conv", "d_ret", "d_capt")}
+    _big = max(_mag["d_ret"], _mag["d_capt"])
+    _r = _mag["d_conv"] / _big if _big > 0 else float("inf")
+    _rtxt = f"1/{_r:.0f}" if np.isfinite(_r) else "可忽略"
     fig.text(0.400, 0.120,
-             "面板 b 与 c 的量级只有面板 a 的 1/50，且未被分辨出来："
+             f"面板 b 与 c 的量级只有面板 a 的 {_rtxt}，且未被分辨出来："
              "同一对比在修复后的源汇网络上\n重新求解会翻转符号。不要从中读出任何机理。"
              "面板 a 的空冷改造响应在所有\n已测试的输入版本下都稳定。",
              fontsize=5.4, linespacing=1.35, va="top", color="#8A3324")

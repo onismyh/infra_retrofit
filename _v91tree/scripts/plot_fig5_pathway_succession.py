@@ -116,6 +116,7 @@ from plot_style import (  # noqa: E402
     PATHWAY_LABELS,
     same_model_runs,
     assert_same_vintage,
+    seeds_of,
 )
 
 apply_style()
@@ -189,16 +190,16 @@ CAPFREE = "WA_cwatm_126_dry_oq_noair_capfree"
 FROZEN_PAIRS = [(BINDS, FROZEN)]
 # Seed replicates: identical model, identical parameters, different Gurobi search path. This
 # is the ONLY construction here that measures degeneracy rather than physics.
-SEED_RUNS = ["WA_cwatm_126_dry_oq_seed2", "WA_cwatm_126_dry_oq_seed3",
-             "WA_cwatm_126_dry_oq_seed4", "WA_cwatm_126_dry_oq_seed5",
-             "WA_cwatm_126_dry_oq_seed6"]
+# 种子集合来自 plot_style.SEEDS，不在各图里各写一份：k 不同，d2 就不同，地板也就不同，
+# 于是同一个"地板"在不同图里会是不同的数。v9.1 的复现族是 seed2-4（k = 4 含基准run，
+# d2 = 2.059），两个臂都做了复现。
+SEED_RUNS = seeds_of(BINDS)[1:]
 # CONTROL-SIDE replicates. The floor is compared against a difference of two runs, so
 # measuring it on the treatment side alone assumes the control is equally degenerate and
 # inflates by sqrt(2) to cover it. With both sides replicated the two variances add
 # directly and no assumption is needed. Loaded when present; the sqrt(2) fallback stands
 # when they are not.
-CTRL_SEED_RUNS = ["WA_cwatm_126_dry_oq_envonly_seed2", "WA_cwatm_126_dry_oq_envonly_seed3",
-                  "WA_cwatm_126_dry_oq_envonly_seed4"]
+CTRL_SEED_RUNS = seeds_of(PRICED)[1:]
 
 SHARES = ["share_unabated", "share_biomass", "share_ccs", "share_beccs",
           "share_ammonia", "share_retire"]
@@ -601,9 +602,17 @@ def panel_b(axes, trajectories: dict[str, pd.DataFrame]) -> None:
                       color=C_RETIRE_LINE, linespacing=1.15)
     # A PANEL SHOULD STATE ITS CLAIM. (b) carried no title at all, so its point -- that the
     # two margins substitute for each other -- had to be inferred from two y-axis labels.
-    ax_conv.set_title("冷却方式才是会响应的边际；一旦禁止它，" + chr(10) +
-                      "全部响应都转移到提前退役上",
-                      fontsize=6.6, pad=7.0)
+    # 关掉冷却这条边际之后，响应去了哪里——两个渠道都从数据里读，不写"全部"。
+    _bind = trajectories[BINDS]
+    _d_ret = (float(frozen.loc[PEAK_YEAR, "retire_gw"])
+              - float(_bind.set_index("year").loc[PEAK_YEAR, "retire_gw"]))
+    _d_cap = (float(frozen.loc[YEARS[-1], "capture_mt"])
+              - float(_bind.set_index("year").loc[YEARS[-1], "capture_mt"]))
+    ax_conv.set_title(
+        "冷却方式才是会响应的边际；一旦禁止它，" + chr(10)
+        + f"{PEAK_YEAR} 年提前退役增加 {_d_ret:+.0f} GW，"
+        + f"{YEARS[-1]} 年捕集量变化 {_d_cap:+.0f} Mt",
+        fontsize=6.6, pad=7.0)
     _conv_top = max(float(trajectories[nm]["converted_gw"].max()) for nm in styles)
     ax_conv.set_ylim(-18, _conv_top * 1.16)
     ax_ret.set_ylim(bottom=-18)

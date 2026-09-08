@@ -746,9 +746,14 @@ def panel_c(ax_stress, ax_conv, table: pd.DataFrame) -> None:
     ax_stress.set_xlabel("百分比（%）\n"
                          f"{NEAR_YEAR} 年求解结果；三种标记均来自同一个解",
                          fontsize=6.2)
-    ax_stress.set_title("流域整体可以只用掉三分之一，而其中十分之九的\n"
-                        "需求却压在已经饱和的节点上", fontsize=7.2,
-                        linespacing=1.25)
+    # 分数从画出来的两列自己算。"三分之一 / 十分之九"是 v9 的测量值，而这张面板的全部意义
+    # 就是"流域合计与节点实际承压不是一回事"——标题若写死，它自己就成了那个错误的例子。
+    _worst = int(np.nanargmax(demand_lim))
+    _wname = BASIN_NAMES_ZH.get(table.index[_worst], table.index[_worst])
+    ax_stress.set_title(
+        f"{_wname}流域合计只用掉配额的 {util[_worst]:.0f}%，\n"
+        f"而其 {demand_lim[_worst]:.0f}% 的需求压在已经饱和的节点上",
+        fontsize=7.2, linespacing=1.25)
     # No "widest gap" callout: the title already states it, and at this size a second
     # sentence of the same fact only collides with the bottom rows' annotations.
     # Legend bottom-right, where rows F/H/G leave the right half of the panel empty; the

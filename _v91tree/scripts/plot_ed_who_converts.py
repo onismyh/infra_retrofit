@@ -125,7 +125,8 @@ def panel_concentration(ax, pr: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
-    ax.set_title("10 个厂址承担了全国\n响应量的 38%",
+    # 数就在同一根轴上（上面的 cum[k-1] 注记），标题不能写另一个。
+    ax.set_title(f"10 个厂址承担了全国\n响应量的 {cum[9]:.0f}%",
                  fontsize=6.8, linespacing=1.25)
 
 
@@ -227,8 +228,20 @@ def panel_basin(ax, pr: pd.DataFrame) -> None:
     ax.set_axisbelow(True)
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    ax.set_title("仅海河流域就吸收了其中三分之一以上",
-                 fontsize=6.8, linespacing=1.25)
+    # 领头流域与它的份额都从图里的同一张表读，不写死：v9 时是海河，v9.1 换成官方指标口径后
+    # 响应移到黄河与西北内陆河，写死的流域名会直接与它下面的条形矛盾。
+    _lead = g.sort_values("resp", ascending=False).iloc[0]
+    _share = 100.0 * float(_lead["resp"]) / float(g["resp"].sum())
+    _name = BASIN_NAMES_ZH.get(_lead["basin_code"], _lead["basin_name"])
+    _top2 = g.sort_values("resp", ascending=False).head(2)
+    _share2 = 100.0 * float(_top2["resp"].sum()) / float(g["resp"].sum())
+    if _share >= 55.0:
+        _title = f"仅{_name}一个流域就吸收了 {_share:.0f}%"
+    else:
+        _names = "、".join(BASIN_NAMES_ZH.get(r.basin_code, r.basin_name)
+                          for r in _top2.itertuples())
+        _title = f"{_names}两个流域吸收了 {_share2:.0f}%"
+    ax.set_title(_title, fontsize=6.8, linespacing=1.25)
 
 
 if __name__ == "__main__":
