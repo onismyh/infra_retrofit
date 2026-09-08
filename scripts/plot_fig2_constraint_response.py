@@ -426,17 +426,32 @@ def panel_a(ax, avail: pd.DataFrame, basins: list[str]) -> pd.DataFrame:
     for centre, year in zip(group_centres, (2030, 2060)):
         ax.text(centre, -0.155, str(year), transform=ax.get_xaxis_transform(),
                 ha="center", va="top", fontsize=8, fontweight="bold")
-    # COMPUTED. This title asserted 'four basins' for the unabated state; on the corrected
-    # dry-season budget the unabated count is three (the Northwest Interior falls to 83%) and
-    # capture tips it to four. That distinction IS the figure, so it is read off the data.
+    # COMPUTED, SENTENCE INCLUDED. The v9 version slotted two counts into a fixed sentence
+    # ("N 个流域已超出；捕集把第 M 个也推过线"). On v9.1's numbers the slots come out 0 and 1
+    # and the sentence stops being one. Both the counts AND which sentence they license are
+    # read off the data, so the title cannot assert a shape the numbers do not have.
     _s30 = basin_supply(avail, 2030); _d30 = basin_demand(SOLVED["ssp126"], 2030)
     _shared = [b for b in _d30.index if b in _s30.index]
-    _n_un = sum(_d30.loc[b, "unabated"] > float(_s30.loc[b].median()) for b in _shared)
-    _n_cap = sum(_d30.loc[b, "full_capture"] > float(_s30.loc[b].median()) for b in _shared)
-    _words = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五"}
-    ax.set_title(f"{_words.get(_n_un, _n_un)}个北方流域的需求已超出生态流量配额；" + chr(10) +
-                 f"捕集使超出量大致翻倍，并把第 {_n_cap} 个流域也推过线",
-                 linespacing=1.25)
+    _un = [b for b in _shared if _d30.loc[b, "unabated"] > float(_s30.loc[b].median())]
+    _cap = [b for b in _shared if _d30.loc[b, "full_capture"] > float(_s30.loc[b].median())]
+
+    def _zh(codes) -> str:
+        return "、".join(BASIN_NAMES_ZH.get(b, b) for b in codes)
+
+    _added = [b for b in _cap if b not in _un]
+    if not _un and not _cap:
+        _title = ("现状机组与全量捕集的耗水需求都在生态流量配额之内" + chr(10)
+                  + f"（{CEILING_YEAR} 年，集合中位数；最紧的流域见面板 b）")
+    elif not _un and _added:
+        _title = (f"现状机组的耗水需求全部在生态流量配额之内；" + chr(10)
+                  + f"全量捕集把 {_zh(_added)} 推过配额线（{CEILING_YEAR} 年，集合中位数）")
+    elif _un and _added:
+        _title = (f"{_zh(_un)} 的现状需求已超出生态流量配额；" + chr(10)
+                  + f"全量捕集再把 {_zh(_added)} 推过线（{CEILING_YEAR} 年，集合中位数）")
+    else:
+        _title = (f"{_zh(_un)} 的现状需求已超出生态流量配额；" + chr(10)
+                  + f"全量捕集不改变越限流域的集合（{CEILING_YEAR} 年，集合中位数）")
+    ax.set_title(_title, linespacing=1.25)
 
     handles = [
         Patch(facecolor=C126, alpha=0.45, edgecolor=C126, label="供给 SSP1-2.6（10 个成员）"),
@@ -444,7 +459,7 @@ def panel_a(ax, avail: pd.DataFrame, basins: list[str]) -> pd.DataFrame:
         Line2D([], [], color="black", marker="x", ls="none", ms=3.4, label="已求解成员"),
         Line2D([], [], color=DEMAND_UN, lw=1.5, label="需求：未改造（现状冷却方式）"),
         Line2D([], [], color=DEMAND_CAP, lw=1.5, label="需求：全量捕集（现状冷却方式）"),
-        Line2D([], [], color=REALISED, marker="D", ls="none", ms=3.0, label="模型实际取水"),
+        Line2D([], [], color=REALISED, marker="D", ls="none", ms=3.0, label="模型实际耗水"),
     ]
     ax.legend(handles=handles, frameon=False, fontsize=5.9, ncol=3, loc="upper center",
               bbox_to_anchor=(0.5, -0.245), columnspacing=1.0, handlelength=1.4)
@@ -629,8 +644,16 @@ def ladder_table():
     frame = pd.DataFrame(rows).set_index("stat")
     frame["step_env"] = frame["ctrl"] - frame["base"]
     frame["step_quota"] = frame["treat"] - frame["ctrl"]
-    frame["env_resolved"] = frame["step_env"].abs() > frame["floor"]
-    frame["quota_resolved"] = frame["step_quota"].abs() > frame["floor"]
+    # NaN floor means "not measured yet", which is not the same statement as "measured and not
+    # cleared". Kept as NaN so both the panel and the report can tell them apart.
+    frame["env_resolved"] = np.where(frame["floor"].isna(), np.nan,
+                                     frame["step_env"].abs() > frame["floor"])
+    frame["quota_resolved"] = np.where(frame["floor"].isna(), np.nan,
+                                       frame["step_quota"].abs() > frame["floor"])
+    # A quantity that is zero in BASE cannot be expressed as a multiple of BASE. Capture is 0
+    # everywhere at 2030 and retirement may be 0 at 2040; normalising against it yields inf,
+    # which matplotlib draws as nothing at all and no one notices.
+    frame["normalisable"] = frame["base"].abs() > 1e-9
     return frame
 
 
@@ -651,8 +674,18 @@ def panel_c(ax, table):
                 transform=ax.transAxes)
         return
 
-    stats = [s for s, *_ in LADDER_STATS if s in table.index]
-    labels = [lab for s, lab, *_ in LADDER_STATS if s in table.index]
+    drawable = table.index[table["normalisable"]]
+    dropped = [s for s in table.index if s not in drawable]
+    if dropped:
+        print(f"  [panel c] BASE = 0，无法归一化，未画：{'、'.join(dropped)}（绝对值见下表）")
+    stats = [s for s, *_ in LADDER_STATS if s in drawable]
+    labels = [lab for s, lab, *_ in LADDER_STATS if s in drawable]
+    if not stats:
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "面板 c：三个量在 BASE 下均为 0，无法以 BASE 归一化",
+                ha="center", va="center", fontsize=6.0, color="#888888",
+                transform=ax.transAxes)
+        return
     xs = np.arange(len(stats))
     rung_x = (-0.26, 0.0, 0.26)
     colours = (C_BASE_RUNG, C_ENV_RUNG, C_QUOTA_RUNG)
@@ -673,6 +706,8 @@ def panel_c(ax, table):
             ax.scatter(xs[i] + dx, v, s=22, color=colour, edgecolor="white", lw=0.4,
                        zorder=5, label=names[j] if i == 0 else None)
         for j, key in enumerate(("env_resolved", "quota_resolved")):
+            if r[key] is None or (isinstance(r[key], float) and np.isnan(r[key])):
+                continue          # 地板还没测出来，不是"未分辨"
             if not bool(r[key]):
                 ax.text(xs[i] + rung_x[j + 1], vals[j + 1], " 未分辨", fontsize=4.8,
                         color="#B02418", va="bottom", ha="center", zorder=6)
@@ -690,7 +725,7 @@ def panel_c(ax, table):
 
 
 def main() -> None:
-    print("Fig 2 - a presumptive environmental-flow allowance the northern fleet already exceeds")
+    print("Fig 2 - two water institutions on two water bases, and which one the fleet runs into")
     for scenario in list(SOLVED.values()) + [FROZEN]:
         require_current_vintage(scenario)
     print(f"  vintage gate passed (26 columns): {', '.join(list(SOLVED.values()) + [FROZEN])}")
@@ -803,7 +838,7 @@ def main() -> None:
         print("    2030 用水总量控制指标, so the raw residual is NEGATIVE and the published")
         print("    figure is the pro-rata-scaled one (inputs/water_basin_caps.csv carries both,")
         print("    residual_uncapped_1e8_m3 and residual_1e8_m3). The overshoot is a real")
-        print("    statement about that basin's own红线; its exact multiple is not a robust")
+        print("    statement about that basin's own 红线; its exact multiple is not a robust")
         print("    number, because the denominator is near zero by construction.")
 
     print("\n  unserved coal water demand, solved runs (Mm3)")
@@ -814,8 +849,19 @@ def main() -> None:
     frozen = unserved_by_year(FROZEN)
     print(f"    {'noair':<7} " + "  ".join(f"{int(y)}: {v:8.2f}" for y, v in frozen.items())
           + f"   basins {','.join(unserved_basins(FROZEN)) or 'none'}")
-    print("    (noair is not plotted; it is the counterfactual that shows the ceiling is real "
-          "when dry-cooling conversion is forbidden)")
+    # MEASURED, NOT ASSUMED. v9's noair run leaned 18.5% of its objective on the big-M and
+    # that is what this line used to describe. Under v9.1 it leans on nothing: with the
+    # retrofit forbidden the fleet still meets both water rules, by retiring capacity and
+    # capturing less. At 2040 retirement goes 4.6 -> 102.6 GW and capture 802 -> 704 Mt.
+    print("    (noair is not plotted. It carries NO unserved water either: with the retrofit")
+    print("     forbidden the model still complies, by retiring capacity and capturing less")
+    print("     rather than by paying the big-M. Fig 3 and Fig 5 price that. Do not describe")
+    print("     it as a ceiling the fleet cannot meet.)")
+
+    def _verdict(flag) -> str:
+        if flag is None or (isinstance(flag, float) and np.isnan(flag)):
+            return "地板未测"
+        return "分辨得出" if bool(flag) else "未分辨"
 
     print("\npanel c -- the three-rung response, BASE -> 仅生态流量 -> ＋用水总量指标")
     if table_c is None:
@@ -826,10 +872,8 @@ def main() -> None:
             _u = _r["unit"]
             print(f"    {_stat} ({int(_r['year'])}, {_u}): "
                   f"{_r['base']:.1f} -> {_r['ctrl']:.1f} -> {_r['treat']:.1f}   "
-                  f"step1 {_r['step_env']:+.1f} "
-                  f"({'分辨得出' if _r['env_resolved'] else '未分辨'}), "
-                  f"step2 {_r['step_quota']:+.1f} "
-                  f"({'分辨得出' if _r['quota_resolved'] else '未分辨'}), "
+                  f"step1 {_r['step_env']:+.1f} ({_verdict(_r['env_resolved'])}), "
+                  f"step2 {_r['step_quota']:+.1f} ({_verdict(_r['quota_resolved'])}), "
                   f"floor {_r['floor']:.1f}")
         print("    A step below its floor is 未分辨 -- neither zero nor an effect. CLAUDE.md 二.4")
         print("    also records that on this model only the objective and the air-cooling")

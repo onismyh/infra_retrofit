@@ -1,9 +1,17 @@
 """Extended Data: the accounting basis decides which cooling technology looks thirsty.
 
-WHY THIS MATTERS ENOUGH FOR ITS OWN FIGURE. The paper constrains on water CONSUMPTION, prices on
-the regulatory QUOTA (qushui ding'e), and reports WITHDRAWAL only as a diagnostic. That looks
-like bookkeeping until you notice it changes the answer: the three bases do not merely differ in
-magnitude, they RANK THE COOLING TECHNOLOGIES IN DIFFERENT ORDERS.
+WHY THIS MATTERS ENOUGH FOR ITS OWN FIGURE, AND MORE SO SINCE v9.1. The model now constrains on
+TWO of these three bases at once: the environmental-flow rule acts on CONSUMPTION and the
+用水总量控制指标 acts on WITHDRAWAL, which is what the 公报 meters. The regulatory QUOTA
+(qushui ding'e) is priced but constrains nothing. So this is no longer a note about bookkeeping
+with one live basis and two diagnostics -- picking the wrong basis for the wrong rule changes
+the answer, and the three bases do not merely differ in magnitude, they RANK THE COOLING
+TECHNOLOGIES IN DIFFERENT ORDERS.
+
+The 定额 excludes the once-through condenser flow; the 公报 includes it (直流火(核)电 453.8亿 is
+a sub-column of 工业用水). Constraining the allocation rule on the 定额 would understate the
+fleet's claim on it roughly five-fold. That is the single most consequential basis choice in the
+study, and panel (a) is the evidence for it.
 
 Capacity-weighted over the 350 sites, in m3 MWh-1. Sites are grouped by their CAPACITY-dominant
 cooling technology, not by the unit-count mode the model's own `dominant_cooling_technology`
@@ -24,14 +32,15 @@ under the quota, because the quota excludes the condenser flow a once-through pl
 the river a few degrees warmer. A study that reports "water use" without naming its basis has not
 said which of these two opposite statements it means.
 
-Panel (c) answers the question the first two provoke: are the four over-allowance basins short
+Panel (c) answers the question the first two provoke: are the constrained basins short
 because their plants are thirsty, or because the water is not there? Capacity-weighted they
 consume 1.09 m3 MWh-1 against 0.77 for the rest -- a factor of 1.4, not a factor of ten -- and
 the Yellow, the largest of the four, is the LEAST intense of them because 56% of its capacity is
 already dry-cooled. The shortage is of supply, and the north has adapted where it has had to.
 
-Note on the Chinese term: it stays in this docstring and the caption rather than on an axis. The
-figure font stack has no CJK coverage, so an axis label carrying it renders as empty boxes.
+Note on the Chinese term: the repo font is SimHei and carries CJK fine (CLAUDE.md 3.1); what it
+lacks is U+2212 and the superscript digits, so units go through mathtext. The old warning here
+predates the SimHei migration.
 """
 from __future__ import annotations
 

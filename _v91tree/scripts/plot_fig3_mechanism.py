@@ -452,7 +452,19 @@ def panel_a_cost(ax, table: pd.DataFrame) -> None:
     ax.set_xticklabels([_SHORT_ZH.get(v, v) for v in table["short"]], fontsize=6.0)
     ax.set_xlim(-0.62, len(table) - 0.38)
     ax.set_ylabel("系统成本变化（%）", fontsize=7)
-    ax.set_title("只有分配规则\n会改变成本", fontsize=7.2)
+    # COMPUTED FROM THE SAME FLAGS THE BARS CARRY. A hardcoded verdict here can contradict the
+    # per-bar labels directly beneath it, and did: on v9.1 both water rungs land inside the
+    # solver's own bound, so no cost effect is certified at all.
+    _cert = [str(s) for s, tt, bl, bh in zip(table["short"], total, band_lo, band_hi)
+             if tt > bh or tt < bl]
+    _zh = {"accounted": "生态流量规则", "quota": "分配规则", "SSP3-7.0": "气候情景"}
+    if not _cert:
+        _t = "两条水规则的成本效应\n都落在求解器界内"
+    elif len(_cert) == 1:
+        _t = f"只有{_zh.get(_cert[0], _cert[0])}\n的成本效应可证"
+    else:
+        _t = "、".join(_zh.get(c, c) for c in _cert) + "\n的成本效应均可证"
+    ax.set_title(_t, fontsize=7.2)
     ax.legend(
         handles=[
             # The grey swatch is a SHAPE key, not a colour key, and the label says so. The
@@ -1164,8 +1176,8 @@ def main() -> None:
             f"上限取自国办发〔2013〕2号 用水总量控制指标扣除非电既有取水。"
             f"在预留后的配额下，模型完全满足 {NEAR_YEAR} 年的水约束：未满足需求为 "
             f"{binds['unserved_mm3']:.1f} Mm$^3$，占 {binds['unserved_pct']:.2f}%。"
-            f"在订正后的枯水期口径下，全国唯一残余缺口是西北内陆河一个节点在 2040–2060 年的 "
-            f"1.2–2.6 Mm$^3$（新疆）；也就是说约束是靠改造冷却系统满足的，不是靠买缺口。"
+            f"两条规则均无未满足需求，即约束全程靠改造冷却系统满足，不是靠买缺口；"
+            f"即使禁止空冷改造，缺口仍为 0，模型改以提前退役与少捕集合规。"
             f"该缺口的 big-M 惩罚占其目标函数的 {binds['slack_share']:.1%}，"
             f"在 a、b 两个面板中显式画出，而不是并入成本。"
             f"若冻结空冷改造，则有 {values[FROZEN]['unserved_pct']:.1f}% 的需求无法满足。"
