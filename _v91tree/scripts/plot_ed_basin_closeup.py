@@ -365,8 +365,10 @@ def main() -> None:
         # 地图顶到 0.915：它的两行标题要落在列首规则文字（0.975）之下。之前 0.965 的顶
         # 让标题直接压在规则文字上，右列尤其糊成一片。
         ax_map = fig.add_axes([x0 - 0.020, 0.660, 0.430, 0.255])
-        ax_led = fig.add_axes([x0 + 0.115, 0.400, 0.300, 0.185])
-        ax_sit = fig.add_axes([x0 + 0.115, 0.128, 0.300, 0.205])
+        # 面板 b 的横轴标签与面板 c 的两行标题会抢同一条缝：把两块各让出 0.03，
+        # 中间留 0.12（约 22 mm）给"轴标签 + 标题"这一对。
+        ax_led = fig.add_axes([x0 + 0.115, 0.430, 0.300, 0.170])
+        ax_sit = fig.add_axes([x0 + 0.115, 0.120, 0.300, 0.190])
 
         panel_map(ax_map, h, spec["code"])
         ledgers.append(panel_ledger(ax_led, spec, h))
