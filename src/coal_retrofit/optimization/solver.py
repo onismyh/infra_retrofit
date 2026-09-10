@@ -161,6 +161,34 @@ def _run_provenance(model) -> dict[str, object]:
     }
 
 
+def _incumbent_logger(year_payloads: list[dict[str, object]]):
+    """Gurobi MIPSOL callback printing shortfalls and slacks of each new incumbent."""
+    slack_keys = ("injectivity_slack_mtpa", "storage_slack_mt", "edge_slack_mtpa", "biomass_slack_gj")
+
+    def _callback(model, where) -> None:
+        if where != GRB.Callback.MIPSOL:
+            return
+        obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+        bound = model.cbGet(GRB.Callback.MIPSOL_OBJBND)
+        parts: list[str] = []
+        for payload in year_payloads:
+            groups = {
+                str(group): float(model.cbGetSolution(var))
+                for group, var in payload["target_shortfall_by_group"].items()
+            }
+            slacks = {
+                key: float(np.sum(model.cbGetSolution(payload[key].tolist())))
+                for key in slack_keys
+                if payload.get(key) is not None and int(payload[key].shape[0]) > 0
+            }
+            short_txt = " ".join(f"{g}={v:.1f}" for g, v in groups.items() if v > 1e-6) or "none"
+            slack_txt = " ".join(f"{k.split('_')[0]}={v:.2f}" for k, v in slacks.items() if v > 1e-6) or "none"
+            parts.append(f"{payload['year']}: shortfall[{short_txt}] slack[{slack_txt}]")
+        print(f"INCUMBENT obj={obj:.1f} bound={bound:.1f} | " + " ; ".join(parts), flush=True)
+
+    return _callback
+
+
 def _solve_joint_multi_period(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
@@ -1180,7 +1208,13 @@ def _solve_joint_multi_period(
             if var.VType != GRB.CONTINUOUS:
                 var.VType = GRB.CONTINUOUS
         logger.warning("COAL_RETROFIT_LP_RELAX set: solving the LP relaxation, not the MIP")
-    model.optimize()
+    # Diagnostic only: print every new incumbent's per-group target shortfall and the physical
+    # slacks, so a stalled MIP gap can be attributed (penalty-laden incumbent vs weak bound)
+    # without waiting for the run to finish. Read-only callback; search path unchanged.
+    if os.environ.get("COAL_RETROFIT_LOG_INCUMBENTS"):
+        model.optimize(_incumbent_logger(year_payloads))
+    else:
+        model.optimize()
     status = _extract_solver_status(model)
     solver_quality = _solver_quality(model, status)
     has_solution = bool(solver_quality.get("solution_count") or 0)
