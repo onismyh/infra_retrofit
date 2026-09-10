@@ -1,0 +1,21 @@
+sector,planning_year,times_output_mt,output_index,basis
+steel_bf_bof,2030,777.5,1.0,TIMES sub-technology output
+steel_bf_bof,2040,353.2,0.4542,TIMES sub-technology output
+steel_bf_bof,2050,219.7,0.2825,TIMES sub-technology output
+steel_bf_bof,2060,179.7,0.2311,TIMES sub-technology output
+steel_eaf,2030,194.4,1.0,TIMES sub-technology output
+steel_eaf,2040,353.2,1.8168,TIMES sub-technology output
+steel_eaf,2050,408.0,2.0988,TIMES sub-technology output
+steel_eaf,2060,346.2,1.7811,TIMES sub-technology output
+cement,2030,1283.0,1.0,TIMES sub-technology output
+cement,2040,998.9,0.7786,TIMES sub-technology output
+cement,2050,841.0,0.6555,TIMES sub-technology output
+cement,2060,723.6,0.564,TIMES sub-technology output
+ammonia,2030,51.3,1.0,TIMES sub-technology output
+ammonia,2040,42.7,0.8322,TIMES sub-technology output
+ammonia,2050,40.0,0.7802,TIMES sub-technology output
+ammonia,2060,37.5,0.7313,TIMES sub-technology output
+methanol,2030,51.3,1.0,ammonia proxy (no TIMES methanol series)
+methanol,2040,42.7,0.8322,ammonia proxy (no TIMES methanol series)
+methanol,2050,40.0,0.7802,ammonia proxy (no TIMES methanol series)
+methanol,2060,37.5,0.7313,ammonia proxy (no TIMES methanol series)

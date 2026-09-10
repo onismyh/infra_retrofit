@@ -21,7 +21,8 @@ except ImportError:  # pragma: no cover
     gp = None
     GRB = None
 
-from ..constants_industry import INDUSTRY_ROUTES
+from ..constants import NH3_H2_RATIO
+from ..constants_industry import INDUSTRY_ROUTES, POWER_TARGET_GROUP
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 from ._shared import (
     PreparedInputs,
@@ -245,6 +246,30 @@ def _solve_joint_multi_period(
     pipeline_indices = [i for i in range(n_nodes) if i not in source_sink_indices]
     B = prepared.network.incidence  # (n_nodes, n_edges)
 
+    # === Sector-target baselines: each group's own 2030 frozen-technology emissions =========
+    # The caps are fractions of these. Computed once, from the same data path the yearly
+    # matrices use, so the 2030 baseline is what the 2030 constraint would see whether or not
+    # 2030 is in `years`.
+    sector_base_2030: dict[str, float] = {}
+    if scenario.uses_sector_targets:
+        fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
+        scale_2030 = float(scenario.operating_hours_scale(2030, fleet_hours_now)) if fleet_hours_now > 0 else 1.0
+        sector_base_2030[POWER_TARGET_GROUP] = float(
+            prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
+        )
+        if prepared.industry is not None:
+            from .industry import industry_year_data as _industry_year_data
+
+            base_2030 = _industry_year_data(prepared.industry, scenario, assumptions, 2030)
+            groups = base_2030["target_groups"]
+            for group in sorted(set(str(g) for g in groups)):
+                sector_base_2030[str(group)] = float(
+                    base_2030["baseline_emissions_mt"][groups == group].sum()
+                )
+        logger.info("sector targets from %s; 2030 baselines (Mt): %s",
+                    scenario.sector_target_source,
+                    {g: round(v, 1) for g, v in sector_base_2030.items()})
+
     for year_index, year in enumerate(years):
         interval_years = scenario.interval_years(years, year_index, assumptions)
         year_data = _build_year_matrices(prepared, scenario, assumptions, year, state)
@@ -264,11 +289,28 @@ def _solve_joint_multi_period(
         # add_cap[e, t] = 1 iff capacity is actually added on edge e in period t.
         # build_edge is the latched "has been built" flag tied to add_cap below.
         add_cap = model.addMVar(edge_count, vtype=GRB.BINARY, name=f"add_cap_{year_suffix}")
+        # Capacity is added in whole pipes of the diameter tiers; `new_cap_mtpa` is the derived
+        # total so every downstream constraint keeps reading one continuous quantity.
+        pipe_tiers = tuple(float(t) for t in year_data["pipe_tiers_mtpa"])
+        pipe_count = model.addMVar(
+            (edge_count, len(pipe_tiers)), vtype=GRB.INTEGER, lb=0.0,
+            ub=float(assumptions.max_parallel_pipes), name=f"pipe_count_{year_suffix}",
+        )
         new_cap_mtpa = model.addMVar(edge_count, lb=0.0, name=f"new_cap_mtpa_{year_suffix}")
+        model.addConstrs(
+            (
+                new_cap_mtpa[e] == gp.quicksum(pipe_tiers[k] * pipe_count[e, k] for k in range(len(pipe_tiers)))
+                for e in range(edge_count)
+            ),
+            name=f"new_cap_from_tiers_{year_suffix}",
+        )
         biomass_flow_gj = model.addMVar(biomass_link_count, lb=0.0, name=f"biomass_flow_gj_{year_suffix}")
         ammonia_flow_kg = model.addMVar(ammonia_link_count, lb=0.0, name=f"ammonia_flow_kg_{year_suffix}")
         water_flow_m3 = model.addMVar(water_link_count, lb=0.0, name=f"water_flow_m3_{year_suffix}")
         target_shortfall_mt = model.addVar(lb=0.0, name=f"target_shortfall_mt_{year_suffix}")
+        # One shortfall per sector group under sector targets (the scalar above then equals
+        # their sum, so every reader of `target_shortfall_mt` keeps working).
+        target_shortfall_by_group: dict[str, object] = {}
         biomass_slack_gj = model.addMVar(biomass_node_count, lb=0.0, name=f"biomass_slack_gj_{year_suffix}")
         ammonia_slack_kg = model.addMVar(ammonia_node_count, lb=0.0, name=f"ammonia_slack_kg_{year_suffix}")
         water_slack_m3 = model.addMVar(water_node_count, lb=0.0, name=f"water_slack_m3_{year_suffix}")
@@ -293,23 +335,34 @@ def _solve_joint_multi_period(
         )
         model.addConstrs((share[plant_idx, :].sum() == 1.0 for plant_idx in range(plant_count)), name=f"share_sum_{year_suffix}")
 
-        # Retrofit installed-stock tracking for one-time CCS/BECCS retrofit CAPEX:
-        # installed[p, j, t] = max over tau<=t of share[p, k_j, tau] (upper bound below,
-        # cross-period monotonicity later). CAPEX is charged on stock increments, so a
+        # Retrofit installed-stock tracking for one-time CCS/BECCS retrofit CAPEX. Two stocks:
+        #   j = 0  the CAPTURE ISLAND, >= share_ccs + share_beccs, priced at the CCS capex
+        #   j = 1  the BECCS INCREMENT, >= share_beccs, priced at (BECCS - CCS) capex
+        # so a hub that moves from CCS to BECCS (or back) pays for the capture island once and
+        # only the biomass-handling increment on top. Before 2026-09-10 the two pathways had
+        # independent stocks and a switch paid the full capex twice. Stocks are bounded below
+        # only (cross-period monotone later); CAPEX is charged on stock increments, so a
         # temporary share dip never re-triggers the cost.
+        capex_matrix = np.asarray(year_data["ccs_retrofit_capex_matrix"], dtype=np.float64)
+        ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
+        stock_coeff = np.column_stack([
+            capex_matrix[:, ccs_k],
+            np.maximum(0.0, capex_matrix[:, beccs_k] - capex_matrix[:, ccs_k]),
+        ])
+        year_data["retrofit_stock_capex"] = stock_coeff
         if year_index == 0:
-            capex_pathway_indices = [
-                k for k in range(len(PATHWAYS))
-                if float(np.max(np.asarray(year_data["ccs_retrofit_capex_matrix"])[:, k])) > 0.0
-            ]
+            capex_pathway_indices = [ccs_k, beccs_k]
         retrofit_installed = model.addMVar(
-            (plant_count, len(capex_pathway_indices)), lb=0.0, name=f"retrofit_installed_{year_suffix}"
+            (plant_count, 2), lb=0.0, name=f"retrofit_installed_{year_suffix}"
         )
-        for j, k in enumerate(capex_pathway_indices):
-            model.addConstrs(
-                (retrofit_installed[p, j] >= share[p, k] for p in range(plant_count)),
-                name=f"retrofit_installed_lb_{k}_{year_suffix}",
-            )
+        model.addConstrs(
+            (retrofit_installed[p, 0] >= share[p, ccs_k] + share[p, beccs_k] for p in range(plant_count)),
+            name=f"retrofit_installed_lb_capture_{year_suffix}",
+        )
+        model.addConstrs(
+            (retrofit_installed[p, 1] >= share[p, beccs_k] for p in range(plant_count)),
+            name=f"retrofit_installed_lb_beccs_{year_suffix}",
+        )
 
         # Expired plants: retire OR rebuild (site rebuild at 70% new-build cost)
         retire_idx = PATHWAY_INDEX["retire"]
@@ -357,7 +410,9 @@ def _solve_joint_multi_period(
             from .industry import add_industry_year
 
             industry_payload = add_industry_year(
-                model, prepared.industry, year_data["industry"], year_suffix
+                model, prepared.industry, year_data["industry"], year_suffix,
+                h2_link_cost=year_data.get("industry_h2_link_cost_cny_per_kg"),
+                h2_hub_membership=year_data.get("industry_h2_hub_membership"),
             )
             for hub_idx, hub_id in enumerate(industry_hub_ids):
                 n_idx = node_idx_dict[prepared.network.industry_node_ids[hub_id]]
@@ -393,6 +448,23 @@ def _solve_joint_multi_period(
             biomass_node_count,
             f"biomass_node_limit_{year_suffix}",
         )
+        # Fleet-wide biomass ceiling (16 EJ/yr by default), in the solver's scaled flow units.
+        if assumptions.biomass_national_cap_gj_per_year > 0:
+            model.addConstr(
+                biomass_use_gj.sum()
+                <= assumptions.biomass_national_cap_gj_per_year
+                / float(year_data.get("biomass_flow_scale", 1.0)),
+                name=f"biomass_national_cap_{year_suffix}",
+            )
+        # Industrial hydrogen draws on the SAME nodes, in NH3-equivalent: a kg of H2 taken as
+        # hydrogen is a kg that cannot go into the node's ammonia (1 / NH3_H2_RATIO kg NH3).
+        if (
+            industry_payload is not None
+            and year_data.get("industry_h2_node_membership") is not None
+            and int(industry_payload["h2_flow_kg"].shape[0]) > 0
+        ):
+            h2_node_draw_nh3_eq = (year_data["industry_h2_node_membership"] @ industry_payload["h2_flow_kg"]) * (1.0 / NH3_H2_RATIO)
+            ammonia_node_expr = ammonia_node_expr + h2_node_draw_nh3_eq
         _add_vector_upper_bound(
             model,
             ammonia_node_expr,
@@ -400,6 +472,23 @@ def _solve_joint_multi_period(
             ammonia_node_count,
             f"ammonia_node_limit_{year_suffix}",
         )
+        # National ceilings on top of the node potentials (sources in `OptimizationAssumptions`):
+        # (1) green ammonia available to the coal fleet, Mt NH3/yr; (2) green hydrogen drawn
+        # from the shared electrolysis nodes by every user, Mt H2/yr, with fleet ammonia
+        # counted in hydrogen terms. Both in the solver's scaled kg units.
+        _nh3_scale = float(year_data.get("ammonia_flow_scale", 1.0))
+        _fleet_cap_mt = assumptions.ammonia_fleet_cap_mt(year)
+        if _fleet_cap_mt > 0:
+            model.addConstr(
+                ammonia_use_kg.sum() <= _fleet_cap_mt * 1e9 / _nh3_scale,
+                name=f"ammonia_fleet_cap_{year_suffix}",
+            )
+        _h2_cap_mt = assumptions.green_h2_national_cap_mt(year)
+        if _h2_cap_mt > 0:
+            model.addConstr(
+                ammonia_node_expr.sum() * NH3_H2_RATIO <= _h2_cap_mt * 1e9 / _nh3_scale,
+                name=f"green_h2_national_cap_{year_suffix}",
+            )
         # Water node limit — only add when water constraints are active (not no_water mode).
         # This is the PHYSICAL half: the environmental-flow rule, acting on consumption, which
         # is the quantity a depletion rule is written about.
@@ -479,30 +568,58 @@ def _solve_joint_multi_period(
                     <= float(basin_available[basin_idx]) + water_basin_slack_m3[basin_idx],
                     name=f"water_basin_limit_{code}_{year_suffix}",
                 )
+        # Injection rate available THIS year: the buildable rate times the deployment ramp.
+        injectivity_year = np.asarray(year_data["storage_injectivity_mtpa"], dtype=np.float64)
         model.addConstrs(
             (
                 storage_use_mtpa[storage_idx]
-                <= float(prepared.storages["injectivity_mtpa"].iloc[storage_idx]) + injectivity_slack_mtpa[storage_idx]
+                <= float(injectivity_year[storage_idx]) + injectivity_slack_mtpa[storage_idx]
                 for storage_idx in range(storage_count)
             ),
             name=f"injectivity_limit_{year_suffix}",
         )
-        # ONE joint target across coal power and industry (the author's choice, 2026-09-07):
-        # both sides of the inequality gain industry, so the same target fraction now applies to
-        # the combined baseline and the SOLVER decides which sector abates. Note what this does
-        # to the denominator -- coal 5 392 Mt + industry 3 269 Mt -- so a given target fraction
-        # demands 61% more absolute abatement than it did with coal alone. Runs with industry on
-        # and off are therefore NOT differenceable; that is why `include_industry` defaults off.
-        target_reduction = total_reduction_mt
-        target_baseline_mt = float(year_data["emissions_mt"].sum())
-        if industry_payload is not None:
-            target_reduction = target_reduction + industry_payload["total_reduction_mt"]
-            target_baseline_mt += float(year_data["industry"]["baseline_emissions_mt"].sum())
-        model.addConstr(
-            target_reduction + target_shortfall_mt
-            >= scenario.target_for_year(year) * target_baseline_mt,
-            name=f"emission_target_{year_suffix}",
-        )
+        if scenario.uses_sector_targets:
+            # One residual cap per sector group:
+            #     residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)
+            # The coal fleet is the `power` group; industrial hubs map to steel / cement /
+            # chemicals through SECTOR_TARGET_GROUP. Each group carries its own shortfall so
+            # the report can say WHICH cap could not be met.
+            caps = year_data["sector_cap_fraction"]
+            residual_exprs: dict[str, object] = {
+                POWER_TARGET_GROUP: float(year_data["emissions_mt"].sum()) - total_reduction_mt
+            }
+            if industry_payload is not None:
+                residual_exprs.update(industry_payload["residual_by_group"])
+            for group, residual in residual_exprs.items():
+                if group not in caps:
+                    raise ValueError(
+                        f"sector_targets_{scenario.sector_target_source}.csv has no {year} cap for group {group!r}"
+                    )
+                shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
+                target_shortfall_by_group[group] = shortfall
+                model.addConstr(
+                    residual - shortfall <= float(caps[group]) * float(sector_base_2030[group]),
+                    name=f"sector_target_{group}_{year_suffix}",
+                )
+            model.addConstr(
+                target_shortfall_mt == gp.quicksum(target_shortfall_by_group.values()),
+                name=f"target_shortfall_total_{year_suffix}",
+            )
+        else:
+            # LEGACY: one joint reduction floor across coal power and industry (the author's
+            # choice of 2026-09-07). Both sides of the inequality gain industry, so the same
+            # target fraction applies to the combined baseline and the SOLVER decides which
+            # sector abates. Kept verbatim so runs solved before 2026-09-10 stay reproducible.
+            target_reduction = total_reduction_mt
+            target_baseline_mt = float(year_data["emissions_mt"].sum())
+            if industry_payload is not None:
+                target_reduction = target_reduction + industry_payload["total_reduction_mt"]
+                target_baseline_mt += float(year_data["industry"]["baseline_emissions_mt"].sum())
+            model.addConstr(
+                target_reduction + target_shortfall_mt
+                >= scenario.target_for_year(year) * target_baseline_mt,
+                name=f"emission_target_{year_suffix}",
+            )
 
         for pathway, pathway_idx in PATHWAY_INDEX.items():
             if not scenario.path_enabled(pathway):
@@ -526,6 +643,7 @@ def _solve_joint_multi_period(
                 "co2_flow_bwd": co2_flow_bwd,
                 "build_edge": build_edge,
                 "add_cap": add_cap,
+                "pipe_count": pipe_count,
                 "rebuild": rebuild,
                 "retrofit_installed": retrofit_installed,
                 "new_cap_mtpa": new_cap_mtpa,
@@ -533,6 +651,7 @@ def _solve_joint_multi_period(
                 "ammonia_flow_kg": ammonia_flow_kg,
                 "water_flow_m3": water_flow_m3,
                 "target_shortfall_mt": target_shortfall_mt,
+                "target_shortfall_by_group": target_shortfall_by_group,
                 "biomass_slack_gj": biomass_slack_gj,
                 "ammonia_slack_kg": ammonia_slack_kg,
                 "water_slack_m3": water_slack_m3,
@@ -601,6 +720,7 @@ def _solve_joint_multi_period(
     # Retirement monotonicity: once a plant (partially) retires, it cannot restart.
     # share[p, retire, t+1] >= share[p, retire, t]  for all plants p and consecutive years t
     retire_idx = PATHWAY_INDEX["retire"]
+    ccs_idx, beccs_idx = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
             share_curr = year_payloads[yi]["share"]
@@ -609,6 +729,19 @@ def _solve_joint_multi_period(
             model.addConstrs(
                 (share_curr[p, retire_idx] >= share_prev[p, retire_idx] for p in range(plant_count)),
                 name=f"retire_mono_{yr_sfx}",
+            )
+            # Capture-share lock: a capture island once running keeps running, and the only way
+            # its share leaves the capture pathways is by retiring. Before 2026-09-10 only the
+            # capex STOCK was monotone; the operating share could drop to zero for free (with its
+            # O&M), i.e. a retrofit could be abandoned at no cost the period after it was paid for.
+            model.addConstrs(
+                (
+                    share_curr[p, ccs_idx] + share_curr[p, beccs_idx]
+                    >= share_prev[p, ccs_idx] + share_prev[p, beccs_idx]
+                    - (share_curr[p, retire_idx] - share_prev[p, retire_idx])
+                    for p in range(plant_count)
+                ),
+                name=f"capture_share_lock_{yr_sfx}",
             )
 
     # --- Inter-period pipeline constraints ---
@@ -662,31 +795,43 @@ def _solve_joint_multi_period(
     first_year_data = year_payloads[0]["year_data"]
     edge_base_stock = np.asarray(first_year_data["edge_base_stock_mtpa"], dtype=np.float64)
     edge_max_new_total = np.asarray(first_year_data["edge_max_new_mtpa"], dtype=np.float64)
-    edge_min_build = np.asarray(first_year_data["edge_min_build_mtpa"], dtype=np.float64)
     edge_buildable = (edge_max_new_total > 1e-9).astype(float)
 
     for payload in year_payloads:
         year_suffix = str(payload["year"])
         build_edge = payload["build_edge"]
         add_cap = payload["add_cap"]
+        pipe_count = payload["pipe_count"]
         new_cap_mtpa = payload["new_cap_mtpa"]
         edge_flow_mtpa = payload["edge_flow_mtpa"]
         edge_slack_mtpa = payload["edge_slack_mtpa"]
         storage_use_mtpa = payload["storage_use_mtpa"]
         storage_slack_mt = payload["storage_slack_mt"]
         interval_years = int(payload["interval_years"])
+        n_tiers = int(pipe_count.shape[1])
 
         model.addConstrs((build_edge[edge_idx] <= edge_buildable[edge_idx] for edge_idx in range(edge_count)), name=f"edge_buildable_{year_suffix}")
-        # Min/max new-capacity limits are tied to add_cap (per-period "adding capacity now"),
-        # NOT to the latched build_edge flag — otherwise the min-build rule would force
-        # repeated >= min_build additions in every period after the edge is first built.
+        # Capacity limits are tied to add_cap (per-period "adding capacity now"), NOT to the
+        # latched build_edge flag. Pipes of any tier can only be laid when add_cap is set, and
+        # add_cap can only be set when at least one pipe is laid, so the flag is exact.
         model.addConstrs(
             (new_cap_mtpa[edge_idx] <= edge_max_new_total[edge_idx] * add_cap[edge_idx] for edge_idx in range(edge_count)),
             name=f"edge_new_cap_limit_{year_suffix}",
         )
         model.addConstrs(
-            (new_cap_mtpa[edge_idx] >= edge_min_build[edge_idx] * add_cap[edge_idx] for edge_idx in range(edge_count)),
-            name=f"edge_min_build_{year_suffix}",
+            (
+                gp.quicksum(pipe_count[edge_idx, k] for k in range(n_tiers)) >= add_cap[edge_idx]
+                for edge_idx in range(edge_count)
+            ),
+            name=f"edge_add_lays_pipe_{year_suffix}",
+        )
+        model.addConstrs(
+            (
+                gp.quicksum(pipe_count[edge_idx, k] for k in range(n_tiers))
+                <= float(assumptions.max_parallel_pipes) * add_cap[edge_idx]
+                for edge_idx in range(edge_count)
+            ),
+            name=f"edge_pipes_need_add_{year_suffix}",
         )
         model.addConstrs(
             (add_cap[edge_idx] <= build_edge[edge_idx] for edge_idx in range(edge_count)),
@@ -766,18 +911,34 @@ def _solve_joint_multi_period(
             for p in range(plant_count) for k in range(len(PATHWAYS))
         )
 
-        # === Carbon cost: carbon_price × (E_p - reduction_p) × 1e6 ===
+        # === Carbon cost: carbon_price × residual × 1e6, on EVERY source ===
+        # Coal residual = E_p - reduction_p; industrial residual = baseline - reduction. Before
+        # 2026-09-10 only the coal term existed, so at a given price coal abated past any
+        # target while industry, paying nothing per tonne, did not move at all.
         carbon_price_t = float(year_data["carbon_price"])
-        carbon_cost = carbon_price_t * 1e6 * gp.quicksum(
-            float(year_data["emissions_mt"][p]) - plant_reduction_exprs[p]
-            for p in range(plant_count)
-        ) if carbon_price_t > 0 else 0.0
+        carbon_cost = 0.0
+        if carbon_price_t > 0:
+            carbon_cost = carbon_price_t * 1e6 * gp.quicksum(
+                float(year_data["emissions_mt"][p]) - plant_reduction_exprs[p]
+                for p in range(plant_count)
+            )
+            if payload.get("industry") is not None:
+                carbon_cost = carbon_cost + carbon_price_t * 1e6 * gp.quicksum(
+                    payload["industry"]["residual_by_group"].values()
+                )
 
-        # === Coal savings from biomass substitution (negative cost, per-plant coal price) ===
+        # === Coal savings from co-firing (negative cost, per-plant coal price) ===
+        # Biomass per GJ delivered; ammonia per kg via its LHV. The baseline_net matrix charges
+        # the full coal heat rate on every operating pathway, so both credits are needed.
         coal_savings_vec = year_data["coal_savings_per_gj"]
         coal_savings = gp.quicksum(
             float(coal_savings_vec[p]) * payload["biomass_use_gj"][p] for p in range(plant_count)
         )
+        nh3_savings_vec = year_data.get("coal_savings_per_kg_nh3")
+        if nh3_savings_vec is not None:
+            coal_savings = coal_savings + gp.quicksum(
+                float(nh3_savings_vec[p]) * payload["ammonia_use_kg"][p] for p in range(plant_count)
+            )
 
         # === Incremental O&M (pathway-specific, above baseline) ===
         incremental_om = gp.quicksum(
@@ -834,10 +995,11 @@ def _solve_joint_multi_period(
             for s in range(storage_count)
         )
 
-        # === Pipeline CAPEX ===
+        # === Pipeline CAPEX: whole pipes of each diameter tier ===
+        tier_capex = np.asarray(year_data["edge_tier_capex"], dtype=np.float64)
         pipe_capex = gp.quicksum(
-            float(year_data["edge_capex_coeff"][edge_idx]) * payload["new_cap_mtpa"][edge_idx]
-            for edge_idx in range(edge_count)
+            float(tier_capex[edge_idx, k]) * payload["pipe_count"][edge_idx, k]
+            for edge_idx in range(edge_count) for k in range(tier_capex.shape[1])
         )
 
         # === Slack penalties (resource slacks in scaled units, multiply by scale factor) ===
@@ -868,10 +1030,13 @@ def _solve_joint_multi_period(
                 for p in range(plant_count)
                 if float(year_data["stranded_per_plant"][p]) > 0
             )
-            # CCS retrofit CAPEX on the installed stock (equals share in the first period)
+            # Capture-island and BECCS-increment CAPEX on the installed stock (equals the
+            # share in the first period)
+            stock_coeff = np.asarray(year_data["retrofit_stock_capex"], dtype=np.float64)
             ccs_retrofit_capex = gp.quicksum(
-                float(year_data["ccs_retrofit_capex_matrix"][p, k_j]) * payload["retrofit_installed"][p, j]
-                for j, k_j in enumerate(capex_pathway_indices) for p in range(plant_count)
+                float(stock_coeff[p, j]) * payload["retrofit_installed"][p, j]
+                for j in range(stock_coeff.shape[1]) for p in range(plant_count)
+                if float(stock_coeff[p, j]) > 0.0
             )
             blend_upgrade_capex = _build_blend_upgrade_capex(
                 model, capacity_mw, payload["blend_level_b"], payload["blend_level_a"],
@@ -899,10 +1064,12 @@ def _solve_joint_multi_period(
             # (max historical share), not the period-over-period share delta — a share
             # dip followed by a rebound does NOT re-trigger the sunk retrofit cost.
             prev_installed = prev_payload["retrofit_installed"]
+            stock_coeff = np.asarray(year_data["retrofit_stock_capex"], dtype=np.float64)
             ccs_retrofit_capex = gp.quicksum(
-                float(year_data["ccs_retrofit_capex_matrix"][p, k_j])
+                float(stock_coeff[p, j])
                 * (payload["retrofit_installed"][p, j] - prev_installed[p, j])
-                for j, k_j in enumerate(capex_pathway_indices) for p in range(plant_count)
+                for j in range(stock_coeff.shape[1]) for p in range(plant_count)
+                if float(stock_coeff[p, j]) > 0.0
             )
             blend_upgrade_capex = _build_blend_upgrade_capex(
                 model, capacity_mw, payload["blend_level_b"], payload["blend_level_a"],
@@ -984,18 +1151,35 @@ def _solve_joint_multi_period(
             "rebuild_capex":      df * rebuild_capex / _COST_SCALE,
             "slack_penalty":       df * interval_weight * slack_cost / _COST_SCALE,
         }
-        # Industrial abatement cost, levelised per tonne, charged in every operating year on the
-        # same discount/annuity weights as every other annual cost here. The KEY IS ONLY ADDED
-        # WHEN INDUSTRY IS ON: `cost_breakdown.csv` is built by iterating this dict, so an
-        # always-present zero row would silently change the artifact schema of every run solved
-        # before industry existed, and any figure that pivots on `category` with it.
+        # Industrial abatement: the ANNUAL part (O&M share of the levelised cost, plus the
+        # hydrogen bought per link) on the same discount/annuity weights as every other annual
+        # cost here, and the CAPITAL part ONCE on the route-share increment, exactly as the
+        # coal side charges `ccs_retrofit_capex`. The KEYS ARE ONLY ADDED WHEN INDUSTRY IS ON:
+        # `cost_breakdown.csv` is built by iterating this dict, so an always-present zero row
+        # would silently change the artifact schema of every run solved before industry
+        # existed, and any figure that pivots on `category` with it.
         if payload.get("industry") is not None:
+            from .industry import industry_capex_expr
+
             payload["cost_exprs"]["industry_cost"] = (
                 df * interval_weight * payload["industry"]["annual_cost_cny"] / _COST_SCALE
+            )
+            prev_industry = None if year_position == 0 else year_payloads[year_position - 1]["industry"]
+            payload["cost_exprs"]["industry_capex"] = (
+                df * industry_capex_expr(payload["industry"], prev_industry) / _COST_SCALE
             )
         payload["objective_expr"] = gp.quicksum(list(payload["cost_exprs"].values()))
 
     model.setObjective(gp.quicksum(payload["objective_expr"] for payload in year_payloads), GRB.MINIMIZE)
+    # Diagnostic only: solve the LP relaxation in place (every integer/binary made continuous)
+    # so the same result tables can be read off the relaxed solution. Used to tell a weak
+    # relaxation from a poor incumbent when the MIP gap will not close. Never a model setting.
+    if os.environ.get("COAL_RETROFIT_LP_RELAX"):
+        model.update()
+        for var in model.getVars():
+            if var.VType != GRB.CONTINUOUS:
+                var.VType = GRB.CONTINUOUS
+        logger.warning("COAL_RETROFIT_LP_RELAX set: solving the LP relaxation, not the MIP")
     model.optimize()
     status = _extract_solver_status(model)
     solver_quality = _solver_quality(model, status)
@@ -1032,16 +1216,20 @@ def _solve_joint_multi_period(
                     "blend_level_b": np.zeros(plant_count),
                     "blend_level_a": np.zeros(plant_count),
                     "retrofit_installed": np.zeros((plant_count, len(capex_pathway_indices))),
+                    "pipe_count": np.zeros((edge_count, len(p["year_data"]["pipe_tiers_mtpa"]))),
                     "industry_share": np.zeros(
                         (0 if prepared.industry is None else len(prepared.industry.hubs),
                          len(INDUSTRY_ROUTES))
                     ),
+                    "industry_h2_flow_kg": np.zeros(0),
+                    "plant_reduction_mt": np.zeros(plant_count),
                     "total_reduction_mt": 0.0,
                     "co2_flow_fwd": np.zeros(edge_count),
                     "co2_flow_bwd": np.zeros(edge_count),
                     "cost_breakdown_cny": {k: 0.0 for k in list(year_payloads[0]["cost_exprs"].keys())},
                     "slacks": {
                         "target_shortfall_mt": 0.0,
+                        "target_shortfall_by_group": {},
                         "biomass_slack_gj": np.zeros(len(prepared.biomass)),
                         "ammonia_slack_kg": np.zeros(len(p["year_data"]["ammonia_nodes"])),
                         "water_slack_m3": np.zeros(len(p["year_data"]["water_nodes"])),
@@ -1095,10 +1283,20 @@ def _solve_joint_multi_period(
             "blend_level_b": _var_value(payload["blend_level_b"], plant_count),
             "blend_level_a": _var_value(payload["blend_level_a"], plant_count),
             "retrofit_installed": _var_value(payload["retrofit_installed"], (plant_count, len(capex_pathway_indices))),
+            "pipe_count": _var_value(payload["pipe_count"], (edge_count, len(year_data["pipe_tiers_mtpa"]))),
             "industry_share": (
                 _var_value(payload["industry"]["share"],
                            (len(prepared.industry.hubs), len(INDUSTRY_ROUTES)))
                 if payload.get("industry") is not None else np.zeros((0, len(INDUSTRY_ROUTES)))
+            ),
+            "industry_h2_flow_kg": (
+                _var_value(payload["industry"]["h2_flow_kg"], int(payload["industry"]["h2_flow_kg"].shape[0])) * _amm_s
+                if payload.get("industry") is not None else np.zeros(0)
+            ),
+            # Per-plant reduction from the constraint's own expression, so reports never have
+            # to rebuild abatement from `share` through a different emissions model.
+            "plant_reduction_mt": np.array(
+                [_expr_value(expr) for expr in payload["plant_reduction_exprs"]], dtype=np.float64
             ),
             # The SOLVER's own coal-side reduction, not a reconstruction. results.py rebuilds
             # abatement from `share` through a reporting emissions model that does not match
@@ -1110,6 +1308,10 @@ def _solve_joint_multi_period(
             "cost_breakdown_cny": {category: _expr_value(expr) * _COST_SCALE for category, expr in payload["cost_exprs"].items()},
             "slacks": {
                 "target_shortfall_mt": _var_scalar_value(payload["target_shortfall_mt"]),
+                "target_shortfall_by_group": {
+                    group: _var_scalar_value(var)
+                    for group, var in payload["target_shortfall_by_group"].items()
+                },
                 "biomass_slack_gj": _var_value(payload["biomass_slack_gj"], biomass_node_count) * _bio_s,
                 "ammonia_slack_kg": _var_value(payload["ammonia_slack_kg"], ammonia_node_count) * _amm_s,
                 "water_slack_m3": _var_value(payload["water_slack_m3"], water_node_count) * _wat_s,

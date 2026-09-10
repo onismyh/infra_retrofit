@@ -428,6 +428,43 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     # 1.05 and coal reaches 5923 Mt before any target forces it.
     "IND_BASE_t95": ({"mip_gap": 0.01, "emission_target_fraction": (0.0, 0.0, 0.0, 0.95)}, {"include_industry": True}),
     "IND_WA_cwatm_126_dry_oq_t95": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01, "emission_target_fraction": (0.0, 0.0, 0.0, 0.95)}, {"water_budget": "official_quota", "include_industry": True}),
+    # --- SECTOR TARGETS, `ST_` (2026-09-10) ---------------------------------------------
+    # The author's decisions of 2026-09-10, after the implementation review
+    # (docs/算法实现审查_20260910.md):
+    #   * one residual cap per sector group and planning year, read off China TIMES V2.0 CN60
+    #     (power, steel, cement, chemicals; scripts/build_sector_targets.py), applied to THIS
+    #     model's own 2030 baseline of each group; all four years bind, not just 2060;
+    #   * NO carbon price in the target scenarios -- a cap and a price on the same tonne are
+    #     one incentive too many; the price is a separate CONTROL, charged symmetrically on
+    #     coal and industry (`ST_CP_*`);
+    #   * coal utilisation falls on a rough national trajectory (3 600 / 3 100 / 2 000 /
+    #     1 500 h) instead of being frozen at today's 4 643 h;
+    #   * industrial output follows the TIMES CN60 sub-technology output index;
+    #   * storage injection ramps with the ACCA21 roadmap; pipes come in three diameters;
+    #   * industry buys hydrogen per node from the same green-ammonia nodes as coal co-firing.
+    # An `ST_` run may NEVER be differenced against an `IND_` or a non-prefixed run: the
+    # target, the utilisation, the output path and the cost basis all changed at once.
+    "ST_BASE": (
+        {"mip_gap": 0.01, "sector_target_source": "times_cn60",
+         "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0),
+         "carbon_price_cny_per_t_by_year": (0.0, 0.0, 0.0, 0.0)},
+        {"include_industry": True},
+    ),
+    "ST_WA_cwatm_126_dry_oq": (
+        {"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry",
+         "mip_gap": 0.01, "sector_target_source": "times_cn60",
+         "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0),
+         "carbon_price_cny_per_t_by_year": (0.0, 0.0, 0.0, 0.0)},
+        {"water_budget": "official_quota", "include_industry": True},
+    ),
+    # Carbon-price CONTROL: no caps, the default price path, charged on coal AND industry.
+    # Everything else identical to ST_BASE, so the pair reads "what a price does" against
+    # "what the TIMES trajectory demands".
+    "ST_CP_BASE": (
+        {"mip_gap": 0.01, "emission_target_fraction": (0.0, 0.0, 0.0, 0.0),
+         "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0)},
+        {"include_industry": True},
+    ),
     "WA_cwatm_126_dry_oq":         ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
     "WA_cwatm_370_dry_oq_envonly": ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp370", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota", "apply_basin_cap": False}),
     "WA_cwatm_370_dry_oq":         ({"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp370", "water_season": "dry", "mip_gap": 0.01}, {"water_budget": "official_quota"}),
@@ -537,6 +574,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
     )
 
     year_summaries = {}
+    prev_industry_share = None
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
         share = ys["share"]
@@ -544,35 +582,55 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         interval_years = scenario.interval_years(years, year_index, assumptions)
         state_before = state_track.clone()
 
-        # Aggregate summary
+        # Aggregate summary, weighted by THIS year's generation (utilisation trajectory applied)
+        gen_year = np.asarray(year_data["generation"], dtype=np.float64)
+        total_gen_year = float(gen_year.sum())
         pathway_shares = {}
         for pw, idx in PATHWAY_INDEX.items():
-            pathway_shares[pw] = float((gen * share[:, idx]).sum() / total_gen) if total_gen > 0 else 0.0
+            pathway_shares[pw] = float((gen_year * share[:, idx]).sum() / total_gen_year) if total_gen_year > 0 else 0.0
         industry_summary = None
         if prepared.industry is not None and ys.get("industry_share") is not None:
             iy = year_data["industry"]
             ish = ys["industry_share"]
+            groups = np.asarray(iy["target_groups"]).astype(str)
+            residual_hub = iy["baseline_emissions_mt"] - (iy["reduction_mt"] * ish).sum(axis=1)
             industry_summary = {
                 "baseline_mt": float(iy["baseline_emissions_mt"].sum()),
                 "reduction_mt": float((iy["reduction_mt"] * ish).sum()),
+                "residual_by_group_mt": {
+                    g: float(residual_hub[groups == g].sum()) for g in sorted(set(groups))
+                },
                 "captured_mt": float((iy["captured_mt"] * ish).sum()),
+                "h2_kg": float(np.sum(ys.get("industry_h2_flow_kg", np.zeros(0)))),
                 "water_m3": float((iy["water_m3"] * ish).sum()),
-                "cost_cny": float((iy["annual_cost_cny"] * ish).sum()),
-                "h2_price_cny_per_kg": float(iy["h2_price_cny_per_kg"]),
+                "cost_annual_cny": float(ys["cost_breakdown_cny"].get("industry_cost", 0.0)),
+                "cost_capex_cny": float(ys["cost_breakdown_cny"].get("industry_capex", 0.0)),
+                "h2_price_national_mean_cny_per_kg": float(iy["h2_price_cny_per_kg"]),
                 "share_by_route": {
                     route: float((iy["baseline_emissions_mt"] * ish[:, idx]).sum()
                                  / max(float(iy["baseline_emissions_mt"].sum()), 1e-9))
                     for idx, route in enumerate(INDUSTRY_ROUTES)
                 },
             }
+        coal_baseline_year = float(np.asarray(year_data["emissions_mt"], dtype=np.float64).sum())
+        coal_reduction = float(ys.get("total_reduction_mt", float("nan")))
         year_summaries[int(year)] = {
             "status": ys["status"],
             "objective_cny": float(ys["objective_cny"]),
+            "hours_scale": float(year_data.get("hours_scale", 1.0)),
+            "coal_generation_twh": total_gen_year / 1e6,
+            "coal_baseline_mt": coal_baseline_year,
             "pathway_shares": pathway_shares,
-            "coal_reduction_mt": float(ys.get("total_reduction_mt", float("nan"))),
+            "coal_reduction_mt": coal_reduction,
+            "coal_residual_mt": coal_baseline_year - coal_reduction,
+            "sector_cap_fraction": dict(year_data.get("sector_cap_fraction") or {}),
+            "storage_deployment_fraction": float(year_data.get("storage_deployment_fraction", 1.0)),
             "industry": industry_summary,
             "cost_breakdown": {k: float(v) for k, v in ys["cost_breakdown_cny"].items()},
             "target_shortfall_mt": float(ys["slacks"]["target_shortfall_mt"]),
+            "target_shortfall_by_group_mt": {
+                k: float(v) for k, v in (ys["slacks"].get("target_shortfall_by_group") or {}).items()
+            },
             "solver_quality": solver_quality,
         }
 
@@ -580,12 +638,19 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         pw_table = _build_pathway_table(
             prepared, scenario, year, share,
             ys["captured_mt_by_plant"], ys["blend_level_b"], ys["blend_level_a"],
+            year_data=year_data, plant_reduction_mt=ys.get("plant_reduction_mt"),
         )
         prov_table = _build_province_table(pw_table)
         pathway_tables.append(pw_table)
         province_tables.append(prov_table)
-        edge_tables.append(_build_edge_table(prepared, year, ys["edge_flow_mtpa"], ys["build_edge"], ys["new_cap_mtpa"], state_before, assumptions))
-        storage_tables.append(_build_storage_table(prepared, year, ys["storage_use_mtpa"], state_before, interval_years))
+        edge_tables.append(_build_edge_table(
+            prepared, year, ys["edge_flow_mtpa"], ys["build_edge"], ys["new_cap_mtpa"], state_before, assumptions,
+            pipe_count=ys.get("pipe_count"), pipe_tiers=tuple(year_data.get("pipe_tiers_mtpa", ())),
+        ))
+        storage_tables.append(_build_storage_table(
+            prepared, year, ys["storage_use_mtpa"], state_before, interval_years,
+            injectivity_mtpa=year_data.get("storage_injectivity_mtpa"),
+        ))
         supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"].get("water_basin_use_m3")))
         cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"]))
         sanity_tables.append(_build_sanity_checks(year, ys["slacks"], pw_table, prov_table))
@@ -593,11 +658,14 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
             prepared, scenario, year, share,
             ys["captured_mt_by_plant"], ys["biomass_use_gj"], ys["ammonia_use_kg"],
             ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"],
-            ys.get("air_share"),
+            ys.get("air_share"), year_data=year_data, plant_reduction_mt=ys.get("plant_reduction_mt"),
         ))
         industry_detail_tables.append(_build_industry_detail_table(
-            prepared, year, year_data.get("industry"), ys.get("industry_share")
+            prepared, year, year_data.get("industry"), ys.get("industry_share"),
+            prev_share_values=prev_industry_share, h2_flow_kg=ys.get("industry_h2_flow_kg"),
+            year_data=year_data,
         ))
+        prev_industry_share = ys.get("industry_share")
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, ys["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, ys["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, ys["water_flow_m3"], prepared.plants))

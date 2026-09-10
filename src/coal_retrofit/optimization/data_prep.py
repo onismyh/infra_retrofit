@@ -115,6 +115,13 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         lambda prov: assumptions.province_cf(prov)
     )
     plants["annual_generation_mwh"] = plants["total_capacity_mw"].astype(float) * plants["province_cf"] * 8760.0
+    # Capacity-weighted current fleet hours, the denominator of
+    # `scenario.operating_hours_scale`. Stored on every row so `_build_year_matrices` can
+    # read it without recomputing the weighting.
+    capacity = plants["total_capacity_mw"].astype(float)
+    plants["fleet_hours_now"] = float(
+        (capacity * plants["province_cf"] * 8760.0).sum() / max(float(capacity.sum()), 1e-9)
+    )
     plants["baseline_emissions_mt"] = (
         plants["annual_generation_mwh"].astype(float) * assumptions.coal_emission_factor_t_per_mwh / 1_000_000.0
     )
@@ -200,6 +207,45 @@ def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumption
     if missing:
         raise ValueError(f"{path} lacks required columns {sorted(missing)}")
     return caps
+
+
+def _prepare_sector_targets(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
+    """Per-sector residual caps as fractions of each group's own 2030 baseline; empty unless set."""
+    columns = ["sector_group", "planning_year", "cap_fraction_of_2030"]
+    if not scenario.uses_sector_targets:
+        return pd.DataFrame(columns=columns)
+    path = paths.inputs_dir / f"sector_targets_{scenario.sector_target_source}.csv"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found for sector_target_source={scenario.sector_target_source!r}; "
+            "run scripts/build_sector_targets.py"
+        )
+    table = pd.read_csv(path)
+    missing = set(columns) - set(table.columns)
+    if missing:
+        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    return table[columns].copy()
+
+
+def _prepare_output_index(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[tuple[str, int], float]:
+    """{(sector, year): output index, 2030 = 1}; empty dict means output is held flat."""
+    source = scenario.effective_output_index_source
+    if not source:
+        return {}
+    path = paths.inputs_dir / f"industry_output_index_{source}.csv"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found for industry_output_index_source={source!r}; "
+            "run scripts/build_sector_targets.py"
+        )
+    table = pd.read_csv(path)
+    missing = {"sector", "planning_year", "output_index"} - set(table.columns)
+    if missing:
+        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    return {
+        (str(row.sector), int(row.planning_year)): float(row.output_index)
+        for row in table.itertuples(index=False)
+    }
 
 
 def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
@@ -395,12 +441,21 @@ def prepare_inputs(
     ammonia_supply, ammonia_links = _prepare_ammonia_supply(paths, scenario, assumptions, plants)
     water_nodes, water_links, water_availability = _prepare_water(paths, plants, assumptions)
     water_basin_caps = _prepare_basin_caps(paths, assumptions)
+    sector_targets = _prepare_sector_targets(paths, scenario)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
     industry = None
+    industry_h2_links = pd.DataFrame(
+        columns=["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]
+    )
     if bool(getattr(assumptions, "include_industry", False)):
-        from .industry import prepare_industry
+        from .industry import prepare_industry, prepare_industry_h2_links
 
-        industry = prepare_industry(paths, assumptions)
+        industry = prepare_industry(
+            paths, assumptions, output_index=_prepare_output_index(paths, scenario)
+        )
+        industry_h2_links = prepare_industry_h2_links(
+            industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
+        )
     network = build_runtime_network(
         paths, plants, storages, scenario, assumptions,
         industry_hubs=None if industry is None else industry.hubs,
@@ -419,6 +474,8 @@ def prepare_inputs(
         network=network,
         available_ammonia_years=available_ammonia_years,
         industry=industry,
+        sector_targets=sector_targets,
+        industry_h2_links=industry_h2_links,
     )
 
 
@@ -609,7 +666,30 @@ def _basin_cap_data(
     unmatched = int(len(plant_basins) - membership.sum())
     if unmatched:
         raise ValueError(f"{unmatched} hubs fell outside every basin in water_basin_caps.csv")
-    residual = caps["residual_m3_per_year"].astype(float).to_numpy() * scenario.water_multiplier
+    residual = caps["residual_m3_per_year"].astype(float).to_numpy()
+    # `write_basin_caps` ADDS the modelled industrial sources' current withdrawal back into the
+    # residual so that, when industry is a decision agent, the two sectors compete for one
+    # budget. With industry OFF nobody re-charges that water, and the coal fleet was being
+    # handed it for free: in basin K the residual (2.1e8) was 100% added-back industry, in C
+    # and D 11-13%. Take it back out here whenever there is no industrial block to spend it.
+    if prepared.industry is None:
+        needed = {"modelled_industry_1e8_m3", "compliance_ratio"}
+        if needed <= set(caps.columns):
+            carve_out = (
+                caps["modelled_industry_1e8_m3"].astype(float)
+                * caps["compliance_ratio"].astype(float)
+            ).to_numpy() * 1e8
+            residual = np.maximum(0.0, residual - carve_out)
+            logger.info(
+                "water: basin cap with industry OFF -- removed the added-back industrial "
+                "withdrawal (%.1f 亿 m3 nationally) from the residual", float(carve_out.sum()) / 1e8,
+            )
+        else:
+            logger.warning(
+                "water_basin_caps.csv has no modelled_industry_1e8_m3/compliance_ratio columns; "
+                "the coal-only residual still contains the industrial add-back"
+            )
+    residual = residual * scenario.water_multiplier
     return membership, residual, codes
 
 
@@ -749,31 +829,63 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
     return out
 
 
-def _ammonia_access_data(prepared: PreparedInputs, year: int, assumptions: OptimizationAssumptions) -> dict[str, object]:
+def _sparse_membership(rows: list[int], link_count: int, row_count: int):
+    """CSR (row_count, link_count) indicator with one nonzero per link column."""
+    from scipy import sparse
+
+    cols = list(range(len(rows)))
+    return sparse.csr_matrix(
+        (np.ones(len(rows), dtype=np.float64), (rows, cols)), shape=(row_count, link_count)
+    )
+
+
+def _ammonia_access_data(
+    prepared: PreparedInputs, year: int, assumptions: OptimizationAssumptions
+) -> dict[str, object]:
+    """Coal-side ammonia links for `year`. SPARSE, like the biomass matrices.
+
+    Dense, the node membership alone was 7 676 nodes x ~38 000 links x 8 B = 2.2 GiB per
+    planning year and every year's copy stayed alive in `year_payloads`, ~8.8 GiB per solve --
+    the memory ceiling CLAUDE.md 二.5 attributes to biomass had moved here once biomass went
+    sparse. Each link touches one plant and one node, so CSR holds the same matrix in ~1 MB.
+    """
     from ..constants import AMMONIA_FLOW_SCALE
     source_year = _nearest_year(year, prepared.available_ammonia_years)
     nodes = prepared.ammonia_supply[prepared.ammonia_supply["year"].astype(int) == int(source_year)].copy()
+    nodes = nodes.reset_index(drop=True)
     links = prepared.ammonia_links[prepared.ammonia_links["year"].astype(int) == int(source_year)].copy()
+    links = links.reset_index(drop=True)
     node_index = {str(node_id): idx for idx, node_id in enumerate(nodes["ammonia_node_id"].astype(str))}
     plant_index = {str(plant_id): idx for idx, plant_id in enumerate(prepared.plants["plant_id"].astype(str))}
     link_count = len(links)
-    hub_membership = np.zeros((len(prepared.plants), link_count), dtype=np.float64)
-    node_membership = np.zeros((len(nodes), link_count), dtype=np.float64)
+    hub_rows: list[int] = []
+    node_rows: list[int] = []
     link_costs = np.zeros(link_count, dtype=np.float64)
+    keep = np.zeros(link_count, dtype=bool)
     for link_idx, link in enumerate(links.itertuples(index=False)):
         if str(link.ammonia_node_id) not in node_index or str(link.plant_id) not in plant_index:
+            # Dropped links must not leave a zero column that the solver would read as a free
+            # flow variable tied to nothing; they are removed from the link table below.
             continue
-        hub_membership[plant_index[str(link.plant_id)], link_idx] = 1.0
-        node_membership[node_index[str(link.ammonia_node_id)], link_idx] = 1.0
+        keep[link_idx] = True
+        hub_rows.append(plant_index[str(link.plant_id)])
+        node_rows.append(node_index[str(link.ammonia_node_id)])
         # Delivered cost = production cost + distance-based truck transport
         base_cost = float(link.cost_cny_per_kg)
         dist_km = float(link.distance_km) if hasattr(link, "distance_km") else 0.0
         transport_cost = assumptions.ammonia_transport_cost_cny_per_kg_km * dist_km
         # Scale: cost_per_kg * SCALE → cost per scaled unit (kt)
         link_costs[link_idx] = (base_cost + transport_cost) * AMMONIA_FLOW_SCALE
-    # Scale supply: kg → kt (÷ SCALE)
+    if not keep.all():
+        links = links.loc[keep].reset_index(drop=True)
+        link_costs = link_costs[keep]
+        link_count = len(links)
+    hub_membership = _sparse_membership(hub_rows, link_count, len(prepared.plants))
+    node_membership = _sparse_membership(node_rows, link_count, len(nodes))
+    # Scale supply: kg → kt (÷ SCALE), then the build-out ramp for this planning year.
+    ramp = float(assumptions.ammonia_supply_deployment_fraction(int(year)))
     available_scaled = (
-        nodes["nh3_supply_kg_per_year"].astype(float).to_numpy() / AMMONIA_FLOW_SCALE
+        nodes["nh3_supply_kg_per_year"].astype(float).to_numpy() / AMMONIA_FLOW_SCALE * ramp
         if not nodes.empty else np.zeros(0, dtype=np.float64)
     )
     return {
@@ -785,6 +897,64 @@ def _ammonia_access_data(prepared: PreparedInputs, year: int, assumptions: Optim
         "available_kg": available_scaled,
         "link_cost_cny_per_kg": link_costs,
         "ammonia_flow_scale": AMMONIA_FLOW_SCALE,
+        "deployment_fraction": ramp,
+    }
+
+
+def _industry_h2_access_data(
+    prepared: PreparedInputs,
+    year: int,
+    assumptions: OptimizationAssumptions,
+    ammonia_nodes: pd.DataFrame,
+) -> dict[str, object]:
+    """Industrial hydrogen links for `year`, drawing on the SAME nodes as coal-side ammonia.
+
+    Hydrogen flow is in scaled kg H2 (kt); the node limit is written in NH3 units, so the
+    solver converts with `NH3_H2_RATIO` (kg H2 per kg NH3) before adding the two draws. Link
+    cost is the node's plant-gate LCOH plus tube-trailer transport -- the marginal price of the
+    hydrogen actually taken, replacing the national supply-weighted mean that priced every
+    tonne at the average of a 1 555 Mt/yr potential.
+    """
+    from ..constants import AMMONIA_FLOW_SCALE
+
+    empty = {
+        "links": pd.DataFrame(columns=["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]),
+        "hub_membership": None,
+        "node_membership": None,
+        "link_cost_cny_per_kg": np.zeros(0, dtype=np.float64),
+    }
+    if prepared.industry is None or prepared.industry_h2_links is None or prepared.industry_h2_links.empty:
+        return empty
+    source_year = _nearest_year(year, prepared.available_ammonia_years)
+    links = prepared.industry_h2_links[
+        prepared.industry_h2_links["year"].astype(int) == int(source_year)
+    ].reset_index(drop=True)
+    if links.empty:
+        return empty
+    node_index = {str(node_id): idx for idx, node_id in enumerate(ammonia_nodes["ammonia_node_id"].astype(str))}
+    hub_index = {str(hub_id): idx for idx, hub_id in enumerate(prepared.industry.hubs["hub_id"].astype(str))}
+    keep = np.zeros(len(links), dtype=bool)
+    hub_rows: list[int] = []
+    node_rows: list[int] = []
+    costs = np.zeros(len(links), dtype=np.float64)
+    for link_idx, link in enumerate(links.itertuples(index=False)):
+        if str(link.ammonia_node_id) not in node_index or str(link.hub_id) not in hub_index:
+            continue
+        keep[link_idx] = True
+        hub_rows.append(hub_index[str(link.hub_id)])
+        node_rows.append(node_index[str(link.ammonia_node_id)])
+        delivered = (
+            float(link.lcoh_usd_per_kg) * float(assumptions.usd_to_cny)
+            + float(assumptions.h2_transport_cost_cny_per_kg_km) * float(link.distance_km)
+        )
+        costs[link_idx] = delivered * AMMONIA_FLOW_SCALE
+    links = links.loc[keep].reset_index(drop=True)
+    costs = costs[keep]
+    return {
+        "links": links,
+        "hub_membership": _sparse_membership(hub_rows, len(links), len(prepared.industry.hubs)),
+        "node_membership": _sparse_membership(node_rows, len(links), len(ammonia_nodes)),
+        "link_cost_cny_per_kg": costs,
     }
 
 
@@ -839,11 +1009,17 @@ def _build_year_matrices(
 
         industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
+    industry_h2_data = _industry_h2_access_data(prepared, year, assumptions, ammonia_data["nodes"])
     water_data = _water_access_data(prepared, scenario, assumptions, year)
     water_base = prepared.plants["baseline_water_intensity_m3_per_mwh"].astype(float).to_numpy()
 
-    generation = prepared.plants["annual_generation_mwh"].astype(float).to_numpy()
-    emissions_mt = prepared.plants["baseline_emissions_mt"].astype(float).to_numpy()
+    # Fleet utilisation in this planning year. `annual_generation_mwh` on the plant frame is
+    # the CURRENT province statistic; the scenario's hours trajectory scales it per year so
+    # generation, baseline emissions and every per-MWh cost move together.
+    fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
+    hours_scale = float(scenario.operating_hours_scale(int(year), fleet_hours_now)) if fleet_hours_now > 0 else 1.0
+    generation = prepared.plants["annual_generation_mwh"].astype(float).to_numpy() * hours_scale
+    emissions_mt = prepared.plants["baseline_emissions_mt"].astype(float).to_numpy() * hours_scale
     # Retrofit CF boost: retrofitted pathways get boosted generation (priority dispatch)
     generation_retrofit = generation * scenario.retrofit_cf_boost
     generation_by_pathway = np.column_stack([
@@ -924,12 +1100,25 @@ def _build_year_matrices(
         generation_cost_basis
         * (ccs_penalty_emissions_per_mwh_per_plant[:, None] * energy_penalty_per_pathway[None, :])
     )
+    # The CAPTURED share of that same penalty fuel. It was vented at (1-eta) above but never
+    # entered `captured_mt_by_plant`, so ~100 Mt/yr of CO2 that the accounting said was
+    # captured was neither transported nor stored (2060: 8% of national injectivity). Now it
+    # is a real flow: this matrix adds to the plant's captured tonnes on the capture pathways.
+    ccs_penalty_captured_matrix = (
+        generation_cost_basis
+        * (eps_ratio_ccs * heat_rate_eff * emission_factor_t_per_gj * float(scenario.capture_rate)
+           / 1_000_000.0)[:, None]
+        * energy_penalty_per_pathway[None, :]
+    )
     # Biomass co-firing penalty fuel: fully vented on the unabated-biomass pathway, but
     # captured at `capture_rate` on BECCS (same boiler, same capture train).
     biomass_penalty_emissions_coeff_per_level = (
         assumptions.biomass_efficiency_penalty_per_ratio / eta_coal * heat_rate_eff * emission_factor_t_per_gj / 1_000_000.0
     )
     beccs_penalty_emissions_coeff_per_level = biomass_penalty_emissions_coeff_per_level * uncaptured
+    beccs_penalty_captured_coeff_per_level = (
+        biomass_penalty_emissions_coeff_per_level * float(scenario.capture_rate)
+    )
 
     # --- CCS/BECCS retrofit CAPEX matrix — with learning curve ---
     lf = assumptions.ccs_learning_factor(year)
@@ -1030,13 +1219,26 @@ def _build_year_matrices(
     penalty_ratio = float(assumptions.air_retrofit_efficiency_penalty_pp) / max(
         1e-6, float(assumptions.coal_plant_base_efficiency)
     )
-    air_penalty_emissions_matrix = (
+    air_penalty_gross_matrix = (
         generation_by_pathway
         * assumptions.coal_emission_factor_t_per_mwh / 1_000_000.0
         * penalty_ratio
         * still_wet[:, None]
     )
-    air_penalty_emissions_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
+    air_penalty_gross_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
+    # Same boiler, same capture train: on the capture pathways the backpressure penalty fuel
+    # is vented at (1-eta) and captured at eta, exactly as the CCS energy-penalty fuel above.
+    # Venting it at 100% (the pre-2026-09-10 behaviour) charged a CCS+dry-cooled hub ~40%
+    # more residual than a CCS hub on wet cooling, which penalised the one combination the
+    # water-carbon trade-off turns on.
+    capture_pathway_mask = np.zeros(len(PATHWAYS), dtype=np.float64)
+    capture_pathway_mask[[PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]]] = 1.0
+    air_penalty_emissions_matrix = air_penalty_gross_matrix * (
+        1.0 - capture_pathway_mask[None, :] * float(scenario.capture_rate)
+    )
+    air_penalty_captured_matrix = (
+        air_penalty_gross_matrix * capture_pathway_mask[None, :] * float(scenario.capture_rate)
+    )
     # The same extra coal also has to be bought, not only paid for at the carbon price. At
     # the 2060 carbon price the CO2 term dominates roughly 5:1, but omitting the fuel would
     # understate the penalty by ~17% and make conversion look cheaper than it is.
@@ -1056,14 +1258,23 @@ def _build_year_matrices(
     edge_length_km = prepared.network.edges["length_km"].astype(float).to_numpy()
     offshore_edges = _offshore_edge_mask(prepared)
     offshore_factor = np.where(offshore_edges, assumptions.offshore_transport_multiplier, 1.0)
+    edge_class_multiplier = prepared.network.edges.apply(
+        lambda row: _edge_capex_multiplier(str(row["edge_class"]), int(row["existing_corridor_flag"]), assumptions),
+        axis=1,
+    ).astype(float).to_numpy()
+    # Per-Mtpa coefficient kept for reporting and for the legacy single-size path; the solver
+    # now builds capacity in the diameter tiers below.
     edge_capex_coeff = (
-        edge_length_km
-        * assumptions.pipe_capex_cny_per_mtpa_km
-        * prepared.network.edges.apply(
-            lambda row: _edge_capex_multiplier(str(row["edge_class"]), int(row["existing_corridor_flag"]), assumptions),
-            axis=1,
-        ).astype(float).to_numpy()
-        * offshore_factor
+        edge_length_km * assumptions.pipe_capex_cny_per_mtpa_km * edge_class_multiplier * offshore_factor
+    )
+    tiers = tuple(float(t) for t in assumptions.pipe_capacity_tiers_mtpa)
+    tier_capex_per_km = tuple(float(c) for c in assumptions.pipe_capex_cny_per_km_by_tier)
+    if len(tiers) != len(tier_capex_per_km) or not tiers:
+        raise ValueError("pipe_capacity_tiers_mtpa and pipe_capex_cny_per_km_by_tier must be non-empty and equal length")
+    # (n_edges, n_tiers): CNY for ONE pipe of each tier on each edge.
+    edge_tier_capex = (
+        (edge_length_km * edge_class_multiplier * offshore_factor)[:, None]
+        * np.asarray(tier_capex_per_km, dtype=np.float64)[None, :]
     )
     # Per-edge transport O&M coefficient (CNY per Mt of flow over the whole edge): the
     # offshore factor makes subsea routes more expensive to operate as well as to build.
@@ -1092,8 +1303,31 @@ def _build_year_matrices(
     stranded_per_plant = capacity_mw * assumptions.stranded_asset_base_cny_per_kw * 1000.0 * fraction_remaining
 
     coal_savings_per_gj = coal_price_per_plant * biomass_flow_scale  # scaled: CNY/TJ instead of CNY/GJ
+    # Coal displaced by co-fired ammonia, CNY per scaled kg (kt) of NH3: LHV x coal price. The
+    # ammonia column of `baseline_net_matrix` charges the full coal heat rate, so without this
+    # credit a 50% blend paid for coal it did not burn (~164 CNY/MWh, 9-22% of the ammonia bill).
+    coal_savings_per_kg_nh3 = (
+        coal_price_per_plant * float(assumptions.nh3_lhv_gj_per_kg) * float(ammonia_data.get("ammonia_flow_scale", 1.0))
+    )
+
+    # Storage: the 2060-scale buildable injection rate times this year's deployment fraction.
+    storage_injectivity_mtpa = (
+        prepared.storages["injectivity_mtpa"].astype(float).to_numpy()
+        * float(assumptions.storage_deployment_fraction(int(year)))
+    )
+
+    # Sector caps for this year, as fractions of each group's own 2030 baseline.
+    sector_cap_fraction: dict[str, float] = {}
+    if scenario.uses_sector_targets:
+        rows = prepared.sector_targets[prepared.sector_targets["planning_year"].astype(int) == int(year)]
+        if rows.empty:
+            raise ValueError(f"sector_targets_{scenario.sector_target_source}.csv has no rows for {year}")
+        sector_cap_fraction = {
+            str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
+        }
 
     return {
+        "hours_scale": hours_scale,
         "generation": generation,
         "generation_by_pathway": generation_by_pathway,
         "emissions_mt": emissions_mt,
@@ -1105,14 +1339,24 @@ def _build_year_matrices(
         "energy_penalty_matrix": energy_penalty_matrix,
         "biomass_penalty_coeff_per_level": biomass_penalty_coeff_per_level,
         "ccs_penalty_emissions_matrix": ccs_penalty_emissions_matrix,
+        "ccs_penalty_captured_matrix": ccs_penalty_captured_matrix,
         "biomass_penalty_emissions_coeff_per_level": biomass_penalty_emissions_coeff_per_level,
         "beccs_penalty_emissions_coeff_per_level": beccs_penalty_emissions_coeff_per_level,
+        "beccs_penalty_captured_coeff_per_level": beccs_penalty_captured_coeff_per_level,
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
         "ccs_om_matrix": ccs_om_matrix,
         "baseline_net_matrix": baseline_net_matrix,
         "carbon_price": carbon_price_year,
         "stranded_per_plant": stranded_per_plant,
         "coal_savings_per_gj": coal_savings_per_gj,
+        "coal_savings_per_kg_nh3": coal_savings_per_kg_nh3,
+        "storage_injectivity_mtpa": storage_injectivity_mtpa,
+        "storage_deployment_fraction": float(assumptions.storage_deployment_fraction(int(year))),
+        "sector_cap_fraction": sector_cap_fraction,
+        "industry_h2_links": industry_h2_data["links"],
+        "industry_h2_hub_membership": industry_h2_data["hub_membership"],
+        "industry_h2_node_membership": industry_h2_data["node_membership"],
+        "industry_h2_link_cost_cny_per_kg": industry_h2_data["link_cost_cny_per_kg"],
         "biomass_link_hub_membership": biomass_hub_membership,
         "biomass_link_node_membership": biomass_node_membership,
         "biomass_available": biomass_available,
@@ -1151,14 +1395,17 @@ def _build_year_matrices(
         "already_air_share": already_air_share,
         "air_retrofit_capex_per_plant": air_retrofit_capex_per_plant,
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,
+        "air_penalty_captured_matrix": air_penalty_captured_matrix,
         "air_penalty_cost_matrix": air_penalty_cost_matrix,
         "allow_air_cooling_retrofit": bool(assumptions.allow_air_cooling_retrofit),
         "ammonia_flow_scale": ammonia_data.get("ammonia_flow_scale", 1.0),
         "water_flow_scale": water_data.get("water_flow_scale", 1.0),
         "edge_base_stock_mtpa": edge_base_stock,
         "edge_max_new_mtpa": edge_max_new,
-        "edge_min_build_mtpa": np.minimum(edge_max_new, assumptions.standard_pipe_capacity_mtpa),
+        "edge_min_build_mtpa": np.minimum(edge_max_new, float(min(tiers))),
         "edge_capex_coeff": edge_capex_coeff,
+        "pipe_tiers_mtpa": tiers,
+        "edge_tier_capex": edge_tier_capex,
         "edge_route_opex_coeff": edge_route_opex_coeff,
         "edge_offshore_mask": offshore_edges,
     }

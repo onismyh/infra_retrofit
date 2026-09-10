@@ -4,11 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
-from ..constants_industry import (
-    INDUSTRY_CAPTURE_CAPEX_SHARE,
-    INDUSTRY_H2_CAPEX_SHARE,
-    INDUSTRY_ROUTES,
-)
+from ..constants_industry import INDUSTRY_ROUTES
 from ..experiments.scenario import ScenarioRunContext
 from .emissions import blend_level_to_ratio, reduction_fraction
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
@@ -28,10 +24,30 @@ def _build_pathway_table(
     captured_mt_by_plant: np.ndarray | None = None,
     blend_level_b: np.ndarray | None = None,
     blend_level_a: np.ndarray | None = None,
+    year_data: dict[str, object] | None = None,
+    plant_reduction_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
+    """Per plant x pathway shares, generation, emissions and abatement for one year.
+
+    Generation and baseline emissions are the YEAR's values (utilisation trajectory applied)
+    when `year_data` is given. `abatement_mt` is anchored to the solver's own per-plant
+    reduction when `plant_reduction_mt` is given: the classic per-pathway reduction fractions
+    only fix the SPLIT between a plant's pathways, and the plant total is rescaled to the
+    constraint's value, which carries the CF boost and every penalty fuel. Before 2026-09-10
+    the column was the unanchored classic formula and had been seen to sum to 111.7% of the
+    baseline.
+    """
     rows: list[dict[str, object]] = []
+    gen_year = (
+        np.asarray(year_data["generation"], dtype=np.float64) if year_data is not None
+        else prepared.plants["annual_generation_mwh"].astype(float).to_numpy()
+    )
+    em_year = (
+        np.asarray(year_data["emissions_mt"], dtype=np.float64) if year_data is not None
+        else prepared.plants["baseline_emissions_mt"].astype(float).to_numpy()
+    )
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
-        baseline_emissions_mt = float(plant.baseline_emissions_mt)
+        baseline_emissions_mt = float(em_year[plant_idx])
         # Use solver's actual captured value if available
         actual_captured = float(captured_mt_by_plant[plant_idx]) if captured_mt_by_plant is not None else None
         bio_blend = blend_level_to_ratio(
@@ -42,6 +58,22 @@ def _build_pathway_table(
             blend_level_a[plant_idx] if blend_level_a is not None else 0.0,
             scenario.ammonia_blend_levels,
         )
+        classic = np.array([
+            baseline_emissions_mt
+            * reduction_fraction(pathway, scenario.capture_rate, bio_blend, amm_blend)
+            * float(share_values[plant_idx, path_idx])
+            for path_idx, pathway in enumerate(PATHWAYS)
+        ], dtype=np.float64)
+        classic_total = float(classic.sum())
+        if plant_reduction_mt is not None and abs(classic_total) > 1e-9:
+            abatement = classic * (float(plant_reduction_mt[plant_idx]) / classic_total)
+        elif plant_reduction_mt is not None:
+            # Nothing abated on the classic view (all unabated): put the solver's value, which
+            # is then a penalty-fuel correction, on the unabated column so the total is right.
+            abatement = np.zeros(len(PATHWAYS))
+            abatement[PATHWAY_INDEX["unabated"]] = float(plant_reduction_mt[plant_idx])
+        else:
+            abatement = classic
         for path_idx, pathway in enumerate(PATHWAYS):
             share = float(share_values[plant_idx, path_idx])
             # Distribute actual captured proportionally among CCS/BECCS pathways
@@ -52,28 +84,6 @@ def _build_pathway_table(
                 captured_mt = actual_captured * (share / total_capture_share) if total_capture_share > 1e-12 else 0.0
             else:
                 captured_mt = 0.0
-            # Abatement calculation
-            if pathway == "retire":
-                abatement_mt = baseline_emissions_mt * share
-            elif pathway == "biomass":
-                # Biomass abatement = blend_level × baseline_emissions × share (fuel substitution)
-                abatement_mt = bio_blend * baseline_emissions_mt * share
-            elif pathway in ("ccs", "beccs"):
-                abatement_mt = captured_mt
-            elif pathway == "ammonia":
-                amm_blend = float(blend_level_b[plant_idx]) if blend_level_b is not None else 0.0  # approximate
-                abatement_mt = 0.0  # ammonia abatement is blend-dependent but rarely selected
-            else:
-                abatement_mt = 0.0
-            amm_blend = blend_level_to_ratio(
-                blend_level_a[plant_idx] if blend_level_a is not None else 0.0,
-                scenario.ammonia_blend_levels,
-            )
-            abatement_mt = (
-                baseline_emissions_mt
-                * reduction_fraction(pathway, scenario.capture_rate, bio_blend, amm_blend)
-                * share
-            )
             rows.append(
                 {
                     "year": year,
@@ -81,9 +91,9 @@ def _build_pathway_table(
                     "province_name": plant.province_name,
                     "pathway": pathway,
                     "share": share,
-                    "annual_generation_mwh": float(plant.annual_generation_mwh) * share,
+                    "annual_generation_mwh": float(gen_year[plant_idx]) * share,
                     "baseline_emissions_mt": baseline_emissions_mt * share,
-                    "abatement_mt": abatement_mt,
+                    "abatement_mt": float(abatement[path_idx]),
                     "captured_mt": captured_mt,
                     "enabled": scenario.path_enabled(pathway),
                 }
@@ -115,6 +125,8 @@ def _build_edge_table(
     new_cap_mtpa: np.ndarray,
     state_before: SolveState,
     assumptions: OptimizationAssumptions,
+    pipe_count: np.ndarray | None = None,
+    pipe_tiers: tuple[float, ...] = (),
 ) -> pd.DataFrame:
     edges = prepared.network.edges.copy()
     edges["year"] = year
@@ -129,6 +141,15 @@ def _build_edge_table(
     edges["edge_active"] = ((edges["edge_flow_mtpa"] > 1e-6) | (edges["new_capacity_mtpa"] > 1e-6)).astype(int)
     edges["num_pipe_new"] = edges["new_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
     edges["num_pipe_stock"] = edges["total_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
+    # Whole pipes laid this year by diameter tier, e.g. "2x2|1x20" -- what was actually built.
+    if pipe_count is not None and len(pipe_tiers):
+        counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
+        edges["pipes_new_by_tier"] = [
+            "|".join(f"{int(counts[e, k])}x{pipe_tiers[k]:g}" for k in range(len(pipe_tiers)) if counts[e, k] > 0)
+            for e in range(len(edges))
+        ]
+    else:
+        edges["pipes_new_by_tier"] = ""
     return edges[
         [
             "year",
@@ -149,6 +170,7 @@ def _build_edge_table(
             "total_capacity_mtpa",
             "num_pipe_new",
             "num_pipe_stock",
+            "pipes_new_by_tier",
         ]
     ]
 
@@ -159,9 +181,13 @@ def _build_storage_table(
     storage_use_mtpa: np.ndarray,
     state_before: SolveState,
     interval_years: int,
+    injectivity_mtpa: np.ndarray | None = None,
 ) -> pd.DataFrame:
     table = prepared.storages.copy()
     table["year"] = year
+    if injectivity_mtpa is not None:
+        # The year's deployed rate (buildable rate x ramp), which is what the constraint used.
+        table["injectivity_mtpa"] = np.asarray(injectivity_mtpa, dtype=np.float64)
     table["storage_use_mtpa"] = storage_use_mtpa
     table["remaining_capacity_before_mt"] = state_before.remaining_storage_mt
     table["remaining_capacity_after_mt"] = np.maximum(0.0, state_before.remaining_storage_mt - storage_use_mtpa * interval_years)
@@ -283,6 +309,16 @@ def _build_sanity_checks(
     )
     rows = [
         {"year": year, "check_name": "target_shortfall", "status": "fail" if slacks["target_shortfall_mt"] > 1e-6 else "pass", "metric": "mt", "value": slacks["target_shortfall_mt"], "threshold": 0.0, "detail": "Emission target slack should remain zero."},
+    ]
+    # Under sector targets, one row per group so the report says WHICH cap was missed.
+    for group, value in sorted((slacks.get("target_shortfall_by_group") or {}).items()):
+        rows.append({
+            "year": year, "check_name": f"target_shortfall_{group}",
+            "status": "fail" if float(value) > 1e-6 else "pass", "metric": "mt",
+            "value": float(value), "threshold": 0.0,
+            "detail": f"Residual cap of sector group '{group}' should be met without slack.",
+        })
+    rows += [
         {"year": year, "check_name": "biomass_overuse", "status": "warn" if float(np.sum(slacks["biomass_slack_gj"])) > 1e-3 else "pass", "metric": "GJ", "value": float(np.sum(slacks["biomass_slack_gj"])), "threshold": 0.0, "detail": "Biomass use should fit shared biomass-node availability within hub buffers."},
         {"year": year, "check_name": "ammonia_overuse", "status": "warn" if float(np.sum(slacks["ammonia_slack_kg"])) > 1e-3 else "pass", "metric": "kg", "value": float(np.sum(slacks["ammonia_slack_kg"])), "threshold": 0.0, "detail": "Ammonia use should fit shared ammonia-node availability under hub competition."},
         {"year": year, "check_name": "water_overuse", "status": "warn" if float(np.sum(slacks["water_slack_m3"])) > 1e-3 else "pass", "metric": "m3", "value": float(np.sum(slacks["water_slack_m3"])), "threshold": 0.0, "detail": "Consumptive water use should fit the shared grid-water-node availability proxy under local competition."},
@@ -346,9 +382,19 @@ def _build_plant_detail_table(
     blend_level_b: np.ndarray,
     blend_level_a: np.ndarray,
     air_share: np.ndarray | None = None,
+    year_data: dict[str, object] | None = None,
+    plant_reduction_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Per-plant high-resolution detail: pathway shares, resource use, blend levels, storage proximity."""
     plants = prepared.plants
+    gen_year = (
+        np.asarray(year_data["generation"], dtype=np.float64) if year_data is not None
+        else plants["annual_generation_mwh"].astype(float).to_numpy()
+    )
+    em_year = (
+        np.asarray(year_data["emissions_mt"], dtype=np.float64) if year_data is not None
+        else plants["baseline_emissions_mt"].astype(float).to_numpy()
+    )
 
     # Pre-compute min distance to storage per plant via network edges
     plant_to_min_storage_km: dict[str, float] = {}
@@ -378,8 +424,9 @@ def _build_plant_detail_table(
             "centroid_latitude": float(plant["centroid_latitude"]),
             "retirement_year": int(plant["retirement_year"]),
             "dominant_cooling": str(plant.get("dominant_cooling_technology", "")),
-            "annual_generation_mwh": float(plant["annual_generation_mwh"]),
-            "baseline_emissions_mt": float(plant["baseline_emissions_mt"]),
+            "annual_generation_mwh": float(gen_year[p]),
+            "baseline_emissions_mt": float(em_year[p]),
+            "reduction_mt": float(plant_reduction_mt[p]) if plant_reduction_mt is not None else float("nan"),
             # Pathway shares
             "share_unabated": float(share_values[p, PATHWAY_INDEX["unabated"]]),
             "share_retire": float(share_values[p, PATHWAY_INDEX["retire"]]),
@@ -587,11 +634,14 @@ def _build_plant_cost_table(
     """
     plants = prepared.plants
     n = len(plants)
-    gen = plants["annual_generation_mwh"].astype(float).to_numpy()
-    emissions = plants["baseline_emissions_mt"].astype(float).to_numpy()
+    gen = np.asarray(year_data["generation"], dtype=np.float64)
+    emissions = np.asarray(year_data["emissions_mt"], dtype=np.float64)
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
     carbon_price = float(year_data["carbon_price"])
     retire_idx = PATHWAY_INDEX["retire"]
+    # Capture-island / BECCS-increment stock coefficients (see solver); fall back to the
+    # per-pathway matrix for results written before the two-stock form existed.
+    stock_coeff = year_data.get("retrofit_stock_capex")
 
     rows: list[dict[str, object]] = []
     for p in range(n):
@@ -647,7 +697,10 @@ def _build_plant_cost_table(
         # i.e. the max historical share; coeff already includes the learning factor)
         ccs_capex = 0.0
         for j, k in enumerate(capex_pathway_indices):
-            coeff = float(year_data["ccs_retrofit_capex_matrix"][p, k])
+            coeff = (
+                float(stock_coeff[p, j]) if stock_coeff is not None and j < np.asarray(stock_coeff).shape[1]
+                else float(year_data["ccs_retrofit_capex_matrix"][p, k])
+            )
             if coeff <= 0:
                 continue
             if retrofit_installed is not None:
@@ -681,69 +734,107 @@ def _build_industry_detail_table(
     year: int,
     industry_year_data: dict | None,
     share_values: np.ndarray | None,
+    prev_share_values: np.ndarray | None = None,
+    h2_flow_kg: np.ndarray | None = None,
+    year_data: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
+
+    Costs follow the model's own split: `cost_annual_cny` is the O&M share of the levelised
+    cost plus the hydrogen actually bought on the hub's links this year, `cost_capital_cny` the
+    one-time capital charge on the route-share increment (whole share in the first year).
 
     Args:
         prepared: Prepared inputs; `prepared.industry` carries the hub frame.
         year: Planning year.
         industry_year_data: The year's industrial coefficient block, or None when industry off.
         share_values: Solved route shares, shape (hub_count, len(INDUSTRY_ROUTES)).
+        prev_share_values: Previous year's shares (None in the first year).
+        h2_flow_kg: Solved hydrogen flow per link, kg.
+        year_data: The year's matrices, for the hydrogen link costs and incidence.
 
     Returns:
         Empty frame with the right columns when industry is off, so downstream readers get a
         frame either way.
     """
     columns = [
-        "year", "hub_id", "sector", "province", "longitude", "latitude", "basin_code",
-        "production_kt_per_year", "baseline_co2_mt", "process_co2_mt",
+        "year", "hub_id", "sector", "target_group", "province", "longitude", "latitude", "basin_code",
+        "output_index", "production_kt_per_year", "baseline_co2_mt", "process_co2_mt",
         "share_unabated", "share_ccs", "share_h2",
-        "reduction_mt", "captured_mt",
+        "reduction_mt", "residual_mt", "captured_mt", "h2_kg",
         "water_m3", "water_base_m3", "water_capture_increment_m3",
-        "cost_cny", "cost_capital_cny", "cost_om_cny", "h2_price_cny_per_kg",
+        "cost_cny", "cost_capital_cny", "cost_annual_cny", "cost_h2_purchase_cny",
+        "h2_price_paid_cny_per_kg", "h2_price_national_mean_cny_per_kg",
     ]
     if prepared.industry is None or industry_year_data is None or share_values is None:
         return pd.DataFrame(columns=columns)
     hubs = prepared.industry.hubs
     reduction = industry_year_data["reduction_mt"]
+    baseline = industry_year_data["baseline_emissions_mt"]
     captured = industry_year_data["captured_mt"]
     water = industry_year_data["water_m3"]
-    cost = industry_year_data["annual_cost_cny"]
-    h2_price = float(industry_year_data["h2_price_cny_per_kg"])
+    opex = industry_year_data["opex_cny"]
+    capex = industry_year_data["capex_cny"]
+    output_scale = industry_year_data.get("output_scale", np.ones(len(hubs)))
+    h2_price_mean = float(industry_year_data["h2_price_cny_per_kg"])
+    n_hubs = len(hubs)
+    # Hydrogen bought per hub: link flows x link costs, folded onto hubs with the incidence.
+    h2_kg_by_hub = np.zeros(n_hubs)
+    h2_cost_by_hub = np.zeros(n_hubs)
+    if (
+        h2_flow_kg is not None and len(h2_flow_kg) and year_data is not None
+        and year_data.get("industry_h2_hub_membership") is not None
+    ):
+        incidence = year_data["industry_h2_hub_membership"]
+        flows = np.asarray(h2_flow_kg, dtype=np.float64)
+        unit_cost = np.asarray(year_data["industry_h2_link_cost_cny_per_kg"], dtype=np.float64) / AMMONIA_FLOW_SCALE
+        h2_kg_by_hub = np.asarray(incidence @ flows).ravel()
+        h2_cost_by_hub = np.asarray(incidence @ (flows * unit_cost)).ravel()
     rows: list[dict[str, object]] = []
     for hub_idx, hub in enumerate(hubs.itertuples(index=False)):
         share = share_values[hub_idx]
-        hub_cost_ccs = float(cost[hub_idx, _CCS] * share[_CCS])
-        hub_cost_h2 = float(cost[hub_idx, _H2] * share[_H2])
-        # Reporting split only. The model charges the levelised cost annually; these two
-        # shares exist so a reader can see how much of it is capital recovery.
-        capital = hub_cost_ccs * INDUSTRY_CAPTURE_CAPEX_SHARE + hub_cost_h2 * INDUSTRY_H2_CAPEX_SHARE
+        prev = prev_share_values[hub_idx] if prev_share_values is not None else np.zeros_like(share)
+        annual_ccs = float(opex[hub_idx, _CCS] * share[_CCS])
+        annual_h2 = max(0.0, float(opex[hub_idx, _H2] * share[_H2]) + float(h2_cost_by_hub[hub_idx]))
+        capital = float(
+            capex[hub_idx, _CCS] * max(0.0, share[_CCS] - prev[_CCS])
+            + capex[hub_idx, _H2] * max(0.0, share[_H2] - prev[_H2])
+        )
         base_water = float(water[hub_idx, _UNABATED])
         total_water = float(sum(water[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))
+        red = float(sum(reduction[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))
         rows.append({
             "year": year,
             "hub_id": str(hub.hub_id),
             "sector": str(hub.sector),
+            "target_group": str(getattr(hub, "target_group", "")),
             "province": str(hub.province),
             "longitude": float(hub.longitude),
             "latitude": float(hub.latitude),
             "basin_code": str(getattr(hub, "basin_code", "")),
-            "production_kt_per_year": float(hub.production_kt_per_year),
-            "baseline_co2_mt": float(hub.co2_mt_per_year),
-            "process_co2_mt": float(hub.process_co2_mt_per_year),
+            "output_index": float(output_scale[hub_idx]),
+            "production_kt_per_year": float(hub.production_kt_per_year) * float(output_scale[hub_idx]),
+            "baseline_co2_mt": float(baseline[hub_idx]),
+            "process_co2_mt": float(hub.process_co2_mt_per_year) * float(output_scale[hub_idx]),
             "share_unabated": float(share[_UNABATED]),
             "share_ccs": float(share[_CCS]),
             "share_h2": float(share[_H2]),
-            "reduction_mt": float(sum(reduction[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES)))),
+            "reduction_mt": red,
+            "residual_mt": float(baseline[hub_idx]) - red,
             "captured_mt": float(captured[hub_idx, _CCS] * share[_CCS]),
+            "h2_kg": float(h2_kg_by_hub[hub_idx]),
             "water_m3": total_water,
             "water_base_m3": base_water,
             "water_capture_increment_m3": float(
                 (water[hub_idx, _CCS] - base_water) * share[_CCS]
             ),
-            "cost_cny": hub_cost_ccs + hub_cost_h2,
+            "cost_cny": annual_ccs + annual_h2 + capital,
             "cost_capital_cny": capital,
-            "cost_om_cny": hub_cost_ccs + hub_cost_h2 - capital,
-            "h2_price_cny_per_kg": h2_price,
+            "cost_annual_cny": annual_ccs + annual_h2,
+            "cost_h2_purchase_cny": float(h2_cost_by_hub[hub_idx]),
+            "h2_price_paid_cny_per_kg": (
+                float(h2_cost_by_hub[hub_idx] / h2_kg_by_hub[hub_idx]) if h2_kg_by_hub[hub_idx] > 1e-6 else float("nan")
+            ),
+            "h2_price_national_mean_cny_per_kg": h2_price_mean,
         })
     return pd.DataFrame(rows, columns=columns)

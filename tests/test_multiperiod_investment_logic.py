@@ -38,6 +38,8 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "storage_hub_id": ["S1"],
             "storage_type": ["dsa"],
             "storage_all_mt": [1000.0],
+            "storage_dsa_mt": [1000.0],
+            "storage_eor_mt": [0.0],
             "injectivity_dsa_avg_mtpa": [10.0],
             "injectivity_eor_avg_mtpa": [0.0],
             "latitude": [37.0],
@@ -113,8 +115,15 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
     return ProjectPaths(root=root)
 
 
+def _toy_assumptions() -> OptimizationAssumptions:
+    """Defaults, minus the storage deployment ramp: the toy sink must offer its full 10 Mtpa
+    in every year, or the 2030 target is met through the shortfall slack instead of capture
+    (the ramp would leave 1.7 Mtpa in 2030, below the ~2.6 Mt/yr the target needs)."""
+    return OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+
+
 def _solve_toy(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[str, object]:
-    assumptions = OptimizationAssumptions()
+    assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.effective_years(list(prepared.available_ammonia_years))
     state = SolveState(
@@ -154,14 +163,17 @@ def _expected_ccs(
     )
     red_per_share = (1.0 - boost * (1.0 - eta)) * e_mt - penalty_emissions_mt
     share = target_fraction * e_mt / red_per_share
-    captured_mt = boost * eta * e_mt * share
+    # The captured share of the penalty fuel is a real tonne on the pipeline (2026-09-10).
+    penalty_captured_mt = penalty_emissions_mt / (1.0 - eta) * eta
+    captured_mt = (boost * eta * e_mt + penalty_captured_mt) * share
     return share, captured_mt
 
 
-def test_pipeline_min_build_applies_only_to_periods_with_new_capacity(tmp_path) -> None:
-    """Edge built in period 1 must NOT be forced to add >= min_build capacity again in
-    period 2. Regression test for the min-build latch bug: previously new_cap[t2] was
-    forced >= 20 mtpa because build_edge latches to 1 across periods."""
+def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> None:
+    """Capacity comes in whole pipes of the diameter tiers (2 / 5 / 20 Mtpa): a ~2.3 Mt/yr
+    flow gets the cheapest tier combination that covers it (one 5-Mtpa pipe: 3.5e6 CNY/km
+    beats two 2-Mtpa pipes at 4.0e6), not a 20-Mtpa trunk. And an edge built in period 1
+    must NOT be forced to add capacity again in period 2 (the old min-build latch bug)."""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     scenario = OptimizationScenario(
         experiment_id="TEST-MINBUILD",
@@ -182,24 +194,31 @@ def test_pipeline_min_build_applies_only_to_periods_with_new_capacity(tmp_path) 
     # With the retrofit CF boost wired in, a retrofitted share generates (and emits)
     # boost x baseline, capturing eta of that; the energy-penalty fuel emissions
     # further reduce the net reduction per share. See _expected_ccs for the algebra.
-    assumptions = OptimizationAssumptions()
+    assumptions = _toy_assumptions()
     s_ccs_expected, captured_expected = _expected_ccs(scenario, assumptions, 0.5, 2050)
     ccs_idx = 2  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
     assert y1["share"][0, ccs_idx] == pytest.approx(s_ccs_expected, rel=1e-3)
     assert y1["edge_flow_mtpa"][0] == pytest.approx(captured_expected, rel=1e-3)
 
-    # Captured CO2 (~3 Mt/yr) is far below one standard pipe (20 mtpa), so the
-    # min-build rule forces exactly 20 mtpa of new capacity in period 1.
-    assert y1["new_cap_mtpa"][0] == pytest.approx(20.0, rel=1e-3)
+    # Captured CO2 (~2.3 Mt/yr) needs more than the 2-Mtpa tier; one 5-Mtpa pipe is the
+    # cheapest cover, so exactly 5 Mtpa of new capacity in period 1 -- not a 20-Mtpa trunk.
+    assert captured_expected > 2.0
+    assert y1["new_cap_mtpa"][0] == pytest.approx(5.0, rel=1e-3)
+    assert y1["pipe_count"][0].tolist() == pytest.approx([0.0, 1.0, 0.0], abs=1e-6)
     assert y1["build_edge"][0] == pytest.approx(1.0)
 
     # Period 2 reuses the capacity stock built in period 1: no new capacity, but the
     # latched build flag must stay 1 (irreversibility) and flow keeps using the edge.
     assert y2["new_cap_mtpa"][0] == pytest.approx(0.0, abs=1e-6)
     assert y2["build_edge"][0] == pytest.approx(1.0)
-    # The energy-penalty ratio is lower in 2060, so the share (and captured Mt) meeting the
-    # same 50% target is slightly smaller than in 2050.
-    _, captured_expected_2060 = _expected_ccs(scenario, assumptions, 0.5, 2060)
+    # The energy-penalty ratio is lower in 2060, so a smaller share would meet the same 50%
+    # target -- but the capture-share lock (2026-09-10) keeps the 2050 share running: a capture
+    # island is not switched off. Captured tonnes in 2060 are therefore the LOCKED share times
+    # the 2060 per-share capture (whose penalty component is the smaller 2060 one).
+    s_2060_unlocked, captured_2060_unlocked = _expected_ccs(scenario, assumptions, 0.5, 2060)
+    assert s_2060_unlocked < s_ccs_expected
+    assert y2["share"][0, ccs_idx] == pytest.approx(s_ccs_expected, rel=1e-3)
+    captured_expected_2060 = captured_2060_unlocked / s_2060_unlocked * s_ccs_expected
     assert y2["edge_flow_mtpa"][0] == pytest.approx(captured_expected_2060, rel=1e-3)
     assert y2["cost_breakdown_cny"]["pipe_capex"] == pytest.approx(0.0, abs=1.0)
 
@@ -239,7 +258,7 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
 
     # The rebuilt plant operates at rebuild_efficiency (USC): its heat rate improves to
     # hr x 0.42/0.45, which must show up in the baseline net operating cost.
-    assumptions = OptimizationAssumptions()
+    assumptions = _toy_assumptions()
     hr_eff = assumptions.heat_rate_gj_per_mwh * assumptions.coal_plant_base_efficiency / scenario.rebuild_efficiency
     net_pm = (
         hr_eff * assumptions.province_coal_cost("Shanxi")
@@ -255,10 +274,13 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
 
 
 def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path) -> None:
-    """CCS share dipping then rebounding must NOT re-trigger the sunk retrofit CAPEX.
-    Regression test for the share-delta charging bug: with targets 0.5 -> 0.3 -> 0.5,
-    the CCS share dips in period 2 and rebounds in period 3. CAPEX is due only on
-    increments of the installed stock (max historical share), i.e. only in period 1."""
+    """A capture island once built is paid for once and keeps running.
+
+    Targets 0.5 -> 0.3 -> 0.5 with retirement disabled. Before the capture-share lock
+    (2026-09-10) the CCS share dipped in period 2 and rebounded in period 3, and this test
+    guarded the stock-increment charging (no second capex on the rebound). With the lock the
+    share cannot dip at all -- the 2030 share is held through 2040 and 2050, the lower 2040
+    target is over-met, and CAPEX is still due only once, in period 1."""
     years3 = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     scenario = OptimizationScenario(
@@ -271,7 +293,7 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
         pathway_disable=("retire",),
         solver_time_limit=300,
     )
-    assumptions = OptimizationAssumptions()
+    assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.effective_years(list(prepared.available_ammonia_years))
     state = SolveState(
@@ -292,9 +314,11 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     s1_y2030, _ = _expected_ccs(scenario, assumptions, 0.5, 2030)
     s1_y2050, _ = _expected_ccs(scenario, assumptions, 0.5, 2050)
     s2_y2040, _ = _expected_ccs(scenario, assumptions, 0.3, 2040)
+    assert s2_y2040 < s1_y2050 < s1_y2030
     assert y1["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
-    assert y3["share"][0, ccs_idx] == pytest.approx(s1_y2050, rel=1e-3)
-    assert y2["share"][0, ccs_idx] == pytest.approx(s2_y2040, rel=1e-3)
+    # Locked: no dip in 2040, and 2050 needs no more than what is already running.
+    assert y2["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
+    assert y3["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
 
     # CAPEX only in period 1, on the full installed stock; periods 2 and 3 add nothing
     # (period 3's rebound stays within the already-installed stock).
@@ -351,7 +375,7 @@ def test_unit_cf_boost_recovers_unboosted_accounting(tmp_path) -> None:
 
     y1 = solution["year_solutions"][2050]
     ccs_idx = 2  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
-    assumptions = OptimizationAssumptions()
+    assumptions = _toy_assumptions()
     s_expected, captured_expected = _expected_ccs(scenario, assumptions, 0.5, 2050)
     assert y1["share"][0, ccs_idx] == pytest.approx(s_expected, rel=1e-3)
     assert y1["edge_flow_mtpa"][0] == pytest.approx(captured_expected, rel=1e-3)

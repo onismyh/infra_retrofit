@@ -57,6 +57,12 @@ class PreparedInputs:
     # Defaulted so that with industry off `PreparedInputs` is constructed exactly as it
     # was before industry existed.
     industry: object | None = None
+    # Per-sector residual caps (fractions of each group's own 2030 baseline); empty unless
+    # `scenario.sector_target_source` is set.
+    sector_targets: pd.DataFrame | None = None
+    # (year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg): industrial hydrogen links
+    # onto the shared green-ammonia nodes. Empty unless industry is on.
+    industry_h2_links: pd.DataFrame | None = None
 
 
 @dataclass

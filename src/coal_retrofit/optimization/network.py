@@ -6,9 +6,25 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from ..constants import NETWORK_DETOUR_FACTOR, NETWORK_DIRECT_SINK_TOP_K
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
+
+# Shortest branch the model will price. Three industrial hubs sit on top of a corridor node
+# (geodesic distance 0.000 km) and their zero-length branches were built "for free" at
+# 20 Mtpa in 2030. One kilometre of on-site piping is the floor.
+MIN_BRANCH_LENGTH_KM = 1.0
+
+
+def _routed_branch_km(straight_km: float) -> float:
+    """Straight-line branch length -> routed length: detour factor, then the floor.
+
+    CLAUDE.md 1.3: every straight-line candidate is `haversine x 1.136`. The runtime branches
+    (plant, storage, industry) used the raw geodesic distance; the triangulation and direct
+    edges built by `builders/network.py` already carry the factor.
+    """
+    return max(float(straight_km) * NETWORK_DETOUR_FACTOR, MIN_BRANCH_LENGTH_KM)
 
 
 @dataclass(frozen=True)
@@ -68,6 +84,13 @@ def _build_base_graph(
             year_basis=str(row.year_basis),
         )
     return graph
+
+
+def _haversine_km(lon: float, lat: float, lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
+    lon0, lat0 = np.radians(lon), np.radians(lat)
+    lons_r, lats_r = np.radians(lons), np.radians(lats)
+    a = np.sin((lats_r - lat0) / 2.0) ** 2 + np.cos(lat0) * np.cos(lats_r) * np.sin((lons_r - lon0) / 2.0) ** 2
+    return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
 
 
 def _nearest_corridor_node(nodes: pd.DataFrame, lon: float, lat: float) -> tuple[str, float]:
@@ -155,6 +178,7 @@ def build_runtime_network(
         runtime_node_id = f"plant::{row.plant_id}"
         graph.add_node(runtime_node_id, lon=float(row.centroid_longitude), lat=float(row.centroid_latitude), node_type="plant")
         nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.centroid_longitude), float(row.centroid_latitude))
+        length_km = _routed_branch_km(length_km)
         _append_runtime_edge(
             edge_rows=runtime_edge_rows,
             graph=graph,
@@ -180,6 +204,7 @@ def build_runtime_network(
         runtime_node_id = f"storage::{row.storage_hub_id}"
         graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="storage_hub")
         nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
+        length_km = _routed_branch_km(length_km)
         _append_runtime_edge(
             edge_rows=runtime_edge_rows,
             graph=graph,
@@ -209,10 +234,23 @@ def build_runtime_network(
     # is precisely what "shared infrastructure" means here.
     existing_industry_nodes: dict[str, str] = {}
     if industry_hubs is not None and len(industry_hubs):
+        # Storage node coordinates for the direct sink arcs below. Coal hubs get these arcs
+        # from `builders/network.py` (every plant to its k nearest sinks); industrial hubs did
+        # not, so 27 of 390 sat in components with no sink and their CCS route was infeasible
+        # rather than merely expensive. Same rule, same class (`runtime_direct_fallback`,
+        # 2.8x capex), same k, for both source groups.
+        sink_rows = [
+            (str(hub_id), float(graph.nodes[node_id]["lon"]), float(graph.nodes[node_id]["lat"]), node_id)
+            for hub_id, node_id in existing_storage_nodes.items()
+            if node_id in graph.nodes
+        ]
+        sink_lons = np.array([r[1] for r in sink_rows], dtype=np.float64)
+        sink_lats = np.array([r[2] for r in sink_rows], dtype=np.float64)
         for row in industry_hubs.itertuples(index=False):
             runtime_node_id = f"industry::{row.hub_id}"
             graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="industry_hub")
             nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
+            length_km = _routed_branch_km(length_km)
             _append_runtime_edge(
                 edge_rows=runtime_edge_rows,
                 graph=graph,
@@ -225,6 +263,24 @@ def build_runtime_network(
                 year_basis="runtime",
                 capex_multiplier=assumptions.branch_capex_multiplier,
             )
+            if len(sink_rows):
+                straight = _haversine_km(float(row.longitude), float(row.latitude), sink_lons, sink_lats)
+                for rank, sink_idx in enumerate(np.argsort(straight)[:NETWORK_DIRECT_SINK_TOP_K]):
+                    sink_node_id = sink_rows[int(sink_idx)][3]
+                    if sink_node_id == nearest_node_id:
+                        continue
+                    _append_runtime_edge(
+                        edge_rows=runtime_edge_rows,
+                        graph=graph,
+                        edge_id=f"edge_runtime_industry_direct_{row.hub_id}_{rank}",
+                        from_node_id=runtime_node_id,
+                        to_node_id=sink_node_id,
+                        length_km=_routed_branch_km(float(straight[sink_idx])),
+                        edge_class="runtime_direct_fallback",
+                        source="runtime_direct_sink_rule",
+                        year_basis="runtime",
+                        capex_multiplier=assumptions.direct_fallback_capex_multiplier,
+                    )
             nodes = pd.concat(
                 [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "industry_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
                 ignore_index=True,

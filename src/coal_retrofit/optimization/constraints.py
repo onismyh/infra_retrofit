@@ -146,10 +146,13 @@ def _add_blend_level_constraints(
     bio_pen_coeff_data = year_data.get("biomass_penalty_coeff_per_level", 0.0)
     bio_pen_em_coeff_data = year_data.get("biomass_penalty_emissions_coeff_per_level", 0.0)
     # On BECCS the co-firing penalty fuel burns in the same boiler as the captured flue gas,
-    # so only the uncaptured share is vented (Fan et al. 2023 SI eq. S42).
+    # so only the uncaptured share is vented (Fan et al. 2023 SI eq. S42) -- and the captured
+    # share is a real tonne that has to be piped and stored.
     beccs_pen_em_coeff_data = year_data.get(
         "beccs_penalty_emissions_coeff_per_level", bio_pen_em_coeff_data
     )
+    beccs_pen_cap_coeff_data = year_data.get("beccs_penalty_captured_coeff_per_level", 0.0)
+    beccs_penalty_captured_exprs: list[object] = []
 
     for p in range(plant_count):
         # Retrofit operations carry the efficiency ratio (rebuilt plants) and the
@@ -163,6 +166,7 @@ def _add_blend_level_constraints(
         bio_pen_coeff = float(bio_pen_coeff_data[p]) if hasattr(bio_pen_coeff_data, '__getitem__') and not isinstance(bio_pen_coeff_data, (int, float)) else float(bio_pen_coeff_data)
         bio_pen_em_coeff = float(bio_pen_em_coeff_data[p]) if hasattr(bio_pen_em_coeff_data, '__getitem__') and not isinstance(bio_pen_em_coeff_data, (int, float)) else float(bio_pen_em_coeff_data)
         beccs_pen_em_coeff = float(beccs_pen_em_coeff_data[p]) if hasattr(beccs_pen_em_coeff_data, '__getitem__') and not isinstance(beccs_pen_em_coeff_data, (int, float)) else float(beccs_pen_em_coeff_data)
+        beccs_pen_cap_coeff = float(beccs_pen_cap_coeff_data[p]) if hasattr(beccs_pen_cap_coeff_data, '__getitem__') and not isinstance(beccs_pen_cap_coeff_data, (int, float)) else float(beccs_pen_cap_coeff_data)
         s_bio = share[p, PATHWAY_INDEX["biomass"]]
         s_beccs = share[p, PATHWAY_INDEX["beccs"]]
         s_amm = share[p, PATHWAY_INDEX["ammonia"]]
@@ -191,6 +195,7 @@ def _add_blend_level_constraints(
         beccs_blend_red = gp.LinExpr()
         bio_penalty = gp.LinExpr()  # blend-level-dependent energy penalty (cost)
         bio_penalty_emissions = gp.LinExpr()  # same penalty fuel, as vented CO2 (Mt)
+        beccs_penalty_captured = gp.LinExpr()  # the captured share of the BECCS penalty fuel (Mt)
 
         for l, beta_b in enumerate(blend_b):
             bin_b = select_b[p, l + 1]
@@ -207,6 +212,7 @@ def _add_blend_level_constraints(
             bio_penalty_emissions += beta_b * (
                 bio_pen_em_coeff * G_bio * z_bio + beccs_pen_em_coeff * G_beccs * z_beccs
             )
+            beccs_penalty_captured += beta_b * beccs_pen_cap_coeff * G_beccs * z_beccs
 
         model.addConstr(biomass_use_gj[p] == bio_use_expr, name=f"bu_{p}{sfx}")
 
@@ -228,6 +234,7 @@ def _add_blend_level_constraints(
         amm_red_exprs.append(amm_red)
         bio_penalty_exprs.append(bio_penalty)
         bio_penalty_emissions_exprs.append(bio_penalty_emissions)
+        beccs_penalty_captured_exprs.append(beccs_penalty_captured)
 
     return (
         select_b, select_a,
@@ -235,6 +242,7 @@ def _add_blend_level_constraints(
         biomass_use_gj, ammonia_use_kg,
         bio_red_exprs, beccs_blend_red_exprs, amm_red_exprs,
         bio_penalty_exprs, bio_penalty_emissions_exprs,
+        beccs_penalty_captured_exprs,
     )
 
 
@@ -288,10 +296,13 @@ def _add_plant_path_constraints(
         biomass_use_gj, ammonia_use_kg,
         bio_red_exprs, beccs_blend_red_exprs, amm_red_exprs,
         bio_penalty_exprs, bio_penalty_emissions_exprs,
+        beccs_penalty_captured_exprs,
     ) = _add_blend_level_constraints(model, share, plant_count, scenario, assumptions, year_data, sfx)
 
     eta = float(scenario.capture_rate)
     plant_reduction_exprs: list[object] = []
+    ccs_penalty_captured = year_data.get("ccs_penalty_captured_matrix")
+    air_penalty_captured = year_data.get("air_penalty_captured_matrix")
 
     for plant_idx in range(plant_count):
         E_p = float(year_data["emissions_mt"][plant_idx])               # baseline
@@ -333,8 +344,24 @@ def _add_plant_path_constraints(
                     name=f"air_share_le_share_{plant_idx}_{path_idx}{sfx}",
                 )
 
-        # Physical captured CO2 differs from BECCS net reduction.
-        captured_expr = E_rt * eta * (s_ccs + s_beccs)
+        # Physical captured CO2 differs from BECCS net reduction. Beyond eta x the boiler's
+        # own flue gas, the capture train also takes eta of every penalty fuel burnt in the
+        # same boiler (CCS energy penalty, BECCS co-firing penalty, dry-cooling backpressure);
+        # those tonnes were vented at (1-eta) in the residual but never counted here, so they
+        # were abated on paper without being transported or stored.
+        captured_expr = E_rt * eta * (s_ccs + s_beccs) + beccs_penalty_captured_exprs[plant_idx]
+        if ccs_penalty_captured is not None:
+            captured_expr = captured_expr + gp.quicksum(
+                float(ccs_penalty_captured[plant_idx, path_idx]) * share[plant_idx, path_idx]
+                for path_idx in range(pathway_count)
+                if float(ccs_penalty_captured[plant_idx, path_idx]) != 0.0
+            )
+        if allow_air and air_penalty_captured is not None:
+            captured_expr = captured_expr + gp.quicksum(
+                float(air_penalty_captured[plant_idx, path_idx]) * air_share[plant_idx, path_idx]
+                for path_idx in range(pathway_count)
+                if float(air_penalty_captured[plant_idx, path_idx]) != 0.0
+            )
         model.addConstr(captured_mt_by_plant[plant_idx] == captured_expr, name=f"captured_balance_{plant_idx}{sfx}")
 
         # Actual (residual) emissions under each pathway, then reduction vs baseline.

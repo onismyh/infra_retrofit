@@ -46,6 +46,18 @@ INDUSTRY_SECTORS: Final[tuple[str, ...]] = (
 
 SECTORS_OUT_OF_SCOPE: Final[frozenset[str]] = frozenset({SECTOR_REFINERY, SECTOR_COAL_CHEM})
 
+# Sector -> target group. The sector caps (scripts/build_sector_targets.py) are read off China
+# TIMES at the level TIMES books CO2: iron & steel, building materials, chemicals. Coal power
+# is the fourth group, "power", and is not in this map because it is not an industrial sector.
+SECTOR_TARGET_GROUP: Final[dict[str, str]] = {
+    SECTOR_STEEL_BF: "steel",
+    SECTOR_STEEL_EAF: "steel",
+    SECTOR_CEMENT: "cement",
+    SECTOR_AMMONIA: "chemicals",
+    SECTOR_METHANOL: "chemicals",
+}
+POWER_TARGET_GROUP: Final[str] = "power"
+
 SECTOR_LABELS_ZH: Final[dict[str, str]] = {
     SECTOR_STEEL_BF: "钢铁（高炉-转炉）",
     SECTOR_STEEL_EAF: "钢铁（电炉）",

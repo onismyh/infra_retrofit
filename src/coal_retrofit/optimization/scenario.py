@@ -30,8 +30,21 @@ class OptimizationAssumptions:
     biomass_fixed_cost_cny_per_mwh: float = 30.0
     beccs_fixed_cost_cny_per_mwh: float = 30.0
     ammonia_fixed_cost_cny_per_mwh: float = 80.0
-    ccs_retrofit_capex_cny_per_kw: float = 4000.0
-    beccs_retrofit_capex_cny_per_kw: float = 5000.0
+    # Capture-island retrofit CAPEX at the learning reference year (2030), incl. compression,
+    # 90% amine capture on an existing 300-1000 MW unit. Literature review 2026-09-10
+    # (docs/工业联合减排实现说明.md §9.6): centre 3 500 CNY/kW, range 2 700-4 400.
+    #   Yuan J-H et al. 2022, 气候变化研究进展 18(6) 764-776, Table 2: 3 318-3 925 CNY/kW by
+    #     province, retrofit (primary citation);
+    #   Lockwood 2018, IEA Clean Coal Centre for CIAB, Table 4: 4 121 CNY(2016)/kW, 1000 MW
+    #     USC, 90%, capture+compression, 2025-2030 retrofit, self-described conservative (upper);
+    #   An K et al. 2025, Nat Commun 16:2311, SI Table 7: 381.9 / 305.5 $/kW in 2025 / 2030
+    #     (~2 670 / 2 140 CNY/kW), learning-curve lower end;
+    #   国能锦界 4 Mt/a full-flue-gas CCUS, 19.9 亿元 on a 600 MW-class unit (2024 filing):
+    #     ~3 000-3 300 CNY/kW, a real retrofit incl. pilot storage.
+    # Was 4 000 (unsourced) before 2026-09-10; the BECCS figure keeps its +1 000 CNY/kW
+    # biomass-conversion increment on top of the capture island (two-stock capex).
+    ccs_retrofit_capex_cny_per_kw: float = 3500.0
+    beccs_retrofit_capex_cny_per_kw: float = 4500.0
     biomass_efficiency_penalty_per_ratio: float = 0.0373  # 0.56% eff drop at 15% co-firing (Fan et al. 2023)
     coal_plant_base_efficiency: float = 0.42
     coal_fuel_cost_cny_per_gj: float = 38.2             # national mean, overridden by province lookup
@@ -118,6 +131,37 @@ class OptimizationAssumptions:
     standard_pipe_capacity_mtpa: float = 20.0
     max_parallel_pipes: int = 2
     pipeline_lifetime_years: int = 30
+    # Pipe DIAMETER TIERS. Before 2026-09-10 every edge had exactly one size, the 20-Mtpa trunk,
+    # and a 1-Mt/yr branch paid for 20 Mtpa: 222 of the 344 edges built in IND_BASE_t95 sat at
+    # exactly 20, and any flow too small to justify a trunk was cheaper to push through the
+    # big-M "capacity slack" than to pipe -- so 11 edges carried CO2 with zero built capacity.
+    # Three tiers with economies of scale close that gap. Per-km capex per tier scales the
+    # 20-Mtpa trunk rate (400 000 x 20 = 8.0e6 CNY/km, see pipe_capex_cny_per_mtpa_km) by
+    # (cap/20)^0.6, the usual diameter-cost exponent for CO2 pipelines (Knoope et al. 2013,
+    # IJGGC 16:241, Table 4 fits 0.5-0.7). Cross-check: the 2-Mtpa tier at 2.0e6 CNY/km sits
+    # below the 1.7-Mtpa Qilu-Shengli line's 3.1e6 CNY/km, which includes its compressor
+    # stations, so the small tier is if anything cheap. Class multipliers (branch 1.35, direct
+    # 2.8, corridor 0.4) still apply on top, as before.
+    pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
+    pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
+    # Storage DEPLOYMENT RAMP. `injectivity_mtpa` is the 2060-scale buildable rate (calibrated
+    # to the ACCA21 2060 range, see storage_site_project_rate_mtpa). Offering all of it in
+    # 2030 let IND_BASE_t95 inject 1 265 Mt/yr in 2040 on carbon price alone, against ~4 Mt/yr
+    # injected nationally today. The fraction available in each planning year follows the
+    # midpoints of the ACCA21 (2021) CCUS roadmap: 2030 0.2-4.08 亿 t (mid 2.1), 2050 6-14.5
+    # (10.2), 2060 10-18.2 (14.1); 2040 is interpolated between the 2035 and 2050 ranges
+    # (~7.5). Divided by the 12.8 亿 t/yr national buildable rate and capped at 1.
+    storage_deployment_fraction_by_year: tuple[float, ...] = (0.17, 0.58, 0.80, 1.00)
+    # Green-ammonia SUPPLY RAMP, same device. The supply curve is a TECHNICAL POTENTIAL
+    # (8 551 Mt NH3/yr in 2025 against ~1 600 Mt for 50% co-firing of the whole fleet), so
+    # without a ramp the node limits never bind. All-ones by default because no sourced
+    # build-out trajectory for Chinese green ammonia is in the repo yet; set it when one is.
+    ammonia_supply_deployment_fraction_by_year: tuple[float, ...] = (1.0, 1.0, 1.0, 1.0)
+    # Industrial hydrogen delivered by tube trailer from the supply node. INTERIM VALUE: the
+    # order of magnitude of Chinese long-tube-trailer costs (~3 CNY/kg per 100 km, 中国氢能联盟
+    # 白皮书 2019 range 2-4), pending a sourced figure from the author. Same role as
+    # `ammonia_transport_cost_cny_per_kg_km` on the coal side.
+    h2_transport_cost_cny_per_kg_km: float = 0.03
     cooling_once_through_water_intensity_m3_per_mwh: float = 0.35  # consumption basis (耗水量):
     # 0.29-0.41 m³/MWh per NDRC et al. 2015 No.9 clean-production benchmarks (median ≈0.35).
     # (Previous 1.0 mixed up the withdrawal and consumption bases.)
@@ -265,6 +309,32 @@ class OptimizationAssumptions:
     sparse_interval_years: int = 10
     # Dynamic resource routing parameters
     resource_match_radius_km: float = 200.0
+    # National ceiling on biomass burned in the coal fleet, GJ per year (16 EJ; author's call,
+    # 2026-09-10). The 0.25-degree node layer sums to ~30 EJ/yr of collectable residue, but
+    # that is a technical potential shared with every other biomass user; this cap is the
+    # fleet-wide share the study allows. Applied per planning year on top of the node limits.
+    # 0 or negative disables it.
+    biomass_national_cap_gj_per_year: float = 16.0e9
+    # National ceiling on green ammonia burned in the coal fleet, Mt NH3 per planning year
+    # (2030/2040/2050/2060). The node layer is an electrolysis potential (~8 800 Mt NH3 in
+    # 2030) that never binds; the literature review of 2026-09-10 (see
+    # docs/工业联合减排实现说明.md §9.6) puts the AMMONIA AVAILABLE TO POWER at:
+    #   2050  47 Mt  -- Xiong et al. 2022, 储能科学与技术 11(12), 掺氨发电渗透率 30%
+    #                  (DOI 10.19799/j.cnki.2095-4239.2022.0364), directly citable;
+    #   2030   2 Mt  -- demonstration scale: national green-ammonia CAPACITY 4.5 Mt in 2030
+    #                  (中国化工节能技术协会 via 中国能源报 2025-09-01), fertiliser first;
+    #   2040  12 Mt  -- INTERPOLATED between Xiong's 2035 co-firing demand (5.4 Mt) and 2050;
+    #   2060  55 Mt  -- Xiong 2060 total ammonia 120 Mt at >97% renewable, roughly half of it
+    #                  energy use (RMI/CPCIF 2024); midpoint of the 50-60 Mt range.
+    # 2030/2040/2060 are derived, not quoted -- flagged for the author. Empty tuple = off.
+    ammonia_fleet_cap_mt_by_year: tuple[float, ...] = (2.0, 12.0, 47.0, 55.0)
+    # National ceiling on GREEN HYDROGEN drawn from the shared electrolysis nodes by every
+    # user (fleet ammonia in H2 terms via NH3_H2_RATIO + industrial hydrogen), Mt H2 per
+    # planning year. 2030 and 2060 from 中国氢能联盟《中国氢能技术发展路线图研究》(2024-12):
+    # renewable hydrogen 3.5-6.5 Mt in 2030 and 75-162 Mt in 2060 (upper / mid taken);
+    # 2040 and 2050 from 水电水利规划设计总院 (澎湃 2024, "据预测", secondary): 69 / 91 Mt.
+    # Empty tuple = off.
+    green_h2_national_cap_mt_by_year: tuple[float, ...] = (6.5, 69.0, 91.0, 120.0)
     # Blend ratio upgrade capital cost (CNY per MW of plant capacity per blend level step)
     biomass_upgrade_capex_cny_per_mw_per_level: float = 500_000.0
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # ≈125 CNY/kW at top level (50% blend).
@@ -335,6 +405,35 @@ class OptimizationAssumptions:
         nearest = min(mapping, key=lambda candidate: abs(candidate - year))
         return float(mapping[nearest])
 
+    def _fraction_for_year(self, values: tuple[float, ...], year: int) -> float:
+        if not values:
+            return 1.0
+        mapping = dict(zip(PLANNING_YEARS, values, strict=False))
+        if year in mapping:
+            return float(mapping[year])
+        nearest = min(mapping, key=lambda candidate: abs(candidate - year))
+        return float(mapping[nearest])
+
+    def storage_deployment_fraction(self, year: int) -> float:
+        """Share of the 2060-scale injection rate that is built and available in `year`."""
+        return self._fraction_for_year(self.storage_deployment_fraction_by_year, year)
+
+    def ammonia_supply_deployment_fraction(self, year: int) -> float:
+        """Share of the green-ammonia technical potential that is built in `year`."""
+        return self._fraction_for_year(self.ammonia_supply_deployment_fraction_by_year, year)
+
+    def ammonia_fleet_cap_mt(self, year: int) -> float:
+        """National green-ammonia ceiling for coal co-firing in `year`, Mt NH3 (0 = off)."""
+        if not self.ammonia_fleet_cap_mt_by_year:
+            return 0.0
+        return self._fraction_for_year(self.ammonia_fleet_cap_mt_by_year, year)
+
+    def green_h2_national_cap_mt(self, year: int) -> float:
+        """National green-hydrogen ceiling on all node users in `year`, Mt H2 (0 = off)."""
+        if not self.green_h2_national_cap_mt_by_year:
+            return 0.0
+        return self._fraction_for_year(self.green_h2_national_cap_mt_by_year, year)
+
     def cooling_baseline_water_intensity(self, cooling_label: str) -> float:
         label = str(cooling_label).strip().lower()
         if "once" in label:
@@ -353,6 +452,33 @@ class OptimizationScenario:
     biomass_blend_levels: tuple[float, ...] = (0.10, 0.25, 0.50, 0.75, 1.00)
     ammonia_blend_levels: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
     emission_target_fraction: tuple[float, ...] = (0.0, 0.0, 0.0, 0.95)
+    # SECTOR TARGETS (2026-09-10). When set, e.g. "times_cn60", the single joint reduction
+    # floor above is replaced by one cap per sector group and planning year, read from
+    # `inputs/sector_targets_<source>.csv` (scripts/build_sector_targets.py):
+    #
+    #     residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)
+    #
+    # with g in {power, steel, cement, chemicals}. `baseline_g(2030)` is THIS model's own
+    # frozen-technology 2030 emissions of the group, so the TIMES trajectory supplies the
+    # SHAPE of the decline and the model supplies the level. The coal fleet is the whole
+    # "power" group. Empty string keeps the legacy joint target so every run solved before
+    # this date stays reproducible.
+    sector_target_source: str = ""
+    # Coal fleet utilisation by planning year, national capacity-weighted hours. Empty keeps
+    # the province statistics frozen across all four years (the pre-2026-09-10 behaviour, in
+    # which the fleet generated 6 576 TWh in 2060 as in 2030). When set, every hub's province
+    # hours are scaled by hours_y / fleet-average current hours (4 643 h), so provincial
+    # differences are kept and only the level moves. The author's instruction (2026-09-10) was
+    # a rough utilisation trajectory rather than a dispatch model; TIMES CN60 gives 3 594 h in
+    # 2030 and 3 092 h in 2040 (coal is a residual after 2040 there), the later points are
+    # round numbers for a fleet kept for flexibility.
+    coal_operating_hours_by_year: tuple[float, ...] = ()
+    # Exogenous industrial OUTPUT index by sector and year from
+    # `inputs/industry_output_index_<source>.csv`; empty means output is held at its 2025
+    # level in every year (the pre-2026-09-10 behaviour). Defaults to `sector_target_source`
+    # when that is set and this is not, so a TIMES-anchored cap always comes with the TIMES
+    # output path it was derived under.
+    industry_output_index_source: str = ""
     storage_scope: str = "dsa_eor"
     injectivity_multiplier: float = 1.0
     biomass_supply_multiplier: float = 1.0
@@ -432,6 +558,24 @@ class OptimizationScenario:
 
     def carbon_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.carbon_price_cny_per_t_by_year, year)
+
+    @property
+    def uses_sector_targets(self) -> bool:
+        return bool(str(self.sector_target_source).strip())
+
+    @property
+    def effective_output_index_source(self) -> str:
+        chosen = str(self.industry_output_index_source).strip()
+        return chosen or str(self.sector_target_source).strip()
+
+    def operating_hours_scale(self, year: int, fleet_hours_now: float) -> float:
+        """Multiplier on every hub's current province hours in `year` (1.0 when unset)."""
+        if not self.coal_operating_hours_by_year:
+            return 1.0
+        if fleet_hours_now <= 0:
+            raise ValueError("fleet_hours_now must be positive to scale operating hours")
+        target = self._interpolate_year_tuple(self.coal_operating_hours_by_year, year)
+        return float(target) / float(fleet_hours_now)
 
     def electricity_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.electricity_price_cny_per_mwh_by_year, year)

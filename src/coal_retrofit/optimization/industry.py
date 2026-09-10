@@ -6,59 +6,65 @@ withdrawal from the basin reservation so the coal fleet could compete for it. No
 `optimization/` ever read them. Their abatement was exogenous — zero — and the basin residual
 they created was handed entirely to coal.
 
-What is joint here, precisely three things:
+What is joint here:
 
 1. **The CO2 network.** Industrial capture is injected at the hub's own node in the same
    pipeline graph the coal hubs use, competes for the same edge capacity, and is stored in the
-   same 35 sinks against the same injectivity limits. This is what the author asked for by
-   "作为基础设施减排".
+   same sinks against the same injectivity limits. Every industrial hub also gets direct
+   candidate arcs to its nearest sinks, the same rule the coal hubs have.
 2. **The basin water cap.** Industrial site water and the water penalty of industrial capture
-   are counted against the same `residual_m3_per_year` that coal power draws on. Basin K's
-   residual is 2.1e8 m3 of which 2.4e8 is added-back modelled industry, so this is the
-   constraint the whole exercise turns on.
-3. **One emission target.** `total_reduction + industry_reduction >= target * (coal_baseline +
-   industry_baseline)`. The solver, not the modeller, decides which sector abates.
+   are counted against the same `residual_m3_per_year` that coal power draws on.
+3. **The hydrogen supply.** A hub on the H2 route draws hydrogen from the SAME green-ammonia
+   nodes that supply coal-side co-firing, within the same radius, and pays each node's own
+   plant-gate LCOH plus transport -- so the two hydrogen users compete for quantity, and the
+   price industry pays is the marginal one, not the national supply-weighted mean.
+4. **The emission targets.** Either the legacy single joint reduction floor, or (from
+   2026-09-10) one residual cap per sector group -- steel, cement, chemicals, and power for
+   the coal fleet -- read from `inputs/sector_targets_<source>.csv`. With sector caps the
+   carbon price is normally zero; when it is not, it is charged on industrial residuals
+   exactly as on coal residuals (before 2026-09-10 only coal paid it).
 
 Three routes per hub — `unabated`, `ccs`, `h2` — with `h2` available only where
 `SECTOR_HAS_H2_ROUTE` is true (so cement and EAF steel get capture or nothing, which is the
 right answer for a process-CO2 source). Route shares are continuous in [0, 1] and MONOTONE
 across planning years: a hub that installs capture cannot uninstall it, and it cannot swap
-capture for hydrogen. Monotonicity is what makes the levelised cost basis legitimate — see
-below — and it is why there is no separate one-time CAPEX term.
+capture for hydrogen.
 
-COST BASIS, and why it differs from the coal side. The coal fleet is costed per MW and per MWh
-with capital charged once on the increment of an installed stock. Industry is costed per tonne,
-LEVELISED: `INDUSTRY_CAPTURE_COST_CNY_PER_T` and `h2_premium_cny_per_t` already contain capital
-recovery, exactly as Tang et al. (2023) define `Z_cap = CAPEX*CRF + OPEX`. Charging a levelised
-cost in every operating year is correct as long as the decision cannot be reversed for free —
-which the monotonicity constraints guarantee. Splitting it back into a one-time CAPEX would
-have needed a CRF and a capital share that neither Chinese source publishes;
-`INDUSTRY_CAPTURE_CAPEX_SHARE` and `INDUSTRY_H2_CAPEX_SHARE` therefore survive only to split the
-REPORTED cost in `industry_detail.csv`, and are not in the model's arithmetic.
+COST BASIS (revised 2026-09-10 to match the coal side). The Chinese sources give LEVELISED
+per-tonne costs that already contain capital recovery. Charging them in every operating year
+while the coal side pays its retrofit capex once made the two sectors' capital fall on
+different time axes -- 2060 industry paid ~64% of its capital for ten years of use, 2030
+industry paid ~2x -- and pushed industrial abatement to the last period. The levelised cost is
+now split with the documented capital shares (`INDUSTRY_CAPTURE_CAPEX_SHARE`,
+`INDUSTRY_H2_CAPEX_SHARE`) and lifetimes: the capital part is de-annualised at the scenario
+discount rate and charged ONCE on the increment of the route share (monotone, so the increment
+is the newly built stock), the rest is an annual cost. Same convention as `ccs_retrofit_capex`.
 
-KNOWN BIASES, stated because they push the answer in a known direction:
+The H2 route cost keeps the literature anchor's structure: premium at the anchor's reference
+hydrogen price, moved to the price actually paid through the hub's own hydrogen intensity, and
+floored at the capital share of the anchor (`h2_premium_cny_per_t`). With hydrogen bought per
+link that reads:
 
-* **The H2 premium is a greenfield-vs-greenfield comparison** (Transition Asia's LCOS
-  contrasts a new H2-DRI-EAF against a new BF-BOF). Our hubs are existing plants whose blast
-  furnaces are sunk capital, so the true retrofit premium is higher by roughly the incumbent's
-  annualised capital. **H2 uptake here is therefore an upper bound.**
-  `scenario.industry_h2_cost_multiplier` exists to test it.
-* **Electrolysis water is not charged** (10-22 L/kg H2), because it belongs to the basin of the
-  electrolyser, not of the industrial hub, and the coal side's ammonia co-firing does not charge
-  it either. See the note at the foot of `constants_industry`.
-* **Hydrogen supply is not capacity-constrained and not spatially matched.** Industry pays a
-  national supply-weighted LCOH from the same `ammonia_supply_curve.csv` that prices coal-side
-  ammonia, but does not draw from those nodes, so the two hydrogen users do not compete for
-  supply. At 2030 that curve offers 1 555 Mt H2/yr against the 103 Mt/yr full industrial
-  substitution would need, so the missing cap is not binding at national scale; the missing
-  SPATIAL matching is the real gap and is the first thing to add.
-* **Industrial output is exogenous.** No retirement, no demand response, no material
-  efficiency. A hub can only change how it makes the same tonnes.
+    annual = max( (1 - s_cap) * premium_ref - k * P_ref, 0 ) * production * share_h2
+             + sum_links cost_link * flow_link                      (epigraph form, minimised)
+    capex  = s_cap * premium_ref * production / CRF(r, life)  on the share increment
+
+with k = kg H2 per tonne of product. The floor is the statement that switching cannot be
+cheaper than running the sunk incumbent; it is still generous (it credits the avoided fossil
+feedstock in full), so H2 uptake remains an upper bound.
+
+KNOWN BIASES that remain:
+* Electrolysis water is not charged (10-22 L/kg H2): it belongs to the basin of the
+  electrolyser, and the coal side's ammonia co-firing does not charge it either.
+* Industrial capture carries no energy-penalty emissions of its own: the ACCA21 unit costs are
+  taken to include the capture energy, and the residual of that energy is not vented here.
+* Output follows an exogenous index (TIMES CN60 when `industry_output_index_source` is set);
+  there is no plant-level retirement decision for industry.
 """
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -68,17 +74,22 @@ try:
 except ImportError:  # pragma: no cover
     gp = None
 
-from ..constants import WATER_FLOW_SCALE
+from ..constants import AMMONIA_FLOW_SCALE, NH3_H2_RATIO, WATER_FLOW_SCALE
 from ..constants_industry import (
+    INDUSTRY_CAPTURE_CAPEX_SHARE,
     INDUSTRY_CAPTURE_COST_CNY_PER_T,
+    INDUSTRY_CAPTURE_LIFETIME_YEARS,
     INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2,
     INDUSTRY_H2_ABATEMENT_FRACTION,
+    INDUSTRY_H2_CAPEX_SHARE,
+    INDUSTRY_H2_LIFETIME_YEARS,
+    INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT,
     INDUSTRY_H2_USES_ADVANCED_QUOTA,
     INDUSTRY_ROUTES,
     INDUSTRY_SECTORS,
     SECTOR_HAS_H2_ROUTE,
+    SECTOR_TARGET_GROUP,
     capture_cost_cny_per_t,
-    h2_premium_cny_per_t,
     water_quota,
 )
 from ..paths import ProjectPaths
@@ -103,14 +114,17 @@ class IndustryInputs:
     hubs: pd.DataFrame
     # industry_hubs.csv filtered to INDUSTRY_SECTORS, with `basin_code` added.
     h2_price_cny_per_kg: dict[int, float]
-    # National supply-weighted LCOH per planning year, derived from ammonia_supply_curve.csv.
+    # National supply-weighted LCOH per planning year, REPORTING ONLY since 2026-09-10: the
+    # model buys hydrogen per link at the node's own price.
+    output_index: dict[tuple[str, int], float] = field(default_factory=dict)
+    # {(sector, year): production index, 2030 = 1}; empty holds output flat.
 
 
 def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, float]:
     """Supply-weighted mean LCOH per year, CNY/kg, from the repo's own hydrogen supply curve.
 
-    Deliberately the SAME dataset that prices coal-side ammonia co-firing, so the two hydrogen
-    uses in this model cannot be priced off different curves.
+    Reported beside the per-link prices so a reader can see how far the marginal price the
+    model pays sits from the mean of the whole potential.
 
     Raises:
         FileNotFoundError: The supply curve has not been built.
@@ -137,12 +151,15 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
     return prices
 
 
-def prepare_industry(paths: ProjectPaths, assumptions) -> IndustryInputs:
+def prepare_industry(
+    paths: ProjectPaths, assumptions, output_index: dict[tuple[str, int], float] | None = None
+) -> IndustryInputs:
     """Load and prepare the industrial hubs. Call only when industry is enabled.
 
     Args:
         paths: Project paths.
         assumptions: `OptimizationAssumptions`; `usd_to_cny` and `water_budget` are read.
+        output_index: {(sector, year): index}; None or empty holds output flat.
 
     Returns:
         Prepared industrial inputs.
@@ -164,6 +181,9 @@ def prepare_industry(paths: ProjectPaths, assumptions) -> IndustryInputs:
     unknown = sorted(set(hubs["sector"].astype(str)) - set(INDUSTRY_CAPTURE_COST_CNY_PER_T))
     if unknown:
         raise ValueError(f"no capture cost sourced for sector(s) {unknown}; refusing to guess")
+    hubs["target_group"] = hubs["sector"].astype(str).map(SECTOR_TARGET_GROUP)
+    if hubs["target_group"].isna().any():
+        raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")
 
     # Basin of the hub's own location, matching how `_prepare_plants` attributes coal hubs:
     # the withdrawal permit follows the site, not the intake. Only needed for the basin cap.
@@ -175,14 +195,73 @@ def prepare_industry(paths: ProjectPaths, assumptions) -> IndustryInputs:
         hubs["basin_code"] = _assign_basin_codes(paths, hubs)
 
     prices = _national_h2_price(paths, float(assumptions.usd_to_cny))
+    index = dict(output_index or {})
+    if index:
+        sectors_missing = sorted(
+            {str(s) for s in hubs["sector"]} - {sector for sector, _ in index}
+        )
+        if sectors_missing:
+            raise ValueError(f"industry output index has no rows for sector(s) {sectors_missing}")
     logger.info(
-        "industry: %d hubs, %.0f Mt CO2/yr baseline, %.1f 亿 m3/yr water; H2 price %s CNY/kg",
+        "industry: %d hubs, %.0f Mt CO2/yr baseline, %.1f 亿 m3/yr water; national mean H2 price %s CNY/kg; output index %s",
         len(hubs),
         float(hubs["co2_mt_per_year"].sum()),
         float(hubs["water_m3_per_year"].sum()) / 1e8,
         {y: round(p, 1) for y, p in sorted(prices.items()) if y in (2030, 2060)},
+        "on" if index else "flat",
     )
-    return IndustryInputs(hubs=hubs, h2_price_cny_per_kg=prices)
+    return IndustryInputs(hubs=hubs, h2_price_cny_per_kg=prices, output_index=index)
+
+
+def prepare_industry_h2_links(
+    hubs: pd.DataFrame, ammonia_supply: pd.DataFrame, radius_km: float
+) -> pd.DataFrame:
+    """Candidate (hub, ammonia node) hydrogen links per supply year, within `radius_km`.
+
+    Only hubs whose sector has an H2 route get links. Nodes are the same 0.5-degree green
+    ammonia nodes the coal side draws on; `lcoh_usd_per_kg` is the node's plant-gate hydrogen
+    cost before Haber-Bosch, which is what an industrial hub taking hydrogen pays.
+
+    Args:
+        hubs: Prepared industrial hubs (needs `hub_id`, `sector`, `longitude`, `latitude`).
+        ammonia_supply: `ammonia_supply_curve.csv` as loaded by `_prepare_ammonia_supply`.
+        radius_km: Matching radius, the coal side's `resource_match_radius_km`.
+
+    Returns:
+        Columns `year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg`.
+    """
+    from .data_prep import _haversine_distances_km
+
+    columns = ["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]
+    eligible = hubs[hubs["sector"].astype(str).map(lambda s: bool(SECTOR_HAS_H2_ROUTE.get(s, False)))]
+    if eligible.empty or ammonia_supply.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, object]] = []
+    for year, nodes in ammonia_supply.groupby("year", sort=True):
+        nodes = nodes.reset_index(drop=True)
+        lons = nodes["longitude"].astype(float).to_numpy()
+        lats = nodes["latitude"].astype(float).to_numpy()
+        node_ids = nodes["ammonia_node_id"].astype(str).to_numpy()
+        lcoh = nodes["weighted_lcoh_usd_per_kg_h2"].astype(float).to_numpy()
+        for hub in eligible.itertuples(index=False):
+            distances = _haversine_distances_km(float(hub.longitude), float(hub.latitude), lons, lats)
+            for node_idx in np.flatnonzero(distances <= radius_km):
+                rows.append({
+                    "year": int(year),
+                    "hub_id": str(hub.hub_id),
+                    "ammonia_node_id": node_ids[node_idx],
+                    "distance_km": round(float(distances[node_idx]), 3),
+                    "lcoh_usd_per_kg": float(lcoh[node_idx]),
+                })
+    links = pd.DataFrame(rows, columns=columns)
+    unreachable = sorted(set(eligible["hub_id"].astype(str)) - set(links["hub_id"].astype(str)))
+    if unreachable:
+        logger.warning(
+            "industry: %d H2-capable hubs have no hydrogen node within %.0f km; their H2 route "
+            "is closed by the balance (first few: %s)", len(unreachable), radius_km, unreachable[:5],
+        )
+    logger.info("Industry H2 links: %d (across all years)", len(links))
+    return links
 
 
 def _h2_price_for_year(prices: dict[int, float], year: int) -> float:
@@ -207,16 +286,37 @@ def _advanced_quota_ratio(sector: str) -> float:
     return float(advanced) / float(general)
 
 
+def _crf(rate: float, life_years: int) -> float:
+    """Capital recovery factor; the reciprocal of the annuity factor."""
+    n = max(1, int(life_years))
+    if rate <= 1e-9:
+        return 1.0 / n
+    return rate / (1.0 - (1.0 + rate) ** (-n))
+
+
+def _output_scale(industry: IndustryInputs, sectors: np.ndarray, year: int) -> np.ndarray:
+    if not industry.output_index:
+        return np.ones(len(sectors), dtype=np.float64)
+    available_years = sorted({y for _, y in industry.output_index})
+    nearest = year if year in available_years else min(available_years, key=lambda y: abs(y - year))
+    return np.array(
+        [float(industry.output_index[(str(sector), nearest)]) for sector in sectors], dtype=np.float64
+    )
+
+
 def industry_year_data(
     industry: IndustryInputs, scenario, assumptions, year: int
 ) -> dict[str, object]:
     """Per-year cost, emission and water coefficients for every industrial hub and route.
 
-    All arrays are shaped `(hub_count, len(INDUSTRY_ROUTES))` unless noted.
+    All arrays are shaped `(hub_count, len(INDUSTRY_ROUTES))` unless noted. Costs are split
+    into an ANNUAL part (`opex_cny`, charged every operating year on the route share) and a
+    ONE-TIME part (`capex_cny`, charged on the increment of the route share). The H2 route's
+    hydrogen purchase is NOT in `opex_cny`: it is bought per link in the solver.
 
     Args:
         industry: Prepared industrial inputs.
-        scenario: `OptimizationScenario`; capture rate, cost multipliers, water multiplier.
+        scenario: `OptimizationScenario`; capture rate, cost multipliers, discount rate.
         assumptions: `OptimizationAssumptions`; the CCS learning curve is read from it.
         year: Planning year.
 
@@ -226,13 +326,14 @@ def industry_year_data(
     hubs = industry.hubs
     sectors = hubs["sector"].astype(str).to_numpy()
     n = len(hubs)
-    co2_mt = hubs["co2_mt_per_year"].astype(float).to_numpy()
-    production_t = hubs["production_kt_per_year"].astype(float).to_numpy() * 1_000.0
-    base_water_m3 = hubs["water_m3_per_year"].astype(float).to_numpy()
+    output_scale = _output_scale(industry, sectors, int(year))
+    co2_mt = hubs["co2_mt_per_year"].astype(float).to_numpy() * output_scale
+    production_t = hubs["production_kt_per_year"].astype(float).to_numpy() * 1_000.0 * output_scale
+    base_water_m3 = hubs["water_m3_per_year"].astype(float).to_numpy() * output_scale
+    production_now = hubs["production_kt_per_year"].astype(float).to_numpy()
     h2_intensity_t_per_t = np.divide(
         hubs["h2_demand_kt_per_year"].astype(float).to_numpy(),
-        np.where(hubs["production_kt_per_year"].astype(float).to_numpy() > 0,
-                 hubs["production_kt_per_year"].astype(float).to_numpy(), np.nan),
+        np.where(production_now > 0, production_now, np.nan),
     )
     h2_intensity_t_per_t = np.nan_to_num(h2_intensity_t_per_t, nan=0.0)
 
@@ -243,15 +344,20 @@ def industry_year_data(
     learning = float(assumptions.ccs_learning_factor(year))
     cost_multiplier = float(getattr(scenario, "industry_cost_multiplier", 1.0))
     h2_multiplier = float(getattr(scenario, "industry_h2_cost_multiplier", 1.0))
-    h2_price = _h2_price_for_year(industry.h2_price_cny_per_kg, int(year))
+    h2_price_mean = _h2_price_for_year(industry.h2_price_cny_per_kg, int(year))
+    rate = float(scenario.discount_rate)
+    crf_capture = _crf(rate, INDUSTRY_CAPTURE_LIFETIME_YEARS)
+    crf_h2 = _crf(rate, INDUSTRY_H2_LIFETIME_YEARS)
 
     route_available = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=bool)
     route_available[:, UNABATED] = True
     route_available[:, CCS] = True
     reduction_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     captured_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
-    annual_cost_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    opex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    capex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     water_m3 = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    h2_demand_kg = np.zeros(n, dtype=np.float64)  # kg H2 per unit share on the H2 route
 
     # unabated: the hub as it runs today. No abatement, no extra cost, its existing intake.
     water_m3[:, UNABATED] = base_water_m3
@@ -262,9 +368,9 @@ def industry_year_data(
     captured_mt[:, CCS] = co2_mt * capture_rate
     reduction_mt[:, CCS] = captured_mt[:, CCS]
     capture_unit_cost = np.array([capture_cost_cny_per_t(s) for s in sectors], dtype=np.float64)
-    annual_cost_cny[:, CCS] = (
-        captured_mt[:, CCS] * 1e6 * capture_unit_cost * learning * cost_multiplier
-    )
+    levelised_capture = captured_mt[:, CCS] * 1e6 * capture_unit_cost * learning * cost_multiplier
+    opex_cny[:, CCS] = levelised_capture * (1.0 - INDUSTRY_CAPTURE_CAPEX_SHARE)
+    capex_cny[:, CCS] = levelised_capture * INDUSTRY_CAPTURE_CAPEX_SHARE / crf_capture
     water_m3[:, CCS] = base_water_m3 + captured_mt[:, CCS] * 1e6 * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
 
     # h2: only where the sector has a route at all.
@@ -279,8 +385,21 @@ def industry_year_data(
             continue
         route_available[hub_idx, H2] = True
         reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
-        premium = h2_premium_cny_per_t(sector, h2_price, float(h2_intensity_t_per_t[hub_idx]))
-        annual_cost_cny[hub_idx, H2] = production_t[hub_idx] * premium * h2_multiplier
+        premium_ref, price_ref = INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
+        k_kg_per_t = float(h2_intensity_t_per_t[hub_idx]) * 1000.0
+        # Annual part BEFORE the hydrogen purchase: the anchor's non-capital premium at its
+        # reference price, less the hydrogen the anchor already priced in. Can be negative
+        # (cheap hydrogen makes the route cheaper than the anchor); the floor in the solver
+        # keeps annual + purchase >= 0.
+        opex_cny[hub_idx, H2] = (
+            production_t[hub_idx]
+            * ((1.0 - INDUSTRY_H2_CAPEX_SHARE) * float(premium_ref) - k_kg_per_t * float(price_ref))
+            * h2_multiplier
+        )
+        capex_cny[hub_idx, H2] = (
+            production_t[hub_idx] * INDUSTRY_H2_CAPEX_SHARE * float(premium_ref) / crf_h2 * h2_multiplier
+        )
+        h2_demand_kg[hub_idx] = k_kg_per_t * production_t[hub_idx]
         ratio = quota_ratio[sector] if INDUSTRY_H2_USES_ADVANCED_QUOTA else 1.0
         water_m3[hub_idx, H2] = base_water_m3[hub_idx] * ratio
 
@@ -289,18 +408,32 @@ def industry_year_data(
     return {
         "hub_ids": hubs["hub_id"].astype(str).tolist(),
         "sectors": sectors,
+        "target_groups": hubs["target_group"].astype(str).to_numpy(),
+        "output_scale": output_scale,
         "baseline_emissions_mt": co2_mt,
         "route_available": route_available,
         "reduction_mt": reduction_mt,
         "captured_mt": captured_mt,
-        "annual_cost_cny": annual_cost_cny,
+        "opex_cny": opex_cny,
+        "capex_cny": capex_cny,
+        # Kept under the old key for readers that sum a single cost matrix; it is the annual
+        # part only and no longer contains the hydrogen purchase.
+        "annual_cost_cny": opex_cny,
+        "h2_demand_kg_per_share": h2_demand_kg,
         "water_m3": water_m3,
-        "h2_price_cny_per_kg": h2_price,
+        "h2_price_cny_per_kg": h2_price_mean,
         "capture_learning_factor": learning,
     }
 
 
-def add_industry_year(model, industry: IndustryInputs, ydata: dict, year_suffix: str) -> dict:
+def add_industry_year(
+    model,
+    industry: IndustryInputs,
+    ydata: dict,
+    year_suffix: str,
+    h2_link_cost: np.ndarray | None = None,
+    h2_hub_membership=None,
+) -> dict:
     """Add one planning year's industrial variables and within-year constraints.
 
     Args:
@@ -308,10 +441,12 @@ def add_industry_year(model, industry: IndustryInputs, ydata: dict, year_suffix:
         industry: Prepared industrial inputs.
         ydata: Output of `industry_year_data` for this year.
         year_suffix: Year string appended to every variable and constraint name.
+        h2_link_cost: Delivered hydrogen cost per link, CNY per scaled kg (None: no links).
+        h2_hub_membership: Sparse (hub, link) incidence for the hydrogen links.
 
     Returns:
         Payload with the route share variable and the derived expressions the solver wires
-        into the CO2 network, the basin cap, the joint target and the objective.
+        into the CO2 network, the basin cap, the targets, the hydrogen nodes and the objective.
     """
     if gp is None:  # pragma: no cover
         raise RuntimeError("gurobipy is required to build the industrial block.")
@@ -333,9 +468,19 @@ def add_industry_year(model, industry: IndustryInputs, ydata: dict, year_suffix:
         for hub in range(n)
     ]
     reduction = ydata["reduction_mt"]
-    total_reduction = gp.quicksum(
-        float(reduction[hub, r]) * share[hub, r] for hub in range(n) for r in range(n_routes)
-    )
+    baseline = ydata["baseline_emissions_mt"]
+    reduction_by_hub = [
+        gp.quicksum(float(reduction[hub, r]) * share[hub, r] for r in range(n_routes))
+        for hub in range(n)
+    ]
+    total_reduction = gp.quicksum(reduction_by_hub)
+    groups = ydata["target_groups"]
+    residual_by_group = {
+        str(group): gp.quicksum(
+            float(baseline[hub]) - reduction_by_hub[hub] for hub in np.flatnonzero(groups == group)
+        )
+        for group in sorted(set(str(g) for g in groups))
+    }
     water = ydata["water_m3"]
     # Scaled to the same Mm3 units the coal side's basin expression uses, so the two can be
     # added inside one constraint without a hidden unit change.
@@ -343,17 +488,57 @@ def add_industry_year(model, industry: IndustryInputs, ydata: dict, year_suffix:
         gp.quicksum(float(water[hub, r]) / WATER_FLOW_SCALE * share[hub, r] for r in range(n_routes))
         for hub in range(n)
     ]
-    cost = ydata["annual_cost_cny"]
+    opex = ydata["opex_cny"]
     annual_cost = gp.quicksum(
-        float(cost[hub, r]) * share[hub, r] for hub in range(n) for r in range(n_routes)
+        float(opex[hub, r]) * share[hub, r] for hub in range(n) for r in (CCS,)
     )
+
+    # Hydrogen: per-link purchase, hub balance, and the floored H2-route annual cost.
+    h2_demand = ydata["h2_demand_kg_per_share"]
+    link_count = 0 if h2_link_cost is None else int(len(h2_link_cost))
+    h2_flow_kg = model.addMVar(link_count, lb=0.0, name=f"ind_h2_flow_kg_{year_suffix}")
+    h2_route_cost = model.addMVar(n, lb=0.0, name=f"ind_h2_cost_{year_suffix}")
+    if link_count:
+        hub_draw = h2_hub_membership @ h2_flow_kg
+        purchase_by_hub = [None] * n
+        # Group link costs by hub once, so each hub's purchase is a short expression.
+        coo = h2_hub_membership.tocoo()
+        links_of_hub: dict[int, list[int]] = {}
+        for hub_idx, link_idx in zip(coo.row.tolist(), coo.col.tolist()):
+            links_of_hub.setdefault(int(hub_idx), []).append(int(link_idx))
+        for hub in range(n):
+            hub_links = links_of_hub.get(hub, [])
+            purchase_by_hub[hub] = gp.quicksum(
+                float(h2_link_cost[l]) * h2_flow_kg[l] for l in hub_links
+            ) if hub_links else gp.LinExpr()
+            model.addConstr(
+                hub_draw[hub] == float(h2_demand[hub]) / AMMONIA_FLOW_SCALE * share[hub, H2],
+                name=f"ind_h2_balance_{hub}_{year_suffix}",
+            )
+            if float(h2_demand[hub]) > 0.0:
+                model.addConstr(
+                    h2_route_cost[hub] >= float(opex[hub, H2]) * share[hub, H2] + purchase_by_hub[hub],
+                    name=f"ind_h2_cost_lb_{hub}_{year_suffix}",
+                )
+    else:
+        # No hydrogen links at all: the route can only be taken by hubs with no demand, which
+        # `industry_year_data` has already closed. Force the balance explicitly anyway.
+        for hub in range(n):
+            if float(h2_demand[hub]) > 0.0:
+                model.addConstr(share[hub, H2] == 0.0, name=f"ind_h2_no_supply_{hub}_{year_suffix}")
+    annual_cost = annual_cost + h2_route_cost.sum()
+
     return {
         "share": share,
         "year_suffix": year_suffix,
         "captured_by_hub": captured_by_hub,
+        "reduction_by_hub": reduction_by_hub,
         "total_reduction_mt": total_reduction,
+        "residual_by_group": residual_by_group,
         "withdrawal_by_hub_scaled": withdrawal_by_hub,
         "annual_cost_cny": annual_cost,
+        "h2_flow_kg": h2_flow_kg,
+        "h2_route_cost": h2_route_cost,
         "year_data": ydata,
     }
 
@@ -362,8 +547,8 @@ def add_industry_monotonicity(model, payloads: list[dict], hub_count: int) -> No
     """Abatement routes are irreversible: `ccs` and `h2` shares never fall between years.
 
     With the shares summing to one this also forbids swapping capture for hydrogen — you do
-    not demolish a capture island to build a DRI shaft — and it is what makes charging a
-    LEVELISED cost per operating year legitimate (see the module docstring).
+    not demolish a capture island to build a DRI shaft — and it is what lets the one-time
+    capital charge be levied on the share INCREMENT: the increment is the newly built stock.
 
     Args:
         model: The Gurobi model.
@@ -379,6 +564,28 @@ def add_industry_monotonicity(model, payloads: list[dict], hub_count: int) -> No
                 (current[hub, route] >= previous[hub, route] for hub in range(hub_count)),
                 name=f"ind_mono_{INDUSTRY_ROUTES[route]}_{suffix}",
             )
+
+
+def industry_capex_expr(payload: dict, previous: dict | None):
+    """One-time capital charge for the year: capex coefficient x route-share increment.
+
+    Shares are monotone (`add_industry_monotonicity`), so `share_t - share_{t-1}` is the newly
+    built stock and never negative; in the first year the whole share is new.
+    """
+    share = payload["share"]
+    capex = payload["year_data"]["capex_cny"]
+    n = share.shape[0]
+    terms = []
+    for hub in range(n):
+        for route in (CCS, H2):
+            coeff = float(capex[hub, route])
+            if coeff <= 0.0:
+                continue
+            if previous is None:
+                terms.append(coeff * share[hub, route])
+            else:
+                terms.append(coeff * (share[hub, route] - previous["share"][hub, route]))
+    return gp.quicksum(terms) if terms else 0.0
 
 
 def basin_membership(industry: IndustryInputs, basin_codes: list[str]) -> np.ndarray:
@@ -407,3 +614,6 @@ def basin_membership(industry: IndustryInputs, basin_codes: list[str]) -> np.nda
     if unmatched:
         raise ValueError(f"{unmatched} industrial hubs fell outside every basin in water_basin_caps.csv")
     return membership
+
+
+H2_PER_NH3 = NH3_H2_RATIO
