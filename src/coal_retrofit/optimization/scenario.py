@@ -191,6 +191,14 @@ class OptimizationAssumptions:
     # and no experiment can separate them; here BASE->envonly prices the environmental-flow
     # standard and envonly->oq prices the allocation rule, each on its own.
     apply_basin_cap: bool = True
+    # Industrial point sources as DECISION AGENTS rather than as a fixed carve-out from the
+    # basin reservation. OFF by default, and that default is load-bearing: with it off the
+    # model is bit-identical to the one that produced every scenario solved before
+    # 2026-09-08, so the v9.1 results stay differenceable (CLAUDE.md 二.6). Turning it on
+    # adds 390 hubs to the CO2 network, to the basin water cap and to a SINGLE joint
+    # emission target whose denominator becomes coal + industry -- a different model, whose
+    # runs must never be subtracted from the industry-off ones.
+    include_industry: bool = False
     # Apply the basin bias-correction factors when serving water to the solver. The factors
     # (`.basin_bias_factors` in builders/water.py, estimated from each model's `historical`
     # run against third-survey basin totals) are baked into `available_water_m3_per_year` in
@@ -350,6 +358,13 @@ class OptimizationScenario:
     biomass_supply_multiplier: float = 1.0
     biomass_cost_multiplier: float = 1.0
     ccs_cost_multiplier: float = 1.0
+    # Industrial capture cost, on the ACCA21 / China Energy News central values.
+    industry_cost_multiplier: float = 1.0
+    # Industrial H2-route premium. Separate from the multiplier above because the H2 anchor
+    # carries a KNOWN downward bias -- it is a greenfield-vs-greenfield comparison applied to
+    # existing plants whose incumbent capital is sunk -- so its uptake is an upper bound and
+    # needs its own handle. See optimization/industry.py, KNOWN BIASES.
+    industry_h2_cost_multiplier: float = 1.0
     ammonia_cost_multiplier: float = 1.0
     ammonia_transport_adder_usd_per_kg: float = 0.0
     water_mode: str = "no_water"

@@ -396,7 +396,15 @@ def prepare_inputs(
     water_nodes, water_links, water_availability = _prepare_water(paths, plants, assumptions)
     water_basin_caps = _prepare_basin_caps(paths, assumptions)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
-    network = build_runtime_network(paths, plants, storages, scenario, assumptions)
+    industry = None
+    if bool(getattr(assumptions, "include_industry", False)):
+        from .industry import prepare_industry
+
+        industry = prepare_industry(paths, assumptions)
+    network = build_runtime_network(
+        paths, plants, storages, scenario, assumptions,
+        industry_hubs=None if industry is None else industry.hubs,
+    )
     return PreparedInputs(
         plants=plants,
         storages=storages,
@@ -410,6 +418,7 @@ def prepare_inputs(
         water_basin_caps=water_basin_caps,
         network=network,
         available_ammonia_years=available_ammonia_years,
+        industry=industry,
     )
 
 
@@ -655,19 +664,58 @@ def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario,
     }
 
 
-def _biomass_access_matrices(prepared: PreparedInputs, assumptions: OptimizationAssumptions) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+# Last-result cache for `_biomass_access_matrices`. The function is YEAR-INVARIANT but
+# `_build_year_matrices` calls it once per planning year, and every result is retained in
+# `year_payloads` for the whole solve. Dense, that was 4 x 7.58 GiB = 30.3 GiB held at once
+# (node_membership alone is 13 949 x 71 148 float64 = 7.39 GiB) — the real reason CLAUDE.md
+# 二.5 caps concurrency at 2, rather than anything intrinsic to the model.
+_BIOMASS_ACCESS_CACHE: dict[str, object] = {}
+
+
+def _biomass_access_matrices(prepared: PreparedInputs, assumptions: OptimizationAssumptions):
+    """Biomass link incidence and delivered cost. Cached, and SPARSE.
+
+    Returns `(hub_membership, node_membership, available_scaled, link_costs, scale)` with the
+    two membership matrices as `scipy.sparse.csr_matrix`. Each column carries exactly one
+    nonzero in each matrix (a link touches one hub and one node), so CSR takes ~1.7 MB where
+    the dense form took 7.58 GiB. `sparse @ MVar` is native gurobipy and yields the same
+    `MLinExpr` the dense form did; both use sites (`solver.py:336-337`) are exactly that form.
+
+    The cache holds only the last result and keys on the three assumption fields this function
+    actually reads plus the identity and size of the three frames, so a different `prepared`
+    or a changed transport cost rebuilds. The owning frame is kept alive in the cache so its
+    `id()` cannot be recycled underneath the key.
+    """
+    from scipy import sparse
+
     from ..constants import BIOMASS_FLOW_SCALE
+
+    key = (
+        id(prepared.biomass_links), len(prepared.biomass_links),
+        id(prepared.plants), len(prepared.plants),
+        id(prepared.biomass), len(prepared.biomass),
+        float(assumptions.biomass_pretreatment_cost_cny_per_gj),
+        float(assumptions.biomass_transport_fixed_cost_cny_per_gj),
+        float(assumptions.biomass_transport_variable_cost_cny_per_gj_km),
+    )
+    if _BIOMASS_ACCESS_CACHE.get("key") == key:
+        return _BIOMASS_ACCESS_CACHE["value"]
+
     plant_index = {str(plant_id): idx for idx, plant_id in enumerate(prepared.plants["plant_id"].astype(str))}
     node_index = {str(node_id): idx for idx, node_id in enumerate(prepared.biomass["biomass_node_id"].astype(str))}
     link_count = len(prepared.biomass_links)
-    hub_membership = np.zeros((len(prepared.plants), link_count), dtype=np.float64)
-    node_membership = np.zeros((len(prepared.biomass), link_count), dtype=np.float64)
+    hub_rows: list[int] = []
+    hub_cols: list[int] = []
+    node_rows: list[int] = []
+    node_cols: list[int] = []
     link_costs = np.zeros(link_count, dtype=np.float64)
     for link_idx, link in enumerate(prepared.biomass_links.itertuples(index=False)):
         if str(link.plant_id) not in plant_index or str(link.biomass_node_id) not in node_index:
             continue
-        hub_membership[plant_index[str(link.plant_id)], link_idx] = 1.0
-        node_membership[node_index[str(link.biomass_node_id)], link_idx] = 1.0
+        hub_rows.append(plant_index[str(link.plant_id)])
+        hub_cols.append(link_idx)
+        node_rows.append(node_index[str(link.biomass_node_id)])
+        node_cols.append(link_idx)
         # Delivered cost = purchase + pretreatment + transport(fixed + distance×variable)
         purchase_cost = float(link.cost_cny_per_gj)
         dist_km = float(link.distance_km) if hasattr(link, "distance_km") else 0.0
@@ -678,15 +726,27 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
         )
         # Scale: cost_per_GJ * SCALE → cost per TJ
         link_costs[link_idx] = (purchase_cost + transport_cost) * BIOMASS_FLOW_SCALE
+    hub_membership = sparse.csr_matrix(
+        (np.ones(len(hub_rows), dtype=np.float64), (hub_rows, hub_cols)),
+        shape=(len(prepared.plants), link_count),
+    )
+    node_membership = sparse.csr_matrix(
+        (np.ones(len(node_rows), dtype=np.float64), (node_rows, node_cols)),
+        shape=(len(prepared.biomass), link_count),
+    )
     # Scale supply: GJ → TJ (÷ SCALE)
     available_scaled = prepared.biomass["available_gj"].astype(float).to_numpy() / BIOMASS_FLOW_SCALE
-    return (
+    out = (
         hub_membership,
         node_membership,
         available_scaled,
         link_costs,
         BIOMASS_FLOW_SCALE,
     )
+    _BIOMASS_ACCESS_CACHE["key"] = key
+    _BIOMASS_ACCESS_CACHE["value"] = out
+    _BIOMASS_ACCESS_CACHE["owner"] = (prepared.biomass_links, prepared.plants, prepared.biomass)
+    return out
 
 
 def _ammonia_access_data(prepared: PreparedInputs, year: int, assumptions: OptimizationAssumptions) -> dict[str, object]:
@@ -771,6 +831,13 @@ def _build_year_matrices(
     state: SolveState,
 ) -> dict[str, object]:
     biomass_hub_membership, biomass_node_membership, biomass_available, biomass_link_costs, biomass_flow_scale = _biomass_access_matrices(prepared, assumptions)
+    industry_payload = None
+    industry_basin_membership = None
+    if prepared.industry is not None:
+        from .industry import basin_membership as _industry_basin_membership
+        from .industry import industry_year_data
+
+        industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
     water_data = _water_access_data(prepared, scenario, assumptions, year)
     water_base = prepared.plants["baseline_water_intensity_m3_per_mwh"].astype(float).to_numpy()
@@ -938,6 +1005,8 @@ def _build_year_matrices(
     basin_membership, basin_residual, basin_codes = _basin_cap_data(
         prepared, assumptions, scenario, year
     )
+    if industry_payload is not None and basin_codes:
+        industry_basin_membership = _industry_basin_membership(prepared.industry, basin_codes)
 
     # Fraction of each hub already dry-cooled: it needs no conversion and pays no capex.
     already_air_share = (
@@ -1073,6 +1142,12 @@ def _build_year_matrices(
         "water_basin_membership": basin_membership,
         "water_basin_available_m3": basin_residual,
         "water_basin_codes": basin_codes,
+        "industry": industry_payload,
+        # Shape (n_basins, n_industry_hubs). Deliberately a SEPARATE matrix from
+        # `water_basin_membership`, not a concatenation: the solver turns that one into plant
+        # indices with `np.flatnonzero`, and a shared index space would let a hub index be read
+        # as a plant index without anything failing.
+        "industry_basin_membership": industry_basin_membership,
         "already_air_share": already_air_share,
         "air_retrofit_capex_per_plant": air_retrofit_capex_per_plant,
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,

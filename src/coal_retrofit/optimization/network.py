@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import networkx as nx
 import numpy as np
@@ -31,6 +31,11 @@ class RuntimeNetwork:
 
     storage_node_ids: dict[str, str]
     # maps storage_hub_id -> node_id  for every storage hub that will be solved
+
+    industry_node_ids: dict[str, str] = field(default_factory=dict)
+    # maps industry hub_id -> node_id, EMPTY unless `include_industry` is on. Defaulted so
+    # that with industry off the network is constructed exactly as it was before industry
+    # existed -- the runs solved up to 2026-09-08 have to stay reproducible.
 
 
 def _build_base_graph(
@@ -124,6 +129,7 @@ def build_runtime_network(
     storages: pd.DataFrame,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
+    industry_hubs: pd.DataFrame | None = None,
 ) -> RuntimeNetwork:
     base_nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
     base_edges = pd.read_csv(paths.inputs_dir / "pipeline_candidate_edges.csv")
@@ -192,6 +198,39 @@ def build_runtime_network(
         )
         existing_storage_nodes[str(row.storage_hub_id)] = runtime_node_id
 
+    # Industrial hubs join the SAME graph as the coal hubs: their captured CO2 competes for
+    # the same edge capacity and the same sinks. Identical branch rule, so neither source group
+    # gets a connection advantage the other does not have.
+    #
+    # The nearest node can be a coal-plant or storage node, because `nodes` grows as branches
+    # are added. That is not a defect: a node's balance fixes its NET outflow to its own
+    # capture (or, at a sink, to its own injection), so a transiting industrial flow raises the
+    # outflow by exactly what it brought in. Mass is conserved, and sharing a collection point
+    # is precisely what "shared infrastructure" means here.
+    existing_industry_nodes: dict[str, str] = {}
+    if industry_hubs is not None and len(industry_hubs):
+        for row in industry_hubs.itertuples(index=False):
+            runtime_node_id = f"industry::{row.hub_id}"
+            graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="industry_hub")
+            nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
+            _append_runtime_edge(
+                edge_rows=runtime_edge_rows,
+                graph=graph,
+                edge_id=f"edge_runtime_industry_{row.hub_id}",
+                from_node_id=runtime_node_id,
+                to_node_id=nearest_node_id,
+                length_km=length_km,
+                edge_class="runtime_industry_branch",
+                source="runtime_short_link_rule",
+                year_basis="runtime",
+                capex_multiplier=assumptions.branch_capex_multiplier,
+            )
+            nodes = pd.concat(
+                [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "industry_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
+                ignore_index=True,
+            )
+            existing_industry_nodes[str(row.hub_id)] = runtime_node_id
+
     edges = base_edges.copy()
     if "capex_multiplier" not in edges.columns:
         edges["capex_multiplier"] = np.where(
@@ -212,6 +251,10 @@ def build_runtime_network(
     storage_node_ids = {
         str(storage_hub_id): str(node_id)
         for storage_hub_id, node_id in existing_storage_nodes.items()
+    }
+    industry_node_ids = {
+        str(hub_id): str(node_id)
+        for hub_id, node_id in existing_industry_nodes.items()
     }
 
     # Build directed incidence matrix: shape (n_nodes, n_edges)
@@ -243,4 +286,5 @@ def build_runtime_network(
         incidence=incidence,
         plant_node_ids=plant_node_ids,
         storage_node_ids=storage_node_ids,
+        industry_node_ids=industry_node_ids,
     )

@@ -53,6 +53,10 @@ class PreparedInputs:
     water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
+    # Industrial hubs as decision agents, None unless `assumptions.include_industry`.
+    # Defaulted so that with industry off `PreparedInputs` is constructed exactly as it
+    # was before industry existed.
+    industry: object | None = None
 
 
 @dataclass

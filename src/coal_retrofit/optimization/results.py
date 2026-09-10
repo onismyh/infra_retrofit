@@ -4,10 +4,16 @@ import numpy as np
 import pandas as pd
 
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
+from ..constants_industry import (
+    INDUSTRY_CAPTURE_CAPEX_SHARE,
+    INDUSTRY_H2_CAPEX_SHARE,
+    INDUSTRY_ROUTES,
+)
 from ..experiments.scenario import ScenarioRunContext
 from .emissions import blend_level_to_ratio, reduction_fraction
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 from ._shared import PreparedInputs, SolveState, PATHWAY_INDEX
+from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED
 
 
 def _build_cost_breakdown(year: int, breakdown: dict[str, float]) -> pd.DataFrame:
@@ -668,3 +674,76 @@ def _build_plant_cost_table(
             "total_plant_cost_cny": baseline_net + carbon_cost - coal_savings + incr_om + energy_pen + ccs_om + stranded + ccs_capex,
         })
     return pd.DataFrame(rows)
+
+
+def _build_industry_detail_table(
+    prepared: PreparedInputs,
+    year: int,
+    industry_year_data: dict | None,
+    share_values: np.ndarray | None,
+) -> pd.DataFrame:
+    """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
+
+    Args:
+        prepared: Prepared inputs; `prepared.industry` carries the hub frame.
+        year: Planning year.
+        industry_year_data: The year's industrial coefficient block, or None when industry off.
+        share_values: Solved route shares, shape (hub_count, len(INDUSTRY_ROUTES)).
+
+    Returns:
+        Empty frame with the right columns when industry is off, so downstream readers get a
+        frame either way.
+    """
+    columns = [
+        "year", "hub_id", "sector", "province", "longitude", "latitude", "basin_code",
+        "production_kt_per_year", "baseline_co2_mt", "process_co2_mt",
+        "share_unabated", "share_ccs", "share_h2",
+        "reduction_mt", "captured_mt",
+        "water_m3", "water_base_m3", "water_capture_increment_m3",
+        "cost_cny", "cost_capital_cny", "cost_om_cny", "h2_price_cny_per_kg",
+    ]
+    if prepared.industry is None or industry_year_data is None or share_values is None:
+        return pd.DataFrame(columns=columns)
+    hubs = prepared.industry.hubs
+    reduction = industry_year_data["reduction_mt"]
+    captured = industry_year_data["captured_mt"]
+    water = industry_year_data["water_m3"]
+    cost = industry_year_data["annual_cost_cny"]
+    h2_price = float(industry_year_data["h2_price_cny_per_kg"])
+    rows: list[dict[str, object]] = []
+    for hub_idx, hub in enumerate(hubs.itertuples(index=False)):
+        share = share_values[hub_idx]
+        hub_cost_ccs = float(cost[hub_idx, _CCS] * share[_CCS])
+        hub_cost_h2 = float(cost[hub_idx, _H2] * share[_H2])
+        # Reporting split only. The model charges the levelised cost annually; these two
+        # shares exist so a reader can see how much of it is capital recovery.
+        capital = hub_cost_ccs * INDUSTRY_CAPTURE_CAPEX_SHARE + hub_cost_h2 * INDUSTRY_H2_CAPEX_SHARE
+        base_water = float(water[hub_idx, _UNABATED])
+        total_water = float(sum(water[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))
+        rows.append({
+            "year": year,
+            "hub_id": str(hub.hub_id),
+            "sector": str(hub.sector),
+            "province": str(hub.province),
+            "longitude": float(hub.longitude),
+            "latitude": float(hub.latitude),
+            "basin_code": str(getattr(hub, "basin_code", "")),
+            "production_kt_per_year": float(hub.production_kt_per_year),
+            "baseline_co2_mt": float(hub.co2_mt_per_year),
+            "process_co2_mt": float(hub.process_co2_mt_per_year),
+            "share_unabated": float(share[_UNABATED]),
+            "share_ccs": float(share[_CCS]),
+            "share_h2": float(share[_H2]),
+            "reduction_mt": float(sum(reduction[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES)))),
+            "captured_mt": float(captured[hub_idx, _CCS] * share[_CCS]),
+            "water_m3": total_water,
+            "water_base_m3": base_water,
+            "water_capture_increment_m3": float(
+                (water[hub_idx, _CCS] - base_water) * share[_CCS]
+            ),
+            "cost_cny": hub_cost_ccs + hub_cost_h2,
+            "cost_capital_cny": capital,
+            "cost_om_cny": hub_cost_ccs + hub_cost_h2 - capital,
+            "h2_price_cny_per_kg": h2_price,
+        })
+    return pd.DataFrame(rows, columns=columns)

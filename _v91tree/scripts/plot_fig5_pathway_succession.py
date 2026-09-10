@@ -34,13 +34,17 @@ The claim this figure carries:
       that the 5-95% sampling interval of a 3-sample range still spans about 6x, so none of
       these ratios deserves two significant figures.
 
-      The frozen arm is measured on the CAP-RELAXED run. The original frozen run sat exactly
-      on the exogenous early-retirement cap in both 2030 and 2040 and bought its remaining
-      shortfall at the big-M water penalty (18.52% of its objective), so its 150 Mt was partly
-      an artefact of two constants. Relaxing the cap to 0.50 changes what the fleet does very
-      little (2040 retirement 30.0000% -> 31.0282% of generation) but drops the penalty to
-      1.05%, and the capture loss settles at 122 Mt. The effect survives the diagnostic; the
-      magnitude quoted is the one from the near-clean run.
+      The frozen arm is measured on the CAP-RELAXED run. ALL FIGURES IN THIS PARAGRAPH ARE
+      v9's; they are kept because they are why the cap-relaxed run became the default, not
+      because they describe v9.1. On v9 the original frozen run sat exactly on the exogenous
+      early-retirement cap in both 2030 and 2040 and bought its remaining shortfall at the
+      big-M water penalty (18.52% of its objective), so its 150 Mt was partly an artefact of
+      two constants; relaxing the cap to 0.50 changed the fleet very little (2040 retirement
+      30.0000% -> 31.0282% of generation) but dropped the penalty to 1.05% and settled the
+      capture loss at 122 Mt. ON v9.1 THE DIAGNOSTIC NO LONGER APPLIES: under the official-quota
+      budget every run in the closure -- `_oq_noair` and `_oq_noair_capfree` included -- solves
+      with zero slack rows, so neither frozen run buys unserved water. The cap-relaxed run is
+      still preferred, but now for the cap alone. main() measures and prints the actual share.
 
 TWO HONESTY CONSTRAINTS THIS FIGURE HAS TO CARRY, BOTH FOUND IN REVIEW:
 
@@ -62,13 +66,15 @@ TWO HONESTY CONSTRAINTS THIS FIGURE HAS TO CARRY, BOTH FOUND IN REVIEW:
      The honest ratio, against the 95% envelope, is 3.2x. On capture the seed floor is
      larger than the bias band, which
      turns a reported "straddle" into a clean null.
-  2. The frozen-retrofit arm HAD to be re-measured, and now is. The original `*_noair` run sits
-     exactly on the exogenous early-retirement cap (share_retire 0.150000 at 2030 and 0.300000
-     at 2040 = 1x and 2x `max_new_retirement_share_per_period`) and buys its remaining shortfall
-     at the big-M water penalty, 18.52% of its objective against 3.45% for the binding run --
-     so its "-150 Mt" was where two exogenous constants happened to land. `*_capfree` relaxes
-     the cap to 0.50: the fleet barely changes (2040 retirement 31.0282%), the penalty falls to
-     1.05%, and the loss settles at 122 Mt. The effect is real; the number moved 19%.
+  2. The frozen-retrofit arm HAD to be re-measured, and now is. ON v9 the original `*_noair`
+     run sat exactly on the exogenous early-retirement cap (share_retire 0.150000 at 2030 and
+     0.300000 at 2040 = 1x and 2x `max_new_retirement_share_per_period`) and bought its
+     remaining shortfall at the big-M water penalty, 18.52% of its objective against 3.45% for
+     the binding run -- so its "-150 Mt" was where two exogenous constants happened to land.
+     `*_capfree` relaxed the cap to 0.50: the fleet barely changed (2040 retirement 31.0282%),
+     the penalty fell to 1.05%, and the loss settled at 122 Mt. The effect was real; the number
+     moved 19%. ON v9.1 the penalty half of this is gone -- both frozen runs are slack-free --
+     but the CAP half is not, so the cap-relaxed run remains the one quoted.
 
 Ammonia co-firing is identically zero in all usable runs -- not missing, not small. Kept as a
 labelled zero because a bounded zero is a result. NOTE: the mechanism previously asserted for
@@ -934,8 +940,9 @@ def main() -> None:
     # Seed replicates are optional -- the figure must still build before they are solved -- but
     # where present they supply the only honest degeneracy measure, so they are loaded here and
     # `floor_test` prefers them over the bias band.
-    # Prefer the cap-relaxed frozen run: same contrast, without the exogenous cap and with
-    # 1.05% slack instead of 18.52%.
+    # Prefer the cap-relaxed frozen run: same contrast, without the exogenous cap. On v9 it
+    # also cut the slack share from 18.52% to 1.05%; on v9.1 both runs are slack-free, so the
+    # reason to prefer it is now the cap alone. The share is measured and printed below.
     frozen_capped = FROZEN
     if (RESULTS_DIR / f"{CAPFREE}.json").exists():
         try:
@@ -975,8 +982,15 @@ def main() -> None:
             globals()['FROZEN'] = CAPFREE
             PANEL_A_RUNS[:] = [(CAPFREE if n == frozen_capped else n, lab)
                                for n, lab in PANEL_A_RUNS]
+            # MEASURE THE SLACK, DO NOT ASSERT IT. "1.05%" was v9's number, carried in a
+            # printed string where nothing could contradict it. On the official-quota budget
+            # every run in the closure solves slack-free, so the sentence would have gone on
+            # claiming a penalty that is not there.
+            _sl = scenario_validity(CAPFREE, RESULTS_DIR).get("slack_share", float("nan"))
+            _how = ("no big-M slack at all" if _sl == 0
+                    else f"slack {_sl:.2%} of objective")
             print(f"  [frozen contrast] using {CAPFREE}: retirement cap relaxed to 0.50 and "
-                  f"slack down to 1.05% of objective, so the magnitude is not cap-limited")
+                  f"{_how}, so the magnitude is not cap-limited")
         except (FileNotFoundError, ValueError) as exc:
             print(f"  [skip] {CAPFREE}: {exc}")
 

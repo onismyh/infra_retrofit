@@ -1,3 +1,45 @@
 2026-09-08T00:09:48-04:00 campaign start: 10 + 9 scenarios, 2 lanes x 8 threads
 2026-09-08T00:09:48-04:00 laneA start BASE seed=0
 2026-09-08T00:09:48-04:00 laneB start WA_cwatm_126_dry_oq_envonly seed=0
+2026-09-08T00:31:29-04:00 laneA done BASE rc=0
+2026-09-08T00:31:30-04:00 laneA start WA_cwatm_126_dry_oq seed=0
+2026-09-08T00:33:58-04:00 laneB done WA_cwatm_126_dry_oq_envonly rc=0
+2026-09-08T00:33:58-04:00 laneB start WA_cwatm_370_dry_oq_envonly seed=0
+2026-09-08T00:52:40-04:00 laneA done WA_cwatm_126_dry_oq rc=0
+2026-09-08T00:52:40-04:00 laneA start WA_cwatm_126_dry_oq_noair seed=0
+2026-09-08T00:52:51-04:00 laneB done WA_cwatm_370_dry_oq_envonly rc=0
+2026-09-08T00:52:51-04:00 laneB start WA_wgap_126_dry_oq_envonly seed=0
+2026-09-08T01:10:12-04:00 laneA done WA_cwatm_126_dry_oq_noair rc=0
+2026-09-08T01:10:12-04:00 laneA start WA_cwatm_370_dry_oq seed=0
+2026-09-08T01:12:50-04:00 laneB done WA_wgap_126_dry_oq_envonly rc=0
+2026-09-08T01:12:50-04:00 laneB start WA_cwatm_126_dry_oq_envonly_seed2 seed=2
+2026-09-08T01:30:05-04:00 laneA done WA_cwatm_370_dry_oq rc=0
+2026-09-08T01:30:05-04:00 laneA start WA_wgap_126_dry_oq seed=0
+2026-09-08T01:32:07-04:00 laneB done WA_cwatm_126_dry_oq_envonly_seed2 rc=0
+2026-09-08T01:32:07-04:00 laneB start WA_cwatm_126_dry_oq_envonly_seed3 seed=3
+2026-09-08T01:59:32-04:00 laneA done WA_wgap_126_dry_oq rc=0
+2026-09-08T01:59:32-04:00 laneA start WA_cwatm_126_dry_oq_seed2 seed=2
+2026-09-08T02:03:05-04:00 laneB done WA_cwatm_126_dry_oq_envonly_seed3 rc=0
+2026-09-08T02:03:05-04:00 laneB start WA_cwatm_126_dry_oq_envonly_seed4 seed=4
+2026-09-08T02:33:50-04:00 laneB done WA_cwatm_126_dry_oq_envonly_seed4 rc=0
+2026-09-08T02:33:50-04:00 laneB start WA_cwatm_126_dry_oq_noair_capfree seed=0
+2026-09-08T02:34:29-04:00 laneA done WA_cwatm_126_dry_oq_seed2 rc=0
+2026-09-08T02:34:29-04:00 laneA start WA_cwatm_126_dry_oq_seed3 seed=3
+2026-09-08T02:51:09-04:00 laneB done WA_cwatm_126_dry_oq_noair_capfree rc=0
+2026-09-08T02:51:09-04:00 laneB start WA_cwatm_370_dry_oq_envonly_nobias seed=0
+2026-09-08T02:57:49-04:00 laneA done WA_cwatm_126_dry_oq_seed3 rc=0
+2026-09-08T02:57:49-04:00 laneA start WA_cwatm_126_dry_oq_seed4 seed=4
+2026-09-08T03:14:56-04:00 laneB done WA_cwatm_370_dry_oq_envonly_nobias rc=0
+2026-09-08T03:14:56-04:00 laneB start WA_wgap_126_dry_oq_envonly_nobias seed=0
+2026-09-08T03:20:38-04:00 laneA done WA_cwatm_126_dry_oq_seed4 rc=0
+2026-09-08T03:20:38-04:00 laneA start WA_cwatm_126_dry_oq_air1000 seed=0
+2026-09-08T03:34:31-04:00 laneB done WA_wgap_126_dry_oq_envonly_nobias rc=0
+2026-09-08T03:34:31-04:00 laneB FINISHED
+2026-09-08T03:34:57-04:00 extra start WA_cwatm_126_dry_oq_capfree
+2026-09-08T03:44:32-04:00 laneA done WA_cwatm_126_dry_oq_air1000 rc=0
+2026-09-08T03:44:33-04:00 laneA start WA_cwatm_126_dry_oq_air1370 seed=0
+2026-09-08T04:05:24-04:00 extra done WA_cwatm_126_dry_oq_capfree rc=0
+2026-09-08T04:05:24-04:00 extra FINISHED
+2026-09-08T04:13:49-04:00 laneA done WA_cwatm_126_dry_oq_air1370 rc=0
+2026-09-08T04:13:49-04:00 laneA FINISHED
+2026-09-08T04:13:49-04:00 campaign FINISHED

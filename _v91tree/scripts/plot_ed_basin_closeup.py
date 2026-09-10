@@ -32,6 +32,16 @@ so the Yellow is the basin whose behaviour rung 1 drives, and the Northwest is t
 behaviour rung 2 drives. (The Northwest responds to both; the Yellow responds to rung 1 and
 partly hands the conversion back under rung 2, which is itself worth seeing.)
 
+THE SEED FAMILY BACKS THAT CHOICE, AND QUALIFIES ONE HALF OF IT. With the four `_oq_envonly`
+replicates solved (k = 4, d2 = 2.059) the rung-1 numbers above can be tested against a real
+degeneracy floor rather than asserted. The Yellow's step is 22.3 GW median against a floor of
+1.04 -- 21.5x, the hardest number in the whole ladder, and its four replicates span 0.77 GW.
+The Northwest's is 20.7 against 13.74 -- only 1.5x, because the national 2030 total is bimodal
+(92.49 / 81.99 / 92.68 / 81.98) and the entire 10.7 GW swing sits inside this one basin
+(49.96 / 39.99 / 50.20 / 40.22). Every other basin is bit-identical across all four seeds, so
+the zeros above are structural and not a seed accident. Read the Yellow column as a magnitude
+and the Northwest column as a direction with an interval; do not quote them as equally firm.
+
 THE HAI IS THE TIGHTEST BASIN ON RUNG 1 AND IS STILL NOT DRAWN, which is a result rather than
 an omission. Its full-capture consumption is 103% of its environmental-flow allowance -- the
 only basin over 100% on that rung -- but "full capture" is a COUNTERFACTUAL: at 2030 the

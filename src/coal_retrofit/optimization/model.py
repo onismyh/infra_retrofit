@@ -30,6 +30,7 @@ from .results import (
     _build_slack_detail_table,
     _build_co2_flow_direction_table,
     _build_plant_cost_table,
+    _build_industry_detail_table,
 )
 
 _SCENARIO_FIELD_NAMES = {f.name for f in fields(OptimizationScenario)}
@@ -115,6 +116,7 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
     slack_detail_tables: list[pd.DataFrame] = []
     co2_direction_tables: list[pd.DataFrame] = []
     plant_cost_tables: list[pd.DataFrame] = []
+    industry_detail_tables: list[pd.DataFrame] = []
     overview_rows: list[dict[str, object]] = []
     prev_share_values: np.ndarray | None = None
     prev_retrofit_installed: np.ndarray | None = None
@@ -155,6 +157,9 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             year_solution["water_use_m3"],
             year_solution["blend_level_b"], year_solution["blend_level_a"],
             year_solution.get("air_share"),
+        ))
+        industry_detail_tables.append(_build_industry_detail_table(
+            prepared, year, year_data.get("industry"), year_solution.get("industry_share")
         ))
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, year_solution["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, year_solution["ammonia_flow_kg"], prepared.plants))
@@ -206,6 +211,7 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
     slack_detail_df = pd.concat(slack_detail_tables, ignore_index=True, sort=False)
     co2_direction_df = pd.concat(co2_direction_tables, ignore_index=True, sort=False)
     plant_cost_df = pd.concat(plant_cost_tables, ignore_index=True, sort=False)
+    industry_detail_df = pd.concat(industry_detail_tables, ignore_index=True, sort=False)
     overview_df = pd.DataFrame(overview_rows)
     parameter_df = _paths_df_from_assumptions(assumptions, scenario)
     summary_md = _render_summary_markdown(context, scenario, costs_df, pathways_df, sanity_df)
@@ -221,6 +227,9 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             "pathway_shares.csv": pathways_df,
             "province_pathways.csv": province_df,
             "plant_detail.csv": plant_detail_df,
+            # Empty (headers only) unless `include_industry` is on, so a reader always
+            # gets a frame and never has to guess whether industry was in the run.
+            "industry_detail.csv": industry_detail_df,
             "network_edges.csv": edge_df,
             "storage_utilization.csv": storage_df,
             "resource_use.csv": supply_df,

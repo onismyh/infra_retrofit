@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import re
+import warnings
 
 import matplotlib
 matplotlib.use("Agg")
@@ -570,8 +571,36 @@ def save_fig(fig, name: str, subdir: str = ""):
         for _w, _t in _worst[:4]:
             print(f"           {_w:6.1f} mm  {_t}")
     _pad = 0.02 if _tight.width * 25.4 + 1.02 <= 183.0 else 0.0
-    fig.savefig(out_dir / f"{name}.pdf", dpi=300, bbox_inches='tight', pad_inches=_pad)
-    fig.savefig(out_dir / f"{name}.png", dpi=300, bbox_inches='tight', pad_inches=_pad)
+    # MISSING-GLYPH GUARD (CLAUDE.md 4.6.1). The font stack is SimHei alone, deliberately, and
+    # SimHei has no U+2212 and no superscript two/three. A character it lacks does not fail
+    # loudly -- matplotlib draws a hollow box and emits a UserWarning -- and every renderer in
+    # this repo runs under `-W ignore`, so the box would ship. Catch it here, where the file is
+    # written, and name the character instead of leaving someone to find the box in a proof.
+    #
+    # Filtered on the glyph warnings SPECIFICALLY rather than escalating UserWarning wholesale:
+    # savefig also raises unrelated UserWarnings (tight-layout, FixedFormatter), and turning
+    # those into hard failures would lose whole figures over cosmetics. The rule is "no boxes
+    # in the PDF", not "no warnings".
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always", UserWarning)
+        fig.savefig(out_dir / f"{name}.pdf", dpi=300, bbox_inches="tight", pad_inches=_pad)
+        fig.savefig(out_dir / f"{name}.png", dpi=300, bbox_inches="tight", pad_inches=_pad)
+    _glyphs = sorted({str(w.message) for w in _caught
+                      if "missing from" in str(w.message) and "font" in str(w.message)})
+    if _glyphs:
+        # DELETE WHAT WAS JUST WRITTEN. savefig has already run by the time the warning is in
+        # hand, so a box-containing PDF is on disk; render_version.tree_figures() copies every
+        # PDF/PNG it finds regardless of the script's exit code, so leaving them would ship the
+        # very file this guard exists to stop.
+        for _ext in (".pdf", ".png"):
+            (out_dir / f"{name}{_ext}").unlink(missing_ok=True)
+        raise RuntimeError(
+            f"{name}: 字体缺字，图里会出现方框，已拒绝出图。\n  "
+            + "\n  ".join(_glyphs[:8])
+            + "\n改写法绕开：上下标与单位走 mathtext（r\"$10^8$ m$^3$\"、"
+              "r\"Mt CO$_2$ yr$^{-1}$\"），负号靠 axes.unicode_minus=False 或改写成"
+              "\"减去\"。不要为一个字符加 fallback 字体栈——那会让同一个符号在有无 SimHei 的"
+              "机器上落到不同字形。")
     plt.close(fig)
     print(f"  [ok] {name} -> {subdir or 'root'}/")
 
@@ -1075,7 +1104,7 @@ def hub_frame(scenario: str, year: int, results_dir=None):
     """
     import pandas as pd
 
-    root = RESULTS_DIR if results_dir is None else results_dir
+    root = RESULTS_DIR if results_dir is None else Path(results_dir)
     p = pd.read_csv(root / scenario / "plant_detail.csv")
     p = p[p["year"] == year].copy()
     p["basin"] = assign_basin(p)
