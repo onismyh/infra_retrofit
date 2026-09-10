@@ -161,6 +161,47 @@ def _run_provenance(model) -> dict[str, object]:
     }
 
 
+def _apply_rounded_start(model, sol_path: _Path) -> None:
+    """Set MIP start values for the integer variables from a Gurobi .sol file.
+
+    Pipe counts, build/rebuild binaries and every other integer are rounded UP (a fractional
+    pipe becomes a whole one, so the relaxation's flows stay feasible). Blend-level selector
+    rows (`sel_b*`, `sel_a*`, one-hot per plant) take the highest level with a positive value
+    so the relaxation's blend shares remain admissible. Continuous variables get no start.
+    """
+    values: dict[str, float] = {}
+    with open(sol_path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.startswith("#") or not line.strip():
+                continue
+            name, _, value = line.partition(" ")
+            values[name.strip()] = float(value)
+    model.update()
+    selector_rows: dict[str, list[tuple[int, object, float]]] = {}
+    n_set = 0
+    for var in model.getVars():
+        if var.VType == GRB.CONTINUOUS:
+            continue
+        value = values.get(var.VarName)
+        if value is None:
+            continue
+        name = var.VarName
+        if name.startswith(("sel_b", "sel_a")) and "[" in name:
+            row, _, col = name[:-1].partition("[")
+            plant, level = col.split(",")
+            selector_rows.setdefault(f"{row}[{plant}", []).append((int(level), var, value))
+            continue
+        var.Start = float(np.ceil(value - 1e-6)) if value > 1e-6 else 0.0
+        n_set += 1
+    for entries in selector_rows.values():
+        touched = [level for level, _, value in entries if value > 1e-6]
+        chosen = max(touched) if touched else 0
+        for level, var, _ in entries:
+            var.Start = 1.0 if level == chosen else 0.0
+            n_set += 1
+    logger.warning("MIP start: %d integer variables seeded from %s", n_set, sol_path)
+
+
 def _incumbent_logger(year_payloads: list[dict[str, object]]):
     """Gurobi MIPSOL callback printing shortfalls and slacks of each new incumbent."""
     slack_keys = ("injectivity_slack_mtpa", "storage_slack_mt", "edge_slack_mtpa", "biomass_slack_gj")
@@ -1211,10 +1252,22 @@ def _solve_joint_multi_period(
     # Diagnostic only: print every new incumbent's per-group target shortfall and the physical
     # slacks, so a stalled MIP gap can be attributed (penalty-laden incumbent vs weak bound)
     # without waiting for the run to finish. Read-only callback; search path unchanged.
+    # Diagnostic / campaign aid: seed the MIP from a written solution (normally the LP
+    # relaxation's .sol from a COAL_RETROFIT_LP_RELAX run): integer variables are rounded
+    # up, blend-level selectors take the highest level the relaxation touched, continuous
+    # variables are left to Gurobi's start completion. Changes the search path, never the
+    # model; every run that is differenced must use the same procedure.
+    start_sol = os.environ.get("COAL_RETROFIT_START_SOL")
+    if start_sol:
+        _apply_rounded_start(model, _Path(start_sol))
     if os.environ.get("COAL_RETROFIT_LOG_INCUMBENTS"):
         model.optimize(_incumbent_logger(year_payloads))
     else:
         model.optimize()
+    write_sol = os.environ.get("COAL_RETROFIT_WRITE_SOL")
+    if write_sol and int(_optional_model_attr(model, "SolCount") or 0) > 0:
+        model.write(write_sol)
+        logger.warning("solution written to %s", write_sol)
     status = _extract_solver_status(model)
     solver_quality = _solver_quality(model, status)
     has_solution = bool(solver_quality.get("solution_count") or 0)
