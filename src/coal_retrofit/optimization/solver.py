@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path as _Path
 import logging
 
@@ -161,13 +162,40 @@ def _run_provenance(model) -> dict[str, object]:
     }
 
 
-def _apply_rounded_start(model, sol_path: _Path) -> None:
+def _pipe_combo_for(capacity: float, tiers: tuple[float, ...], capex: tuple[float, ...],
+                    max_pipes: int, cap_limit: float) -> tuple[int, ...]:
+    """Cheapest multiset of at most `max_pipes` pipes covering `capacity` within `cap_limit`."""
+    if capacity <= 1e-6:
+        return tuple(0 for _ in tiers)
+    from itertools import combinations_with_replacement
+    best: tuple[float, tuple[int, ...]] | None = None
+    fallback: tuple[float, tuple[int, ...]] | None = None
+    for n in range(1, max_pipes + 1):
+        for combo in combinations_with_replacement(range(len(tiers)), n):
+            cap = sum(tiers[k] for k in combo)
+            cost = sum(capex[k] for k in combo)
+            counts = tuple(combo.count(k) for k in range(len(tiers)))
+            if cap > cap_limit + 1e-9:
+                continue
+            if cap + 1e-9 >= capacity:
+                if best is None or cost < best[0]:
+                    best = (cost, counts)
+            elif fallback is None or cap > sum(tiers[k] * c for k, c in zip(range(len(tiers)), fallback[1])):
+                fallback = (cap, counts)
+    if best is not None:
+        return best[1]
+    return fallback[1] if fallback is not None else tuple(0 for _ in tiers)
+
+
+def _apply_rounded_start(model, sol_path: _Path, assumptions: "OptimizationAssumptions") -> None:
     """Set MIP start values for the integer variables from a Gurobi .sol file.
 
-    Pipe counts, build/rebuild binaries and every other integer are rounded UP (a fractional
-    pipe becomes a whole one, so the relaxation's flows stay feasible). Blend-level selector
-    rows (`sel_b*`, `sel_a*`, one-hot per plant) take the highest level with a positive value
-    so the relaxation's blend shares remain admissible. Continuous variables get no start.
+    Pipes: for every edge and year the relaxation's added capacity `new_cap_mtpa` is covered by
+    the cheapest whole-pipe combination of at most `max_parallel_pipes` pipes, keeping the
+    cumulative addition within the edge ceiling; `add_cap` / `build_edge` follow from that.
+    Blend-level selector rows (`sel_b*`, `sel_a*`, one-hot per plant) take the highest level
+    with a positive value so the relaxation's blend shares remain admissible. Every other
+    integer (rebuild, ...) is rounded up. Continuous variables get no start.
     """
     values: dict[str, float] = {}
     with open(sol_path, encoding="utf-8") as handle:
@@ -177,15 +205,35 @@ def _apply_rounded_start(model, sol_path: _Path) -> None:
             name, _, value = line.partition(" ")
             values[name.strip()] = float(value)
     model.update()
-    selector_rows: dict[str, list[tuple[int, object, float]]] = {}
+    by_name = {var.VarName: var for var in model.getVars() if var.VType != GRB.CONTINUOUS}
+    tiers = tuple(float(t) for t in assumptions.pipe_capacity_tiers_mtpa)
+    capex = tuple(float(c) for c in assumptions.pipe_capex_cny_per_km_by_tier)
+    max_pipes = int(assumptions.max_parallel_pipes)
+    cap_total = float(assumptions.standard_pipe_capacity_mtpa) * max_pipes
+    years = sorted({int(m.group(1)) for m in (re.match(r"pipe_count_(\d+)\[", n) for n in by_name) if m})
+    edge_ids = sorted({int(m.group(1)) for m in (re.match(r"pipe_count_\d+\[(\d+),", n) for n in by_name) if m})
     n_set = 0
-    for var in model.getVars():
-        if var.VType == GRB.CONTINUOUS:
+    for e in edge_ids:
+        used = 0.0
+        built = False
+        for year in years:
+            need = values.get(f"new_cap_mtpa_{year}[{e}]", 0.0)
+            counts = _pipe_combo_for(need, tiers, capex, max_pipes, cap_total - used)
+            added = sum(t * c for t, c in zip(tiers, counts))
+            used += added
+            built = built or added > 0
+            for k, c in enumerate(counts):
+                by_name[f"pipe_count_{year}[{e},{k}]"].Start = float(c)
+            by_name[f"add_cap_{year}[{e}]"].Start = 1.0 if added > 0 else 0.0
+            by_name[f"build_edge_{year}[{e}]"].Start = 1.0 if built else 0.0
+            n_set += len(counts) + 2
+    selector_rows: dict[str, list[tuple[int, object, float]]] = {}
+    for name, var in by_name.items():
+        if name.startswith(("pipe_count_", "add_cap_", "build_edge_")):
             continue
-        value = values.get(var.VarName)
+        value = values.get(name)
         if value is None:
             continue
-        name = var.VarName
         if name.startswith(("sel_b", "sel_a")) and "[" in name:
             row, _, col = name[:-1].partition("[")
             plant, level = col.split(",")
@@ -1259,7 +1307,7 @@ def _solve_joint_multi_period(
     # model; every run that is differenced must use the same procedure.
     start_sol = os.environ.get("COAL_RETROFIT_START_SOL")
     if start_sol:
-        _apply_rounded_start(model, _Path(start_sol))
+        _apply_rounded_start(model, _Path(start_sol), assumptions)
     if os.environ.get("COAL_RETROFIT_LOG_INCUMBENTS"):
         model.optimize(_incumbent_logger(year_payloads))
     else:
