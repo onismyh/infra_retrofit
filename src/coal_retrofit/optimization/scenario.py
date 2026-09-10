@@ -127,7 +127,15 @@ class OptimizationAssumptions:
     # ADB China factor 57,124 USD/(km·in) → ≈0.4e6; small-scale actual (Qilu-Shengli, 1.7 Mtpa,
     # incl. stations) 3.1e6. Base rate represents the standard 20-Mtpa pipe; smaller pipes carry
     # branch/direct multipliers. (Previous value 18,000 was a unit error, ~100x too low.)
-    existing_corridor_capacity_mtpa: float = 20.0
+    # Free CO2 capacity credited to the 62 candidate edges that follow an existing oil/gas
+    # trunk (`existing_corridor_flag`). Was 20 Mtpa (unsourced) before 2026-09-10; the
+    # literature review (docs/工业联合减排实现说明.md §9.6) found the opposite: repurposed gas
+    # lines carry small flows at reduced pressure (IEAGHG 2013/18: Longannet 1.8 Mt/yr, OCAP
+    # de-rated 56 -> 21 bar) and dense-phase CO2 at 20 Mt/yr over >150 km is explicitly ruled
+    # out for gas-pipe wall thickness (Smith et al. 2021 via Drax DR1907-6; Anvari et al.
+    # 2025). The corridor edges here average 393 km (min 22, max 1 349), so no reuse credit
+    # is defensible on the main line. A reuse sensitivity may set 2.0 (IEAGHG case scale).
+    existing_corridor_capacity_mtpa: float = 0.0
     standard_pipe_capacity_mtpa: float = 20.0
     max_parallel_pipes: int = 2
     pipeline_lifetime_years: int = 30
@@ -141,7 +149,7 @@ class OptimizationAssumptions:
     # IJGGC 16:241, Table 4 fits 0.5-0.7). Cross-check: the 2-Mtpa tier at 2.0e6 CNY/km sits
     # below the 1.7-Mtpa Qilu-Shengli line's 3.1e6 CNY/km, which includes its compressor
     # stations, so the small tier is if anything cheap. Class multipliers (branch 1.35, direct
-    # 2.8, corridor 0.4) still apply on top, as before.
+    # 2.8, corridor 0.97) still apply on top, as before.
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
     # Storage DEPLOYMENT RAMP. `injectivity_mtpa` is the 2060-scale buildable rate (calibrated
@@ -303,7 +311,13 @@ class OptimizationAssumptions:
     water_transport_cost_cny_per_m3_km: float = 0.05     # Water pipeline/truck transport
     direct_fallback_capex_multiplier: float = 2.8
     branch_capex_multiplier: float = 1.35
-    corridor_capex_multiplier: float = 0.4
+    # New pipe laid in an existing pipeline corridor: the saving is the right-of-way (and
+    # permitting time, unquantified). NETL 2013 (DOE/NETL-2013/1614, reproduced in IEAGHG
+    # 2013/18 Table 20): ROW = 51 200 + 1.28 L (577 D + 29 788) USD, i.e. 2-3% of a 24-40 inch
+    # line's capex over 100 miles. 0.97 = that ROW share removed. Was 0.4 (unsourced); a
+    # German topology paper is reported to use a 10% corridor discount but could not be
+    # opened (ScienceDirect S2772656826001004) -- 0.9 only after the author verifies it.
+    corridor_capex_multiplier: float = 0.97
     top_k_storage_pairs: int = 5
     slack_penalty_cny_per_unit: float = 5_000_000_000.0
     sparse_interval_years: int = 10
