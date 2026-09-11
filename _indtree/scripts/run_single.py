@@ -445,14 +445,14 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     # An `ST_` run may NEVER be differenced against an `IND_` or a non-prefixed run: the
     # target, the utilisation, the output path and the cost basis all changed at once.
     "ST_BASE": (
-        {"mip_gap": 0.01, "sector_target_source": "times_cn60",
+        {"mip_gap": 0.03, "sector_target_source": "times_cn60",
          "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0),
          "carbon_price_cny_per_t_by_year": (0.0, 0.0, 0.0, 0.0)},
         {"include_industry": True},
     ),
     "ST_WA_cwatm_126_dry_oq": (
         {"water_mode": "grid_supply", "water_scenario_id": "cwatm|gfdl-esm4|ssp126", "water_season": "dry",
-         "mip_gap": 0.01, "sector_target_source": "times_cn60",
+         "mip_gap": 0.03, "sector_target_source": "times_cn60",
          "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0),
          "carbon_price_cny_per_t_by_year": (0.0, 0.0, 0.0, 0.0)},
         {"water_budget": "official_quota", "include_industry": True},
@@ -461,7 +461,7 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     # Everything else identical to ST_BASE, so the pair reads "what a price does" against
     # "what the TIMES trajectory demands".
     "ST_CP_BASE": (
-        {"mip_gap": 0.01, "emission_target_fraction": (0.0, 0.0, 0.0, 0.0),
+        {"mip_gap": 0.03, "emission_target_fraction": (0.0, 0.0, 0.0, 0.0),
          "coal_operating_hours_by_year": (3600.0, 3100.0, 2000.0, 1500.0)},
         {"include_industry": True},
     ),
