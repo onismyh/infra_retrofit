@@ -130,8 +130,11 @@ def _add_blend_level_constraints(
     lhv = float(assumptions.nh3_lhv_gj_per_kg)
 
     # select_b/select_a: column 0 = "no blend", column l+1 = "blend level l"
-    select_b = model.addMVar((plant_count, L_b + 1), vtype=GRB.BINARY, name=f"sel_b{sfx}")
-    select_a = model.addMVar((plant_count, L_a + 1), vtype=GRB.BINARY, name=f"sel_a{sfx}")
+    # One-hot binaries (a hub picks one level) or continuous shares of the hub's capacity
+    # converted to each level; see `OptimizationAssumptions.hub_decisions_continuous`.
+    sel_vtype = GRB.CONTINUOUS if assumptions.hub_decisions_continuous else GRB.BINARY
+    select_b = model.addMVar((plant_count, L_b + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_b{sfx}")
+    select_a = model.addMVar((plant_count, L_a + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_a{sfx}")
     blend_level_b = model.addMVar(plant_count, lb=0.0, ub=float(L_b), name=f"blv_b{sfx}")
     blend_level_a = model.addMVar(plant_count, lb=0.0, ub=float(L_a), name=f"blv_a{sfx}")
     biomass_use_gj = model.addMVar(plant_count, lb=0.0, name=f"biomass_use_gj{sfx}")
@@ -197,13 +200,17 @@ def _add_blend_level_constraints(
         bio_penalty_emissions = gp.LinExpr()  # same penalty fuel, as vented CO2 (Mt)
         beccs_penalty_captured = gp.LinExpr()  # the captured share of the BECCS penalty fuel (Mt)
 
+        z_bio_all: list[object] = []
+        z_beccs_all: list[object] = []
         for l, beta_b in enumerate(blend_b):
             bin_b = select_b[p, l + 1]
-
             z_bio = _add_mccormick_product(model, s_bio, bin_b, f"zb_{p}_{l}{sfx}")
-
             z_beccs = _add_mccormick_product(model, s_beccs, bin_b, f"zbc_{p}_{l}{sfx}")
-
+            # The two pathways share the capacity converted to this level. Implied by the
+            # one-hot form; binding (and the physical meaning) when the levels are shares.
+            model.addConstr(z_bio + z_beccs <= bin_b, name=f"zlvl_b_{p}_{l}{sfx}")
+            z_bio_all.append(z_bio)
+            z_beccs_all.append(z_beccs)
             bio_use_expr += hr_p * beta_b * (G_bio * z_bio + G_beccs * z_beccs) / BIOMASS_FLOW_SCALE
             bio_red  += E_rt * beta_b * z_bio
             beccs_blend_red += E_rt * beta_b * z_beccs
@@ -214,19 +221,24 @@ def _add_blend_level_constraints(
             )
             beccs_penalty_captured += beta_b * beccs_pen_cap_coeff * G_beccs * z_beccs
 
+        # A pathway share is split across levels at most once (no double counting of the
+        # reduction when several levels carry a positive share).
+        model.addConstr(gp.quicksum(z_bio_all) <= s_bio, name=f"zsum_bio_{p}{sfx}")
+        model.addConstr(gp.quicksum(z_beccs_all) <= s_beccs, name=f"zsum_beccs_{p}{sfx}")
         model.addConstr(biomass_use_gj[p] == bio_use_expr, name=f"bu_{p}{sfx}")
 
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()
-
+        z_amm_all: list[object] = []
         for l, beta_a in enumerate(blend_a):
             bin_a = select_a[p, l + 1]
-
             z_amm = _add_mccormick_product(model, s_amm, bin_a, f"za_{p}_{l}{sfx}")
+            z_amm_all.append(z_amm)
 
             amm_use_expr += G_amm * hr_p / lhv * beta_a * z_amm / AMMONIA_FLOW_SCALE
             amm_red  += E_rt * beta_a * z_amm
 
+        model.addConstr(gp.quicksum(z_amm_all) <= s_amm, name=f"zsum_amm_{p}{sfx}")
         model.addConstr(ammonia_use_kg[p] == amm_use_expr, name=f"au_{p}{sfx}")
 
         bio_red_exprs.append(bio_red)

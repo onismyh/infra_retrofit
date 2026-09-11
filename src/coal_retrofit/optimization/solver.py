@@ -398,7 +398,13 @@ def _solve_joint_multi_period(
         year_suffix = str(year)
         share = model.addMVar((plant_count, len(PATHWAYS)), lb=0.0, name=f"share_{year_suffix}")
         # Rebuild decision: binary variable for expired plants choosing site rebuild vs retirement
-        rebuild = model.addMVar(plant_count, vtype=GRB.BINARY, name=f"rebuild_{year_suffix}")
+        # Binary (whole hub rebuilt or retired) or the share of the expired hub that is rebuilt;
+        # see `OptimizationAssumptions.hub_decisions_continuous`.
+        rebuild = model.addMVar(
+            plant_count, lb=0.0, ub=1.0,
+            vtype=GRB.CONTINUOUS if assumptions.hub_decisions_continuous else GRB.BINARY,
+            name=f"rebuild_{year_suffix}",
+        )
         co2_flow_fwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_fwd_{year_suffix}")
         co2_flow_bwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_bwd_{year_suffix}")
         co2_node_outflow = model.addMVar(n_nodes, lb=-GRB.INFINITY, name=f"co2_node_outflow_{year_suffix}")

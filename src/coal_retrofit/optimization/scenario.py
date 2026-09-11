@@ -329,6 +329,12 @@ class OptimizationAssumptions:
     # fleet-wide share the study allows. Applied per planning year on top of the node limits.
     # 0 or negative disables it.
     biomass_national_cap_gj_per_year: float = 16.0e9
+    # Hub-level rebuild and blend-level decisions as CONTINUOUS shares (author's call,
+    # 2026-09-10). A hub aggregates ~10 units, so "part of the hub is rebuilt" and "part of
+    # the hub is converted to blend level l" are real degrees of freedom; as one-hot binaries
+    # they made the relaxation so weak that the sector-cap MIP stalled at 4-15% gap after 10 h
+    # (bound flat at the root LP). Pipes stay integer. False restores the binary form.
+    hub_decisions_continuous: bool = True
     # National ceiling on green ammonia burned in the coal fleet, Mt NH3 per planning year
     # (2030/2040/2050/2060). The node layer is an electrolysis potential (~8 800 Mt NH3 in
     # 2030) that never binds; the literature review of 2026-09-10 (see
