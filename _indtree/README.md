@@ -110,9 +110,36 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 比 0.5914 要求的 5 122.4 Mt 富余 1 154.6 Mt，工业一动不动——所以 0.5914 那一对里
 "工业不减排"是目标水平的产物，不是工业的性质。
 
-**缺陷确认已修复**：`IND_WA_..._oq_t95` 的注入能力松弛从 v7 的 290.1 Mt/yr 降到 **0**，
-只剩 11 段管道容量松弛共 1.5 Mtpa；2060 年注入 1 281.6 / 能力 1 282.6（99.9%），81/89 个汇在用。
+**缺陷确认已修复**：`IND_WA_..._oq_t95` 的注入能力松弛从 v7 的 290.1 Mt/yr 降到 **0**；
+2060 年注入 1 281.6 / 能力 1 282.6（99.9%），81/89 个汇在用。
 代价是 v7 那一轮把工业的角色高估了约 11%（工业减排 1 879.0 → 1 687.2 Mt）。
+（2026-09-10 更正：此前写的"11 段管道容量松弛共 1.5 Mtpa"是误读——那 11 段是流量大于零而
+建成容量为零的边，即 big-M 容量松弛，已由 I14/I15 的整数管径档位堵住，见下。）
+
+### `ST_` 系（2026-09-10 起：部门碳目标，零碳价）
+
+`IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
+capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
+
+求解流程固定为三步（§9.7）：LP 松弛写 `.sol` → 由 `.sol` 给整数变量设 MIP start → 正常 MIP：
+
+```bash
+S=<ASCII 路径>/ST_BASE_lp.sol
+COAL_RETROFIT_LP_RELAX=1 COAL_RETROFIT_WRITE_SOL=$S python scripts/run_single.py ST_BASE --threads 8 --time-limit 1800
+COAL_RETROFIT_START_SOL=$S COAL_RETROFIT_LOG_INCUMBENTS=1 python scripts/run_single.py ST_BASE --threads 8
+```
+
+| 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |
+|---|---|---|---|---|---|---|
+| `ST_BASE_inthub` | hub 决策整数 | ⏱ 时限 | 4.008e12 | 4.22% | 36 256 s | 下界停在根 LP 3.839e12；四年缺口全零；**只作参照** |
+| `ST_WA_cwatm_126_dry_oq_inthub` | hub 决策整数 | ⏱ 时限 | 5.124e12 | 12.1% | 36 201 s | 2040 水泥缺口 0.1 Mt；**只作参照** |
+| `ST_BASE` | hub 决策连续（§9.8） | 🔄 求解中 | | | | 2026-09-10 启动 |
+| `ST_WA_cwatm_126_dry_oq` | hub 决策连续 | 🔄 求解中 | | | | 同上 |
+| `ST_CP_BASE` | 碳价对照 | ⏳ 排队 | | | | 两个头部情景之后 |
+
+裸 MIP（无热启动）的可行解在 80 min 内始终带 250–300 Mt 水泥缺口、gap 42–45%；
+LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不是加速。
+`*_lprelax.log`、`*_lp.sol`、`*_inthub.log` 都在 `logs/`。
 
 ### 图
 
