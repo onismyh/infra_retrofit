@@ -240,14 +240,24 @@ BOUND_LONLAT = [(80.0, 15.0), (150.0, 50.0), (106.5, 2.8), (123.0, 24.5)]
 _MAP_CACHE: dict = {}
 
 
+# 2026-09-12 起全仓库底图统一为唐昊天 GIS_layer/plot.ipynb 那一套（见 scripts/map_tht.py）：
+# 省界换 2023 版 GeoJSON，国界与九段线换 china_country_proj.shp。旧的 ChinaMap/*.shp 还在，
+# 但已无读者；改回去只需把下面两个函数的路径换回来。
+THT_DIR = "ChinaMapTHT"
+THT_PROV = "中华人民共和国.json"
+THT_COUNTRY = "china_country_proj.shp"
+DASH_ADCODE = "100000_JD"      # GeoJSON 里单独成要素的九段线
+PROV_NAME_FIX = {"新疆维吾尔自治区": "新疆维吾尔族自治区"}   # 对齐旧 shp 的写法，保住下游按名连接
+
+
 def load_country(root=None):
     """国界 + 九段线，投影到 MAP_CRS。
 
-    九段线不需要额外图层：`data/ChinaMap/boundary.shp` 里 GBCODE == 26100 的 261 条线段
-    就是它（经纬度范围 111.44-119.71E / 3.85-23.78N）。此前的地图之所以没有九段线，
-    是因为它们画的是 provinces.shp 或 provinces.dissolve()，两者都不含这一层。
+    换成 `data/ChinaMapTHT/china_country_proj.shp`：单要素、1 260 个部件，南到 3.83N，
+    九段线与南海岛礁都在这一个多边形里，不再需要按 GBCODE 挑图层。
 
-    断言不是防御性编程：换底图时这一层会静默消失，而缺九段线的中国地图在国内是发表阻断项。
+    断言不是防御性编程：换底图时九段线会静默消失，而缺九段线的中国地图在国内是发表阻断项。
+    为兼容既有调用，补一列 GBCODE = 61010，`country[country["GBCODE"].isin(...)]` 仍然可用。
     """
     if "country" in _MAP_CACHE:
         return _MAP_CACHE["country"]
@@ -255,26 +265,34 @@ def load_country(root=None):
     from pathlib import Path
 
     root = Path(root) if root is not None else ROOT
-    country = gpd.read_file(root / "data" / "ChinaMap" / "boundary.shp")
-    n_dash = int((country["GBCODE"] == NINE_DASH_GBCODE).sum())
-    if n_dash == 0:
-        raise RuntimeError(
-            f"底图缺九段线图层（GBCODE {NINE_DASH_GBCODE}）："
-            f"{root / 'data' / 'ChinaMap' / 'boundary.shp'}")
-    _MAP_CACHE["country"] = country.to_crs(MAP_CRS)
+    path = root / "data" / THT_DIR / THT_COUNTRY
+    country = gpd.read_file(path).to_crs("EPSG:4326")
+    if float(country.total_bounds[1]) > 5.0:
+        raise RuntimeError(f"底图缺九段线：{path} 的南界只到 {country.total_bounds[1]:.2f}N")
+    country = country.to_crs(MAP_CRS)
+    country["GBCODE"] = COUNTRY_GBCODES[0]
+    _MAP_CACHE["country"] = country
     return _MAP_CACHE["country"]
 
 
 def load_map_provinces(root=None):
-    """省界，投影到 MAP_CRS。"""
+    """省界，投影到 MAP_CRS。
+
+    换成 `data/ChinaMapTHT/中华人民共和国.json`（2023 版，含台湾与港澳）。GeoJSON 里把
+    九段线单独放成 adcode = 100000_JD 的要素，这里剔掉：九段线由 load_country() 负责，
+    留在省界层里会被当成一个省去填色。补 NAME 列（并把新疆的写法对齐旧 shp），
+    下游按省名连接的代码不用改。
+    """
     if "prov" in _MAP_CACHE:
         return _MAP_CACHE["prov"]
     import geopandas as gpd
     from pathlib import Path
 
     root = Path(root) if root is not None else ROOT
-    _MAP_CACHE["prov"] = gpd.read_file(
-        root / "data" / "ChinaMap" / "provinces.shp").to_crs(MAP_CRS)
+    prov = gpd.read_file(root / "data" / THT_DIR / THT_PROV).to_crs(MAP_CRS)
+    prov = prov[prov["adcode"].astype(str) != DASH_ADCODE].copy()
+    prov["NAME"] = prov["name"].astype(str).replace(PROV_NAME_FIX)
+    _MAP_CACHE["prov"] = prov.reset_index(drop=True)
     return _MAP_CACHE["prov"]
 
 
@@ -309,7 +327,39 @@ def to_map_xy(lon, lat, root=None):
 
 # boundary.shp 的 GBCODE 语义（要素数与经纬度范围实测，见 scratchpad/fix_basemap_layers.py）
 COUNTRY_GBCODES = (61010, 26100)   # 国界+海岸线，九段线
-ISLAND_GBCODES = (26010, 26080)    # 沿海岛屿、南海岛礁
+ISLAND_GBCODES = (26010, 26080)    # 旧 boundary.shp 的语义，已无读者
+PROV_EDGE = "black"                # 昊天的画法：省界黑色细线，不再用浅灰 #C6CDD4
+
+
+ISLAND_MIN_AREA_KM2 = 1000.0       # 主图上只保留大陆 / 台湾 / 海南三块（次大的岛只有 490 km2）
+
+
+def load_dash_line(root=None):
+    """九段线，单独一层。GeoJSON 里就是 adcode = 100000_JD 的那个要素（10 个部件）。"""
+    if "dash" in _MAP_CACHE:
+        return _MAP_CACHE["dash"]
+    import geopandas as gpd
+    from pathlib import Path
+
+    root = Path(root) if root is not None else ROOT
+    g = gpd.read_file(root / "data" / THT_DIR / THT_PROV).to_crs(MAP_CRS)
+    dash = g[g["adcode"].astype(str) == DASH_ADCODE]
+    if dash.empty:
+        raise RuntimeError(f"底图缺九段线要素 {DASH_ADCODE}：{root / 'data' / THT_DIR / THT_PROV}")
+    _MAP_CACHE["dash"] = dash
+    return dash
+
+
+def country_main(root=None):
+    """国界层里面积大于 ISLAND_MIN_AREA_KM2 的部件，用于主图。"""
+    if "country_main" in _MAP_CACHE:
+        return _MAP_CACHE["country_main"]
+    import geopandas as gpd
+
+    c = load_country(root)
+    parts = [g for g in c.geometry.iloc[0].geoms if g.area / 1e6 >= ISLAND_MIN_AREA_KM2]
+    _MAP_CACHE["country_main"] = gpd.GeoDataFrame(geometry=parts, crs=c.crs)
+    return _MAP_CACHE["country_main"]
 
 
 def draw_china_basemap(ax, root=None, province_lw: float = 0.20,
@@ -325,12 +375,18 @@ def draw_china_basemap(ax, root=None, province_lw: float = 0.20,
     country = load_country(root)
     if facecolor != "none":
         prov.plot(ax=ax, facecolor=facecolor, edgecolor="none", zorder=0)
-    prov.boundary.plot(ax=ax, edgecolor="#C6CDD4", linewidth=province_lw, zorder=1)
+    prov.boundary.plot(ax=ax, edgecolor=PROV_EDGE, linewidth=province_lw, zorder=1)
     if islands:
-        country[country["GBCODE"].isin(ISLAND_GBCODES)].plot(
-            ax=ax, facecolor="none", edgecolor="#666666", linewidth=island_lw, zorder=1.4)
-    country[country["GBCODE"].isin(COUNTRY_GBCODES)].plot(
-        ax=ax, facecolor="none", edgecolor="black", linewidth=country_lw, zorder=1.5)
+        # 小图尺度上岛礁是内容：整层 1 260 个部件全画。
+        country.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=country_lw, zorder=1.5)
+    else:
+        # 主图尺度上不是。1 257 个小部件（中位 1.1 km2）每个都画不满一个像素，叠起来
+        # 就是东南海岸一圈黑毛刺 —— 只留大陆、台湾、海南三块。
+        country_main(root).plot(ax=ax, facecolor="none", edgecolor="black",
+                                linewidth=country_lw, zorder=1.5)
+    # 九段线单独一层，两种情形都必须画。
+    load_dash_line(root).plot(ax=ax, facecolor="none", edgecolor="black",
+                              linewidth=country_lw, zorder=1.6)
     return prov, country
 
 

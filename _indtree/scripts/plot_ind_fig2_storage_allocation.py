@@ -457,7 +457,7 @@ def main() -> None:
                 f"（{deg_n}/{deg_total} 个厂址的 CO$_2$ 强度完全相同），不承载空间信息。"
                 if deg_n else "")
     fig.text(0.004, 0.004, cjk_fill(
-        f"情景 {RUN}（v9 管网，{n_sinks} 个汇全部可达），{YEAR} 年横截面。"
+        f"情景 {RUN}（v9.2 管网，2026-09-12 重建，{n_sinks} 个汇对每个源都可达），{YEAR} 年横截面。"
         f"注入合计 {coal_captured:,.1f}，"
         f"全国注入能力 {sink['injectivity_mtpa'].sum():,.1f} Mt CO$_2$ yr$^{{-1}}$"
         f"（{coal_captured / sink['injectivity_mtpa'].sum():.1%}），其中 {n_full} 个汇正好压在各自的"

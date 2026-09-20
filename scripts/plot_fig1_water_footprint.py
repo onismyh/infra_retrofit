@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from plot_style import (  # noqa: E402
     apply_style,
     load_country,
+    load_map_provinces,
     COUNTRY_GBCODES,
     add_scs_inset,
     cjk_fill,
@@ -444,8 +445,8 @@ def panel_c(ax, sites: pd.DataFrame, drying: pd.DataFrame) -> pd.DataFrame:
     import geopandas as gpd
 
     basins = load_basins()
-    provinces = gpd.read_file(ROOT / "data" / "ChinaMap" / "provinces.shp").to_crs(TARGET_CRS)
-    provinces.boundary.plot(ax=ax, linewidth=0.15, edgecolor="#CCCCCC", zorder=1)
+    provinces = load_map_provinces()          # 统一底图，见 plot_style.load_map_provinces
+    provinces.boundary.plot(ax=ax, linewidth=0.15, edgecolor="black", zorder=1)
     # 国界图层：boundary.shp 的 GBCODE 61010 是国界/海岸线，26100 是九段线。
     # 省界图层里没有九段线，所以此前这张全国图从来没有画出过它。
     _country = load_country()

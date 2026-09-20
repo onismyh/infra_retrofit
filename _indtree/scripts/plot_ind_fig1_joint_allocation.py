@@ -67,6 +67,15 @@ TARGET_COLOR = "#CC3311"
 EXPECTED_SINKS = 89        # v9 管网的汇数，用来把求解树认出来
 
 
+def _h2_price(meta, year) -> float:
+    """氢价的元数据键在 2026-09-10 改过名（加了 national_mean），两种都认。"""
+    node = meta["years"][str(year)]["industry"]
+    for key in ("h2_price_national_mean_cny_per_kg", "h2_price_cny_per_kg"):
+        if key in node:
+            return float(node[key])
+    raise KeyError("run JSON 里找不到氢价字段：%s" % sorted(node))
+
+
 def assert_v9_tree(run: str) -> int:
     """确认脚本正跑在 v9 求解树上，而不是仓库根的 v7 结果上。
 
@@ -145,7 +154,10 @@ def panel_a(ax, meta: dict, meta_nw: dict | None) -> None:
             continue
         ax.annotate(f"工业 {ind[i]:,.0f}", xy=(x[i] + 0.23, coal[i] + ind[i] / 2),
                     xytext=(x[i] + 0.32, coal[i] + ind[i] / 2 + 480),
-                    fontsize=5.6, color=IND_COLOR, ha="left", va="center",
+                    fontsize=5.6, color=IND_COLOR, ha="left", va="center", zorder=6,
+                    # 标签会伸到下一根柱子上（2050 的"工业 1,676"被 2060 柱盖掉半截），
+                    # 垫一层白底最省事，柱间空白处看不出来。
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.8),
                     arrowprops=dict(arrowstyle="-", lw=0.4, color=IND_COLOR))
     ax.set_xticks(x)
     ax.set_xticklabels([str(y) for y in years])
@@ -302,7 +314,7 @@ def panel_d(ax, meta: dict, detail: pd.DataFrame) -> None:
         # 内部强度的标准差都是 0（钢铁 0.0810、合成氨 0.1800、甲醇 0.1900 t/t）。
         intensity = _sector_h2_intensity(sector)
         h2 = [h2_premium_cny_per_t(
-                  sector, float(meta["years"][str(y)]["industry"]["h2_price_cny_per_kg"]), intensity
+                  sector, float(_h2_price(meta, y)), intensity
               ) * h2_mult / tco2_per_t for y in years]
         peak = max(peak, max(h2))
         ax.plot(years, h2, color=colour, lw=1.1, ls=(0, (3, 1.6)), marker="^", ms=2.8, zorder=3)
@@ -380,7 +392,7 @@ def main() -> None:
                 f"{float(detail[detail['year'] == first]['reduction_mt'].sum()):,.1f} Mt。"
                 if coal_first < -0.5 else "")
     note = cjk_fill(
-        f"情景 {RUN}（v9 管网：{n_sinks} 个汇全部可达）。{last} 年联合减排 "
+        f"情景 {RUN}（v9.2 管网，2026-09-12 重建：{n_sinks} 个汇对每个源都可达）。{last} 年联合减排 "
         f"{coal_last + ind_last:,.0f} Mt = 煤电 {coal_last:,.0f} + 工业 {ind_last:,.0f}，"
         f"排放目标精确咬住（缺口 0）。" + neg_note
         + f"工业捕集 {cap_last:.1f} Mt——封存空间几乎全部被煤电占用，"

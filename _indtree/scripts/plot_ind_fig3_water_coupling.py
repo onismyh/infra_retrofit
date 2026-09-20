@@ -88,7 +88,9 @@ GRID = "#E4E7EA"
 CATEGORY_ZH = {
     "slack_penalty": "松弛罚金（big-M）",
     "incremental_om": "增量运维",
-    "industry_cost": "工业改造",
+    "industry_cost": "工业改造运维",
+    # 2026-09-10 起 industry_cost 只留年度运维，投资单列为 industry_capex
+    "industry_capex": "工业改造投资",
     "baseline_net_cost": "基准净成本",
     "stranded_capex": "搁浅资产",
     "coal_savings_credit": "燃料节约抵扣",
@@ -394,15 +396,21 @@ def main() -> None:
         panel_label(ax, letter, x=-0.16, y=1.06)
 
     basin_years = "-".join(str(y) for y in (slack["basin_years"][0], slack["basin_years"][-1]))
+    # 2026-09-12 重建的管网不再出现管道容量 big-M 松弛，这一句要能说没有。
+    if slack["other_years"]:
+        other_txt = (f" {slack['other'] / 1e9:,.0f} 十亿元是 "
+                     f"{slack['other_years'][0]} 年的管道容量罚金；")
+    else:
+        other_txt = "无其他类别的罚金；"
     fig.text(0.004, 0.004, cjk_fill(
         f"{RUN_OFF} 对 {RUN_ON}：同一模型、同一联合目标（0.95）、同一 v9 管网，"
-        f"只差流域取水上限一个旋钮，因此这一对可以相减。"
+        f"只差流域取水上限一个旋钮，因此这一对可以相减（v9.2 管网，2026-09-12 重建）。"
         f"(a) 只计本次改造转空冷的容量，按 1 减去存量空冷份额折算，不含"
         f" {off['already_air_gw'].iloc[0]:.0f} GW 的存量空冷（两情景相同）。"
         f"(b) 煤电走耗水表、工业走取水表，煤电的取水量不在任何产物 CSV 里，两条不可相加。"
         f"(d) 的合计 {float(delta.sum()) / 1e9:+,.0f} 十亿元里有 {slack['basin'] / 1e9:,.0f}"
         f" 十亿元是流域 K 在 {basin_years} 年的 big-M 违约罚金，另有"
-        f" {slack['other'] / 1e9:,.0f} 十亿元是 {slack['other_years'][0]} 年的管道容量罚金；"
+        f"{other_txt}"
         f"罚参数为设定值而非价格，因此 {band['point']:+.2%}"
         f"（两臂均 1% gap，可证区间 {band['lo']:+.2%} 到 {band['hi']:+.2%}）"
         f"不可作为水约束的成本引用，"

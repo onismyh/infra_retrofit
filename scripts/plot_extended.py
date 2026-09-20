@@ -176,9 +176,8 @@ def _load_provinces():
     if "prov" in _MAP_CACHE:
         return _MAP_CACHE["prov"]
     import geopandas as gpd
-    prov = gpd.read_file(
-        ROOT / "data" / "ChinaMap" / "provinces.shp"
-    ).to_crs(TARGET_CRS)
+    from plot_style import load_map_provinces
+    prov = load_map_provinces().to_crs(TARGET_CRS)     # 统一底图（2023 版 GeoJSON）
     cn_to_en = {v: k for k, v in EN_TO_CN.items()}
     prov["province_en"] = prov["NAME"].map(cn_to_en)
     _MAP_CACHE["prov"] = prov
@@ -186,11 +185,12 @@ def _load_provinces():
 
 
 def _load_country():
+    """国界 + 九段线。原来是 provinces.dissolve()，那样画不出九段线。"""
     if "country" in _MAP_CACHE:
         return _MAP_CACHE["country"]
-    country = _load_provinces().dissolve()
-    _MAP_CACHE["country"] = country
-    return country
+    from plot_style import load_country
+    _MAP_CACHE["country"] = load_country().to_crs(TARGET_CRS)
+    return _MAP_CACHE["country"]
 
 
 def _map_bounds():
@@ -588,10 +588,10 @@ def ed_fig3_sensitivity(data: dict) -> None:
     sensitivity_pairs = [
         ("CCS CAPEX", "SA_ccs_capex_low", "SA_ccs_capex_high"),
         ("Replacement cost", "SA_retire_cost_500", "SA_retire_cost_1000"),
-        ("Biomass cost †", None, "SA_biomass_cost_200"),
+        ("Biomass cost *", None, "SA_biomass_cost_200"),
         ("Ammonia cost", "SA_ammonia_cost_50", "SA_ammonia_cost_70"),
         ("Pipeline corridor", "SA_pipe_mid", "SA_pipe_full"),
-        ("Storage injectivity †", None, "SA_injectivity_half"),
+        ("Storage injectivity *", None, "SA_injectivity_half"),
     ]
     excluded_npv = [("Discount rate", "SA_discount_3pct", "SA_discount_8pct")]
 
@@ -630,7 +630,7 @@ def ed_fig3_sensitivity(data: dict) -> None:
     ax_a.set_xlabel("$\\Delta$Cost vs BASE (%)")
     ax_a.axvline(0, color="black", linewidth=0.5)
     ax_a.legend(fontsize=6, loc="lower right")
-    notes = ["† one-sided: low end is BASE (no low variant solved)"]
+    notes = ["* one-sided: low end is BASE (no low variant solved)"]
     for label, low_key, high_key in excluded_npv:
         if low_key in data and high_key in data:
             lo = (data[low_key]["global_objective_cny"] / 1e9 - base_cost) / base_cost * 100

@@ -141,6 +141,11 @@ def main():
     ax.scatter(plants["proj_x"], plants["proj_y"],
                s=3, c="#4477AA", alpha=0.5, edgecolors="none", zorder=5)
 
+    # 2026-09-12：工业点源进了节点表，也画出来，否则图题里的数就对不上边数了
+    industry = nodes_proj[nodes_proj["node_type"] == "industry_hub"]
+    if len(industry):
+        ax.scatter(industry["proj_x"], industry["proj_y"],
+                   s=4, c="#8B2FD0", marker="s", alpha=0.55, linewidths=0, zorder=5)
     storage = nodes_proj[nodes_proj["node_type"] == "storage_hub"]
     ax.scatter(storage["proj_x"], storage["proj_y"],
                s=45, c="#882255", marker="D", edgecolors="black",
@@ -171,6 +176,8 @@ def main():
                label=f"Delaunay ({len(tri_edges)})"),
         Line2D([], [], marker="o", color="none", markerfacecolor="#4477AA",
                markersize=3, alpha=0.6, label=f"Plant ({n_plants})"),
+        Line2D([], [], marker="s", color="none", markerfacecolor="#8B2FD0",
+               markersize=3, alpha=0.6, label=f"Industry hub ({len(industry)})"),
         Line2D([], [], marker="D", color="none", markerfacecolor="#882255",
                markeredgecolor="black", markeredgewidth=0.4,
                markersize=5, label=f"Storage ({n_storage})"),
@@ -181,7 +188,8 @@ def main():
     # ── Title ──
     ax.set_title(
         f"CO$_2$ Candidate Pipeline Network\n"
-        f"{n_plants} plants + {n_storage} storage hubs | {len(edges)} edges",
+        f"{n_plants} plants + {len(industry)} industry hubs + {n_storage} storage hubs"
+        f" | {len(edges)} edges",
         fontsize=10,
     )
 
