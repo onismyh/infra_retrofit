@@ -255,7 +255,7 @@ def prepare_industry_h2_links(
     Returns:
         Columns `year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg`.
     """
-    from .data_prep import _haversine_distances_km
+    from .resource_access import _haversine_distances_km
 
     columns = ["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]
     eligible = hubs[hubs["sector"].astype(str).map(lambda s: bool(SECTOR_HAS_H2_ROUTE.get(s, False)))]

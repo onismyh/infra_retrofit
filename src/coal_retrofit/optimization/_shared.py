@@ -18,6 +18,8 @@ from .scenario import PATHWAYS
 
 
 PATHWAY_INDEX = {name: index for index, name in enumerate(PATHWAYS)}
+# 目标函数以十亿元计，缩小系数范围；成本表达式进目标前除以它，提取时乘回。
+_COST_SCALE = 1e9
 GUROBI_STATUS_NAMES = {
     1: "loaded",
     2: "optimal",
