@@ -243,14 +243,6 @@ class OptimizationAssumptions:
     # and no experiment can separate them; here BASE->envonly prices the environmental-flow
     # standard and envonly->oq prices the allocation rule, each on its own.
     apply_basin_cap: bool = True
-    # Industrial point sources as DECISION AGENTS rather than as a fixed carve-out from the
-    # basin reservation. OFF by default, and that default is load-bearing: with it off the
-    # model is bit-identical to the one that produced every scenario solved before
-    # 2026-09-08, so the v9.1 results stay differenceable (CLAUDE.md 二.6). Turning it on
-    # adds 390 hubs to the CO2 network, to the basin water cap and to a SINGLE joint
-    # emission target whose denominator becomes coal + industry -- a different model, whose
-    # runs must never be subtracted from the industry-off ones.
-    include_industry: bool = False
     # Apply the basin bias-correction factors when serving water to the solver. The factors
     # (`.basin_bias_factors` in builders/water.py, estimated from each model's `historical`
     # run against third-survey basin totals) are baked into `available_water_m3_per_year` in
@@ -489,19 +481,11 @@ class OptimizationScenario:
     capture_rate: float = 0.90
     biomass_blend_levels: tuple[float, ...] = (0.10, 0.25, 0.50, 0.75, 1.00)
     ammonia_blend_levels: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
-    emission_target_fraction: tuple[float, ...] = (0.0, 0.0, 0.0, 0.95)
-    # SECTOR TARGETS (2026-09-10). When set, e.g. "times_cn60", the single joint reduction
-    # floor above is replaced by one cap per sector group and planning year, read from
-    # `inputs/sector_targets_<source>.csv` (scripts/build_sector_targets.py):
-    #
-    #     residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)
-    #
-    # with g in {power, steel, cement, chemicals}. `baseline_g(2030)` is THIS model's own
-    # frozen-technology 2030 emissions of the group, so the TIMES trajectory supplies the
-    # SHAPE of the decline and the model supplies the level. The coal fleet is the whole
-    # "power" group. Empty string keeps the legacy joint target so every run solved before
-    # this date stays reproducible.
-    sector_target_source: str = ""
+    # 部门碳目标来源：读 `inputs/sector_targets_<source>.csv`（scripts/build_sector_targets.py）。
+    # 每组每个规划年一条上限：residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)，
+    # g 属于 {power, steel, cement, chemicals}；baseline_g(2030) 是本模型自身的 2030 冻结技术排放，
+    # 即 TIMES 轨迹给形状、模型给水平。煤电整体为 power 组。
+    sector_target_source: str = "times_cn60"
     # Coal fleet utilisation by planning year, national capacity-weighted hours. Empty keeps
     # the province statistics frozen across all four years (the pre-2026-09-10 behaviour, in
     # which the fleet generated 6 576 TWh in 2060 as in 2030). When set, every hub's province
@@ -576,15 +560,6 @@ class OptimizationScenario:
     rebuild_efficiency: float = 0.45  # USC efficiency for rebuilt plant (vs 0.42 baseline)
     notes: str = ""
 
-    def target_for_year(self, year: int) -> float:
-        year_to_target = dict(zip(self.planning_years, self.emission_target_fraction, strict=False))
-        if year in year_to_target:
-            return float(year_to_target[year])
-        if not year_to_target:
-            return 0.0
-        nearest_year = min(year_to_target, key=lambda candidate: abs(candidate - year))
-        return float(year_to_target[nearest_year])
-
     def _interpolate_year_tuple(self, values: tuple[float, ...], year: int) -> float:
         mapping = dict(zip(self.planning_years, values, strict=False))
         if year in mapping:
@@ -596,10 +571,6 @@ class OptimizationScenario:
 
     def carbon_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.carbon_price_cny_per_t_by_year, year)
-
-    @property
-    def uses_sector_targets(self) -> bool:
-        return bool(str(self.sector_target_source).strip())
 
     @property
     def effective_output_index_source(self) -> str:

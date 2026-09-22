@@ -227,8 +227,6 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             "pathway_shares.csv": pathways_df,
             "province_pathways.csv": province_df,
             "plant_detail.csv": plant_detail_df,
-            # Empty (headers only) unless `include_industry` is on, so a reader always
-            # gets a frame and never has to guess whether industry was in the run.
             "industry_detail.csv": industry_detail_df,
             "network_edges.csv": edge_df,
             "storage_utilization.csv": storage_df,

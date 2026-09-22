@@ -18,11 +18,10 @@ What is joint here:
    nodes that supply coal-side co-firing, within the same radius, and pays each node's own
    plant-gate LCOH plus transport -- so the two hydrogen users compete for quantity, and the
    price industry pays is the marginal one, not the national supply-weighted mean.
-4. **The emission targets.** Either the legacy single joint reduction floor, or (from
-   2026-09-10) one residual cap per sector group -- steel, cement, chemicals, and power for
-   the coal fleet -- read from `inputs/sector_targets_<source>.csv`. With sector caps the
-   carbon price is normally zero; when it is not, it is charged on industrial residuals
-   exactly as on coal residuals (before 2026-09-10 only coal paid it).
+4. **The emission targets.** One residual cap per sector group -- steel, cement, chemicals,
+   and power for the coal fleet -- read from `inputs/sector_targets_<source>.csv`. The
+   carbon price is normally zero under caps; when it is not, it is charged on industrial
+   residuals exactly as on coal residuals.
 
 Three routes per hub — `unabated`, `ccs`, `h2` — with `h2` available only where
 `SECTOR_HAS_H2_ROUTE` is true (so cement and EAF steel get capture or nothing, which is the
@@ -171,7 +170,7 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
 def prepare_industry(
     paths: ProjectPaths, assumptions, output_index: dict[tuple[str, int], float] | None = None
 ) -> IndustryInputs:
-    """Load and prepare the industrial hubs. Call only when industry is enabled.
+    """Load and prepare the industrial hubs.
 
     Args:
         paths: Project paths.
@@ -188,8 +187,7 @@ def prepare_industry(
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found. Build it with `builders.industry.write_industry_inputs`, or "
-            "leave `include_industry` off."
+            f"{path} not found. Build it with `builders.industry.write_industry_inputs`."
         )
     hubs = pd.read_csv(path)
     # 西藏不参与减排：备选管网里已经没有西藏点源（`builders.network_branches`

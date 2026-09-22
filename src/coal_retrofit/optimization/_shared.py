@@ -53,16 +53,12 @@ class PreparedInputs:
     water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
-    # Industrial hubs as decision agents, None unless `assumptions.include_industry`.
-    # Defaulted so that with industry off `PreparedInputs` is constructed exactly as it
-    # was before industry existed.
-    industry: object | None = None
-    # Per-sector residual caps (fractions of each group's own 2030 baseline); empty unless
-    # `scenario.sector_target_source` is set.
-    sector_targets: pd.DataFrame | None = None
-    # (year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg): industrial hydrogen links
-    # onto the shared green-ammonia nodes. Empty unless industry is on.
-    industry_h2_links: pd.DataFrame | None = None
+    # 工业点源（`industry.IndustryInputs`），与煤电同在一个目标函数里决策。
+    industry: object
+    # 部门残余排放上限：sector_group, planning_year, cap_fraction_of_2030。
+    sector_targets: pd.DataFrame
+    # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。
+    industry_h2_links: pd.DataFrame
 
 
 @dataclass

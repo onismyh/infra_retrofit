@@ -11,18 +11,9 @@ from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from test_multiperiod_investment_logic import _write_toy_inputs
+from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs
 
 YEARS = (2030, 2040)
-
-
-def _write_targets(paths, fractions: dict[int, float]) -> None:
-    pd.DataFrame(
-        [
-            {"sector_group": "power", "planning_year": year, "cap_fraction_of_2030": frac}
-            for year, frac in fractions.items()
-        ]
-    ).to_csv(paths.inputs_dir / "sector_targets_toy.csv", index=False)
 
 
 def _solve(paths, scenario: OptimizationScenario) -> dict[str, object]:
@@ -95,8 +86,9 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
     assert solution["status"] == "optimal"
     y2 = solution["year_solutions"][2040]
     by_group = y2["slacks"]["target_shortfall_by_group"]
-    assert set(by_group) == {"power"}
+    assert set(by_group) == {"power", "cement"}
     assert by_group["power"] > 0.1
+    assert by_group["cement"] == pytest.approx(0.0, abs=1e-9)
     assert y2["slacks"]["target_shortfall_mt"] == pytest.approx(by_group["power"], rel=1e-9)
 
 
@@ -167,6 +159,8 @@ def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
             "ammonia_node_id": ["A1"],
             "year": [2050],
             "nh3_supply_kg_per_year": [1.0e12],
+            "h2_supply_kg_per_year": [1.8e11],
+            "weighted_lcoh_usd_per_kg_h2": [3.0],
             "nh3_cost_lb_usd_per_kg": [0.3],
             "longitude": [112.2],
             "latitude": [37.0],

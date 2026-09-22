@@ -768,7 +768,7 @@ def _build_industry_detail_table(
         "cost_cny", "cost_capital_cny", "cost_annual_cny", "cost_h2_purchase_cny",
         "h2_price_paid_cny_per_kg", "h2_price_national_mean_cny_per_kg",
     ]
-    if prepared.industry is None or industry_year_data is None or share_values is None:
+    if industry_year_data is None or share_values is None:
         return pd.DataFrame(columns=columns)
     hubs = prepared.industry.hubs
     reduction = industry_year_data["reduction_mt"]

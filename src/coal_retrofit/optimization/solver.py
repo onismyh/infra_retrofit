@@ -336,30 +336,28 @@ def _solve_joint_multi_period(
     # Industrial hubs are SOURCES, so their nodes must join `source_sink_indices` BEFORE
     # `pipeline_indices` is derived. Left out, they fall into the pipeline set and pick up
     # `co2_node_outflow[i] == 0`, which silently annihilates every tonne industry captures.
-    industry_hub_ids: list[str] = []
     industry_n_indices: set[int] = set()
-    if prepared.industry is not None:
-        industry_hub_ids = prepared.industry.hubs["hub_id"].astype(str).tolist()
-        missing_hubs = [
-            hub_id for hub_id in industry_hub_ids
-            if hub_id not in prepared.network.industry_node_ids
-        ]
-        if missing_hubs:
-            # Not a warning. An unregistered source hub has no node balance tying its capture
-            # to the network, so its captured CO2 would be free disposal and the model would
-            # report abatement that goes nowhere.
+    industry_hub_ids = prepared.industry.hubs["hub_id"].astype(str).tolist()
+    missing_hubs = [
+        hub_id for hub_id in industry_hub_ids
+        if hub_id not in prepared.network.industry_node_ids
+    ]
+    if missing_hubs:
+        # Not a warning. An unregistered source hub has no node balance tying its capture
+        # to the network, so its captured CO2 would be free disposal and the model would
+        # report abatement that goes nowhere.
+        raise ValueError(
+            f"{len(missing_hubs)} industrial hub(s) are absent from network.industry_node_ids "
+            f"(first few: {missing_hubs[:5]}); their captured CO2 would vanish at zero cost"
+        )
+    for hub_id in industry_hub_ids:
+        mapped_node = prepared.network.industry_node_ids[hub_id]
+        n_idx = node_idx_dict.get(mapped_node)
+        if n_idx is None:
             raise ValueError(
-                f"{len(missing_hubs)} industrial hub(s) are absent from network.industry_node_ids "
-                f"(first few: {missing_hubs[:5]}); their captured CO2 would vanish at zero cost"
+                f"industry_node_ids maps hub {hub_id!r} -> {mapped_node!r} which is not in network nodes"
             )
-        for hub_id in industry_hub_ids:
-            mapped_node = prepared.network.industry_node_ids[hub_id]
-            n_idx = node_idx_dict.get(mapped_node)
-            if n_idx is None:
-                raise ValueError(
-                    f"industry_node_ids maps hub {hub_id!r} -> {mapped_node!r} which is not in network nodes"
-                )
-            industry_n_indices.add(n_idx)
+        industry_n_indices.add(n_idx)
     source_sink_indices = plant_n_indices | storage_n_indices | industry_n_indices
     pipeline_indices = [i for i in range(n_nodes) if i not in source_sink_indices]
     B = prepared.network.incidence  # (n_nodes, n_edges)
@@ -369,24 +367,22 @@ def _solve_joint_multi_period(
     # matrices use, so the 2030 baseline is what the 2030 constraint would see whether or not
     # 2030 is in `years`.
     sector_base_2030: dict[str, float] = {}
-    if scenario.uses_sector_targets:
-        fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
-        scale_2030 = float(scenario.operating_hours_scale(2030, fleet_hours_now)) if fleet_hours_now > 0 else 1.0
-        sector_base_2030[POWER_TARGET_GROUP] = float(
-            prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
-        )
-        if prepared.industry is not None:
-            from .industry import industry_year_data as _industry_year_data
+    fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
+    scale_2030 = float(scenario.operating_hours_scale(2030, fleet_hours_now)) if fleet_hours_now > 0 else 1.0
+    sector_base_2030[POWER_TARGET_GROUP] = float(
+        prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
+    )
+    from .industry import industry_year_data as _industry_year_data
 
-            base_2030 = _industry_year_data(prepared.industry, scenario, assumptions, 2030)
-            groups = base_2030["target_groups"]
-            for group in sorted(set(str(g) for g in groups)):
-                sector_base_2030[str(group)] = float(
-                    base_2030["baseline_emissions_mt"][groups == group].sum()
-                )
-        logger.info("sector targets from %s; 2030 baselines (Mt): %s",
-                    scenario.sector_target_source,
-                    {g: round(v, 1) for g, v in sector_base_2030.items()})
+    base_2030 = _industry_year_data(prepared.industry, scenario, assumptions, 2030)
+    groups = base_2030["target_groups"]
+    for group in sorted(set(str(g) for g in groups)):
+        sector_base_2030[str(group)] = float(
+            base_2030["baseline_emissions_mt"][groups == group].sum()
+        )
+    logger.info("sector targets from %s; 2030 baselines (Mt): %s",
+                scenario.sector_target_source,
+                {g: round(v, 1) for g, v in sector_base_2030.items()})
 
     for year_index, year in enumerate(years):
         interval_years = scenario.interval_years(years, year_index, assumptions)
@@ -529,21 +525,19 @@ def _solve_joint_multi_period(
                 )
         # Industrial capture enters the same graph at the hub's own node. Identical form to
         # the coal-plant constraint above: net outflow equals what this source captured.
-        industry_payload = None
-        if prepared.industry is not None:
-            from .industry import add_industry_year
+        from .industry import add_industry_year
 
-            industry_payload = add_industry_year(
-                model, prepared.industry, year_data["industry"], year_suffix,
-                h2_link_cost=year_data.get("industry_h2_link_cost_cny_per_kg"),
-                h2_hub_membership=year_data.get("industry_h2_hub_membership"),
+        industry_payload = add_industry_year(
+            model, prepared.industry, year_data["industry"], year_suffix,
+            h2_link_cost=year_data.get("industry_h2_link_cost_cny_per_kg"),
+            h2_hub_membership=year_data.get("industry_h2_hub_membership"),
+        )
+        for hub_idx, hub_id in enumerate(industry_hub_ids):
+            n_idx = node_idx_dict[prepared.network.industry_node_ids[hub_id]]
+            model.addConstr(
+                co2_node_outflow[n_idx] == industry_payload["captured_by_hub"][hub_idx],
+                name=f"co2_industry_inject_{hub_idx}_{year_suffix}",
             )
-            for hub_idx, hub_id in enumerate(industry_hub_ids):
-                n_idx = node_idx_dict[prepared.network.industry_node_ids[hub_id]]
-                model.addConstr(
-                    co2_node_outflow[n_idx] == industry_payload["captured_by_hub"][hub_idx],
-                    name=f"co2_industry_inject_{hub_idx}_{year_suffix}",
-                )
         model.addConstrs(
             (co2_node_outflow[i] == 0.0 for i in pipeline_indices),
             name=f"co2_pipeline_balance_{year_suffix}",
@@ -583,8 +577,7 @@ def _solve_joint_multi_period(
         # Industrial hydrogen draws on the SAME nodes, in NH3-equivalent: a kg of H2 taken as
         # hydrogen is a kg that cannot go into the node's ammonia (1 / NH3_H2_RATIO kg NH3).
         if (
-            industry_payload is not None
-            and year_data.get("industry_h2_node_membership") is not None
+            year_data.get("industry_h2_node_membership") is not None
             and int(industry_payload["h2_flow_kg"].shape[0]) > 0
         ):
             h2_node_draw_nh3_eq = (year_data["industry_h2_node_membership"] @ industry_payload["h2_flow_kg"]) * (1.0 / NH3_H2_RATIO)
@@ -678,7 +671,7 @@ def _solve_joint_multi_period(
                 members = np.flatnonzero(basin_membership[basin_idx])
                 code = year_data["water_basin_codes"][basin_idx]
                 basin_use = gp.quicksum(plant_withdrawal[int(p)] for p in members)
-                if industry_basin is not None and industry_payload is not None:
+                if industry_basin is not None:
                     ind_members = np.flatnonzero(industry_basin[basin_idx])
                     basin_use = basin_use + gp.quicksum(
                         industry_payload["withdrawal_by_hub_scaled"][int(h)] for h in ind_members
@@ -702,48 +695,31 @@ def _solve_joint_multi_period(
             ),
             name=f"injectivity_limit_{year_suffix}",
         )
-        if scenario.uses_sector_targets:
-            # One residual cap per sector group:
-            #     residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)
-            # The coal fleet is the `power` group; industrial hubs map to steel / cement /
-            # chemicals through SECTOR_TARGET_GROUP. Each group carries its own shortfall so
-            # the report can say WHICH cap could not be met.
-            caps = year_data["sector_cap_fraction"]
-            residual_exprs: dict[str, object] = {
-                POWER_TARGET_GROUP: float(year_data["emissions_mt"].sum()) - total_reduction_mt
-            }
-            if industry_payload is not None:
-                residual_exprs.update(industry_payload["residual_by_group"])
-            for group, residual in residual_exprs.items():
-                if group not in caps:
-                    raise ValueError(
-                        f"sector_targets_{scenario.sector_target_source}.csv has no {year} cap for group {group!r}"
-                    )
-                shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
-                target_shortfall_by_group[group] = shortfall
-                model.addConstr(
-                    residual - shortfall <= float(caps[group]) * float(sector_base_2030[group]),
-                    name=f"sector_target_{group}_{year_suffix}",
+        # One residual cap per sector group:
+        #     residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)
+        # The coal fleet is the `power` group; industrial hubs map to steel / cement /
+        # chemicals through SECTOR_TARGET_GROUP. Each group carries its own shortfall so
+        # the report can say WHICH cap could not be met.
+        caps = year_data["sector_cap_fraction"]
+        residual_exprs: dict[str, object] = {
+            POWER_TARGET_GROUP: float(year_data["emissions_mt"].sum()) - total_reduction_mt
+        }
+        residual_exprs.update(industry_payload["residual_by_group"])
+        for group, residual in residual_exprs.items():
+            if group not in caps:
+                raise ValueError(
+                    f"sector_targets_{scenario.sector_target_source}.csv has no {year} cap for group {group!r}"
                 )
+            shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
+            target_shortfall_by_group[group] = shortfall
             model.addConstr(
-                target_shortfall_mt == gp.quicksum(target_shortfall_by_group.values()),
-                name=f"target_shortfall_total_{year_suffix}",
+                residual - shortfall <= float(caps[group]) * float(sector_base_2030[group]),
+                name=f"sector_target_{group}_{year_suffix}",
             )
-        else:
-            # LEGACY: one joint reduction floor across coal power and industry (the author's
-            # choice of 2026-09-07). Both sides of the inequality gain industry, so the same
-            # target fraction applies to the combined baseline and the SOLVER decides which
-            # sector abates. Kept verbatim so runs solved before 2026-09-10 stay reproducible.
-            target_reduction = total_reduction_mt
-            target_baseline_mt = float(year_data["emissions_mt"].sum())
-            if industry_payload is not None:
-                target_reduction = target_reduction + industry_payload["total_reduction_mt"]
-                target_baseline_mt += float(year_data["industry"]["baseline_emissions_mt"].sum())
-            model.addConstr(
-                target_reduction + target_shortfall_mt
-                >= scenario.target_for_year(year) * target_baseline_mt,
-                name=f"emission_target_{year_suffix}",
-            )
+        model.addConstr(
+            target_shortfall_mt == gp.quicksum(target_shortfall_by_group.values()),
+            name=f"target_shortfall_total_{year_suffix}",
+        )
 
         for pathway, pathway_idx in PATHWAY_INDEX.items():
             if not scenario.path_enabled(pathway):
@@ -832,7 +808,7 @@ def _solve_joint_multi_period(
     # Industrial abatement irreversibility. Also what makes the levelised per-tonne cost
     # basis legitimate: a cost that already contains capital recovery may be charged in every
     # operating year only if the decision cannot be undone for free.
-    if prepared.industry is not None and len(year_payloads) > 1:
+    if len(year_payloads) > 1:
         from .industry import add_industry_monotonicity
 
         add_industry_monotonicity(
@@ -1379,7 +1355,7 @@ def _solve_joint_multi_period(
                     "retrofit_installed": np.zeros((plant_count, len(capex_pathway_indices))),
                     "pipe_count": np.zeros((edge_count, len(p["year_data"]["pipe_tiers_mtpa"]))),
                     "industry_share": np.zeros(
-                        (0 if prepared.industry is None else len(prepared.industry.hubs),
+                        (len(prepared.industry.hubs),
                          len(INDUSTRY_ROUTES))
                     ),
                     "industry_h2_flow_kg": np.zeros(0),

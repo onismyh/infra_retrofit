@@ -18,7 +18,7 @@ from coal_retrofit.optimization.salvage import horizon_end_year, remaining_fract
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from test_multiperiod_investment_logic import _toy_assumptions, _write_toy_inputs
+from test_multiperiod_investment_logic import _toy_assumptions, _write_targets, _write_toy_inputs
 
 
 # ------------------------------------------------------------------ closed-form checks ---
@@ -134,12 +134,13 @@ def test_horizon_end_year_uses_last_interval() -> None:
     assert horizon_end_year([{"year": 2030, "interval_years": 30}, {"year": 2060, "interval_years": 30}]) == 2090
 
 
-def _solve(paths, salvage: bool, targets=(0.0, 0.0, 0.5)):
+def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5)):
+    _write_targets(paths, dict(zip((2030, 2040, 2050), power_caps, strict=True)))
     scenario = OptimizationScenario(
         experiment_id="TEST-SALVAGE",
         description="toy",
         planning_years=(2030, 2040, 2050),
-        emission_target_fraction=targets,
+        sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(400.0, 440.0, 490.0),
         pathway_disable=("retire",),

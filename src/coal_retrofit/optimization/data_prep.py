@@ -210,10 +210,8 @@ def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumption
 
 
 def _prepare_sector_targets(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
-    """Per-sector residual caps as fractions of each group's own 2030 baseline; empty unless set."""
+    """部门残余排放上限，各组自身 2030 基线的比例。"""
     columns = ["sector_group", "planning_year", "cap_fraction_of_2030"]
-    if not scenario.uses_sector_targets:
-        return pd.DataFrame(columns=columns)
     path = paths.inputs_dir / f"sector_targets_{scenario.sector_target_source}.csv"
     if not path.exists():
         raise FileNotFoundError(
@@ -443,22 +441,14 @@ def prepare_inputs(
     water_basin_caps = _prepare_basin_caps(paths, assumptions)
     sector_targets = _prepare_sector_targets(paths, scenario)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
-    industry = None
-    industry_h2_links = pd.DataFrame(
-        columns=["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]
-    )
-    if bool(getattr(assumptions, "include_industry", False)):
-        from .industry import prepare_industry, prepare_industry_h2_links
+    from .industry import prepare_industry, prepare_industry_h2_links
 
-        industry = prepare_industry(
-            paths, assumptions, output_index=_prepare_output_index(paths, scenario)
-        )
-        industry_h2_links = prepare_industry_h2_links(
-            industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
-        )
+    industry = prepare_industry(paths, assumptions, output_index=_prepare_output_index(paths, scenario))
+    industry_h2_links = prepare_industry_h2_links(
+        industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
+    )
     network = build_runtime_network(
-        paths, plants, storages, scenario, assumptions,
-        industry_hubs=None if industry is None else industry.hubs,
+        paths, plants, storages, scenario, assumptions, industry_hubs=industry.hubs,
     )
     return PreparedInputs(
         plants=plants,
@@ -667,28 +657,7 @@ def _basin_cap_data(
     if unmatched:
         raise ValueError(f"{unmatched} hubs fell outside every basin in water_basin_caps.csv")
     residual = caps["residual_m3_per_year"].astype(float).to_numpy()
-    # `write_basin_caps` ADDS the modelled industrial sources' current withdrawal back into the
-    # residual so that, when industry is a decision agent, the two sectors compete for one
-    # budget. With industry OFF nobody re-charges that water, and the coal fleet was being
-    # handed it for free: in basin K the residual (2.1e8) was 100% added-back industry, in C
-    # and D 11-13%. Take it back out here whenever there is no industrial block to spend it.
-    if prepared.industry is None:
-        needed = {"modelled_industry_1e8_m3", "compliance_ratio"}
-        if needed <= set(caps.columns):
-            carve_out = (
-                caps["modelled_industry_1e8_m3"].astype(float)
-                * caps["compliance_ratio"].astype(float)
-            ).to_numpy() * 1e8
-            residual = np.maximum(0.0, residual - carve_out)
-            logger.info(
-                "water: basin cap with industry OFF -- removed the added-back industrial "
-                "withdrawal (%.1f 亿 m3 nationally) from the residual", float(carve_out.sum()) / 1e8,
-            )
-        else:
-            logger.warning(
-                "water_basin_caps.csv has no modelled_industry_1e8_m3/compliance_ratio columns; "
-                "the coal-only residual still contains the industrial add-back"
-            )
+    # 余量已含 `write_basin_caps` 加回的工业现状取水：工业是决策主体，这份水由它自己占用。
     residual = residual * scenario.water_multiplier
     return membership, residual, codes
 
@@ -923,7 +892,7 @@ def _industry_h2_access_data(
         "node_membership": None,
         "link_cost_cny_per_kg": np.zeros(0, dtype=np.float64),
     }
-    if prepared.industry is None or prepared.industry_h2_links is None or prepared.industry_h2_links.empty:
+    if prepared.industry_h2_links.empty:
         return empty
     source_year = _nearest_year(year, prepared.available_ammonia_years)
     links = prepared.industry_h2_links[
@@ -1001,13 +970,11 @@ def _build_year_matrices(
     state: SolveState,
 ) -> dict[str, object]:
     biomass_hub_membership, biomass_node_membership, biomass_available, biomass_link_costs, biomass_flow_scale = _biomass_access_matrices(prepared, assumptions)
-    industry_payload = None
-    industry_basin_membership = None
-    if prepared.industry is not None:
-        from .industry import basin_membership as _industry_basin_membership
-        from .industry import industry_year_data
+    from .industry import basin_membership as _industry_basin_membership
+    from .industry import industry_year_data
 
-        industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
+    industry_basin_membership = None
+    industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
     industry_h2_data = _industry_h2_access_data(prepared, year, assumptions, ammonia_data["nodes"])
     water_data = _water_access_data(prepared, scenario, assumptions, year)
@@ -1194,7 +1161,7 @@ def _build_year_matrices(
     basin_membership, basin_residual, basin_codes = _basin_cap_data(
         prepared, assumptions, scenario, year
     )
-    if industry_payload is not None and basin_codes:
+    if basin_codes:
         industry_basin_membership = _industry_basin_membership(prepared.industry, basin_codes)
 
     # Fraction of each hub already dry-cooled: it needs no conversion and pays no capex.
@@ -1316,15 +1283,13 @@ def _build_year_matrices(
         * float(assumptions.storage_deployment_fraction(int(year)))
     )
 
-    # Sector caps for this year, as fractions of each group's own 2030 baseline.
-    sector_cap_fraction: dict[str, float] = {}
-    if scenario.uses_sector_targets:
-        rows = prepared.sector_targets[prepared.sector_targets["planning_year"].astype(int) == int(year)]
-        if rows.empty:
-            raise ValueError(f"sector_targets_{scenario.sector_target_source}.csv has no rows for {year}")
-        sector_cap_fraction = {
-            str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
-        }
+    # 本年各组上限，各组自身 2030 基线的比例。
+    rows = prepared.sector_targets[prepared.sector_targets["planning_year"].astype(int) == int(year)]
+    if rows.empty:
+        raise ValueError(f"sector_targets_{scenario.sector_target_source}.csv has no rows for {year}")
+    sector_cap_fraction: dict[str, float] = {
+        str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
+    }
 
     return {
         "hours_scale": hours_scale,

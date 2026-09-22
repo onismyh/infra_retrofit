@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import networkx as nx
 import numpy as np
@@ -48,10 +48,8 @@ class RuntimeNetwork:
     storage_node_ids: dict[str, str]
     # maps storage_hub_id -> node_id  for every storage hub that will be solved
 
-    industry_node_ids: dict[str, str] = field(default_factory=dict)
-    # maps industry hub_id -> node_id, EMPTY unless `include_industry` is on. Defaulted so
-    # that with industry off the network is constructed exactly as it was before industry
-    # existed -- the runs solved up to 2026-09-08 have to stay reproducible.
+    industry_node_ids: dict[str, str]
+    # maps industry hub_id -> node_id for every industrial hub that will be solved
 
 
 def _build_base_graph(

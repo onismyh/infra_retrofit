@@ -27,7 +27,7 @@ def test_known_fields_and_aliases_are_mapped(tmp_path) -> None:
                 "year": 2050,
                 "mip_gap": 0.02,
                 "pathway_disable": ["ammonia"],
-                "emission_target_fraction": [0.5],
+                "coal_operating_hours_by_year": [3600.0],
                 "forced_pathways": ["CCS "],
                 "min_path_share": 0.1,
             },
@@ -36,7 +36,7 @@ def test_known_fields_and_aliases_are_mapped(tmp_path) -> None:
     assert mapped.planning_years == (2050,)
     assert mapped.mip_gap == 0.02
     assert mapped.pathway_disable == ("ammonia",)
-    assert mapped.emission_target_fraction == (0.5,)
+    assert mapped.coal_operating_hours_by_year == (3600.0,)
     assert mapped.forced_pathways == ("ccs",)
     assert mapped.min_forced_path_share == 0.1
 

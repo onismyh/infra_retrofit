@@ -14,6 +14,7 @@ from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.paths import ProjectPaths
 
 YEARS = (2050, 2060)
+TOY_TARGET_YEARS = (2030, 2040, 2050, 2060)
 
 
 def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
@@ -92,6 +93,8 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "ammonia_node_id": ["A1"],
             "year": [2050],
             "nh3_supply_kg_per_year": [1.0e9],
+            "h2_supply_kg_per_year": [1.8e8],
+            "weighted_lcoh_usd_per_kg_h2": [3.0],
             "nh3_cost_lb_usd_per_kg": [1.5],
             "longitude": [90.0],
             "latitude": [50.0],
@@ -112,7 +115,46 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
         columns=["water_node_id", "planning_year", "scenario_family", "available_water_m3_per_year"]
     ).to_csv(inputs / "water_availability.csv", index=False)
 
-    return ProjectPaths(root=root)
+    # 一个水泥点源（无氢路线），挂在电厂旁；上限 1.0 且碳价为零时它什么都不做，
+    # 所以煤电侧的闭式解不受影响。
+    pd.DataFrame(
+        {
+            "hub_id": ["C1"],
+            "sector": ["cement"],
+            "sector_zh": ["水泥"],
+            "n_plants": [1],
+            "province": ["Shanxi"],
+            "longitude": [112.2],
+            "latitude": [37.0],
+            "capacity_kt_per_year": [1200.0],
+            "production_kt_per_year": [1000.0],
+            "co2_mt_per_year": [0.8],
+            "process_co2_mt_per_year": [0.5],
+            "h2_demand_kt_per_year": [0.0],
+            "has_h2_route": [False],
+            "water_intensity_m3_per_t": [1.0],
+            "water_m3_per_year": [1.0e6],
+            "mean_commission_year": [2010.0],
+            "share_year_observed": [1.0],
+        }
+    ).to_csv(inputs / "industry_hubs.csv", index=False)
+    pd.DataFrame(
+        [{"sector": "cement", "planning_year": y, "output_index": 1.0} for y in TOY_TARGET_YEARS]
+    ).to_csv(inputs / "industry_output_index_toy.csv", index=False)
+    paths = ProjectPaths(root=root)
+    _write_targets(paths, {y: 1.0 for y in TOY_TARGET_YEARS})
+    return paths
+
+
+def _write_targets(paths: ProjectPaths, power_caps: dict[int, float]) -> None:
+    """写 sector_targets_toy.csv：power 组按给定上限，水泥组恒为 1.0（不约束）。"""
+    pd.DataFrame(
+        [
+            {"sector_group": group, "planning_year": year, "cap_fraction_of_2030": cap}
+            for year, power_cap in power_caps.items()
+            for group, cap in (("power", power_cap), ("cement", 1.0))
+        ]
+    ).to_csv(paths.inputs_dir / "sector_targets_toy.csv", index=False)
 
 
 def _toy_assumptions() -> OptimizationAssumptions:
@@ -175,11 +217,12 @@ def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> No
     beats two 2-Mtpa pipes at 4.0e6), not a 20-Mtpa trunk. And an edge built in period 1
     must NOT be forced to add capacity again in period 2 (the old min-build latch bug)."""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2050: 0.5, 2060: 0.5})
     scenario = OptimizationScenario(
         experiment_id="TEST-MINBUILD",
         description="toy",
         planning_years=YEARS,
-        emission_target_fraction=(0.5, 0.5),
+        sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
         pathway_disable=("retire",),
@@ -232,7 +275,7 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
         experiment_id="TEST-REBUILD",
         description="toy",
         planning_years=YEARS,
-        emission_target_fraction=(0.0, 0.0),
+        sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
         solver_time_limit=300,
@@ -283,11 +326,12 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     target is over-met, and CAPEX is still due only once, in period 1."""
     years3 = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2030: 0.5, 2040: 0.7, 2050: 0.5})
     scenario = OptimizationScenario(
         experiment_id="TEST-CCSSTOCK",
         description="toy",
         planning_years=years3,
-        emission_target_fraction=(0.5, 0.3, 0.5),
+        sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(400.0, 440.0, 490.0),
         pathway_disable=("retire",),
@@ -359,11 +403,12 @@ def test_unit_cf_boost_recovers_unboosted_accounting(tmp_path) -> None:
     reduce exactly to the classic formulation (reduction = eta x share x baseline E,
     minus the energy-penalty fuel emissions that are counted in the residual)."""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2050: 0.5, 2060: 0.5})
     scenario = OptimizationScenario(
         experiment_id="TEST-BOOST1",
         description="toy",
         planning_years=YEARS,
-        emission_target_fraction=(0.5, 0.5),
+        sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
         pathway_disable=("retire",),
