@@ -387,5 +387,6 @@ def prepare_inputs(
         industry=industry,
         sector_targets=sector_targets,
         industry_h2_links=industry_h2_links,
+        inputs_dir=paths.inputs_dir,
     )
 

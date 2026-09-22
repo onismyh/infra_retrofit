@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -61,6 +62,8 @@ class PreparedInputs:
     sector_targets: pd.DataFrame
     # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。
     industry_h2_links: pd.DataFrame
+    # 本次实际读取的输入目录（`ProjectPaths.inputs_dir`），供溯源摘要按真实文件计算。
+    inputs_dir: Path
 
 
 @dataclass

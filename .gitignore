@@ -26,3 +26,9 @@ __pycache__/
 # Deposited results live in results/figures/v9.1/ via scripts/render_version.py.
 _v91tree/results/
 _v91tree/data
+
+# Industry + coal solve tree (ST_ family): code lives in the root src/, the tree holds inputs and
+# results only. Its inputs -- including the 2026-09-12 rebuilt network -- belong in git; results
+# are archived under results/figures/<version>/, and data is a junction to the main data/.
+_indtree/results/
+_indtree/data
