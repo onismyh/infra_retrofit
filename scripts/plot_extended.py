@@ -1376,6 +1376,8 @@ def ed_fig11_ccs_only_cost(data: dict) -> None:
         # to read the remainder as if it were the cost of a CCS-only strategy. It is not a
         # cost; it is the price the model was charged for not meeting demand.
         ("Unserved-demand penalty", "slack_penalty"),
+        # Negative since 2026-09-22 (end-of-horizon salvage on capex); absent in older runs.
+        ("Salvage credit", "salvage_credit"),
     ]
 
     base_sc = _base(data)

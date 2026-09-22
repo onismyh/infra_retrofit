@@ -89,6 +89,7 @@ CATEGORY_ZH = {
     "slack_penalty": "松弛罚金（big-M）",
     "incremental_om": "增量运维",
     "industry_cost": "工业改造运维",
+    "salvage_credit": "期末残值抵扣",
     # 2026-09-10 起 industry_cost 只留年度运维，投资单列为 industry_capex
     "industry_capex": "工业改造投资",
     "baseline_net_cost": "基准净成本",

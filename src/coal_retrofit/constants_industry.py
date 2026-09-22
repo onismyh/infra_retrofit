@@ -242,55 +242,115 @@ def water_quota(sector: str, feedstock: str, advanced: bool = False) -> float:
 # works per MW and per MWh; the two never mix, they only meet in the shared CO2 network, the
 # shared basin water cap and the single joint emission target.
 #
-# WHAT IS AND IS NOT INCLUDED. `INDUSTRY_CAPTURE_COST_CNY_PER_T` is the CAPTURE cost only --
-# separation, compression and on-site handling. Transport and storage are NOT in it: those
+# WHAT IS AND IS NOT INCLUDED. The capture parameters below cover the CAPTURE island only --
+# separation, compression and on-site handling. Transport and storage are NOT in them: those
 # come from the pipeline network and the storage hubs, exactly as for coal. Dropping a
 # literature "full-chain CCUS cost" in here would double-count them.
+#
+# COST BASIS (author's decision 2026-09-22, same for coal and industry): every abatement option
+# is priced as ONE-TIME RETROFIT CAPEX + FIXED O&M (a share of capex per year) + the energy and
+# consumables it actually uses, priced at the model's own coal and electricity prices, with an
+# end-of-horizon SALVAGE VALUE on the undepreciated capex. Levelised per-tonne capture costs
+# (ACCA21-style CNY/t CO2) are NOT used in the objective any more: a levelised cost embeds a
+# capital-recovery assumption that cannot be consistent with a dynamic model that decides
+# WHEN to build and how long the asset then runs inside the horizon. The ACCA21 ranges are
+# kept only as a cross-check on what the parameters below imply
+# (`levelised_capture_cost_cny_per_t`).
 
 INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 
-# --- CO2 capture cost, CNY per tonne CO2 captured -----------------------------------------
-# BIBLIOGRAPHY KEY: acca21_2023_ccus, cpnn_2023_ccus_cost.
-#
-# Two Chinese sources, same ordering, overlapping ranges (cement > steel > power >
-# high-concentration chemicals). The ordering is physical: capture cost scales with the
-# inverse of flue-gas CO2 concentration, which runs ~14-33% at a cement kiln (calcination CO2
-# included), ~20-27% in blast-furnace gas, and >95% in coal-gasification syngas after the
-# water-gas shift.
-#
-#   ACCA21 China CCUS Annual Report (2023): cement 305-730; high-concentration chemicals 105-250
-#   China Energy News 2023 (ACCA21-derived): cement 430-650; steel 348-560; coal power 300-450;
-#                                            high-concentration coal chemicals below 100
-#
-# Central values below are midpoints of the narrower (China Energy News) ranges, which sit
-# inside the ACCA21 ranges wherever the two overlap. Cross-check: the production-weighted mean
-# over the five sectors is ~430 CNY/t; Tang et al. (2023) report a whole-chain 50.6 USD/t with
-# transport 2.1 and storage 6.9, i.e. capture ~41.6 USD/t ~ 291 CNY/t -- lower, as it should
-# be, because that average is 2050 (post-learning) and 59% of it is the cheaper power sector.
-#
-# ASSUMPTION (steel_eaf): no Chinese source gives an EAF capture cost. EAF off-gas is dilute
-# and intermittent, i.e. harder than a cement kiln, so it takes the cement value rather than
-# the steel one. EAF is 56 of 3 269 Mt (1.7%) of modelled industrial CO2, so the choice cannot
-# drive any result; it is recorded rather than hidden.
-INDUSTRY_CAPTURE_COST_CNY_PER_T: Final[dict[str, float]] = {
-    SECTOR_STEEL_BF: 454.0,     # (348+560)/2
-    SECTOR_STEEL_EAF: 540.0,    # cement value, see ASSUMPTION above
-    SECTOR_CEMENT: 540.0,       # (430+650)/2
-    SECTOR_AMMONIA: 177.5,      # (105+250)/2, ACCA21 high-concentration chemicals
-    SECTOR_METHANOL: 177.5,     # same stream class: gasification syngas after the shift
+# --- CO2 capture: retrofit capex, CNY per tonne of ANNUAL capture capacity ----------------
+# Reference year 2030 (the same `ccs_learning_factor` the coal retrofits get scales it), incl.
+# compression to pipeline pressure. Chinese project filings, capture island only:
+#   cement   中联水泥青州 20 万 t/a 全氧燃烧耦合碳捕集示范线 2.56 亿元 -> 1 280 元/(t·a)
+#            (中国建材, 2023 开工); 中联 20 万 t/a 捕集提纯项目 1.98 亿元 -> 990;
+#            海螺白马山 5 万 t/a 5 500 万元 -> 1 100 (2018 投运, 含食品级提纯).
+#            Range 990-1 280 at 0.05-0.2 Mt/a; 1 150 taken.
+#   steel    包钢 200 万 t CCUS 一期 50 万 t/a 6.14 亿元 -> 1 228 (全产业链一期, 含部分输送,
+#            upper); 日照钢铁 18 万 t/a 1.35 亿元 -> 750 (2025 开工, 捕集+资源化);
+#            宝武案例 (PKU CCUS 2020, Baowu Zhanjiang slip-stream, amine): capture plant
+#            CNY 360 M + 7% owner's cost + 20 M working capital = 407 M for 0.5 Mt/a -> 814;
+#            IEAGHG 2013/04 Table 6, Case 2A: capture plant US$(2010) 679 M for ~4.7 Mt/a
+#            captured -> ~145 USD/(t·a) ~ 1 000 元/(t·a). Central 1 000.
+#   steel_eaf ASSUMPTION: no source. Off-gas is dilute and intermittent, i.e. harder than a
+#            cement kiln, so it takes the cement value. EAF is 1.7% of modelled industrial CO2.
+#   ammonia / methanol   high-concentration (>95%) gasification off-gas: no absorption, only
+#            dehydration + compression/liquefaction. 延长石油榆林煤化 30 万 t/a (2022) reports
+#            105 元/t all-in capture cost; net of ~110 kWh/t compression electricity at
+#            ~0.45 元/kWh that leaves ~55 元/t for capital + fixed O&M, i.e. capex ~400-450
+#            元/(t·a) at CRF(6%, 20 a) + 5%/a. ASSUMPTION-DERIVED (no filing gives the
+#            investment itself; 齐鲁石化 100 万 t/a 未公布投资额). 450 taken.
+INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 1000.0,
+    SECTOR_STEEL_EAF: 1150.0,
+    SECTOR_CEMENT: 1150.0,
+    SECTOR_AMMONIA: 450.0,
+    SECTOR_METHANOL: 450.0,
 }
-
-# Share of the capture cost that is CAPITAL rather than annual O&M. Charged once on the
-# installed-stock increment, the way the coal side charges `ccs_retrofit_capex`; the remainder
-# is an annual cost. Tang et al. (2023) split Z_cap into CAPEX*CRF + OPEX but publish neither
-# term separately, so the split is taken from the coal-CCS structure already in this repo:
-# An et al. (2025, Nat Commun) SI Table 7 gives fixed O&M / investment = 5.4%/yr, which over a
-# 20-year life at this model's discount rate puts roughly 55-60% of levelised cost in capital.
-# ASSUMPTION, exposed for sensitivity through `scenario.industry_cost_multiplier`.
-INDUSTRY_CAPTURE_CAPEX_SHARE: Final[float] = 0.58
-# Capital recovery: the capital half above is a LEVELISED (annual) quantity, so it is
-# de-annualised with this life before being booked as the one-time charge.
+# Fixed O&M of the capture island as a share of (learning-adjusted) capex per year. Same
+# 5%/a the coal side uses (An et al. 2025 Nat Commun SI Table 7: fixed O&M / investment =
+# 5.4%/a); the PKU/Baowu case gives 12 M/a on 407 M = 2.9%/a, IEAGHG 2013/04 steel-mill
+# maintenance 142/3 928 = 3.6%/a of installed cost. 5% is the conservative end.
+INDUSTRY_CCS_FIXED_OM_FRACTION: Final[float] = 0.05
+# Capture energy per tonne CO2 captured. Priced in `industry_year_data` at the model's own
+# coal price (steam, via a boiler) and the scenario electricity price -- not at a frozen
+# literature price -- so the industrial and the coal-side energy penalties move together.
+#   amine post-combustion (steel BF gas / hot-stove flue, cement kiln flue, EAF off-gas):
+#     reboiler steam 2.8 GJ/t: IEAGHG 2013/04 MDEA/Pz 2.3 GJ/t (CSIRO review: 2.5-2.7
+#     achievable), 国能锦界 2nd-generation solvent 2.35 GJ/t (中国 CCUS 进展报告 2025 p.18),
+#     MEA 3.0-3.5 GJ/t; 2.8 is the centre of that spread for a 2030 retrofit.
+#     electricity 130 kWh/t incl. compression: PKU/Baowu 142 kWh/t total output penalty
+#     (steam + power, Table 9); Gardarsdottir et al. 2019 cement MEA ~130 kWh/t.
+#   high-concentration streams (ammonia, methanol): no reboiler; compression + dehydration
+#     only, ~110 kWh/t (0.1 -> 11 MPa dense phase; 延长 105 元/t all-in is consistent).
+INDUSTRY_CCS_STEAM_GJ_PER_T_CO2: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 2.8,
+    SECTOR_STEEL_EAF: 2.8,
+    SECTOR_CEMENT: 2.8,
+    SECTOR_AMMONIA: 0.0,
+    SECTOR_METHANOL: 0.0,
+}
+INDUSTRY_CCS_ELECTRICITY_KWH_PER_T_CO2: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 130.0,
+    SECTOR_STEEL_EAF: 130.0,
+    SECTOR_CEMENT: 130.0,
+    SECTOR_AMMONIA: 110.0,
+    SECTOR_METHANOL: 110.0,
+}
+# Solvent make-up, waste amine disposal, water: PKU/Baowu 40 000 元/t amine, 6.5 元/t CO2
+# water; ~15 元/t CO2 for amine systems, 5 for compression-only.
+INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 15.0,
+    SECTOR_STEEL_EAF: 15.0,
+    SECTOR_CEMENT: 15.0,
+    SECTOR_AMMONIA: 5.0,
+    SECTOR_METHANOL: 5.0,
+}
+# Reboiler steam is raised in a coal boiler at the site: coal per GJ steam = 1 / efficiency.
+# Its CO2 is VENTED (the retrofit captures the process stream, not the auxiliary boiler --
+# the PKU/Baowu case counts it the same way, 743 g/kWh on the auxiliary plant), so the net
+# reduction of the CCS route is captured minus this steam CO2. Before 2026-09-22 the model
+# took the ACCA21 unit cost as energy-inclusive and vented nothing.
+INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
+# Economic life of the capture island. PKU/Baowu assume 25 a; the coal side's retrofit
+# island is tied to units with 15-25 a left; 20 a for both sides so the salvage rule treats
+# a capture island the same wherever it is built.
 INDUSTRY_CAPTURE_LIFETIME_YEARS: Final[int] = 20
+
+# ACCA21 / China Energy News levelised capture costs, CNY per tonne, CROSS-CHECK ONLY (not in
+# the objective since 2026-09-22). Cement 305-730 (ACCA21; China Energy News 430-650), steel 348-560, coal
+# power 300-450, high-concentration coal chemicals <100 (ACCA21 105-250). The parameters
+# above imply, at 38 元/GJ coal, 0.40 元/kWh and 6%/20 a: cement ~345, steel ~325,
+# high-concentration ~110 元/t -- at the low end of each range (steel 7% below ACCA21's
+# 348), because the capex anchors are Chinese filings rather than European FOAK estimates
+# and the energy is priced at the model's coal and power prices, not at literature ones.
+INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T: Final[dict[str, tuple[float, float]]] = {
+    SECTOR_STEEL_BF: (348.0, 560.0),
+    SECTOR_STEEL_EAF: (305.0, 730.0),
+    SECTOR_CEMENT: (305.0, 730.0),
+    SECTOR_AMMONIA: (105.0, 250.0),
+    SECTOR_METHANOL: (105.0, 250.0),
+}
 
 # --- Water penalty of industrial capture, m3 per tonne CO2 captured ------------------------
 # Amine capture needs cooling and a water wash. 1.60-1.69 m3/t CO2 for Chinese industrial
@@ -346,11 +406,47 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
     SECTOR_METHANOL: (3000.0, 16.5),
 }
 
-# Share of the H2-route premium that is CAPITAL. The H2 route is a plant rebuild (DRI shaft +
-# EAF; an electrolyser-fed synthesis loop), not a bolt-on, so the capital share is higher than
-# for capture. ASSUMPTION, exposed for sensitivity.
-INDUSTRY_H2_CAPEX_SHARE: Final[float] = 0.35
+# Retrofit capex of the H2 route, CNY per tonne of ANNUAL product capacity, booked once on
+# the route-share increment and depreciated straight-line for the salvage rule.
+#   steel_bf_bof  H2-DRI shaft + EAF replacing BF-BOF at an existing site (sinter, coke
+#                 ovens, BF and BOF are abandoned; casting and rolling stay):
+#                 shaft 宝钢湛江百万吨级氢基竖炉 总投资 18.9 亿元 for 1.0 Mt/a DRI
+#                 (中国钢铁新闻网 2022-02-17; 2023-12 投产) -> 1 890 元/(t DRI·a), ×1.08 t
+#                 DRI per t crude steel = 2 040; EAF 184 EUR/(t·a) (Vogl, Åhman & Nilsson
+#                 2018, J Clean Prod 203:736, cost assumptions) ~ 1 430 元/(t·a) at 7.8
+#                 元/EUR -- no Chinese per-tonne EAF filing was found (the "80 t 电炉 5 000
+#                 万元" figures are furnace-only). Sum ~3 470; 3 500 taken.
+#   ammonia       existing coal-based plant switched to purchased green H2: the Haber-Bosch
+#                 loop and the air separation unit are RETAINED, the gasifier, shift and
+#                 purification train are idled. New: H2 receiving/compression, N2 tie-in,
+#                 controls. ASSUMPTION 500 元/(t·a) ~ 8% of a greenfield synthesis island
+#                 (875 USD/(t·a), `constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR`). No Chinese
+#                 retrofit filing found; Yara Pilbara (2022-24) publishes only the
+#                 electrolyser side.
+#   methanol      绿氢耦合煤制甲醇: hydrogen replaces the shift stage to fix the H/C ratio,
+#                 the synthesis loop is retained. Same tie-in scope as ammonia; ASSUMPTION
+#                 500 元/(t·a).
+INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 3500.0,
+    SECTOR_AMMONIA: 500.0,
+    SECTOR_METHANOL: 500.0,
+}
+# Fixed O&M of the new route's equipment, share of capex per year. IEAGHG 2013/04 Tables
+# 6-7: steel-mill maintenance 142 M$/a on 3 928 M$ installed = 3.6%/a; 3.5% taken.
+INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION: Final[float] = 0.035
+# Economic life of the rebuilt route (DRI shaft, EAF, synthesis tie-in): 25 a (PKU/Baowu
+# use 25 a for a capture retrofit; a DRI/EAF module is a longer-lived asset than that).
 INDUSTRY_H2_LIFETIME_YEARS: Final[int] = 25
+
+# The literature premium anchors above are LEVELISED (they contain the route's own capital
+# recovery). With capex now explicit, the anchor is decomposed, not discarded:
+#     premium_ref = k * P_ref + capex * (CRF(r, life) + fom) + opex_delta_nonH2
+# so `opex_delta_nonH2` -- the non-hydrogen operating difference against the incumbent
+# fossil route (electricity for the EAF/compressors, avoided coke or coal, avoided fossil-
+# route O&M) -- is what the anchor implies once its hydrogen and its capital are taken out.
+# It is negative for steel (avoided coke and BF opex exceed the EAF power bill), which the
+# anchor's own arithmetic forces; the model's floor (fixed O&M + opex_delta + H2 purchase
+# >= 0, capex annuity always paid) still holds.
 
 # Site water for a hub on the H2 route: the sector's advanced value rather than its general
 # value. Not a guess -- the advanced value is by definition the quota applied to new and
@@ -368,42 +464,130 @@ INDUSTRY_H2_USES_ADVANCED_QUOTA: Final[bool] = True
 INDUSTRY_ELECTROLYSIS_WATER_L_PER_KG_H2: Final[tuple[float, float]] = (10.0, 22.0)
 
 
-def capture_cost_cny_per_t(sector: str) -> float:
-    """CO2 capture cost for a sector, CNY per tonne captured (capture only, no T&S).
+def capital_recovery_factor(rate: float, life_years: int) -> float:
+    """Capital recovery factor, the reciprocal of the annuity factor.
+
+    Args:
+        rate: Discount rate per year.
+        life_years: Economic life in years (floored at 1).
+
+    Returns:
+        Annual payment per unit of capital that repays it over `life_years` at `rate`.
+    """
+    n = max(1, int(life_years))
+    if rate <= 1e-9:
+        return 1.0 / n
+    return rate / (1.0 - (1.0 + rate) ** (-n))
+
+
+def _require(table: dict[str, float], sector: str, what: str) -> float:
+    if sector not in table:
+        raise KeyError(
+            f"no {what} sourced for sector {sector!r}; refusing to guess. "
+            f"Sourced sectors: {sorted(table)}"
+        )
+    return float(table[sector])
+
+
+def capture_capex_cny_per_t_yr(sector: str) -> float:
+    """Retrofit capex of the capture island, CNY per tonne of annual capture capacity.
 
     Args:
         sector: One of `INDUSTRY_SECTORS`.
 
     Returns:
-        Capture cost, CNY per tonne CO2.
+        Capex at the 2030 reference year, before learning and the scenario multiplier.
 
     Raises:
-        KeyError: Sector has no sourced capture cost.
+        KeyError: Sector has no sourced capture capex.
     """
-    if sector not in INDUSTRY_CAPTURE_COST_CNY_PER_T:
-        raise KeyError(
-            f"no capture cost sourced for sector {sector!r}; refusing to guess. "
-            f"Sourced sectors: {sorted(INDUSTRY_CAPTURE_COST_CNY_PER_T)}"
-        )
-    return float(INDUSTRY_CAPTURE_COST_CNY_PER_T[sector])
+    return _require(INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR, sector, "capture capex")
 
 
-def h2_premium_cny_per_t(
-    sector: str, h2_price_cny_per_kg: float, h2_intensity_t_per_t: float
+def capture_variable_cost_cny_per_t(
+    sector: str, coal_price_cny_per_gj: float, electricity_price_cny_per_mwh: float
 ) -> float:
-    """Net incremental cost of the H2 route, CNY per tonne of product, at a given H2 price.
+    """Energy and consumables per tonne CO2 captured, at the given fuel and power prices.
+
+    Args:
+        sector: One of `INDUSTRY_SECTORS`.
+        coal_price_cny_per_gj: Delivered coal price used to raise reboiler steam.
+        electricity_price_cny_per_mwh: Electricity price of the year being priced.
+
+    Returns:
+        CNY per tonne CO2 captured: steam coal + electricity + consumables.
+    """
+    steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
+    kwh = _require(INDUSTRY_CCS_ELECTRICITY_KWH_PER_T_CO2, sector, "capture electricity")
+    consumables = _require(INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2, sector, "capture consumables")
+    steam_coal = steam_gj / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_price_cny_per_gj)
+    return steam_coal + kwh / 1000.0 * float(electricity_price_cny_per_mwh) + consumables
+
+
+def capture_steam_co2_t_per_t(sector: str, coal_emission_factor_t_per_gj: float) -> float:
+    """Vented CO2 from raising the reboiler steam, tonnes per tonne CO2 captured."""
+    steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
+    return steam_gj / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_emission_factor_t_per_gj)
+
+
+def levelised_capture_cost_cny_per_t(
+    sector: str,
+    discount_rate: float,
+    coal_price_cny_per_gj: float,
+    electricity_price_cny_per_mwh: float,
+    learning: float = 1.0,
+) -> float:
+    """What the capex + O&M + energy parameters imply as a levelised CNY per tonne captured.
+
+    Reporting and cross-check only (against `INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T`);
+    the objective never uses a levelised figure.
+    """
+    capex = capture_capex_cny_per_t_yr(sector) * float(learning)
+    crf = capital_recovery_factor(discount_rate, INDUSTRY_CAPTURE_LIFETIME_YEARS)
+    return capex * (crf + INDUSTRY_CCS_FIXED_OM_FRACTION) + capture_variable_cost_cny_per_t(
+        sector, coal_price_cny_per_gj, electricity_price_cny_per_mwh
+    )
+
+
+def h2_route_capex_cny_per_t_yr(sector: str) -> float:
+    """Retrofit capex of the H2 route, CNY per tonne of annual product capacity."""
+    return _require(INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR, sector, "H2-route capex")
+
+
+def h2_route_annual_capital_cny_per_t(sector: str, discount_rate: float) -> float:
+    """Capex annuity plus fixed O&M of the H2 route, CNY per tonne of product per year.
+
+    What the anchor decomposition takes out of `premium_ref` as capital. NB the solver's
+    floor keeps only the annuity outside the `max` (fixed O&M is part of the annual term);
+    see `h2_premium_cny_per_t`.
+    """
+    capex = h2_route_capex_cny_per_t_yr(sector)
+    crf = capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)
+    return capex * (crf + INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION)
+
+
+def h2_route_opex_delta_cny_per_t(
+    sector: str, h2_intensity_t_per_t: float, discount_rate: float, multiplier: float = 1.0
+) -> float:
+    """Non-hydrogen operating difference of the H2 route against the incumbent, CNY/t product.
+
+    Backed out of the literature premium anchor once its hydrogen (at the anchor's own
+    reference price) and the explicit capex annuity + fixed O&M are removed. Negative where
+    the avoided fossil feedstock and incumbent O&M exceed the new route's power bill.
+
+    `multiplier` is the scenario's `industry_h2_cost_multiplier`: it scales the route's OWN
+    costs (the anchor premium and the capex together), never the hydrogen, so that at the
+    anchor's reference price the levelised premium is exactly `multiplier x premium_ref`.
+    Scaling the backed-out delta alone would invert the knob (the delta is negative).
 
     Args:
         sector: One of `INDUSTRY_SECTORS` whose `SECTOR_HAS_H2_ROUTE` entry is true.
-        h2_price_cny_per_kg: Delivered green hydrogen price in the year being priced.
         h2_intensity_t_per_t: Tonnes of H2 per tonne of product at this hub.
-
-    Returns:
-        Net premium over the incumbent fossil route, CNY per tonne of product. Can go negative
-        if hydrogen falls far enough below the anchor's reference price.
+        discount_rate: Scenario discount rate, for the capex annuity.
+        multiplier: Scenario cost multiplier on the route's own costs.
 
     Raises:
-        KeyError: Sector has no sourced H2 premium anchor.
+        KeyError: Sector has no sourced H2 premium anchor or capex.
     """
     if sector not in INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT:
         raise KeyError(
@@ -411,16 +595,37 @@ def h2_premium_cny_per_t(
             f"Sourced sectors: {sorted(INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT)}"
         )
     premium_ref, price_ref = INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
-    premium = float(premium_ref) + float(h2_intensity_t_per_t) * 1000.0 * (
-        float(h2_price_cny_per_kg) - float(price_ref)
-    )
-    # FLOOR at the capital half of the anchor. The route's own rebuild capital -- a DRI shaft
-    # and an EAF, or an electrolyser-fed synthesis loop -- does not fall when hydrogen gets
-    # cheaper, so the premium cannot fall below it however far the price drops. Without this
-    # floor the expansion goes NEGATIVE for steel by 2060 (1575 + 81 * (12.4 - 35) = -255
-    # CNY/t), i.e. the model would be paid to convert every blast furnace, and 1 437 Mt of
-    # abatement would arrive free. That is an artefact of applying a GREENFIELD LCOS
-    # comparison to existing plants whose incumbent capital is already sunk: switching cannot
-    # be cheaper than running a paid-for asset. The floor is still generous -- it credits the
-    # avoided fossil feedstock in full -- so H2 uptake remains an upper bound.
-    return max(premium, float(premium_ref) * INDUSTRY_H2_CAPEX_SHARE)
+    hydrogen_at_ref = float(h2_intensity_t_per_t) * 1000.0 * float(price_ref)
+    own_cost_at_ref = float(premium_ref) - h2_route_annual_capital_cny_per_t(sector, discount_rate)
+    return float(multiplier) * own_cost_at_ref - hydrogen_at_ref
+
+
+def h2_premium_cny_per_t(
+    sector: str,
+    h2_price_cny_per_kg: float,
+    h2_intensity_t_per_t: float,
+    discount_rate: float = 0.06,
+    multiplier: float = 1.0,
+) -> float:
+    """Levelised net premium of the H2 route at a given H2 price, CNY per tonne of product.
+
+    Reporting only (figure panels); the solver books capex once and buys hydrogen per link.
+    Mirrors the solver's own arithmetic: capex annuity + max(fixed O&M + opex delta +
+    hydrogen, 0). The floor is the one `add_industry_year` applies (annual cost incl. fixed
+    O&M + hydrogen purchase >= 0) with the capex annuity outside it: switching cannot be
+    cheaper than running the incumbent's sunk asset, however cheap hydrogen gets, and the
+    new route's capital is always paid.
+
+    Args:
+        sector: One of `INDUSTRY_SECTORS` whose `SECTOR_HAS_H2_ROUTE` entry is true.
+        h2_price_cny_per_kg: Delivered green hydrogen price in the year being priced.
+        h2_intensity_t_per_t: Tonnes of H2 per tonne of product at this hub.
+        discount_rate: Scenario discount rate, for the capex annuity.
+        multiplier: Scenario `industry_h2_cost_multiplier` (see `h2_route_opex_delta_cny_per_t`).
+    """
+    capex = h2_route_capex_cny_per_t_yr(sector) * float(multiplier)
+    annuity = capex * capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)
+    fixed_om = capex * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION
+    opex_delta = h2_route_opex_delta_cny_per_t(sector, h2_intensity_t_per_t, discount_rate, multiplier)
+    hydrogen = float(h2_intensity_t_per_t) * 1000.0 * float(h2_price_cny_per_kg)
+    return annuity + max(fixed_om + opex_delta + hydrogen, 0.0)

@@ -39,6 +39,7 @@ from ._shared import (
     _discount_factor,
 )
 from .data_prep import _build_year_matrices
+from .salvage import _add_salvage_credit
 from .constraints import (
     _add_vector_equality,
     _add_vector_upper_bound,
@@ -1274,25 +1275,44 @@ def _solve_joint_multi_period(
             "rebuild_capex":      df * rebuild_capex / _COST_SCALE,
             "slack_penalty":       df * interval_weight * slack_cost / _COST_SCALE,
         }
-        # Industrial abatement: the ANNUAL part (O&M share of the levelised cost, plus the
-        # hydrogen bought per link) on the same discount/annuity weights as every other annual
-        # cost here, and the CAPITAL part ONCE on the route-share increment, exactly as the
-        # coal side charges `ccs_retrofit_capex`. The KEYS ARE ONLY ADDED WHEN INDUSTRY IS ON:
+        # Undiscounted capex booked this year and the economic life of what it bought, for
+        # the end-of-horizon salvage credit below. The stranded-asset write-off is a loss, not
+        # an asset, so it is not in the ledger.
+        payload["salvage_ledger"] = [
+            ("ccs_retrofit_capex", ccs_retrofit_capex, int(assumptions.ccs_retrofit_lifetime_years)),
+            ("pipe_capex", pipe_capex, int(assumptions.pipeline_lifetime_years)),
+            ("blend_upgrade_capex", blend_upgrade_capex, int(assumptions.blend_upgrade_lifetime_years)),
+            ("air_retrofit_capex", air_retrofit_capex, int(assumptions.air_retrofit_lifetime_years)),
+            ("rebuild_capex", rebuild_capex, int(assumptions.rebuild_lifetime_years)),
+        ]
+        # Industrial abatement: the ANNUAL part (fixed O&M, capture energy and consumables,
+        # the H2 route's non-hydrogen operating delta, plus the hydrogen bought per link) on
+        # the same discount/annuity weights as every other annual cost here, and the retrofit
+        # CAPEX ONCE on the route-share increment, exactly as the coal side charges
+        # `ccs_retrofit_capex`. The KEYS ARE ONLY ADDED WHEN INDUSTRY IS ON:
         # `cost_breakdown.csv` is built by iterating this dict, so an always-present zero row
         # would silently change the artifact schema of every run solved before industry
         # existed, and any figure that pivots on `category` with it.
         if payload.get("industry") is not None:
-            from .industry import industry_capex_expr
+            from .industry import CCS as _IND_CCS, H2 as _IND_H2, industry_capex_expr
 
             payload["cost_exprs"]["industry_cost"] = (
                 df * interval_weight * payload["industry"]["annual_cost_cny"] / _COST_SCALE
             )
             prev_industry = None if year_position == 0 else year_payloads[year_position - 1]["industry"]
+            ind_lives = payload["industry"]["year_data"]["capex_lifetime_years"]
+            ind_ccs_capex = industry_capex_expr(payload["industry"], prev_industry, routes=(_IND_CCS,))
+            ind_h2_capex = industry_capex_expr(payload["industry"], prev_industry, routes=(_IND_H2,))
             payload["cost_exprs"]["industry_capex"] = (
-                df * industry_capex_expr(payload["industry"], prev_industry) / _COST_SCALE
+                df * (ind_ccs_capex + ind_h2_capex) / _COST_SCALE
             )
+            payload["salvage_ledger"] += [
+                ("industry_ccs_capex", ind_ccs_capex, int(ind_lives[_IND_CCS])),
+                ("industry_h2_capex", ind_h2_capex, int(ind_lives[_IND_H2])),
+            ]
         payload["objective_expr"] = gp.quicksum(list(payload["cost_exprs"].values()))
 
+    _add_salvage_credit(year_payloads, scenario, assumptions, _COST_SCALE)
     model.setObjective(gp.quicksum(payload["objective_expr"] for payload in year_payloads), GRB.MINIMIZE)
     # Diagnostic only: solve the LP relaxation in place (every integer/binary made continuous)
     # so the same result tables can be read off the relaxed solution. Used to tell a weak

@@ -307,6 +307,24 @@ class OptimizationAssumptions:
     air_retrofit_capex_cny_per_kw: float = 300.0
     air_retrofit_efficiency_penalty_pp: float = 0.020
     air_retrofit_lifetime_years: int = 20
+    # --- End-of-horizon salvage (author's decision 2026-09-22) ---
+    # Every one-time capex in the objective (coal CCS/BECCS retrofit island, blend upgrades,
+    # air-cooling retrofit, pipelines, site rebuilds, industrial capture and H2 routes) is
+    # depreciated straight-line over the economic life below; whatever is undepreciated at the
+    # END of the horizon (last planning year + its interval, 2070 on the standard grid) is
+    # credited back, discounted from that year. Without it a 2060 retrofit paid its whole
+    # capex for ten years of use and the model under-invested in the last period; with it the
+    # capex actually borne inside the horizon is the depreciation over the years the asset
+    # serves, which is the only accounting consistent with charging capex once. The stranded-
+    # asset write-off is NOT salvaged (it is a loss, not an asset). Lives: coal capture
+    # island 20 a (same as `INDUSTRY_CAPTURE_LIFETIME_YEARS`); blend-burner upgrades 20 a;
+    # air-cooling 20 a (`air_retrofit_lifetime_years`, above); pipelines 30 a
+    # (`pipeline_lifetime_years`); a rebuilt site 30 a. Set `end_of_horizon_salvage=False`
+    # to reproduce results solved before 2026-09-22.
+    end_of_horizon_salvage: bool = True
+    ccs_retrofit_lifetime_years: int = 20
+    blend_upgrade_lifetime_years: int = 20
+    rebuild_lifetime_years: int = 30
     water_extraction_cost_cny_per_m3: float = 4.0       # Industrial water extraction cost
     water_transport_cost_cny_per_m3_km: float = 0.05     # Water pipeline/truck transport
     direct_fallback_capex_multiplier: float = 2.8

@@ -88,7 +88,9 @@ GRID = "#E4E7EA"
 CATEGORY_ZH = {
     "slack_penalty": "松弛罚金（big-M）",
     "incremental_om": "增量运维",
-    "industry_cost": "工业改造",
+    "industry_cost": "工业改造运行",
+    "industry_capex": "工业改造投资",
+    "salvage_credit": "期末残值抵扣",
     "baseline_net_cost": "基准净成本",
     "stranded_capex": "搁浅资产",
     "coal_savings_credit": "燃料节约抵扣",

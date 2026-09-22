@@ -740,9 +740,11 @@ def _build_industry_detail_table(
 ) -> pd.DataFrame:
     """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
 
-    Costs follow the model's own split: `cost_annual_cny` is the O&M share of the levelised
-    cost plus the hydrogen actually bought on the hub's links this year, `cost_capital_cny` the
-    one-time capital charge on the route-share increment (whole share in the first year).
+    Costs follow the model's own split: `cost_annual_cny` is the fixed O&M, capture energy
+    and consumables (H2 route: the non-hydrogen operating delta) plus the hydrogen actually
+    bought on the hub's links this year, `cost_capital_cny` the one-time retrofit capex on the
+    route-share increment (whole share in the first year). The end-of-horizon salvage credit
+    is not attributed per hub; it is the `salvage_credit` row of `cost_breakdown.csv`.
 
     Args:
         prepared: Prepared inputs; `prepared.industry` carries the hub frame.

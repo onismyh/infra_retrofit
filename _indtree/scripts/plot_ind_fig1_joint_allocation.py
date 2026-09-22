@@ -8,8 +8,10 @@
     c  封存注入量 vs 全国注入能力，煤电 vs 工业  —— 封存空间给了谁
     d  各行业 CCS 与 H2 的边际减排成本随年份     —— 为什么是这条路
 
-面板 d 的成本**从模型自己的函数算出来**（`capture_cost_cny_per_t`、`h2_premium_cny_per_t`
-与 `ccs_learning_factor`），不是抄一张表——抄表会在参数改动后与求解结果脱节而没人发现。
+面板 d 的成本**从模型自己的函数算出来**（`levelised_capture_cost_cny_per_t`、
+`h2_premium_cny_per_t` 与 `ccs_learning_factor`），不是抄一张表——抄表会在参数改动后与求解
+结果脱节而没人发现。注意这两个函数给的是"改造 capex 年金 + 固定运维 + 能耗"折成的**平准化**
+每吨成本，仅供本图比较；目标函数里 capex 是一次性计入并在期末计残值的（2026-09-22 起）。
 
 数据来源固定为 `_indtree`（v9 管网）。仓库根 `results/IND_*` 用的是 v7 管网，够不着 38%
 的封存汇，其捕集量与注入分布不可入图（见 `_indtree/README.md`）。
@@ -41,10 +43,18 @@ from plot_style import (  # noqa: E402
 from coal_retrofit.constants_industry import (  # noqa: E402
     INDUSTRY_H2_ABATEMENT_FRACTION,
     SECTOR_LABELS_ZH,
-    capture_cost_cny_per_t,
     h2_premium_cny_per_t,
+    levelised_capture_cost_cny_per_t,
 )
 from coal_retrofit.optimization.scenario import OptimizationAssumptions  # noqa: E402
+
+
+def _steam_co2_fraction(sector: str, assumptions: OptimizationAssumptions) -> float:
+    """Vented reboiler-steam CO2 per tonne captured, the same number the solver nets out."""
+    from coal_retrofit.constants_industry import capture_steam_co2_t_per_t
+
+    ef_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
+    return float(capture_steam_co2_t_per_t(sector, ef_gj))
 
 # 带水约束的那个作主图。无水的 IND_BASE_t95 只在面板 a 里作虚线对照。
 RUN = "IND_WA_cwatm_126_dry_oq_t95"
@@ -291,12 +301,18 @@ def panel_d(ax, meta: dict, detail: pd.DataFrame) -> None:
         if g.empty:
             continue
         colour = SECTOR_COLOR[sector]
-        # CCS 的成本口径就是"每吨被捕集的 CO2"，而 CCS 通路的减排量等于捕集量，
-        # 所以边际减排成本直接等于捕集成本乘学习因子，不需要再除捕集率。
-        ccs = [capture_cost_cny_per_t(sector) * assumptions.ccs_learning_factor(y) * ccs_mult
-               for y in years]
+        # CCS 的成本口径是"每吨被捕集的 CO2"（capex 年金 + 固定运维 + 蒸汽/电/耗材，
+        # 全国均价煤、当年电价），CCS 通路的净减排量 = 捕集量 − 再生蒸汽排放，
+        # 所以按每吨净减排折算要除以 (1 − 蒸汽排放系数)。
+        ccs = [
+            levelised_capture_cost_cny_per_t(
+                sector, scenario.discount_rate, assumptions.coal_fuel_cost_cny_per_gj,
+                scenario.electricity_price_for_year(y), learning=assumptions.ccs_learning_factor(y),
+            ) * ccs_mult / (1.0 - _steam_co2_fraction(sector, assumptions))
+            for y in years
+        ]
         peak = max(peak, max(ccs))
-        # 水泥与电炉钢取同一个捕集成本（540），合成氨与甲醇同为 177.5，两两**完全重合**。
+        # 水泥与电炉钢取同一套捕集参数（capex 1 150），合成氨与甲醇同为 450，两两**完全重合**。
         # 等宽画会有一条被彻底压住、图上根本看不见。按绘制顺序递减线宽，重合处呈同心带，
         # 两条都看得见，而且没有任何数据被挪动。
         ax.plot(years, ccs, color=colour, lw=2.4 - 0.34 * drawn, marker="o", ms=2.6,
@@ -314,8 +330,8 @@ def panel_d(ax, meta: dict, detail: pd.DataFrame) -> None:
         # 内部强度的标准差都是 0（钢铁 0.0810、合成氨 0.1800、甲醇 0.1900 t/t）。
         intensity = _sector_h2_intensity(sector)
         h2 = [h2_premium_cny_per_t(
-                  sector, float(_h2_price(meta, y)), intensity
-              ) * h2_mult / tco2_per_t for y in years]
+                  sector, float(_h2_price(meta, y)), intensity, scenario.discount_rate, h2_mult,
+              ) / tco2_per_t for y in years]
         peak = max(peak, max(h2))
         ax.plot(years, h2, color=colour, lw=1.1, ls=(0, (3, 1.6)), marker="^", ms=2.8, zorder=3)
     ax.set_ylabel(r"边际减排成本（元 tCO$_2^{-1}$）")

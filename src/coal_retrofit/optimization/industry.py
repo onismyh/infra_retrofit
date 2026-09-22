@@ -30,34 +30,48 @@ right answer for a process-CO2 source). Route shares are continuous in [0, 1] an
 across planning years: a hub that installs capture cannot uninstall it, and it cannot swap
 capture for hydrogen.
 
-COST BASIS (revised 2026-09-10 to match the coal side). The Chinese sources give LEVELISED
-per-tonne costs that already contain capital recovery. Charging them in every operating year
-while the coal side pays its retrofit capex once made the two sectors' capital fall on
-different time axes -- 2060 industry paid ~64% of its capital for ten years of use, 2030
-industry paid ~2x -- and pushed industrial abatement to the last period. The levelised cost is
-now split with the documented capital shares (`INDUSTRY_CAPTURE_CAPEX_SHARE`,
-`INDUSTRY_H2_CAPEX_SHARE`) and lifetimes: the capital part is de-annualised at the scenario
-discount rate and charged ONCE on the increment of the route share (monotone, so the increment
-is the newly built stock), the rest is an annual cost. Same convention as `ccs_retrofit_capex`.
+COST BASIS (author's decision 2026-09-22; the same one the coal side has always used). Every
+industrial route is priced as
 
-The H2 route cost keeps the literature anchor's structure: premium at the anchor's reference
-hydrogen price, moved to the price actually paid through the hub's own hydrogen intensity, and
-floored at the capital share of the anchor (`h2_premium_cny_per_t`). With hydrogen bought per
-link that reads:
+    capex   = unit retrofit capex x capacity built,  charged ONCE on the route-share increment
+              (shares are monotone, so the increment is the newly built stock)
+    annual  = fixed O&M (a share of that capex per year)
+            + energy and consumables at the model's OWN coal and electricity prices
+            + (H2 route) the non-hydrogen operating delta against the incumbent
+            + (H2 route) hydrogen bought per supply link in the solver
 
-    annual = max( (1 - s_cap) * premium_ref - k * P_ref, 0 ) * production * share_h2
-             + sum_links cost_link * flow_link                      (epigraph form, minimised)
-    capex  = s_cap * premium_ref * production / CRF(r, life)  on the share increment
+and the undepreciated part of every capex is credited back at the end of the horizon
+(`salvage_credit` in the solver). NO levelised per-tonne cost enters the objective any more.
+Between 2026-09-10 and 2026-09-22 the ACCA21 levelised capture costs were split into a
+capital share de-annualised at CRF and an annual remainder; that kept the levelised
+figure's implicit capital-recovery assumption inside a model whose whole point is to decide
+when to build. The ACCA21 ranges survive as a cross-check
+(`constants_industry.levelised_capture_cost_cny_per_t`).
 
-with k = kg H2 per tonne of product. The floor is the statement that switching cannot be
-cheaper than running the sunk incumbent; it is still generous (it credits the avoided fossil
-feedstock in full), so H2 uptake remains an upper bound.
+CCS route (`constants_industry.INDUSTRY_CCS_*`): capex per tonne of annual capture capacity
+from Chinese project filings (cement 1 150, steel 1 000, high-concentration chemicals 450
+CNY/(t/a)), 5%/a fixed O&M, reboiler steam raised in a site coal boiler at the hub's
+provincial coal price, electricity at the scenario price, 15 or 5 CNY/t consumables. The
+steam CO2 is VENTED and subtracted from the route's reduction (before 2026-09-22 the ACCA21
+unit cost was taken as energy-inclusive and nothing was vented). The coal-side learning
+curve scales the capex (and with it the fixed O&M), as before.
+
+H2 route (`INDUSTRY_H2_ROUTE_*`): capex per tonne of annual product capacity (H2-DRI shaft +
+EAF 3 500; ammonia / methanol hydrogen tie-in 500 CNY/(t/a)), 3.5%/a fixed O&M, and a
+non-hydrogen operating delta backed out of the literature premium anchor:
+
+    opex_delta = premium_ref - k * P_ref - capex * (CRF(r, life) + fom)
+
+so the anchor is reproduced exactly at its own reference hydrogen price and moved to the
+price actually paid through the hub's hydrogen intensity k. `opex_delta` is negative for
+steel (avoided coke and BF opex exceed the EAF power bill); the solver's floor
+`annual + hydrogen purchase >= 0` is the statement that switching cannot be cheaper than
+running the sunk incumbent, and it still credits the avoided fossil feedstock in full, so H2
+uptake remains an upper bound.
 
 KNOWN BIASES that remain:
 * Electrolysis water is not charged (10-22 L/kg H2): it belongs to the basin of the
   electrolyser, and the coal side's ammonia co-firing does not charge it either.
-* Industrial capture carries no energy-penalty emissions of its own: the ACCA21 unit costs are
-  taken to include the capture energy, and the residual of that energy is not vented here.
 * Output follows an exogenous index (TIMES CN60 when `industry_output_index_source` is set);
   there is no plant-level retirement decision for industry.
 """
@@ -76,20 +90,23 @@ except ImportError:  # pragma: no cover
 
 from ..constants import AMMONIA_FLOW_SCALE, NH3_H2_RATIO, WATER_FLOW_SCALE
 from ..constants_industry import (
-    INDUSTRY_CAPTURE_CAPEX_SHARE,
-    INDUSTRY_CAPTURE_COST_CNY_PER_T,
     INDUSTRY_CAPTURE_LIFETIME_YEARS,
     INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2,
+    INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR,
+    INDUSTRY_CCS_FIXED_OM_FRACTION,
     INDUSTRY_H2_ABATEMENT_FRACTION,
-    INDUSTRY_H2_CAPEX_SHARE,
     INDUSTRY_H2_LIFETIME_YEARS,
-    INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT,
+    INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION,
     INDUSTRY_H2_USES_ADVANCED_QUOTA,
     INDUSTRY_ROUTES,
     INDUSTRY_SECTORS,
     SECTOR_HAS_H2_ROUTE,
     SECTOR_TARGET_GROUP,
-    capture_cost_cny_per_t,
+    capture_capex_cny_per_t_yr,
+    capture_steam_co2_t_per_t,
+    capture_variable_cost_cny_per_t,
+    h2_route_capex_cny_per_t_yr,
+    h2_route_opex_delta_cny_per_t,
     water_quota,
 )
 from ..paths import ProjectPaths
@@ -175,12 +192,22 @@ def prepare_industry(
             "leave `include_industry` off."
         )
     hubs = pd.read_csv(path)
+    # 西藏不参与减排：备选管网里已经没有西藏点源（`builders.network_branches`
+    # 同一张排除表），优化侧必须用同一个点源集合，否则会给一个没有管网接入的点源
+    # 派任务。部门碳目标是"各组自身 2030 基线的比例"，基线随点源集合一起缩放，
+    # 因此剔除既不放松也不收紧目标。
+    from ..builders.network_branches import EXCLUDED_PROVINCES as _EXCLUDED_PROVINCES
+
+    dropped = hubs["province"].astype(str).str.strip().str.lower().isin(_EXCLUDED_PROVINCES)
+    if bool(dropped.any()):
+        logger.info("industry: dropped %d hub(s) in non-abating provinces", int(dropped.sum()))
+        hubs = hubs.loc[~dropped].reset_index(drop=True)
     hubs = hubs[hubs["sector"].astype(str).isin(INDUSTRY_SECTORS)].reset_index(drop=True)
     if hubs.empty:
         raise ValueError(f"{path} has no rows in the in-scope sectors {sorted(INDUSTRY_SECTORS)}")
-    unknown = sorted(set(hubs["sector"].astype(str)) - set(INDUSTRY_CAPTURE_COST_CNY_PER_T))
+    unknown = sorted(set(hubs["sector"].astype(str)) - set(INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR))
     if unknown:
-        raise ValueError(f"no capture cost sourced for sector(s) {unknown}; refusing to guess")
+        raise ValueError(f"no capture capex sourced for sector(s) {unknown}; refusing to guess")
     hubs["target_group"] = hubs["sector"].astype(str).map(SECTOR_TARGET_GROUP)
     if hubs["target_group"].isna().any():
         raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")
@@ -286,14 +313,6 @@ def _advanced_quota_ratio(sector: str) -> float:
     return float(advanced) / float(general)
 
 
-def _crf(rate: float, life_years: int) -> float:
-    """Capital recovery factor; the reciprocal of the annuity factor."""
-    n = max(1, int(life_years))
-    if rate <= 1e-9:
-        return 1.0 / n
-    return rate / (1.0 - (1.0 + rate) ** (-n))
-
-
 def _output_scale(industry: IndustryInputs, sectors: np.ndarray, year: int) -> np.ndarray:
     if not industry.output_index:
         return np.ones(len(sectors), dtype=np.float64)
@@ -310,9 +329,11 @@ def industry_year_data(
     """Per-year cost, emission and water coefficients for every industrial hub and route.
 
     All arrays are shaped `(hub_count, len(INDUSTRY_ROUTES))` unless noted. Costs are split
-    into an ANNUAL part (`opex_cny`, charged every operating year on the route share) and a
-    ONE-TIME part (`capex_cny`, charged on the increment of the route share). The H2 route's
-    hydrogen purchase is NOT in `opex_cny`: it is bought per link in the solver.
+    into an ANNUAL part (`opex_cny` = fixed O&M + energy + consumables + non-hydrogen operating
+    delta, charged every operating year on the route share) and a ONE-TIME part (`capex_cny`
+    = retrofit capex of the whole hub on that route, charged on the increment of the route
+    share). The H2 route's hydrogen purchase is NOT in `opex_cny`: it is bought per link in
+    the solver. `reduction_mt[:, CCS]` is net of the vented reboiler-steam CO2.
 
     Args:
         industry: Prepared industrial inputs.
@@ -346,8 +367,14 @@ def industry_year_data(
     h2_multiplier = float(getattr(scenario, "industry_h2_cost_multiplier", 1.0))
     h2_price_mean = _h2_price_for_year(industry.h2_price_cny_per_kg, int(year))
     rate = float(scenario.discount_rate)
-    crf_capture = _crf(rate, INDUSTRY_CAPTURE_LIFETIME_YEARS)
-    crf_h2 = _crf(rate, INDUSTRY_H2_LIFETIME_YEARS)
+    # Energy for capture is priced at the model's own prices: the hub's provincial coal price
+    # (same lookup the coal hubs use) for reboiler steam, the scenario electricity price for
+    # compression and auxiliaries. So a coal-price or power-price sensitivity moves the two
+    # sectors' capture costs together instead of leaving industry on a frozen literature price.
+    provinces = hubs["province"].astype(str).to_numpy() if "province" in hubs.columns else np.array([""] * n)
+    coal_price_gj = np.array([float(assumptions.province_coal_cost(p)) for p in provinces], dtype=np.float64)
+    elec_price_mwh = float(scenario.electricity_price_for_year(int(year)))
+    emission_factor_t_per_gj = float(assumptions.coal_emission_factor_t_per_mwh) / float(assumptions.heat_rate_gj_per_mwh)
 
     route_available = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=bool)
     route_available[:, UNABATED] = True
@@ -366,12 +393,26 @@ def industry_year_data(
     # which is the whole point for cement, where 63% of emissions are calcination and no fuel
     # switch can touch them.
     captured_mt[:, CCS] = co2_mt * capture_rate
-    reduction_mt[:, CCS] = captured_mt[:, CCS]
-    capture_unit_cost = np.array([capture_cost_cny_per_t(s) for s in sectors], dtype=np.float64)
-    levelised_capture = captured_mt[:, CCS] * 1e6 * capture_unit_cost * learning * cost_multiplier
-    opex_cny[:, CCS] = levelised_capture * (1.0 - INDUSTRY_CAPTURE_CAPEX_SHARE)
-    capex_cny[:, CCS] = levelised_capture * INDUSTRY_CAPTURE_CAPEX_SHARE / crf_capture
-    water_m3[:, CCS] = base_water_m3 + captured_mt[:, CCS] * 1e6 * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
+    captured_t = captured_mt[:, CCS] * 1e6
+    # Retrofit capex of the capture island sized to the hub's captured tonnage (CNY per t/a of
+    # capacity x t/a captured), learning-adjusted like the coal retrofits; fixed O&M as a share
+    # of that capex; energy and consumables per tonne captured at this year's prices.
+    capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
+    capex_unit = capex_unit * learning * cost_multiplier
+    variable_unit = np.array(
+        [capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh) for s, c in zip(sectors, coal_price_gj)],
+        dtype=np.float64,
+    ) * cost_multiplier
+    capex_cny[:, CCS] = captured_t * capex_unit
+    opex_cny[:, CCS] = captured_t * (capex_unit * INDUSTRY_CCS_FIXED_OM_FRACTION + variable_unit)
+    # The reboiler steam is raised in a coal boiler whose CO2 is vented, so the route's net
+    # reduction is captured minus that steam CO2 (zero for the compression-only chemical
+    # streams). Same convention as the coal side's energy-penalty emissions.
+    steam_co2_per_t = np.array(
+        [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj) for s in sectors], dtype=np.float64
+    )
+    reduction_mt[:, CCS] = captured_mt[:, CCS] * (1.0 - steam_co2_per_t)
+    water_m3[:, CCS] = base_water_m3 + captured_t * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
 
     # h2: only where the sector has a route at all.
     quota_ratio = {s: _advanced_quota_ratio(s) for s in set(sectors) if SECTOR_HAS_H2_ROUTE.get(s, False)}
@@ -385,19 +426,20 @@ def industry_year_data(
             continue
         route_available[hub_idx, H2] = True
         reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
-        premium_ref, price_ref = INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
         k_kg_per_t = float(h2_intensity_t_per_t[hub_idx]) * 1000.0
-        # Annual part BEFORE the hydrogen purchase: the anchor's non-capital premium at its
-        # reference price, less the hydrogen the anchor already priced in. Can be negative
-        # (cheap hydrogen makes the route cheaper than the anchor); the floor in the solver
-        # keeps annual + purchase >= 0.
-        opex_cny[hub_idx, H2] = (
-            production_t[hub_idx]
-            * ((1.0 - INDUSTRY_H2_CAPEX_SHARE) * float(premium_ref) - k_kg_per_t * float(price_ref))
-            * h2_multiplier
+        # Capex of the rebuilt route on the hub's whole output; fixed O&M on it; and the
+        # non-hydrogen operating delta backed out of the literature anchor (module docstring).
+        # The annual part BEFORE the hydrogen purchase can be negative (the anchor credits the
+        # avoided fossil feedstock); the floor in the solver keeps annual + purchase >= 0.
+        # `h2_multiplier` scales the route's own costs (capex and the anchor premium),
+        # never the hydrogen: scaling the negative backed-out delta would invert the knob.
+        route_capex_unit = h2_route_capex_cny_per_t_yr(sector) * h2_multiplier
+        opex_delta_unit = h2_route_opex_delta_cny_per_t(
+            sector, float(h2_intensity_t_per_t[hub_idx]), rate, h2_multiplier
         )
-        capex_cny[hub_idx, H2] = (
-            production_t[hub_idx] * INDUSTRY_H2_CAPEX_SHARE * float(premium_ref) / crf_h2 * h2_multiplier
+        capex_cny[hub_idx, H2] = production_t[hub_idx] * route_capex_unit
+        opex_cny[hub_idx, H2] = production_t[hub_idx] * (
+            route_capex_unit * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + opex_delta_unit
         )
         h2_demand_kg[hub_idx] = k_kg_per_t * production_t[hub_idx]
         ratio = quota_ratio[sector] if INDUSTRY_H2_USES_ADVANCED_QUOTA else 1.0
@@ -423,6 +465,8 @@ def industry_year_data(
         "water_m3": water_m3,
         "h2_price_cny_per_kg": h2_price_mean,
         "capture_learning_factor": learning,
+        # Economic lives per route, read by the solver's end-of-horizon salvage credit.
+        "capex_lifetime_years": {CCS: INDUSTRY_CAPTURE_LIFETIME_YEARS, H2: INDUSTRY_H2_LIFETIME_YEARS},
     }
 
 
@@ -566,18 +610,24 @@ def add_industry_monotonicity(model, payloads: list[dict], hub_count: int) -> No
             )
 
 
-def industry_capex_expr(payload: dict, previous: dict | None):
+def industry_capex_expr(payload: dict, previous: dict | None, routes: tuple[int, ...] = (CCS, H2)):
     """One-time capital charge for the year: capex coefficient x route-share increment.
 
     Shares are monotone (`add_industry_monotonicity`), so `share_t - share_{t-1}` is the newly
     built stock and never negative; in the first year the whole share is new.
+
+    Args:
+        payload: The year's industry payload (`share` variables and `year_data`).
+        previous: The previous year's payload, or None in the first year.
+        routes: Route indices to include; the solver asks for CCS and H2 separately so each
+            can carry its own economic life in the salvage credit.
     """
     share = payload["share"]
     capex = payload["year_data"]["capex_cny"]
     n = share.shape[0]
     terms = []
     for hub in range(n):
-        for route in (CCS, H2):
+        for route in routes:
             coeff = float(capex[hub, route])
             if coeff <= 0.0:
                 continue
