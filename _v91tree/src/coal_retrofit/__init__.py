@@ -1,1 +1,0 @@
-"""Coal retrofit preprocessing package."""
