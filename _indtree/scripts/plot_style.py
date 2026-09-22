@@ -241,8 +241,9 @@ _MAP_CACHE: dict = {}
 
 
 # 2026-09-12 起全仓库底图统一为唐昊天 GIS_layer/plot.ipynb 那一套（见 scripts/map_tht.py）：
-# 省界换 2023 版 GeoJSON，国界与九段线换 china_country_proj.shp。旧的 ChinaMap/*.shp 还在，
-# 但已无读者；改回去只需把下面两个函数的路径换回来。
+# 省界换 2023 版 GeoJSON，国界与九段线换 china_country_proj.shp。旧的 ChinaMap/*.shp 不再用于
+# 出图，但 builders 仍在读（海岸线距离、西藏剔除、省份归属），不能删；出图要改回去只需把
+# 下面两个函数的路径换回来。
 THT_DIR = "ChinaMapTHT"
 THT_PROV = "中华人民共和国.json"
 THT_COUNTRY = "china_country_proj.shp"

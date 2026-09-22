@@ -39,9 +39,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from plot_style import (  # noqa: E402
     apply_style,
-    load_country,
+    country_main,
+    load_dash_line,
     load_map_provinces,
-    COUNTRY_GBCODES,
     add_scs_inset,
     cjk_fill,
     safe_log_axis,
@@ -447,11 +447,10 @@ def panel_c(ax, sites: pd.DataFrame, drying: pd.DataFrame) -> pd.DataFrame:
     basins = load_basins()
     provinces = load_map_provinces()          # 统一底图，见 plot_style.load_map_provinces
     provinces.boundary.plot(ax=ax, linewidth=0.15, edgecolor="black", zorder=1)
-    # 国界图层：boundary.shp 的 GBCODE 61010 是国界/海岸线，26100 是九段线。
-    # 省界图层里没有九段线，所以此前这张全国图从来没有画出过它。
-    _country = load_country()
-    _country[_country["GBCODE"].isin(COUNTRY_GBCODES)].plot(
-        ax=ax, facecolor="none", edgecolor="black", linewidth=0.55, zorder=1.5)
+    # 国界只画大陆 / 台湾 / 海南三块，九段线单独一层（与 draw_china_basemap(islands=False) 同法）。
+    # 整层国界含 1 257 个小岛部件，主图上只会画成东南海岸一圈黑毛刺；岛礁留给南海小图。
+    country_main().plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.55, zorder=1.5)
+    load_dash_line().plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.55, zorder=1.6)
 
     basins = basins.merge(drying, left_on="code", right_index=True, how="left")
     limit = float(np.nanmax(np.abs(basins["pct_median"])))
