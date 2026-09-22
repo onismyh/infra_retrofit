@@ -12,6 +12,11 @@ from ..spatial import geodesic_length_km
 
 PLANT_BRANCH_EDGE_CLASS = "hub_to_corridor_branch"
 STORAGE_BRANCH_EDGE_CLASS = "corridor_to_storage_branch"
+# 工业点源走和煤电完全相同的接入规则（同一 edge_class -> 同一 capex 乘子），
+# 唯一的区别是它们以前只在求解时挂进来，因此没有参加三角剖分与去交叉。
+INDUSTRY_BRANCH_EDGE_CLASS = PLANT_BRANCH_EDGE_CLASS
+# 西藏不参与减排：4 个水泥点源（合计 6.95 Mt/yr）连同它们带出的备选管段一起去掉。
+EXCLUDED_PROVINCES = {"xizang", "tibet", "西藏", "西藏自治区"}
 
 _PROVINCE_STOPWORDS = {
     "autonomous",
@@ -160,6 +165,28 @@ def load_storage_hubs(paths: ProjectPaths) -> pd.DataFrame:
     )
 
 
+def load_industry_hubs(paths: ProjectPaths) -> pd.DataFrame:
+    """工业点源，剔除 EXCLUDED_PROVINCES；索引列 industry_index 由行序生成。"""
+    path = paths.inputs_dir / "industry_hubs.csv"
+    if not path.exists():
+        return pd.DataFrame(columns=["hub_id", "industry_index", "lon", "lat", "province",
+                                     "source", "year_basis"])
+    df = pd.read_csv(path)
+    keep = ~df["province"].astype(str).str.strip().str.lower().isin(EXCLUDED_PROVINCES)
+    df = df.loc[keep].reset_index(drop=True)
+    return pd.DataFrame(
+        {
+            "hub_id": df["hub_id"].astype(str),
+            "industry_index": pd.Series(range(1, len(df) + 1), dtype="Int64"),
+            "lon": pd.to_numeric(df["longitude"], errors="coerce"),
+            "lat": pd.to_numeric(df["latitude"], errors="coerce"),
+            "province": df["province"].astype(str).str.strip(),
+            "source": df["source"] if "source" in df.columns else paths.rel(path),
+            "year_basis": df["year_basis"] if "year_basis" in df.columns else "",
+        }
+    )
+
+
 def _build_corridor_type_lookup(main_edges: pd.DataFrame) -> dict[str, str]:
     counts: dict[str, Counter[str]] = defaultdict(Counter)
     for row in main_edges.itertuples(index=False):
@@ -238,6 +265,8 @@ def build_attachment_tables(
                 "plant_index": row_data.get("plant_index", pd.NA),
                 "storage_hub_id": row_data.get("storage_hub_id", pd.NA),
                 "storage_hub_index": row_data.get("storage_hub_index", pd.NA),
+                "industry_hub_id": row_data.get("hub_id", pd.NA),
+                "industry_index": row_data.get("industry_index", pd.NA),
                 "province": row_data.get("province", pd.NA),
             }
         )
@@ -285,6 +314,17 @@ def build_attachment_tables(
             source=str(row.source),
             year_basis=str(row.year_basis),
             index_column="storage_hub_index",
+        )
+
+    for row in load_industry_hubs(paths).sort_values("industry_index").itertuples(index=False):
+        add_branch_node_and_edge(
+            attachment_row=row,
+            node_type="industry_hub",
+            edge_class=INDUSTRY_BRANCH_EDGE_CLASS,
+            from_corridor_to_attachment=False,
+            source=str(row.source),
+            year_basis=str(row.year_basis),
+            index_column="industry_index",
         )
 
     branch_nodes = pd.DataFrame(branch_node_rows)

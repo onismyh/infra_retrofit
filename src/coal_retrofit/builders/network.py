@@ -331,6 +331,8 @@ def _merge_network_tables(
         "plant_index",
         "storage_hub_id",
         "storage_hub_index",
+        "industry_hub_id",
+        "industry_index",
         "province",
     ]
     edge_columns = [
@@ -386,9 +388,11 @@ def _build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, flo
 
 
 def _terminal_ids(nodes: pd.DataFrame) -> tuple[set[str], set[str]]:
-    plants = set(nodes.loc[nodes["node_type"] == "plant", "node_id"].astype(str))
+    # 工业点源和煤电一样是"必须能到汇"的源端：它们现在进了备选网络，
+    # 去交叉之后的连通性修复必须把它们一起照顾到，否则又回到求解时拉直连线的老路。
+    sources = set(nodes.loc[nodes["node_type"].isin(["plant", "industry_hub"]), "node_id"].astype(str))
     sinks = set(nodes.loc[nodes["node_type"] == "storage_hub", "node_id"].astype(str))
-    return plants, sinks
+    return sources, sinks
 
 
 def _unreached_terminals(nodes: pd.DataFrame, edges: pd.DataFrame) -> set[str]:
@@ -403,31 +407,94 @@ def _unreached_terminals(nodes: pd.DataFrame, edges: pd.DataFrame) -> set[str]:
     return {p for p in plants if component.get(p) not in sink_components}
 
 
+MIN_STITCH_LENGTH_KM = 1.0
+
+
 def _repair_connectivity(
     nodes: pd.DataFrame, kept: pd.DataFrame, dropped: pd.DataFrame
 ) -> pd.DataFrame:
-    """Put back the shortest dropped edges needed to reconnect every terminal.
+    """把每一个源（煤电 + 工业点源）重新接回封存汇，且不重新引入交叉。
 
-    The crossing filter is a tidiness rule, not a physical one, and applied blindly it severs
-    terminals: on the network this replaces, 7 plants (20.4 GW) could reach no sink at all, one
-    of them 24.5 km from one. SimCCS treats source and sink connectivity as an invariant that
-    survives however heavily the cost surface discourages crossings, and that is the behaviour
-    reproduced here: filter first, then restore the cheapest edges that buy back connectivity.
+    去交叉是整洁性规则，不是物理规则；照字面执行会切断源端，工业点源进网后有 124 个
+    片区因此拿不到汇。原实现从"被删的交叉边"里挑最短的恢复——可是一条边当初被删正是
+    因为它与保留边相交，恢复它就等于把交叉放回图上（实测 136 条，62 处新建线交叉）。
+    这里改为按连通片缝合：每次取一个缺汇片区，在它与含汇片区之间找"最短且不与任何
+    保留边相交"的节点对，新增一条新建候选边（source 记为 connectivity_stitch_rule）。
+    片区数严格递减，因此必然终止；只有在所有候选对都相交时才退回最短那条。
+    `dropped` 仅用于日志，不再回填。
     """
-    if dropped.empty:
-        return kept
-    order = dropped.sort_values("length_km")
-    restored: list[int] = []
-    for position in range(len(order)):
-        if not _unreached_terminals(nodes, kept):
+    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    sources, sinks = _terminal_ids(nodes)
+    geometries = [g for g in (_build_edge_geometry(row, coords) for _, row in kept.iterrows())
+                  if g is not None and not g.is_empty]
+
+    def _components(frame: pd.DataFrame) -> dict[str, int]:
+        graph = nx.Graph()
+        graph.add_nodes_from(coords)
+        for row in frame.itertuples(index=False):
+            graph.add_edge(str(row.from_node_id), str(row.to_node_id))
+        return {n: i for i, part in enumerate(nx.connected_components(graph)) for n in part}
+
+    def _haversine_km(lon0: float, lat0: float, lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
+        lo, la = np.radians(lon0), np.radians(lat0)
+        hav = np.sin((lats - la) / 2.0) ** 2 + np.cos(la) * np.cos(lats) * np.sin((lons - lo) / 2.0) ** 2
+        return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
+
+    stitched, forced = 0, 0
+    while True:
+        component = _components(kept)
+        with_sink = {component[s] for s in sinks if s in component}
+        needy = sorted({component[s] for s in sources if s in component and component[s] not in with_sink})
+        if not needy:
             break
-        candidate = order.iloc[[position]]
-        trial = pd.concat([kept, candidate], ignore_index=True)
-        if len(_unreached_terminals(nodes, trial)) < len(_unreached_terminals(nodes, kept)):
-            kept = trial
-            restored.append(position)
-    if restored:
-        logger.info("restored %d crossing edges to keep every terminal connected", len(restored))
+        group_ids = [n for n, c in component.items() if c == needy[0]]
+        target_ids = [n for n, c in component.items() if c in with_sink]
+        if not group_ids or not target_ids:
+            break
+        target_lon = np.radians(np.array([coords[n][0] for n in target_ids], dtype=np.float64))
+        target_lat = np.radians(np.array([coords[n][1] for n in target_ids], dtype=np.float64))
+        pairs: list[tuple[float, str, str]] = []
+        for node_a in group_ids:
+            distances = _haversine_km(coords[node_a][0], coords[node_a][1], target_lon, target_lat)
+            for position in np.argsort(distances)[:12]:
+                pairs.append((float(distances[position]), node_a, target_ids[int(position)]))
+        pairs.sort()
+        tree = STRtree(geometries)
+        chosen = None
+        for direct_km, node_a, node_b in pairs[:400]:
+            line = LineString([coords[node_a], coords[node_b]])
+            if not any(line.crosses(geometries[int(k)]) for k in tree.query(line)):
+                chosen = (direct_km, node_a, node_b, line)
+                break
+        if chosen is None:
+            direct_km, node_a, node_b = pairs[0]
+            chosen = (direct_km, node_a, node_b, LineString([coords[node_a], coords[node_b]]))
+            forced += 1
+        direct_km, node_a, node_b, line = chosen
+        direct_km = max(float(direct_km), MIN_STITCH_LENGTH_KM)
+        stitched += 1
+        record = {column: pd.NA for column in kept.columns}
+        record.update({
+            "edge_id": f"edge_stitch_{stitched:05d}",
+            "feature_index": -1,
+            "part_index": 1,
+            "from_node_id": node_a,
+            "to_node_id": node_b,
+            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
+            "direct_length_km": round(direct_km, 3),
+            "tortuosity": NETWORK_DETOUR_FACTOR,
+            "geometry_wkt": line.wkt,
+            "corridor_type": "triangulation",
+            "existing_corridor_flag": 0,
+            "edge_class": NETWORK_EDGE_CLASS_TRIANGULATION,
+            "source": "connectivity_stitch_rule",
+            "year_basis": STATIC_LAYER_YEAR_BASIS,
+        })
+        kept = pd.concat([kept, pd.DataFrame([record])], ignore_index=True)
+        geometries.append(line)
+    if stitched:
+        logger.info("stitched %d candidate edges (%d unavoidably crossing); %d dropped edges left out",
+                    stitched, forced, len(dropped))
     return kept
 
 
@@ -450,8 +517,10 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
             priority = _EDGE_CLASS_PRIORITY.get(row.get("edge_class", ""), 2)
             records.append((priority, idx, geom))
 
-    # Sort: lowest priority number first (keep these)
-    records.sort(key=lambda x: x[0])
+    # Sort: lowest priority number first (keep these); within a priority, SHORTEST first.
+    # 同优先级下按建表顺序取舍是任意的，长边先占位会把一片短边全挤掉：实测按长度排序，
+    # 保留边 1224 -> 1269，连通片 173 -> 157，每个源平均可选汇 32 -> 56。
+    records.sort(key=lambda x: (x[0], x[2].length))
 
     kept_indices: list[int] = []
     kept_geoms: list[LineString] = []
@@ -475,69 +544,211 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
     return _repair_connectivity(nodes, kept, dropped).reset_index(drop=True)
 
 
+EXCLUDED_REGION_NAMES = ("西藏", "西藏自治区")
+
+
+def _drop_edges_over_excluded_region(paths, nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
+    """丢掉穿过不参与减排省份（西藏）的三角剖分候选边。
+
+    这些边不是任何源或汇的接入线——西藏没有封存汇，工业点源已在装载时剔除——
+    它们只是 Delaunay 在空旷西部连出来的长边，留着既不会被选中，又让图上看着像有管网。
+    既有管廊与接入支线不动：那是真实存在的管道。
+    """
+    import geopandas as gpd
+    from shapely.geometry import LineString as _LS
+
+    path = paths.data_dir / "ChinaMap" / "provinces.shp"
+    if not path.exists():
+        return edges
+    prov = gpd.read_file(path)
+    hit = prov[prov["NAME"].astype(str).isin(EXCLUDED_REGION_NAMES)]
+    if hit.empty:
+        return edges
+    region = hit.to_crs("EPSG:4326").geometry.union_all()
+    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    drop = []
+    for row in edges.itertuples(index=False):
+        if str(row.edge_class) not in (NETWORK_EDGE_CLASS_TRIANGULATION, NETWORK_EDGE_CLASS_DIRECT):
+            continue
+        a, b = coords.get(str(row.from_node_id)), coords.get(str(row.to_node_id))
+        if a is None or b is None:
+            continue
+        if _LS([a, b]).intersects(region):
+            drop.append(str(row.edge_id))
+    if drop:
+        logger.info("dropped %d triangulation edges crossing %s", len(drop), EXCLUDED_REGION_NAMES[0])
+        edges = edges[~edges["edge_id"].astype(str).isin(set(drop))].reset_index(drop=True)
+    return edges
+
+
+def _excluded_region(paths: ProjectPaths):
+    """不参与减排省份的几何；没有图层时返回 None。"""
+    path = paths.data_dir / "ChinaMap" / "provinces.shp"
+    if not path.exists():
+        return None
+    hit = gpd.read_file(path)
+    hit = hit[hit["NAME"].astype(str).isin(EXCLUDED_REGION_NAMES)]
+    return None if hit.empty else hit.to_crs("EPSG:4326").geometry.union_all()
+
+
+def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
+    """把去交叉后残留的连通片并成一张网，每次补一条最短、不交叉、不过西藏的连线。
+
+    `_repair_connectivity` 只保证"每个源能到某个汇"，这不够：去交叉把图切成 45 片以后，
+    南海那个 200 Mtpa 的离岸汇 S002 落在 35 节点的小片里，全国只有 28 个源够得着它，于是
+    IND_*_t95 的 2060 年有 26 个小汇被超注入 196 Mt/yr，而 S002 闲置 162 Mt/yr。
+    备选网络不该替优化器决定"谁不许去哪个汇"；要不要真建这些管段仍由优化器决定。
+    """
+    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    region = _excluded_region(paths)
+    geometries = [g for g in (_build_edge_geometry(row, coords) for _, row in edges.iterrows())
+                  if g is not None and not g.is_empty]
+    ids = list(coords)
+    lon = np.radians(np.array([coords[n][0] for n in ids], dtype=np.float64))
+    lat = np.radians(np.array([coords[n][1] for n in ids], dtype=np.float64))
+    graph = nx.Graph()
+    graph.add_nodes_from(ids)
+    for row in edges.itertuples(index=False):
+        graph.add_edge(str(row.from_node_id), str(row.to_node_id))
+
+    added: list[dict[str, object]] = []
+    forced = 0
+    while True:
+        component = {n: i for i, part in enumerate(nx.connected_components(graph)) for n in part}
+        if len(set(component.values())) <= 1:
+            break
+        label = np.array([component[n] for n in ids])
+        candidates: list[tuple[float, int, int]] = []
+        for group in sorted(set(label.tolist())):
+            inside = np.flatnonzero(label == group)
+            outside = np.flatnonzero(label != group)
+            for index in inside:
+                hav = (np.sin((lat[outside] - lat[index]) / 2.0) ** 2
+                       + np.cos(lat[index]) * np.cos(lat[outside])
+                       * np.sin((lon[outside] - lon[index]) / 2.0) ** 2)
+                dist = 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
+                pick = int(np.argmin(dist))
+                candidates.append((float(dist[pick]), int(index), int(outside[pick])))
+        candidates.sort()
+        chosen = None
+        for direct_km, a_index, b_index in candidates[:600]:
+            node_a, node_b = ids[a_index], ids[b_index]
+            line = LineString([coords[node_a], coords[node_b]])
+            if region is not None and line.intersects(region):
+                continue
+            if any(line.crosses(other) for other in geometries):
+                continue
+            chosen = (direct_km, node_a, node_b, line)
+            break
+        if chosen is None:
+            direct_km, a_index, b_index = candidates[0]
+            node_a, node_b = ids[a_index], ids[b_index]
+            chosen = (direct_km, node_a, node_b, LineString([coords[node_a], coords[node_b]]))
+            forced += 1
+        direct_km, node_a, node_b, line = chosen
+        direct_km = max(float(geodesic_length_km([coords[node_a], coords[node_b]])),
+                        MIN_STITCH_LENGTH_KM)
+        graph.add_edge(node_a, node_b)
+        geometries.append(line)
+        record = {column: pd.NA for column in edges.columns}
+        record.update({
+            "edge_id": f"edge_merge_{len(added) + 1:05d}",
+            "feature_index": -3,
+            "part_index": 1,
+            "from_node_id": node_a,
+            "to_node_id": node_b,
+            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
+            "direct_length_km": round(direct_km, 3),
+            "tortuosity": NETWORK_DETOUR_FACTOR,
+            "geometry_wkt": line.wkt,
+            "corridor_type": "triangulation",
+            "existing_corridor_flag": 0,
+            "edge_class": NETWORK_EDGE_CLASS_TRIANGULATION,
+            "source": "component_merge_rule",
+            "year_basis": STATIC_LAYER_YEAR_BASIS,
+        })
+        added.append(record)
+    if added:
+        logger.info("merged the network into one component with %d links (%d unavoidable)",
+                    len(added), forced)
+        edges = pd.concat([edges, pd.DataFrame(added)], ignore_index=True, sort=False)
+    return edges
+
+
 def build_direct_sink_edges(
     nodes: pd.DataFrame, edges: pd.DataFrame, top_k: int = NETWORK_DIRECT_SINK_TOP_K
 ) -> pd.DataFrame:
-    """Direct candidate arcs from every plant to its *top_k* nearest sinks.
+    """每个源到其最近 top_k 个汇的专线候选弧，但只保留不与已有边相交的那些。
 
-    This is the rule `OptimizationAssumptions.top_k_storage_pairs` has always declared and that
-    nothing ever produced. The arcs are priced at `direct_fallback_capex_multiplier` (2.8x), the
-    premium the assumptions already carry for a dedicated line built outside any corridor, so
-    the optimiser takes one only where the corridor network really is the long way round.
-
-    They are ADDED, never substituted: the candidate set can only grow, so no solution that was
-    reachable before becomes unreachable.
+    专线是真实存在的接入方式（`direct_fallback_capex_multiplier` 2.8 倍就是为它准备的
+    溢价），去掉它会把"必须全程走共享干线"当成硬约束，2050 年水泥捕集因此少了约 70 Mt。
+    但原实现把这些弧放在去交叉之后追加，于是它们以直线穿过整张图——正是图上那些"很奇怪
+    的线"。这里改为：逐条测试，与既有候选边相交的直接丢弃，被接受的立刻计入测试集合，
+    所以专线之间也不会互相交叉。源包括煤电与工业点源。
     """
-    plants = nodes.loc[nodes["node_type"] == "plant", ["node_id", "lon", "lat"]].dropna().reset_index(drop=True)
+    sources = nodes.loc[
+        nodes["node_type"].isin(["plant", "industry_hub"]), ["node_id", "lon", "lat"]
+    ].dropna().reset_index(drop=True)
     sinks = nodes.loc[nodes["node_type"] == "storage_hub", ["node_id", "lon", "lat"]].dropna().reset_index(drop=True)
-    if plants.empty or sinks.empty:
+    if sources.empty or sinks.empty:
         return pd.DataFrame(columns=list(edges.columns))
 
+    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    kept_geoms = [g for g in (_build_edge_geometry(row, coords) for _, row in edges.iterrows())
+                  if g is not None and not g.is_empty]
     existing = {
-        _unordered_edge_key(str(row.from_node_id), str(row.to_node_id))
-        for row in edges.itertuples(index=False)
+        frozenset((str(r.from_node_id), str(r.to_node_id)))
+        for r in edges.itertuples(index=False)
     }
-    sink_lon = sinks["lon"].astype(float).to_numpy()
-    sink_lat = sinks["lat"].astype(float).to_numpy()
+    sink_lon = np.radians(sinks["lon"].to_numpy(dtype=np.float64))
+    sink_lat = np.radians(sinks["lat"].to_numpy(dtype=np.float64))
+    sink_ids = sinks["node_id"].astype(str).to_numpy()
 
+    next_index = 1
     rows: list[dict[str, object]] = []
-    next_index = _next_edge_index(edges)
-    for plant in plants.itertuples(index=False):
-        lon, lat = float(plant.lon), float(plant.lat)
-        separation = np.array([
-            geodesic_length_km([(lon, lat), (float(sl), float(sa))])
-            for sl, sa in zip(sink_lon, sink_lat)
-        ])
-        for rank in np.argsort(separation)[: max(0, int(top_k))]:
-            sink = sinks.iloc[int(rank)]
-            key = _unordered_edge_key(str(plant.node_id), str(sink["node_id"]))
-            if key in existing:
-                continue
-            existing.add(key)
-            direct_km = float(separation[int(rank)])
-            geom = LineString([(lon, lat), (float(sink["lon"]), float(sink["lat"]))])
-            rows.append({
-                "edge_id": f"edge_{next_index:05d}",
-                "feature_index": next_index,
-                "part_index": 1,
-                "from_node_id": str(plant.node_id),
-                "to_node_id": str(sink["node_id"]),
-                "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
-                "direct_length_km": round(direct_km, 3),
-                "tortuosity": NETWORK_DETOUR_FACTOR,
-                "geometry_wkt": geom.wkt,
-                "corridor_type": "direct_source_sink",
-                "existing_corridor_flag": 0,
-                "edge_class": NETWORK_EDGE_CLASS_DIRECT,
-                "source": "source_sink_top_k_rule",
-                "year_basis": STATIC_LAYER_YEAR_BASIS,
-            })
-            next_index += 1
+    order = []
+    for row in sources.itertuples(index=False):
+        lon0, lat0 = np.radians(float(row.lon)), np.radians(float(row.lat))
+        hav = (np.sin((sink_lat - lat0) / 2.0) ** 2
+               + np.cos(lat0) * np.cos(sink_lat) * np.sin((sink_lon - lon0) / 2.0) ** 2)
+        dist = 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
+        for position in np.argsort(dist)[:top_k]:
+            order.append((float(dist[position]), str(row.node_id), str(sink_ids[position])))
+    order.sort()                                    # 短的先试，长的更可能被挡掉
 
+    tree = STRtree(kept_geoms)
+    pending: list[LineString] = []
+    for direct_km, from_id, to_id in order:
+        if frozenset((from_id, to_id)) in existing:
+            continue
+        line = LineString([coords[from_id], coords[to_id]])
+        if any(line.crosses(kept_geoms[int(k)]) for k in tree.query(line)):
+            continue
+        if any(line.crosses(other) for other in pending):
+            continue
+        pending.append(line)
+        existing.add(frozenset((from_id, to_id)))
+        rows.append({
+            "edge_id": f"edge_direct_{next_index:05d}",
+            "feature_index": -2,
+            "part_index": 1,
+            "from_node_id": from_id,
+            "to_node_id": to_id,
+            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
+            "direct_length_km": round(direct_km, 3),
+            "tortuosity": NETWORK_DETOUR_FACTOR,
+            "geometry_wkt": line.wkt,
+            "corridor_type": "direct",
+            "existing_corridor_flag": 0,
+            "edge_class": NETWORK_EDGE_CLASS_DIRECT,
+            "source": "direct_sink_rule",
+            "year_basis": STATIC_LAYER_YEAR_BASIS,
+        })
+        next_index += 1
     if not rows:
         return pd.DataFrame(columns=list(edges.columns))
-    return pd.DataFrame(rows, columns=list(edges.columns))
-
+    logger.info("kept %d of %d direct source-sink arcs (crossing-free)", len(rows), len(order))
+    return pd.DataFrame(rows)
 
 def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
     if use_corridors:
@@ -565,12 +776,19 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
     if not triangulation_edges.empty:
         edges = pd.concat([edges, triangulation_edges], ignore_index=True, sort=False)
         edges = edges.sort_values(["edge_id"]).reset_index(drop=True)
+    # 西藏不参与减排：先把穿过西藏的三角剖分候选边去掉，再去交叉。
+    edges = _drop_edges_over_excluded_region(paths, nodes, edges)
     # Prefer planarity, but never at the cost of disconnecting a terminal
     edges = _remove_crossing_edges(nodes, edges)
-    # Direct plant-to-sink arcs last, so they are never themselves filtered out
+    # 专线（源 -> 最近的 k 个汇）在去交叉之后补回，但逐条做相交检验：穿过已有管网的
+    # 一律丢弃。既保住"可以为一个源单建一条专线"这个真实选项（2.8 倍造价溢价），
+    # 又不会再出现那些横穿全图的直线。
+    # 先把去交叉切出来的孤片并回一张网，再补专线（专线要对着合并后的图做相交检验）
+    edges = _merge_components(paths, nodes, edges)
     direct_edges = build_direct_sink_edges(nodes, edges)
     if not direct_edges.empty:
         edges = pd.concat([edges, direct_edges], ignore_index=True, sort=False)
+        edges = _drop_edges_over_excluded_region(paths, nodes, edges)
         edges = edges.sort_values(["edge_id"]).reset_index(drop=True)
     duplicates = int(edges["edge_id"].duplicated().sum())
     if duplicates:

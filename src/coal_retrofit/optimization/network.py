@@ -233,20 +233,18 @@ def build_runtime_network(
     # outflow by exactly what it brought in. Mass is conserved, and sharing a collection point
     # is precisely what "shared infrastructure" means here.
     existing_industry_nodes: dict[str, str] = {}
+    if "industry_hub_id" in base_nodes.columns:
+        existing_industry_nodes = {
+            str(row.industry_hub_id): str(row.node_id)
+            for row in base_nodes.loc[base_nodes["industry_hub_id"].notna()].itertuples(index=False)
+        }
     if industry_hubs is not None and len(industry_hubs):
-        # Storage node coordinates for the direct sink arcs below. Coal hubs get these arcs
-        # from `builders/network.py` (every plant to its k nearest sinks); industrial hubs did
-        # not, so 27 of 390 sat in components with no sink and their CCS route was infeasible
-        # rather than merely expensive. Same rule, same class (`runtime_direct_fallback`,
-        # 2.8x capex), same k, for both source groups.
-        sink_rows = [
-            (str(hub_id), float(graph.nodes[node_id]["lon"]), float(graph.nodes[node_id]["lat"]), node_id)
-            for hub_id, node_id in existing_storage_nodes.items()
-            if node_id in graph.nodes
-        ]
-        sink_lons = np.array([r[1] for r in sink_rows], dtype=np.float64)
-        sink_lats = np.array([r[2] for r in sink_rows], dtype=np.float64)
+        # 工业点源已作为 industry_hub 节点进入 inputs/pipeline_*.csv，并与煤电、封存汇
+        # 一起做过联合三角剖分与去交叉；到汇的可达性由 builders 的缝合步骤保证。因此这里
+        # 不再追加 `runtime_direct_fallback` 直连弧——那是图上唯一还会穿越管网的一类边。
         for row in industry_hubs.itertuples(index=False):
+            if str(row.hub_id) in existing_industry_nodes:
+                continue
             runtime_node_id = f"industry::{row.hub_id}"
             graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="industry_hub")
             nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
@@ -263,24 +261,6 @@ def build_runtime_network(
                 year_basis="runtime",
                 capex_multiplier=assumptions.branch_capex_multiplier,
             )
-            if len(sink_rows):
-                straight = _haversine_km(float(row.longitude), float(row.latitude), sink_lons, sink_lats)
-                for rank, sink_idx in enumerate(np.argsort(straight)[:NETWORK_DIRECT_SINK_TOP_K]):
-                    sink_node_id = sink_rows[int(sink_idx)][3]
-                    if sink_node_id == nearest_node_id:
-                        continue
-                    _append_runtime_edge(
-                        edge_rows=runtime_edge_rows,
-                        graph=graph,
-                        edge_id=f"edge_runtime_industry_direct_{row.hub_id}_{rank}",
-                        from_node_id=runtime_node_id,
-                        to_node_id=sink_node_id,
-                        length_km=_routed_branch_km(float(straight[sink_idx])),
-                        edge_class="runtime_direct_fallback",
-                        source="runtime_direct_sink_rule",
-                        year_basis="runtime",
-                        capex_multiplier=assumptions.direct_fallback_capex_multiplier,
-                    )
             nodes = pd.concat(
                 [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "industry_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
                 ignore_index=True,
