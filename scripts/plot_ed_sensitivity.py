@@ -103,6 +103,12 @@ def seed_floor(head: str, seeds: tuple[int, ...]) -> tuple[float | None, int]:
 
 def main() -> None:
     registry = _registry()
+    if not any(name.startswith("SA_") for name in registry):
+        raise SystemExit(
+            "本目录的情景登记表里没有 SA_ 敏感性情景（仓库根自 ba967c1 起只登记 ST_ 系）。ED7 属 v9.1："
+            "python scripts/render_version.py --tree _v91tree --version v9.1，"
+            "或 cd _v91tree && python scripts/plot_ed_sensitivity.py。"
+        )
     floor, k_floor = seed_floor(WATER_HEAD, WATER_SEEDS)
     floor_treat, k_treat = seed_floor(TREAT_HEAD, TREAT_SEEDS)
     if floor is None:

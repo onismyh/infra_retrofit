@@ -77,6 +77,19 @@ TARGET_COLOR = "#CC3311"
 EXPECTED_SINKS = 89        # v9 管网的汇数，用来把求解树认出来
 
 
+def _require_registered(runs) -> None:
+    """IND_ 系已下线：明确停下并说明怎么重画旧图，而不是在读登记表时抛 KeyError。"""
+    from run_single import EXPERIMENTS
+
+    missing = [run for run in runs if run not in EXPERIMENTS]
+    if missing:
+        raise SystemExit(
+            f"{', '.join(missing)} 已不在情景登记表：IND_ 系（单一联合目标）于 ba967c1 删除，只剩 ST_。"
+            "这些结果是 2026-09-22 之前的旧成本口径，新代码既不能重解，也不该用新口径的成本函数去标注。"
+            "重画旧图请在 cf073be 的工作副本里、_indtree/ 下运行本脚本；ST_ 版需另行设计。"
+        )
+
+
 def assert_v9_tree(run: str) -> int:
     """确认脚本正跑在 v9 求解树上，而不是仓库根的 v7 结果上。
 
@@ -367,6 +380,7 @@ def _sector_h2_intensity(sector: str) -> float:
 
 def main() -> None:
     apply_style()
+    _require_registered((RUN, RUN_NOWATER))
     n_sinks = assert_v9_tree(RUN)
     loaded = load(RUN)
     if loaded is None:
