@@ -1,4 +1,4 @@
-# `_indtree` — 煤电 + 工业联合减排的求解树（v9 管网）
+# `_indtree` — 煤电 + 工业联合减排的求解树（v9.2 管网，2026-09-12 重建）
 
 建于 2026-09-09。存在的唯一理由：**仓库根 `inputs/` 的候选管网够不着 38% 的封存汇，
 工业侧的任何结论都会被这个缺陷决定，而不是被物理决定。**
@@ -94,13 +94,22 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 
 ## 二、这棵树是怎么拼的
 
+代码只有仓库根 `src/` 一份（2026-09-22 起）。`scripts/_bootstrap.py` 里 `ROOT` 是本树根
+（`ProjectPaths(ROOT)` 读本树 `inputs/`、写本树 `results/`），`SRC` 指向仓库根 `src/`。
+**`ROOT` 不能改成仓库根**：那样本树的求解会悄悄改读仓库根的 v7 输入（35 汇 / 923 边、无工业节点）。
+万一读错，`build_runtime_network` 会因"有源到不了任何汇"直接报错。
+
 `inputs/` 是仓库根 `inputs/` 的完整副本，**只替换三个网络文件**：
 
 ```
-pipeline_nodes.csv            612 -> 666     取自 _v9tree/inputs/
-pipeline_candidate_edges.csv  923 -> 2651    取自 _v9tree/inputs/
+pipeline_nodes.csv            612 -> 1052    2026-09-12 重建（此前 666，取自 _v9tree/inputs/）
+pipeline_candidate_edges.csv  923 -> 1559    2026-09-12 重建（此前 2651，取自 _v9tree/inputs/）
 storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 ```
+
+> ⚠ 截至 2026-09-22，本目录只有 `sector_targets_times_cn60.csv` 与 `industry_output_index_times_cn60.csv`
+> 两个文件入了库，重建后的管网等其余输入只在作者本机。它们是 `ST_` 系重解的前提，应一并入库。
+> `ST_CP_BASE` 还需要 `sector_targets_none.csv`（ba967c1 只加到了仓库根 `inputs/`）。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -125,6 +134,10 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 ---
 
 ## 三、跑什么
+
+> `IND_` 系（单一联合目标）已于 2026-09-22（ba967c1）连同模型里的联合目标一起删除，情景登记表
+> 只剩 `ST_` 系（见下文）。下面这组命令只在 `cf073be` 的工作副本里可用：那里本树还有自己的
+> `src/`，成本口径也与下表的结果一致（`git worktree add ../infra_ind cf073be`）。
 
 ```bash
 cd _indtree
@@ -161,6 +174,13 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 "源直连汇"的长直线弧横穿全图；去掉那些弧正是 2026-09-12 重建的目的。
 换句话说：**f = 0.95 这个强度的联合目标，依赖于两个远端巨型汇的长途专线**。
 非约束性的 0.5914 那一对没有注入松弛。
+
+> ⚠ 待核实（2026-09-22 审查）："宁可付罚金"与模型参数不符。2060 期每 1 Mt/yr 注入松弛的罚金约
+> 3.7e10 元（5e9 元 × 10 年年金 7.36），比一条 1 000–3 000 km、2.8 倍造价的 20 Mtpa 专线
+> （扣期末残值后）贵 17–52 倍，模型没有理由放着专线不建。更可能是候选集或容量上限卡住：
+> 每条边累计上限 20 × `max_parallel_pipes` 2 = 40 Mtpa（`year_matrices.py` 的 `edge_max_total`），
+> 专线候选只留下 3 680 条中的 135 条，S002 所在片区靠片区合并时补的连线接入。先看 `_t95` 解里通往
+> S002/S003 片区那几条边的建成容量是否顶在 40；若是，上面这句结论需要改写。
 
 ### `ST_` 系（2026-09-10 起：部门碳目标，零碳价）
 
@@ -212,6 +232,10 @@ python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动�
 
 三个主图脚本开头都有 `assert_v9_tree()`：在仓库根跑会抛错而不是画出 35 汇的 v7 结果。
 这条断言不是防御性编程——两棵树里目录同名，而图注里"v9 管网"是写死的字符串。
+
+`plot_ind_fig1_joint_allocation.py` 与 `plot_ind_ed1_target_level.py` 要从情景登记表读 `IND_`
+的联合目标份额；ba967c1 之后它们在新代码下直接停下并说明原因（`_require_registered`）。
+重画这批旧图请在 `cf073be` 的工作副本里运行；`ST_` 版需要另行设计。
 
 输出在 `_indtree/results/figures/main/`，已归档到仓库根
 `results/figures/v9.1/industry/`（含 README、数据与求解日志）。
