@@ -31,6 +31,7 @@ from .scenario import OptimizationAssumptions, OptimizationScenario
 from .solver_extract import empty_year_solutions, extract_year_solutions
 from .solver_provenance import _optional_model_attr, _solver_quality
 from .solver_start import _apply_rounded_start, _incumbent_logger
+from .year_types import YearPayload
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def _solve_joint_multi_period(
         logger.info("MIPFocus set to %s", _focus)
 
     idx = build_model_index(prepared, scenario, assumptions)
-    year_payloads: list[dict[str, object]] = [
+    year_payloads: list[YearPayload] = [
         add_year_block(model, prepared, scenario, assumptions, idx, years, year_index, state)
         for year_index in range(len(years))
     ]
@@ -67,9 +68,9 @@ def _solve_joint_multi_period(
         model, year_payloads, scenario, idx.plant_count, idx.edge_count, len(prepared.industry.hubs),
     )
 
-    first_year_data = year_payloads[0]["year_data"]
-    edge_base_stock = np.asarray(first_year_data["edge_base_stock_mtpa"], dtype=np.float64)
-    edge_max_new_total = np.asarray(first_year_data["edge_max_new_mtpa"], dtype=np.float64)
+    first_year_data = year_payloads[0].year_data
+    edge_base_stock = np.asarray(first_year_data.edge_base_stock_mtpa, dtype=np.float64)
+    edge_max_new_total = np.asarray(first_year_data.edge_max_new_mtpa, dtype=np.float64)
     for year_position, payload in enumerate(year_payloads):
         add_capacity_constraints(
             model, payload, year_payloads, year_position, scenario, assumptions, state,
@@ -81,7 +82,7 @@ def _solve_joint_multi_period(
         )
 
     _add_salvage_credit(year_payloads, scenario, assumptions, _COST_SCALE)
-    model.setObjective(gp.quicksum(payload["objective_expr"] for payload in year_payloads), GRB.MINIMIZE)
+    model.setObjective(gp.quicksum(payload.objective_expr for payload in year_payloads), GRB.MINIMIZE)
 
     # 以下环境变量只用于诊断或热启动，改搜索路径不改模型；要相减的求解必须用同一套。
     if os.environ.get("COAL_RETROFIT_LP_RELAX"):

@@ -10,6 +10,7 @@ from .emissions import blend_level_to_ratio, reduction_fraction
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 from ._shared import PreparedInputs, SolveState, PATHWAY_INDEX
 from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED
+from .year_types import YearData
 
 
 def _build_cost_breakdown(year: int, breakdown: dict[str, float]) -> pd.DataFrame:
@@ -24,7 +25,7 @@ def _build_pathway_table(
     captured_mt_by_plant: np.ndarray | None = None,
     blend_level_b: np.ndarray | None = None,
     blend_level_a: np.ndarray | None = None,
-    year_data: dict[str, object] | None = None,
+    year_data: YearData | None = None,
     plant_reduction_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Per plant x pathway shares, generation, emissions and abatement for one year.
@@ -39,11 +40,11 @@ def _build_pathway_table(
     """
     rows: list[dict[str, object]] = []
     gen_year = (
-        np.asarray(year_data["generation"], dtype=np.float64) if year_data is not None
+        np.asarray(year_data.generation, dtype=np.float64) if year_data is not None
         else prepared.plants["annual_generation_mwh"].astype(float).to_numpy()
     )
     em_year = (
-        np.asarray(year_data["emissions_mt"], dtype=np.float64) if year_data is not None
+        np.asarray(year_data.emissions_mt, dtype=np.float64) if year_data is not None
         else prepared.plants["baseline_emissions_mt"].astype(float).to_numpy()
     )
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
@@ -216,7 +217,7 @@ def _build_storage_table(
 def _build_supply_table(
     prepared: PreparedInputs,
     year: int,
-    year_data: dict[str, object],
+    year_data: YearData,
     biomass_flow_gj: np.ndarray,
     ammonia_flow_kg: np.ndarray,
     water_flow_m3: np.ndarray,
@@ -234,13 +235,13 @@ def _build_supply_table(
     biomass_table["competition_scope"] = "shared_biomass_node"
     biomass_table["unit"] = "GJ/yr"
 
-    ammonia_links = year_data["ammonia_links"][["ammonia_node_id"]].copy()
+    ammonia_links = year_data.ammonia_links[["ammonia_node_id"]].copy()
     ammonia_links["used"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
     ammonia_grouped = ammonia_links.groupby("ammonia_node_id", as_index=False)["used"].sum()
-    ammonia_table = year_data["ammonia_nodes"].copy()
+    ammonia_table = year_data.ammonia_nodes.copy()
     # `used` comes back from the solver in physical units but the availability vector is still
     # in the solver's scaled units, so it has to be un-scaled or utilisation reads 1e6.
-    ammonia_table["available"] = np.asarray(year_data["ammonia_available_kg"], dtype=np.float64) * AMMONIA_FLOW_SCALE
+    ammonia_table["available"] = np.asarray(year_data.ammonia_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE
     ammonia_table = ammonia_table.merge(ammonia_grouped, on="ammonia_node_id", how="left").fillna({"used": 0.0})
     ammonia_table["year"] = year
     ammonia_table["resource_type"] = "ammonia"
@@ -248,11 +249,11 @@ def _build_supply_table(
     ammonia_table["competition_scope"] = "shared_ammonia_node"
     ammonia_table["unit"] = "kg/yr"
 
-    water_links = year_data["water_links"][["water_node_id"]].copy()
+    water_links = year_data.water_links[["water_node_id"]].copy()
     water_links["used"] = np.asarray(water_flow_m3, dtype=np.float64)
     water_grouped = water_links.groupby("water_node_id", as_index=False)["used"].sum()
-    water_table = year_data["water_nodes"].copy()
-    water_table["available"] = np.asarray(year_data["water_available_m3"], dtype=np.float64) * WATER_FLOW_SCALE
+    water_table = year_data.water_nodes.copy()
+    water_table["available"] = np.asarray(year_data.water_available_m3, dtype=np.float64) * WATER_FLOW_SCALE
     water_table = water_table.merge(water_grouped, on="water_node_id", how="left").fillna({"used": 0.0})
     water_table["year"] = year
     water_table["resource_type"] = "water"
@@ -269,10 +270,10 @@ def _build_supply_table(
         ammonia_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
         water_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
     ]
-    basin_codes = list(year_data.get("water_basin_codes") or [])
+    basin_codes = list(year_data.water_basin_codes or [])
     if basin_use_m3 is not None and len(basin_codes):
         used = np.asarray(basin_use_m3, dtype=np.float64)
-        available = np.asarray(year_data["water_basin_available_m3"], dtype=np.float64)
+        available = np.asarray(year_data.water_basin_available_m3, dtype=np.float64)
         frames.append(pd.DataFrame({
             "year": year,
             "resource_type": "water_basin_quota",
@@ -382,17 +383,17 @@ def _build_plant_detail_table(
     blend_level_b: np.ndarray,
     blend_level_a: np.ndarray,
     air_share: np.ndarray | None = None,
-    year_data: dict[str, object] | None = None,
+    year_data: YearData | None = None,
     plant_reduction_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Per-plant high-resolution detail: pathway shares, resource use, blend levels, storage proximity."""
     plants = prepared.plants
     gen_year = (
-        np.asarray(year_data["generation"], dtype=np.float64) if year_data is not None
+        np.asarray(year_data.generation, dtype=np.float64) if year_data is not None
         else plants["annual_generation_mwh"].astype(float).to_numpy()
     )
     em_year = (
-        np.asarray(year_data["emissions_mt"], dtype=np.float64) if year_data is not None
+        np.asarray(year_data.emissions_mt, dtype=np.float64) if year_data is not None
         else plants["baseline_emissions_mt"].astype(float).to_numpy()
     )
 
@@ -479,13 +480,13 @@ def _build_biomass_flow_table(
 
 
 def _build_ammonia_flow_table(
-    year_data: dict[str, object],
+    year_data: YearData,
     year: int,
     ammonia_flow_kg: np.ndarray,
     plants: pd.DataFrame,
 ) -> pd.DataFrame:
     """Per-link ammonia flow: which node supplies which plant, how much."""
-    links = year_data["ammonia_links"].copy()
+    links = year_data.ammonia_links.copy()
     links["year"] = year
     links["flow_kg"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
     active = links[links["flow_kg"] > 1e-3].copy()
@@ -499,13 +500,13 @@ def _build_ammonia_flow_table(
 
 
 def _build_water_flow_table(
-    year_data: dict[str, object],
+    year_data: YearData,
     year: int,
     water_flow_m3: np.ndarray,
     plants: pd.DataFrame,
 ) -> pd.DataFrame:
     """Per-link water flow: which water node supplies which plant, how much."""
-    links = year_data["water_links"].copy()
+    links = year_data.water_links.copy()
     links["year"] = year
     links["flow_m3"] = np.asarray(water_flow_m3, dtype=np.float64)
     active = links[links["flow_m3"] > 1e-3].copy()
@@ -521,7 +522,7 @@ def _build_water_flow_table(
 def _build_slack_detail_table(
     prepared: PreparedInputs,
     year: int,
-    year_data: dict[str, object],
+    year_data: YearData,
     slacks: dict[str, object],
 ) -> pd.DataFrame:
     """Per-node slack values for all resource/infrastructure constraints."""
@@ -533,13 +534,13 @@ def _build_slack_detail_table(
             rows.append({"year": year, "constraint_type": "biomass_supply", "node_id": str(node.biomass_node_id), "province": str(node.province_name), "slack_value": float(bio_slack[i]), "unit": "GJ"})
 
     amm_slack = np.asarray(slacks["ammonia_slack_kg"], dtype=np.float64)
-    amm_nodes = year_data["ammonia_nodes"]
+    amm_nodes = year_data.ammonia_nodes
     for i in range(len(amm_nodes)):
         if amm_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "ammonia_supply", "node_id": str(amm_nodes.iloc[i]["ammonia_node_id"]), "province": str(amm_nodes.iloc[i].get("province_name", "")), "slack_value": float(amm_slack[i]), "unit": "kg"})
 
     water_slack = np.asarray(slacks["water_slack_m3"], dtype=np.float64)
-    water_nodes = year_data["water_nodes"]
+    water_nodes = year_data.water_nodes
     for i in range(len(water_nodes)):
         if water_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "water_supply", "node_id": str(water_nodes.iloc[i]["water_node_id"]), "province": str(water_nodes.iloc[i].get("province_name", "")), "slack_value": float(water_slack[i]), "unit": "m3"})
@@ -548,7 +549,7 @@ def _build_slack_detail_table(
     # Reported separately from `water_supply` because it is a different rule on a different
     # basis: allocation on withdrawal, against the environmental-flow limit on consumption.
     basin_slack = np.asarray(slacks.get("water_basin_slack_m3", np.zeros(0)), dtype=np.float64)
-    basin_codes = list(slacks.get("water_basin_codes") or year_data.get("water_basin_codes") or [])
+    basin_codes = list(slacks.get("water_basin_codes") or year_data.water_basin_codes or [])
     for i, code in enumerate(basin_codes[:len(basin_slack)]):
         if basin_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "water_basin_quota", "node_id": str(code),
@@ -612,7 +613,7 @@ def _build_plant_cost_table(
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
     year: int,
-    year_data: dict[str, object],
+    year_data: YearData,
     share_values: np.ndarray,
     captured_mt: np.ndarray,
     biomass_use_gj: np.ndarray,
@@ -634,13 +635,13 @@ def _build_plant_cost_table(
     """
     plants = prepared.plants
     n = len(plants)
-    emissions = np.asarray(year_data["emissions_mt"], dtype=np.float64)
+    emissions = np.asarray(year_data.emissions_mt, dtype=np.float64)
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
-    carbon_price = float(year_data["carbon_price"])
+    carbon_price = float(year_data.carbon_price)
     retire_idx = PATHWAY_INDEX["retire"]
     # Capture-island / BECCS-increment stock coefficients (see solver); fall back to the
     # per-pathway matrix for results written before the two-stock form existed.
-    stock_coeff = year_data.get("retrofit_stock_capex")
+    stock_coeff = year_data.retrofit_stock_capex
 
     rows: list[dict[str, object]] = []
     for p in range(n):
@@ -659,12 +660,12 @@ def _build_plant_cost_table(
         # Baseline net cost: per-pathway (fuel+om-elec) matrix row × shares
         # (retrofit columns carry the CF boost, retire column is zero)
         baseline_net = sum(
-            float(year_data["baseline_net_matrix"][p, k]) * float(share[k])
+            float(year_data.baseline_net_matrix[p, k]) * float(share[k])
             for k in range(len(PATHWAYS))
         )
         # Carbon cost: price × residual emissions (approximate reporting: retrofit
         # pathways use the efficiency × CF-boost emission basis, retire avoids baseline)
-        e_rt = float(year_data["emissions_retrofit_mt"][p])
+        e_rt = float(year_data.emissions_retrofit_mt[p])
         reduction_mt = (
             e * float(share[retire_idx])
             + sum(
@@ -678,26 +679,26 @@ def _build_plant_cost_table(
         residual_mt = e - reduction_mt
         carbon_cost = carbon_price * 1e6 * residual_mt if carbon_price > 0 else 0.0
         # Coal savings (coal_savings_per_gj is scaled to CNY/TJ; biomass_use_gj is unscaled GJ)
-        _bio_scale = float(year_data.get("biomass_flow_scale", 1.0))
-        _cspg = year_data["coal_savings_per_gj"]
+        _bio_scale = float(year_data.biomass_flow_scale)
+        _cspg = year_data.coal_savings_per_gj
         _cspg_val = float(_cspg[p]) if hasattr(_cspg, '__getitem__') and not isinstance(_cspg, (int, float)) else float(_cspg)
         coal_savings = (_cspg_val / _bio_scale) * float(biomass_use_gj[p])
         # Incremental O&M
-        incr_om = sum(float(year_data["fixed_cost_matrix"][p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        incr_om = sum(float(year_data.fixed_cost_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         # Energy penalty
-        energy_pen = sum(float(year_data["energy_penalty_matrix"][p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        energy_pen = sum(float(year_data.energy_penalty_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         # CCS O&M
-        ccs_om = sum(float(year_data["ccs_om_matrix"][p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        ccs_om = sum(float(year_data.ccs_om_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         # Stranded asset (model-consistent: charged on newly retired share increment)
         prev_retire = float(prev_share_values[p, retire_idx]) if prev_share_values is not None else 0.0
-        stranded = float(year_data["stranded_per_plant"][p]) * max(0.0, float(share[retire_idx]) - prev_retire)
+        stranded = float(year_data.stranded_per_plant[p]) * max(0.0, float(share[retire_idx]) - prev_retire)
         # CCS retrofit CAPEX (model-consistent: charged on installed-stock increments,
         # i.e. the max historical share; coeff already includes the learning factor)
         ccs_capex = 0.0
         for j, k in enumerate(capex_pathway_indices):
             coeff = (
                 float(stock_coeff[p, j]) if stock_coeff is not None and j < np.asarray(stock_coeff).shape[1]
-                else float(year_data["ccs_retrofit_capex_matrix"][p, k])
+                else float(year_data.ccs_retrofit_capex_matrix[p, k])
             )
             if coeff <= 0:
                 continue
@@ -734,7 +735,7 @@ def _build_industry_detail_table(
     share_values: np.ndarray | None,
     prev_share_values: np.ndarray | None = None,
     h2_flow_kg: np.ndarray | None = None,
-    year_data: dict[str, object] | None = None,
+    year_data: YearData | None = None,
 ) -> pd.DataFrame:
     """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
 
@@ -783,11 +784,11 @@ def _build_industry_detail_table(
     h2_cost_by_hub = np.zeros(n_hubs)
     if (
         h2_flow_kg is not None and len(h2_flow_kg) and year_data is not None
-        and year_data.get("industry_h2_hub_membership") is not None
+        and year_data.industry_h2_hub_membership is not None
     ):
-        incidence = year_data["industry_h2_hub_membership"]
+        incidence = year_data.industry_h2_hub_membership
         flows = np.asarray(h2_flow_kg, dtype=np.float64)
-        unit_cost = np.asarray(year_data["industry_h2_link_cost_cny_per_kg"], dtype=np.float64) / AMMONIA_FLOW_SCALE
+        unit_cost = np.asarray(year_data.industry_h2_link_cost_cny_per_kg, dtype=np.float64) / AMMONIA_FLOW_SCALE
         h2_kg_by_hub = np.asarray(incidence @ flows).ravel()
         h2_cost_by_hub = np.asarray(incidence @ (flows * unit_cost)).ravel()
     rows: list[dict[str, object]] = []

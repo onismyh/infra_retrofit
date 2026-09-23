@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover
 
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 from ._shared import PATHWAY_INDEX
+from .year_types import YearData, YearPayload
 
 # Import flow scaling factors for numerical stability
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE, BIOMASS_FLOW_SCALE
@@ -35,11 +36,11 @@ def _add_mccormick_product(model, share_var, binary_var, name: str):
 
 def _build_air_retrofit_capex(
     model,
-    year_data: dict[str, object],
-    payload: dict[str, object],
+    year_data: YearData,
+    payload: YearPayload,
     plant_count: int,
     yr_sfx: str,
-    prev_payload: dict[str, object] | None = None,
+    prev_payload: YearPayload | None = None,
 ):
     """One-time capex for converting wet condensers to dry cooling.
 
@@ -49,12 +50,12 @@ def _build_air_retrofit_capex(
     stock is only bounded below (>= this period's converted share, >= last period's stock),
     which is enough because the objective is minimising and the coefficient positive.
     """
-    if not bool(year_data.get("allow_air_cooling_retrofit", False)):
+    if not bool(year_data.allow_air_cooling_retrofit):
         return 0.0
-    capex_per_plant = year_data.get("air_retrofit_capex_per_plant")
+    capex_per_plant = year_data.air_retrofit_capex_per_plant
     if capex_per_plant is None:
         return 0.0
-    installed = payload["air_installed"]
+    installed = payload.air_installed
     terms = []
     for plant_idx in range(plant_count):
         coeff = float(capex_per_plant[plant_idx])
@@ -63,7 +64,7 @@ def _build_air_retrofit_capex(
         if prev_payload is None:
             terms.append(coeff * installed[plant_idx])
         else:
-            previous = prev_payload["air_installed"][plant_idx]
+            previous = prev_payload.air_installed[plant_idx]
             model.addConstr(
                 installed[plant_idx] >= previous, name=f"air_installed_mono_{plant_idx}_{yr_sfx}"
             )
@@ -103,7 +104,7 @@ def _add_blend_level_constraints(
     plant_count: int,
     scenario: "OptimizationScenario",
     assumptions: "OptimizationAssumptions",
-    year_data: dict[str, object],
+    year_data: YearData,
     sfx: str,
 ) -> tuple:
     """Add per-plant blend-level binary variables, linearization zetas, and usage constraints.
@@ -146,23 +147,21 @@ def _add_blend_level_constraints(
     bio_penalty_exprs: list[object] = []  # blend-level-dependent energy penalty per plant
     bio_penalty_emissions_exprs: list[object] = []  # extra CO2 from the penalty fuel (Mt)
 
-    bio_pen_coeff_data = year_data.get("biomass_penalty_coeff_per_level", 0.0)
-    bio_pen_em_coeff_data = year_data.get("biomass_penalty_emissions_coeff_per_level", 0.0)
+    bio_pen_coeff_data = year_data.biomass_penalty_coeff_per_level
+    bio_pen_em_coeff_data = year_data.biomass_penalty_emissions_coeff_per_level
     # On BECCS the co-firing penalty fuel burns in the same boiler as the captured flue gas,
     # so only the uncaptured share is vented (Fan et al. 2023 SI eq. S42) -- and the captured
     # share is a real tonne that has to be piped and stored.
-    beccs_pen_em_coeff_data = year_data.get(
-        "beccs_penalty_emissions_coeff_per_level", bio_pen_em_coeff_data
-    )
-    beccs_pen_cap_coeff_data = year_data.get("beccs_penalty_captured_coeff_per_level", 0.0)
+    beccs_pen_em_coeff_data = year_data.beccs_penalty_emissions_coeff_per_level
+    beccs_pen_cap_coeff_data = year_data.beccs_penalty_captured_coeff_per_level
     beccs_penalty_captured_exprs: list[object] = []
 
     for p in range(plant_count):
         # Retrofit operations carry the efficiency ratio (rebuilt plants) and the
         # retrofit CF boost; fuel use additionally scales with the plant heat rate.
-        E_rt = float(year_data["emissions_retrofit_mt"][p])
-        hr_p = float(year_data["heat_rate_eff"][p])
-        G_bp = year_data["generation_by_pathway"][p, :]
+        E_rt = float(year_data.emissions_retrofit_mt[p])
+        hr_p = float(year_data.heat_rate_eff[p])
+        G_bp = year_data.generation_by_pathway[p, :]
         G_bio = float(G_bp[PATHWAY_INDEX["biomass"]])
         G_beccs = float(G_bp[PATHWAY_INDEX["beccs"]])
         G_amm = float(G_bp[PATHWAY_INDEX["ammonia"]])
@@ -261,7 +260,7 @@ def _add_blend_level_constraints(
 def _add_plant_path_constraints(
     model,
     share,
-    year_data: dict[str, object],
+    year_data: YearData,
     plant_count: int,
     scenario: "OptimizationScenario",
     assumptions: "OptimizationAssumptions",
@@ -279,9 +278,7 @@ def _add_plant_path_constraints(
     # would need either binaries or a McCormick envelope. It also represents a real degree of
     # freedom, since a hub aggregates ~10 units and the operator chooses which of them get
     # both the capture island and the air-cooled condenser.
-    allow_air = bool(year_data.get("allow_air_cooling_retrofit", False)) and year_data.get(
-        "air_water_intensity"
-    ) is not None
+    allow_air = bool(year_data.allow_air_cooling_retrofit) and year_data.air_water_intensity is not None
     air_share = model.addMVar((plant_count, pathway_count), lb=0.0, ub=1.0, name=f"air_share{sfx}")
     # Installed stock, so capex is charged on the high-water mark and not re-charged when a
     # converted hub's dry-cooled share dips in one period and recovers in the next. Same
@@ -313,14 +310,14 @@ def _add_plant_path_constraints(
 
     eta = float(scenario.capture_rate)
     plant_reduction_exprs: list[object] = []
-    ccs_penalty_captured = year_data.get("ccs_penalty_captured_matrix")
-    air_penalty_captured = year_data.get("air_penalty_captured_matrix")
+    ccs_penalty_captured = year_data.ccs_penalty_captured_matrix
+    air_penalty_captured = year_data.air_penalty_captured_matrix
 
     for plant_idx in range(plant_count):
-        E_p = float(year_data["emissions_mt"][plant_idx])               # baseline
-        E_op = float(year_data["emissions_operating_mt"][plant_idx])    # efficiency-adjusted
-        E_rt = float(year_data["emissions_retrofit_mt"][plant_idx])     # efficiency × CF boost
-        G_bp = year_data["generation_by_pathway"][plant_idx, :]
+        E_p = float(year_data.emissions_mt[plant_idx])               # baseline
+        E_op = float(year_data.emissions_operating_mt[plant_idx])    # efficiency-adjusted
+        E_rt = float(year_data.emissions_retrofit_mt[plant_idx])     # efficiency × CF boost
+        G_bp = year_data.generation_by_pathway[plant_idx, :]
         s_un = share[plant_idx, PATHWAY_INDEX["unabated"]]
         s_ccs = share[plant_idx, PATHWAY_INDEX["ccs"]]
         s_bio = share[plant_idx, PATHWAY_INDEX["biomass"]]
@@ -330,14 +327,14 @@ def _add_plant_path_constraints(
         # Water use (scaled by WATER_FLOW_SCALE for numerical stability); per-pathway
         # generation (retrofit boost, retire = 0) times pathway water intensity, with the
         # dry-cooled part of each pathway priced at the air-cooled intensity instead.
-        air_intensity = year_data["air_water_intensity"] if allow_air else None
+        air_intensity = year_data.air_water_intensity if allow_air else None
         water_expr = gp.quicksum(
             float(G_bp[path_idx])
             * (
-                float(year_data["water_intensity"][plant_idx, path_idx]) * share[plant_idx, path_idx]
+                float(year_data.water_intensity[plant_idx, path_idx]) * share[plant_idx, path_idx]
                 - (
                     float(
-                        year_data["water_intensity"][plant_idx, path_idx]
+                        year_data.water_intensity[plant_idx, path_idx]
                         - air_intensity[plant_idx, path_idx]
                     )
                     * air_share[plant_idx, path_idx]
@@ -388,14 +385,14 @@ def _add_plant_path_constraints(
             + (E_rt * (1.0 - eta) * s_beccs - beccs_blend_red_exprs[plant_idx])
             + (E_rt * s_amm - amm_red_exprs[plant_idx])
             + gp.quicksum(
-                float(year_data["ccs_penalty_emissions_matrix"][plant_idx, path_idx]) * share[plant_idx, path_idx]
+                float(year_data.ccs_penalty_emissions_matrix[plant_idx, path_idx]) * share[plant_idx, path_idx]
                 for path_idx in range(pathway_count)
             )
             + bio_penalty_emissions_exprs[plant_idx]
             # Backpressure penalty of dry cooling: burnt and vented like any other coal.
             + (
                 gp.quicksum(
-                    float(year_data["air_penalty_emissions_matrix"][plant_idx, path_idx])
+                    float(year_data.air_penalty_emissions_matrix[plant_idx, path_idx])
                     * air_share[plant_idx, path_idx]
                     for path_idx in range(pathway_count)
                 )
@@ -419,7 +416,7 @@ def _add_forced_pathway_activation_constraints(
     model,
     share,
     scenario: OptimizationScenario,
-    year_data: dict[str, object],
+    year_data: YearData,
     hub_count: int,
     name_suffix: str = "",
     retired_mask: np.ndarray | None = None,
@@ -427,7 +424,7 @@ def _add_forced_pathway_activation_constraints(
     min_share = float(scenario.min_forced_path_share)
     if min_share <= 0.0 or not scenario.forced_pathways:
         return
-    generation = np.asarray(year_data["generation"], dtype=np.float64)
+    generation = np.asarray(year_data.generation, dtype=np.float64)
     if retired_mask is not None:
         active_gen = generation * (~retired_mask).astype(float)
     else:

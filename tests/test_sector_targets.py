@@ -49,11 +49,11 @@ def test_power_cap_binds_on_the_2030_baseline_and_hours_scale_generation(tmp_pat
     y1 = solution["year_solutions"][2030]
     y2 = solution["year_solutions"][2040]
 
-    e_2030 = float(y1["year_data"]["emissions_mt"][0])
-    e_2040 = float(y2["year_data"]["emissions_mt"][0])
+    e_2030 = float(y1["year_data"].emissions_mt[0])
+    e_2040 = float(y2["year_data"].emissions_mt[0])
     assert e_2040 == pytest.approx(0.75 * e_2030, rel=1e-9)
     # Hours: the toy fleet is one Shanxi plant at 4 629.5 h, scaled to 4 000 in 2030.
-    assert y1["year_data"]["hours_scale"] == pytest.approx(4000.0 / 4629.5, rel=1e-6)
+    assert y1["year_data"].hours_scale == pytest.approx(4000.0 / 4629.5, rel=1e-6)
 
     # 2030: no abatement required, none bought.
     assert y1["total_reduction_mt"] == pytest.approx(0.0, abs=1e-6)

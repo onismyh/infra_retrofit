@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -176,7 +177,7 @@ def _basin_cap_data(
     return membership, residual, codes
 
 
-def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int) -> dict[str, object]:
+def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int) -> dict[str, Any]:
     """水链路关联矩阵、按计量水量定价的链路成本、节点可用量（缩放单位）。"""
     from ..constants import WATER_FLOW_SCALE
     nodes = prepared.water_nodes.copy().reset_index(drop=True)

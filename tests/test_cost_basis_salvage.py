@@ -7,6 +7,8 @@ straight-line remainder of every capex it charged, discounted from the horizon e
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -130,8 +132,10 @@ def test_remaining_fraction_is_straight_line() -> None:
 
 
 def test_horizon_end_year_uses_last_interval() -> None:
-    assert horizon_end_year([{"year": 2050, "interval_years": 10}]) == 2060
-    assert horizon_end_year([{"year": 2030, "interval_years": 30}, {"year": 2060, "interval_years": 30}]) == 2090
+    assert horizon_end_year([SimpleNamespace(year=2050, interval_years=10)]) == 2060
+    assert horizon_end_year([
+        SimpleNamespace(year=2030, interval_years=30), SimpleNamespace(year=2060, interval_years=30),
+    ]) == 2090
 
 
 def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5)):
