@@ -67,6 +67,10 @@
 重算由 `tests/test_discount_rate.py` 覆盖（不求解，不依赖 Gurobi）——真实输入（v7 / v9 / v9.1 都是 8% 的 0.0891 USD/kg；
 `_indtree/inputs/` 的 v9.2 那张表不在 git 里，未核）上每条氨链路的成本都会变。
 
+另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/scenario.py:60-63`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
+9.92 $/GJ 是气价；京津两行的气价、生物质价与潜力完全相同，取天津的 5.51 $/GJ。煤电没有北京机组；仓库根
+`inputs/industry_hubs.csv` 里只有 1 个北京 hub（水泥 cement_039），它的捕集蒸汽变便宜（`_indtree/inputs/` 的 hub 表不在 git 里，未核）。
+
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
 1. **煤电有几项运维不是"capex 的比例"。** 生物质掺烧、BECCS 的掺烧部分、掺氨按发电量收 30 / 30 / 80 元/MWh

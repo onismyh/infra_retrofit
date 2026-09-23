@@ -58,10 +58,10 @@ class OptimizationAssumptions:
     # 22.2 / 15.6 / 13.3 / 11.1 %，即归一化后 1.000 / 0.703 / 0.599 / 0.500）。
     ccs_energy_penalty_ratio_by_year: tuple[float, ...] = (0.1500, 0.1054, 0.0899, 0.0750)
 
-    # 分省煤价（An et al. 2025, Nat Commun, Supp Table 2）
-    # 单位：CNY/GJ，由 USD/GJ × 7（USD/CNY）换算
+    # 分省煤价，CNY/GJ = An et al. 2025（Nat Commun）SI Table 2 的 USD/GJ × 7。原表北京无煤价（9.92 $/GJ 是气价，
+    # 2026-09-23 前误记为 69.4），京津两行气价、生物质价与潜力相同，取天津 5.51（38.6）；内蒙古取东、西两行 2.63 / 2.49 的均值。
     province_coal_cost_cny_per_gj: dict[str, float] = field(default_factory=lambda: {
-        "Anhui": 42.8, "Beijing": 69.4, "Chongqing": 42.6,
+        "Anhui": 42.8, "Beijing": 38.6, "Chongqing": 42.6,
         "Fujian": 40.0, "Gansu": 37.0, "Guangdong": 41.5,
         "Guangxi": 47.9, "Guizhou": 34.6, "Hainan": 33.6,
         "Hebei": 30.8, "Heilongjiang": 35.6, "Henan": 42.1,
