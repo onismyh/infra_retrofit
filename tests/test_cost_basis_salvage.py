@@ -211,7 +211,7 @@ def test_salvage_switch_off_reproduces_pre_20260922_objective(tmp_path) -> None:
     _, _, off = _solve(paths, salvage=False)
     _, _, on = _solve(paths, salvage=True)
     assert off["status"] == "optimal" and on["status"] == "optimal"
-    # 关闭时：该键不存在，所以 2026-09-22 之前的 cost_breakdown 结构也一并复现。
+    # 关闭时：该键不存在，cost_breakdown 回到没有残值行的表结构。
     for year in (2030, 2040, 2050):
         assert "salvage_credit" not in off["year_solutions"][year]["cost_breakdown_cny"]
 

@@ -49,8 +49,8 @@ from coal_retrofit.constants import PLANNING_YEARS
 #
 # ST_ 系（作者决定 2026-09-10/11）：部门碳目标（China TIMES CN60 四组轨迹，各组自身 2030 基线的比例）
 # + 煤电利用小时轨迹 3600/3100/2000/1500 h + 工业产量指数；MIPGap 统一 3%（CLAUDE.md 二.2），
-# 任何差值只能按可证区间报告。成本口径自 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，
-# 此前落盘的 _indtree/results/ 不得与新解相减。
+# 任何差值只能按可证区间报告。成本口径自 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，09-23 的
+# PR #2 又改了目标函数与约束：PR #2 合入之前落盘的 _indtree/results/ 都不得与之后的新解相减。
 _ST_COMMON: dict = {
     "mip_gap": 0.03,
     "sector_target_source": "times_cn60",

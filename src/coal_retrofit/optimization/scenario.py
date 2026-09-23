@@ -282,7 +282,7 @@ class OptimizationAssumptions:
     # `INDUSTRY_CAPTURE_LIFETIME_YEARS`）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
     # `air_retrofit_lifetime_years`）；管道 30 a（`pipeline_lifetime_years`）；重建的厂址
     # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。
-    # 设 `end_of_horizon_salvage=False` 可复现 2026-09-22 之前求解的结果。
+    # 设 `end_of_horizon_salvage=False` 只去掉残值项；09-22 以来目标函数还有别的改动（README §0.1），复现不了更早的求解。
     end_of_horizon_salvage: bool = True
     ccs_retrofit_lifetime_years: int = 20
     blend_upgrade_lifetime_years: int = 20
