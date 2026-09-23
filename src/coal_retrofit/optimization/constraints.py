@@ -183,11 +183,11 @@ def _add_blend_level_constraints(
 
         # --- Numeric blend level (for upgrade cost computation) ---
         model.addConstr(
-            blend_level_b[p] == gp.quicksum(l * select_b[p, l] for l in range(L_b + 1)),
+            blend_level_b[p] == gp.quicksum(level * select_b[p, level] for level in range(L_b + 1)),
             name=f"blv_b_{p}{sfx}",
         )
         model.addConstr(
-            blend_level_a[p] == gp.quicksum(l * select_a[p, l] for l in range(L_a + 1)),
+            blend_level_a[p] == gp.quicksum(level * select_a[p, level] for level in range(L_a + 1)),
             name=f"blv_a_{p}{sfx}",
         )
 
@@ -201,13 +201,13 @@ def _add_blend_level_constraints(
 
         z_bio_all: list[object] = []
         z_beccs_all: list[object] = []
-        for l, beta_b in enumerate(blend_b):
-            bin_b = select_b[p, l + 1]
-            z_bio = _add_mccormick_product(model, s_bio, bin_b, f"zb_{p}_{l}{sfx}")
-            z_beccs = _add_mccormick_product(model, s_beccs, bin_b, f"zbc_{p}_{l}{sfx}")
+        for level, beta_b in enumerate(blend_b):
+            bin_b = select_b[p, level + 1]
+            z_bio = _add_mccormick_product(model, s_bio, bin_b, f"zb_{p}_{level}{sfx}")
+            z_beccs = _add_mccormick_product(model, s_beccs, bin_b, f"zbc_{p}_{level}{sfx}")
             # The two pathways share the capacity converted to this level. Implied by the
             # one-hot form; binding (and the physical meaning) when the levels are shares.
-            model.addConstr(z_bio + z_beccs <= bin_b, name=f"zlvl_b_{p}_{l}{sfx}")
+            model.addConstr(z_bio + z_beccs <= bin_b, name=f"zlvl_b_{p}_{level}{sfx}")
             z_bio_all.append(z_bio)
             z_beccs_all.append(z_beccs)
             bio_use_expr += hr_p * beta_b * (G_bio * z_bio + G_beccs * z_beccs) / BIOMASS_FLOW_SCALE
@@ -229,9 +229,9 @@ def _add_blend_level_constraints(
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()
         z_amm_all: list[object] = []
-        for l, beta_a in enumerate(blend_a):
-            bin_a = select_a[p, l + 1]
-            z_amm = _add_mccormick_product(model, s_amm, bin_a, f"za_{p}_{l}{sfx}")
+        for level, beta_a in enumerate(blend_a):
+            bin_a = select_a[p, level + 1]
+            z_amm = _add_mccormick_product(model, s_amm, bin_a, f"za_{p}_{level}{sfx}")
             z_amm_all.append(z_amm)
 
             amm_use_expr += G_amm * hr_p / lhv * beta_a * z_amm / AMMONIA_FLOW_SCALE

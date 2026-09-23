@@ -384,7 +384,7 @@ def _cluster_plants_to_hubs(units: pd.DataFrame, n_hubs: int = DEFAULT_N_HUBS) -
         linkage="average",
     )
     labels = clustering.fit_predict(dist)
-    valid["plant_site"] = [f"H{n_hubs}_{int(l):03d}" for l in labels]
+    valid["plant_site"] = [f"H{n_hubs}_{int(label):03d}" for label in labels]
     return valid
 
 

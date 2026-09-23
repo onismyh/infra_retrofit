@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -153,10 +154,5 @@ def run_experiment_bundle(
         try:
             runner = load_bundle_runner()
         except (ModuleNotFoundError, AttributeError, ValueError, TypeError):
-            runner = lambda resolved_paths, resolved_experiment_id, resolved_output_dir: _local_bundle_runner(
-                resolved_paths,
-                resolved_experiment_id,
-                resolved_output_dir,
-                registry=registry,
-            )
+            runner = partial(_local_bundle_runner, registry=registry)
     return runner(paths, experiment_id, Path(output_dir))

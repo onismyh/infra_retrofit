@@ -123,7 +123,7 @@ def add_industry_year(
         for hub in range(n):
             hub_links = links_of_hub.get(hub, [])
             purchase_by_hub[hub] = gp.quicksum(
-                float(h2_link_cost[l]) * h2_flow_kg[l] for l in hub_links
+                float(h2_link_cost[link]) * h2_flow_kg[link] for link in hub_links
             ) if hub_links else gp.LinExpr()
             model.addConstr(
                 hub_draw[hub] == float(h2_demand[hub]) / AMMONIA_FLOW_SCALE * share[hub, H2],

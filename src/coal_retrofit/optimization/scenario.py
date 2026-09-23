@@ -372,7 +372,7 @@ class OptimizationAssumptions:
     # unconfirmed). Median ≈125 CNY/kW mapped to level 5; linear 25 CNY/kW per level.
     # (Previous 800,000 was ~30x above the China cluster.)
     # Biomass delivered cost components (Wang et al. 2024, Nat Commun)
-    # base_cost_cny_per_gj is in the CSV (purchase cost, default 22 CNY/GJ)
+    # 收购价 base_cost_cny_per_gj 在供给曲线 CSV 里（`constants.BIOMASS_COST_BASE` = 20 元/GJ）。
     biomass_pretreatment_cost_cny_per_gj: float = 11.96     # γ₅: 6.15 $/MWh × 7.0 / 3.6 (Wang et al. 2024, Nat Commun)
     biomass_transport_fixed_cost_cny_per_gj: float = 13.13    # γ₆: 6.75 $/MWh × 7.0 / 3.6
     biomass_transport_variable_cost_cny_per_gj_km: float = 0.126  # γ₇: 0.065 $/(MWh·km) × 7.0 / 3.6
@@ -505,7 +505,8 @@ class OptimizationScenario:
     biomass_supply_multiplier: float = 1.0
     biomass_cost_multiplier: float = 1.0
     ccs_cost_multiplier: float = 1.0
-    # Industrial capture cost, on the ACCA21 / China Energy News central values.
+    # 工业捕集成本乘子：乘捕集 capex（固定运维随之）与每吨捕集的能耗、耗材成本
+    # （`industry_matrices.industry_year_data`）。2026-09-22 起不再乘 ACCA21 平准化成本。
     industry_cost_multiplier: float = 1.0
     # Industrial H2-route premium. Separate from the multiplier above because the H2 anchor
     # carries a KNOWN downward bias -- it is a greenfield-vs-greenfield comparison applied to
