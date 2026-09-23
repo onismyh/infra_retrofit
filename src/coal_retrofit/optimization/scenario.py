@@ -473,9 +473,12 @@ class OptimizationScenario:
     # （`industry_matrices.industry_year_data`），与煤电同口径；2026-09-23 前也乘能耗与耗材。
     # 2026-09-22 起不再乘 ACCA21 平准化成本。
     industry_cost_multiplier: float = 1.0
-    # 工业氢路线溢价。与上面的乘子分开，因为氢锚点带有已知的向下偏差——它是新建对新建的
-    # 比较，却套用在现有资本已沉没的存量工厂上——所以其采用量是上界，需要单独的调节参数。
-    # 见 optimization/industry.py 的"已知偏差"（KNOWN BIASES）一节。
+    # 工业氢路线成本乘子：只乘路线 capex 与随之的固定运维，与上面两个 CCS 乘子同口径；不乘买氢，
+    # 也不乘由锚点反推的非氢运行差额（固定在乘子为 1 时的值）。因此作用有限：锚点氢价下乘子取 2
+    # 只让平准化溢价增加钢铁 25%、合成氨 14%、甲醇 2%。2026-09-23 前还乘该差额里路线自身的成本，
+    # 锚点价下溢价恰为乘子 x 锚点溢价（乘子取 2 即 +100%）。与上面的乘子分开，因为氢锚点带有已知的
+    # 向下偏差——它是新建对新建的比较，却套用在现有资本已沉没的存量工厂上——所以其采用量是上界，
+    # 需要单独的调节参数。见 optimization/industry.py 的"已知偏差"（KNOWN BIASES）一节。
     industry_h2_cost_multiplier: float = 1.0
     ammonia_cost_multiplier: float = 1.0
     ammonia_transport_adder_usd_per_kg: float = 0.0

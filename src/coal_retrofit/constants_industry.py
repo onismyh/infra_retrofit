@@ -532,23 +532,20 @@ def h2_route_annual_capital_cny_per_t(sector: str, discount_rate: float) -> floa
     return capex * (crf + INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION)
 
 
-def h2_route_opex_delta_cny_per_t(
-    sector: str, h2_intensity_t_per_t: float, discount_rate: float, multiplier: float = 1.0
-) -> float:
+def h2_route_opex_delta_cny_per_t(sector: str, h2_intensity_t_per_t: float, discount_rate: float) -> float:
     """氢路线相对现有路线的非氢运行差额，CNY/t 产品。
 
     由文献溢价锚点扣除其中的氢（按锚点自身的参考价）以及显式的 capex 年金 + 固定运维
     后反推得到。当省下的化石原料与现有路线运维超过新路线的电费时为负。
 
-    `multiplier` 是情景的 `industry_h2_cost_multiplier`：它缩放的是路线自身的成本（锚点
-    溢价与 capex 一起），从不缩放氢，这样在锚点参考价下，平准化溢价恰为
-    `multiplier x premium_ref`。若只缩放反推出的差额，旋钮会反向（该差额为负）。
+    与情景的 `industry_h2_cost_multiplier` 无关：该乘子只乘路线 capex 与随之的固定运维
+    （与两侧 CCS 的乘子同口径），这个差额固定在乘子为 1 时反推的值。2026-09-23 前乘子也乘
+    这里的路线自身成本，使锚点参考价下的平准化溢价恰为 `multiplier x premium_ref`。
 
     Args:
         sector: `INDUSTRY_SECTORS` 之一，且其 `SECTOR_HAS_H2_ROUTE` 条目为 true。
         h2_intensity_t_per_t: 该 hub 每吨产品所需 H2 的吨数。
         discount_rate: 情景贴现率，用于 capex 年金。
-        multiplier: 作用于路线自身成本的情景成本乘子。
 
     Raises:
         KeyError: 该部门的氢溢价锚点或 capex 尚无出处。
@@ -561,7 +558,7 @@ def h2_route_opex_delta_cny_per_t(
     premium_ref, price_ref = INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
     hydrogen_at_ref = float(h2_intensity_t_per_t) * 1000.0 * float(price_ref)
     own_cost_at_ref = float(premium_ref) - h2_route_annual_capital_cny_per_t(sector, discount_rate)
-    return float(multiplier) * own_cost_at_ref - hydrogen_at_ref
+    return own_cost_at_ref - hydrogen_at_ref
 
 
 def h2_premium_cny_per_t(
@@ -584,11 +581,13 @@ def h2_premium_cny_per_t(
         h2_price_cny_per_kg: 所计价年份的绿氢到厂价。
         h2_intensity_t_per_t: 该 hub 每吨产品所需 H2 的吨数。
         discount_rate: 情景贴现率，用于 capex 年金。
-        multiplier: 情景的 `industry_h2_cost_multiplier`（见 `h2_route_opex_delta_cny_per_t`）。
+        multiplier: 情景的 `industry_h2_cost_multiplier`，只乘路线 capex（年金与固定运维随之）；
+            在锚点参考价下（地板不起作用时）溢价为
+            `premium_ref + (multiplier - 1) x capex x (CRF + 固定运维比例)`。
     """
     capex = h2_route_capex_cny_per_t_yr(sector) * float(multiplier)
     annuity = capex * capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)
     fixed_om = capex * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION
-    opex_delta = h2_route_opex_delta_cny_per_t(sector, h2_intensity_t_per_t, discount_rate, multiplier)
+    opex_delta = h2_route_opex_delta_cny_per_t(sector, h2_intensity_t_per_t, discount_rate)
     hydrogen = float(h2_intensity_t_per_t) * 1000.0 * float(h2_price_cny_per_kg)
     return annuity + max(fixed_om + opex_delta + hydrogen, 0.0)

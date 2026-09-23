@@ -26,7 +26,8 @@
 
 > 回答作者 2026-09-23 提的四个问题。核查基线为 `feature/industrial-sectors` @ 0f8d999，本节同时记录本轮已改的部分：
 > 批 1（工业侧 dataclass 与拆文件、ruff、过时注释与文档、`references.bib`、注释中文化，模型不变）、
-> 批 2（五项模型改动，每项一个提交加 toy 测试，见 `tests/test_capex_stock_and_lifetimes.py`；不求解的放在 `tests/test_discount_rate.py`）、
+> 批 2（五项模型改动，每项一个提交加 toy 测试，见 `tests/test_capex_stock_and_lifetimes.py`；不求解的放在 `tests/test_discount_rate.py`、
+> `tests/test_h2_route_multiplier.py`）、
 > 批 3（无出处参数在代码注释与本节标 `⚠ 假设`，数值不动）。标"未改"的地方要不要统一，由作者决定。
 > 下面的 §1–§11 停在 2026-09-06（v9 基线入库），其中的 `EXP-*` 实验族、`sequential` 模式、成本键名与
 > 规划年份都已过时；`ST_` 系求解树的现状见 [`_indtree/README.md`](_indtree/README.md)。
@@ -41,10 +42,10 @@
 | capex 何时收 | 计在改造存量的增量上：捕集岛存量 `retrofit_installed`（CCS 与 BECCS 共用）单调不减，CCS↔BECCS 切换不重复付钱；掺烧升级、空冷、原址重建同样按增量 | 计在能力存量的增量上：每条路线一个能力存量 K（Mt/yr；CCS 为捕集能力，H2 为产能），K ≥ 份额 × 当年所需能力，跨期单调；capex = 单位 capex × (K_t − K_{t−1}) | `optimization/model_costs.py:189`（`_one_off_capex`）、`optimization/model_year.py:177`、`optimization/model_industry.py:150-159`、`:208`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；运维与能耗按运行份额收，装了就一直付，直到退役 | 路线份额与能力存量都跨期单调（工业没有退役），装了就一直付 | `optimization/model_linking.py:52-73`、`optimization/model_industry.py:178` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44`、`optimization/_shared.py:166` |
-| 固定运维 | 捕集岛：学习后 capex × 5%/年，按改造 MW 计 | CCS：capex × 5%/年；H2 路线：capex × 3.5%/年；都按运行量计 | `optimization/plant_matrices.py:124`、`optimization/industry_matrices.py:176`、`:210` |
+| 固定运维 | 捕集岛：学习后 capex × 5%/年，按改造 MW 计 | CCS：capex × 5%/年；H2 路线：capex × 3.5%/年；都按运行量计 | `optimization/plant_matrices.py:124`、`optimization/industry_matrices.py:176`、`:209` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:138-143` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `optimization/scenario.py:382`、`optimization/industry_matrices.py:133` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`:124`、`optimization/industry_matrices.py:169` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`:124`、`optimization/industry_matrices.py:169`、`:204` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:62`、`optimization/model_costs.py:61-83` |
 | 到寿命后 | 管道到 30 年退出，可在原址重铺；捕集岛、掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集岛、H2 路线同样照常运行 | `optimization/model_linking.py:176-202`；`optimization/salvage.py` 文件头注明为已知简化 |
 
@@ -55,7 +56,7 @@
 | (a) 工业 capex 计费基数 | 计在路线份额的增量上：份额不变时产量增长不付钱（电炉钢 2050 年指数 2.10），萎缩后闲置的已建能力被重复收费 | 计在能力存量的增量上（见上表） |
 | (b) BECCS 的生物质改造 | 捕集岛之上另收 +1 000 元/kW 的"生物质改造增量"（`beccs_retrofit_capex_cny_per_kw` = 4 500），又按掺烧档位收升级 capex，付了两次 | 删掉 +1 000；BECCS 捕集岛的 capex 与固定运维同 CCS，生物质改造只走档位 capex |
 | (c) 管道到寿命 | 每条边的累计新增上限把到寿命的管也算进去：2030 年铺满的边，2060 年管退出后不能再铺 | 累计新增上限、LP 热启动取整、结果表的"铺前存量"都只数在役的管 |
-| (d) 成本乘子 | 煤电乘 capex 与每 MWh 附加项（BECCS 的 30 元/MWh 掺烧运维随之变动），不乘固定运维；工业还乘能耗与耗材 | 两侧都只乘 capex 与随 capex 的固定运维 |
+| (d) 成本乘子 | 煤电乘 capex 与每 MWh 附加项（BECCS 的 30 元/MWh 掺烧运维随之变动），不乘固定运维；工业还乘能耗与耗材；工业 H2 路线的乘子同时乘 capex 与锚点溢价（含反推的非氢运行差额） | 两侧都只乘 capex 与随 capex 的固定运维；H2 路线反推的非氢运行差额固定在乘子为 1 时的值，所以锚点氢价下 m = 2 只让 H2 溢价增加钢铁 25%、合成氨 14%、甲醇 2%（原来 +100%） |
 | (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply.py:92-121` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元）。氨价里占 72–85% 的 LCOH 是外生数据，内含的资本成本率不随情景变 |
 
 对已有结果：(a)(b)(c)(e) 改了目标函数或约束，`_indtree/results/` 里此前落盘的 `ST_` 结果与新代码的求解**不得相减**，需重解；
@@ -76,8 +77,6 @@
    （含购氢）设下限 ≥ 0（`optimization/model_industry.py:113` 起）。
 4. **水费只对煤电收。** 有水约束的情景里，煤电用水按 4.0 元/m³ + 0.05 元/(m³·km) 计费
    （`optimization/model_costs.py:164-168`）；工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
-5. **H2 路线的成本乘子口径与 (d) 不同。** `industry_h2_cost_multiplier` 同时乘路线 capex 与锚点溢价（其中含反推的非氢运行
-   差额），不是"只乘 capex 与固定运维"；是否对齐待作者定。
 
 ### 0.2 各部门、各技术的改造投资有没有来源
 
@@ -161,11 +160,11 @@
 | `src/coal_retrofit/` | 本轮前（0f8d999） | 现在 |
 |---|---|---|
 | 文件数 | 55 | 58（工业侧拆出 3 个） |
-| 中文行 / 英文行 | 449 / 1 610（22%） | 1 854 / 81（96%） |
+| 中文行 / 英文行 | 449 / 1 610（22%） | 1 859 / 81（96%） |
 | 中文为主 / 混合 / 英文为主 / 无注释 | 15 / 3 / 24 / 13 | 45 / 0 / 0 / 13 |
 
 - 剩下的 81 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
-- `tests/`：中文 26 / 英文 105（20%）→ 150 / 5（97%）。
+- `tests/`：中文 26 / 英文 105（20%）→ 158 / 5（97%）。
 - 13 个无注释文件（`experiments/` 全部、`reporting/core.py`、`paths.py`、`spatial.py` 等）没有补注释；
   `scripts/` 与 `_indtree/scripts/` 不在本轮范围，仍约 26–27% 中文。
 
@@ -178,7 +177,7 @@
 - 逐年系数与变量是冻结 dataclass：煤电 `YearData` / `YearPayload`（`optimization/year_types.py`），工业（批 1）
   `IndustryYearData` / `IndustryPayload`。原来工业侧的 `dict[str, Any]` 和两处含义不同的 `annual_cost_cny` 键已去掉。
 - 原 `optimization/industry.py`（664 行）按职责拆为 `industry_inputs.py`（输入与氢链路，183 行）、
-  `industry_matrices.py`（逐年系数，264 行）、`model_industry.py`（变量、约束与 capex 表达式，235 行），
+  `industry_matrices.py`（逐年系数，263 行）、`model_industry.py`（变量、约束与 capex 表达式，235 行），
   `industry.py` 只留模块说明与再导出（104 行）。
 - 结果按表拆为 `results_plant` / `results_network` / `results_resources` / `results_industry`。
 - 批 1 前后，toy 上 15 个变体的模型与解逐字节一致。
@@ -194,10 +193,10 @@
 
 还不清楚的地方（只报告，未改）：
 
-1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 594、`builders/supply.py` 592、
-   `optimization/scenario.py` 567、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
+1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 593、`builders/supply.py` 592、
+   `optimization/scenario.py` 570、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
 2. **≥ 80 行的函数还有 29 个**：最长的是 `build_ammonia_supply_dataframe` 202 行、`build_runtime_network` 188 行、
-   `build_water_availability_dataframe` 163 行；`industry_year_data` 141 行、`_one_off_capex` 111 行也未动。
+   `build_water_availability_dataframe` 163 行；`industry_year_data` 140 行、`_one_off_capex` 111 行也没有拆。
 3. **mypy 剩 173 个错误**，集中在 `builders/network_repair.py`（32）、`optimization/network.py`（19）、
    `optimization/model.py`（14）、`builders/network.py`（13），多为 pandas / gurobipy 存根的标注问题。
 4. **ruff**：`src/` 0 条；`tests/` 19 条 E402（先 `importorskip` 再导入的固定写法）；两棵 `scripts/` 合计 329 条，未动。

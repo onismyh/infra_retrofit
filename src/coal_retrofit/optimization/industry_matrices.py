@@ -198,12 +198,11 @@ def industry_year_data(
         # 按 hub 的全部产量计重建路线的 capex，在其上计固定运维，再加由文献锚点反推的
         # 非氢运行差额（见 `industry.py` 的模块 docstring）。买氢之前的年度部分可以为负
         # （锚点把省下的化石原料计为收益）；求解器里的地板保证 annual + purchase >= 0。
-        # `h2_multiplier` 缩放路线自身的成本（capex 与锚点溢价），从不缩放氢：
-        # 若去缩放反推出的负差额，这个旋钮的作用方向就会反过来。
+        # `h2_multiplier` 只乘路线 capex（固定运维随之），与两侧 CCS 的乘子同口径；不乘氢，也不乘
+        # 反推的非氢运行差额——后者固定在乘子为 1 时的值。2026-09-23 前乘子还乘差额里路线自身的
+        # 成本，使锚点价下的平准化溢价恰为乘子 x 锚点溢价。
         route_capex_unit = h2_route_capex_cny_per_t_yr(sector) * h2_multiplier
-        opex_delta_unit = h2_route_opex_delta_cny_per_t(
-            sector, float(h2_intensity_t_per_t[hub_idx]), rate, h2_multiplier
-        )
+        opex_delta_unit = h2_route_opex_delta_cny_per_t(sector, float(h2_intensity_t_per_t[hub_idx]), rate)
         capacity_mt[hub_idx, H2] = production_t[hub_idx] / 1e6
         capex_cny_per_mt[hub_idx, H2] = route_capex_unit * 1e6
         opex_cny[hub_idx, H2] = production_t[hub_idx] * (

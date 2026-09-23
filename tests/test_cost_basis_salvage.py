@@ -36,9 +36,10 @@ def test_h2_premium_reproduces_its_anchor_and_floors_at_capital(sector: str) -> 
     assert floor > 0.0
     # 对氢价单调。
     assert ci.h2_premium_cny_per_t(sector, 30.0, k, 0.06) >= ci.h2_premium_cny_per_t(sector, 10.0, k, 0.06)
-    # 成本乘数缩放路线自身的成本：在锚点价格下恰为 x 倍，且在任何价格下
-    # 乘数越高都不会更便宜（这个旋钮不得反向）。
-    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06, 1.3) == pytest.approx(1.3 * premium_ref, rel=1e-9)
+    # 成本乘数只乘路线 capex（年金与固定运维随之）：在锚点价格下溢价多出 0.3 x capex x (CRF + 固定运维比例)，
+    # 且在任何价格下乘数越高都不会更便宜（这个旋钮不得反向）。
+    capital = ci.h2_route_annual_capital_cny_per_t(sector, 0.06)
+    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06, 1.3) == pytest.approx(premium_ref + 0.3 * capital, rel=1e-9)
     for price in (0.0, 8.0, 12.4, 20.0, 35.0):
         assert ci.h2_premium_cny_per_t(sector, price, k, 0.06, 1.2) >= ci.h2_premium_cny_per_t(sector, price, k, 0.06)
 
