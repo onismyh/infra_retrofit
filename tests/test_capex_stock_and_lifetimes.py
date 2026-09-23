@@ -3,6 +3,7 @@
 (a) 工业 capex 计在能力存量的增量上，不计在路线份额的增量上。
 (b) BECCS 的捕集岛按 CCS 计价，生物质改造只走掺烧档位 capex，各收一次。
 (c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
+(d) 成本乘子两侧都只乘 capex 与随 capex 的固定运维，不乘能耗、耗材与 BECCS 的掺烧运维。
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import pytest
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
+from coal_retrofit.constants_industry import INDUSTRY_CCS_FIXED_OM_FRACTION  # noqa: E402
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.industry import (  # noqa: E402
@@ -26,6 +28,8 @@ from coal_retrofit.optimization.results_network import _alive_edge_added_stock  
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
+from coal_retrofit.optimization.year_matrices import _build_year_matrices  # noqa: E402
+from coal_retrofit.optimization.year_types import YearData  # noqa: E402
 from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs  # noqa: E402
 
 
@@ -198,3 +202,54 @@ def test_warm_start_reseeds_an_expired_pipe(tmp_path) -> None:
     assert sum(start[2050]) == 0.0
     assert start[2060][five] == 1.0 and sum(start[2060]) == 1.0
     assert model.getVarByName("add_cap_2060[0]").Start == 1.0
+
+
+# ------------------------------------- (d) 成本乘子只乘 capex 与随 capex 的固定运维 ---
+def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
+    """toy 输入上 `year` 年的煤电系数矩阵。"""
+    paths = _write_toy_inputs(root, retirement_year=9999)
+    _write_targets(paths, {2030: 1.0, 2040: 1.0, 2050: 1.0, 2060: 1.0})
+    scenario = OptimizationScenario(
+        experiment_id="TEST-MULT", description="toy", planning_years=(2050, 2060),
+        sector_target_source="toy", **scenario_overrides,
+    )
+    assumptions = OptimizationAssumptions()
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
+    )
+    return _build_year_matrices(prepared, scenario, assumptions, year, state)
+
+
+def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> None:
+    """煤电：乘子 2 使捕集岛 capex 与其固定运维翻倍；能耗惩罚与 BECCS 每 MWh 的掺烧运维
+    （与纯掺烧同为 30 元/MWh）不变。2026-09-23 前固定运维不翻倍，掺烧运维却翻倍。"""
+    base = _toy_year_matrices(tmp_path / "m1", 2050)
+    doubled = _toy_year_matrices(tmp_path / "m2", 2050, ccs_cost_multiplier=2.0)
+    for k in (PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]):
+        assert base.ccs_retrofit_capex_matrix[0, k] > 0.0 and base.ccs_om_matrix[0, k] > 0.0
+        assert base.energy_penalty_matrix[0, k] > 0.0
+        assert doubled.ccs_retrofit_capex_matrix[0, k] == pytest.approx(2.0 * base.ccs_retrofit_capex_matrix[0, k], rel=1e-12)
+        assert doubled.ccs_om_matrix[0, k] == pytest.approx(2.0 * base.ccs_om_matrix[0, k], rel=1e-12)
+        assert doubled.energy_penalty_matrix[0, k] == pytest.approx(base.energy_penalty_matrix[0, k], rel=1e-12)
+    assert base.fixed_cost_matrix[0, PATHWAY_INDEX["beccs"]] > 0.0
+    np.testing.assert_array_equal(doubled.fixed_cost_matrix, base.fixed_cost_matrix)
+
+
+def test_industry_cost_multiplier_leaves_energy_and_consumables_alone() -> None:
+    """工业 CCS：乘子 2 使 capex 与固定运维翻倍；蒸汽、电与耗材按模型价格计，不乘。
+    2026-09-23 前能耗与耗材也翻倍。"""
+    industry = _cement_hub({("cement", 2030): 1.0})
+    assumptions = OptimizationAssumptions()
+    base = industry_year_data(industry, OptimizationScenario(experiment_id="T", description="toy"), assumptions, 2030)
+    doubled = industry_year_data(
+        industry, OptimizationScenario(experiment_id="T", description="toy", industry_cost_multiplier=2.0),
+        assumptions, 2030,
+    )
+    assert doubled.capex_cny_per_mt[0, CCS] == pytest.approx(2.0 * base.capex_cny_per_mt[0, CCS], rel=1e-12)
+    fixed_om = base.capacity_mt_per_share[0, CCS] * base.capex_cny_per_mt[0, CCS] * INDUSTRY_CCS_FIXED_OM_FRACTION
+    energy_and_consumables = float(base.opex_cny[0, CCS]) - fixed_om
+    assert energy_and_consumables > 0.0
+    # 年度成本 = 固定运维 + 能耗与耗材；乘子只让固定运维那一份翻倍。
+    assert doubled.opex_cny[0, CCS] == pytest.approx(2.0 * fixed_om + energy_and_consumables, rel=1e-9)

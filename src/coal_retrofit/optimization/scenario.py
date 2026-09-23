@@ -464,9 +464,12 @@ class OptimizationScenario:
     injectivity_multiplier: float = 1.0
     biomass_supply_multiplier: float = 1.0
     biomass_cost_multiplier: float = 1.0
+    # 煤电捕集成本乘子：只乘捕集岛 capex 与随之的固定运维（`ccs_om_fraction`），不乘能耗惩罚与
+    # BECCS 的掺烧运维（`plant_matrices`）。2026-09-23 前乘的是 capex 与每 MWh 附加项，固定运维不乘。
     ccs_cost_multiplier: float = 1.0
-    # 工业捕集成本乘子：乘捕集 capex（固定运维随之）与每吨捕集的能耗、耗材成本
-    # （`industry_matrices.industry_year_data`）。2026-09-22 起不再乘 ACCA21 平准化成本。
+    # 工业捕集成本乘子：只乘捕集 capex（固定运维随之），不乘每吨捕集的能耗、耗材成本
+    # （`industry_matrices.industry_year_data`），与煤电同口径；2026-09-23 前也乘能耗与耗材。
+    # 2026-09-22 起不再乘 ACCA21 平准化成本。
     industry_cost_multiplier: float = 1.0
     # 工业氢路线溢价。与上面的乘子分开，因为氢锚点带有已知的向下偏差——它是新建对新建的
     # 比较，却套用在现有资本已沉没的存量工厂上——所以其采用量是上界，需要单独的调节参数。

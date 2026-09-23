@@ -49,13 +49,15 @@ def _plant_operating_matrices(
     # 成本基数：退役列保留基线发电量（退役成本按原发电量计），物理量用 generation_by_pathway（退役列为零）。
     generation_cost_basis = generation_by_pathway.copy()
     generation_cost_basis[:, PATHWAY_INDEX["retire"]] = generation
+    # 每 MWh 附加项不乘 `ccs_cost_multiplier`：CCS 为 0，BECCS 的 30 元/MWh 是生物质掺烧运维，
+    # 与纯掺烧相同（2026-09-23 前两项都乘，BECCS 的掺烧运维因此随捕集成本变动）。
     pathway_fixed_costs = np.array(
         [
             assumptions.fixed_cost_cny_per_mwh("unabated"),
             assumptions.fixed_cost_cny_per_mwh("retire"),
-            assumptions.fixed_cost_cny_per_mwh("ccs") * scenario.ccs_cost_multiplier,
+            assumptions.fixed_cost_cny_per_mwh("ccs"),
             assumptions.fixed_cost_cny_per_mwh("biomass"),
-            assumptions.fixed_cost_cny_per_mwh("beccs") * scenario.ccs_cost_multiplier,
+            assumptions.fixed_cost_cny_per_mwh("beccs"),
             assumptions.fixed_cost_cny_per_mwh("ammonia"),
         ],
         dtype=np.float64,
@@ -117,8 +119,9 @@ def _plant_operating_matrices(
     capacity_mw = prepared.plants["total_capacity_mw"].astype(float).to_numpy()
     ccs_retrofit_capex_matrix = capacity_mw[:, None] * ccs_capex_per_mw[None, :]
 
-    # CCS 固定运维 = ccs_om_fraction x 学习后 capex，按改造容量 MW 计（An et al. 2025 SI Table 7），不按 MWh。
-    capture_island_om_per_mw = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * lf * assumptions.ccs_om_fraction
+    # CCS 固定运维 = ccs_om_fraction x 学习后 capex（含成本乘子，随 capex 走），按改造容量 MW 计
+    # （An et al. 2025 SI Table 7），不按 MWh。2026-09-23 前固定运维不乘 `ccs_cost_multiplier`。
+    capture_island_om_per_mw = capture_island_capex_per_mw * assumptions.ccs_om_fraction
     ccs_om_per_mw = np.array([
         0.0,
         0.0,
