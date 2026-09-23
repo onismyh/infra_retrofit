@@ -89,6 +89,11 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
 
 `BASE` 为无水约束基准；`SA_*` 为敏感性。
 
+> **现状（2026-09-22 起）**：情景登记表（`scripts/run_single.py` 及 `_indtree` 副本）只剩
+> `ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`。上面的 `WA_` / `BASE` / `SA_` / seed 命名属于
+> v9 / v9.1 登记表：两棵旧树的树内 `src/` 已于 892c877 删除，复现要在 `892c877^` 的工作副本里、
+> 对应树下运行；`IND_` 系的旧结果要在 `cf073be` 的副本里重画。
+
 ---
 
 ## 二、建模与求解硬约定
@@ -109,6 +114,10 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    生物质与氨的关联矩阵自 2026-09-10 起都已稀疏化，但单个求解仍常驻数 GiB 的 Gurobi 模型，2 路上限继续保留。
 6. **不同输入版本的结果绝不混用**。v7 = 已发布输入版本（35 个合并汇、923 条候选边），
    v8 = 重建版本（103 个汇、连通性修复网络）。跨版本相减是本研究以前出过的事故。
+   仓库根 `inputs/` 至今仍是 v7，`_v91tree` 的管网与之逐字节相同（v9.1 改的是水口径，不是管网）；
+   v9 = `_v9tree` 的 89 汇网络（666 节点 / 2 651 边）；v9.2 = `_indtree/inputs/` 里 2026-09-12 重建的
+   管网（工业点源入网，1 052 节点 / 1 559 边 / 89 汇），`ST_` 系只在它上面求解。
+   `build_runtime_network` 在有源到不了任何汇时直接报错，拦的就是"新代码读到 v7 输入"。
 7. **成本口径（作者决定 2026-09-22）：煤电与工业的每个减排选项都按"改造 capex（一次性，计在存量增量上）
    + 固定运维（capex 的比例/年）+ 能耗按模型自己的煤价与电价"计价，期末对未折旧 capex 计直线残值
    （`salvage_credit`）。不得用平准化每吨捕集成本进目标函数**——动态优化自己决定何时建、跑多久，
@@ -272,10 +281,26 @@ gdf = gdf.to_crs(TARGET_CRS)
 
 ### 4.2 九段线（强制出现）
 
-本仓库 `data/ChinaMap/boundary.shp` **已包含九段线**：`GBCODE == 26100`，261 条线段，
-经纬度范围 111.44–119.71°E / 3.85–23.78°N。
+**出图底图自 2026-09-12 起统一为 `data/ChinaMapTHT/`**（唐昊天 GIS_layer/plot.ipynb 那一套，
+`plot_style.py` 与 `map_tht.py` 共用）：
 
-> ⚠️ **但不要整幅画 `boundary.shp`。** 它的 7 个 GBCODE 语义完全不同（要素数与范围实测）：
+| 函数 | 数据 | 内容 |
+|---|---|---|
+| `load_map_provinces()` | `中华人民共和国.json`（2023 版，含台湾与港澳） | 省界，已剔除 adcode = `100000_JD` 的九段线要素 |
+| `load_dash_line()` | 同上，adcode = `100000_JD` | **九段线**，单独一层，主图和小图都要画 |
+| `load_country()` | `china_country_proj.shp` | 国界：单要素、1 260 个部件，南到 3.83°N |
+| `country_main()` | `load_country()` 中面积 ≥ 1 000 km² 的部件 | 只有大陆、台湾、海南三块，主图用 |
+
+> ⚠️ `load_country()` 为兼容旧调用给每行补了 `GBCODE = 61010`，**这一列不再有旧 `boundary.shp`
+> 的语义**：`country[country["GBCODE"].isin(COUNTRY_GBCODES)]` 选中的是整层 1 260 个部件，
+> 包括 1 257 个小岛（中位 1.1 km²），主图上就是东南海岸一圈黑毛刺。
+> **主图画 `country_main()` + `load_dash_line()`，整层只在南海小图里画**；
+> `draw_china_basemap(islands=False / True)` 已按此实现。
+
+旧的 `data/ChinaMap/boundary.shp` / `provinces.shp` 不再用于出图，但 **builders 仍在读**
+（海岸线距离用 GBCODE 26*，西藏剔除与省份归属用 `provinces.shp`），不得删除。
+
+> `boundary.shp` 的 7 个 GBCODE 语义完全不同（要素数与范围实测）：
 >
 > | GBCODE | 要素数 | 范围 | 是什么 |
 > |---|---|---|---|
@@ -300,7 +325,8 @@ mainland_extent(ax)                           # 范围裁到 17°N，见下方�
 add_scs_inset(ax.get_figure(), ax, draw=业务图层回调)
 ```
 
-`load_country()` 内含断言，换底图后九段线静默消失会直接抛异常。
+`load_country()`（南界须在 5°N 以南）与 `load_dash_line()`（`100000_JD` 要素须存在）内含断言，
+换底图后九段线静默消失会直接抛异常。
 
 > **`provinces.shp` 自身延伸到 6.32°N**（含南海要素），所以 `provinces.total_bounds`
 > 给出的是 6.3–53.6°N 的画框，比大陆高出近 280 km。英文图看不出来（那片什么都不画），
@@ -358,8 +384,8 @@ ax_child = inset_axes(ax, width="30%", height="30%", loc="lower left",
 
 | 图层 | facecolor | edgecolor | linewidth | zorder |
 |---|---|---|---|---|
-| 省界 `provinces.shp` | none | black | 0.20 | 0 |
-| 国界 + 九段线 `boundary.shp` | none | black | 0.75 | 1 |
+| 省界 `load_map_provinces()` | none | black | 0.20 | 0 |
+| 国界 `country_main()`（小图用整层）+ 九段线 `load_dash_line()` | none | black | 0.75 | 1 |
 | 流域 / 分区填充 | 浅色 | none | — | 1 |
 | 管网 / 流量线 | — | 按情景 | `np.sqrt(flow)/scale` | 2–3 |
 | 源点 / 汇点 | 按类别 | white | 0.3 | 4+ |
@@ -383,7 +409,8 @@ with warnings.catch_warnings():
 ```
 
 1. **缺字**：按上面把 glyph 警告升级为异常。
-2. **九段线**：`assert (country["GBCODE"] == 26100).sum() > 0`（§4.2）。
+2. **九段线**：图上画了 `load_dash_line()`（空层会在函数内抛错），主图国界用 `country_main()`，
+   不要再按 `GBCODE` 选国界层（§4.2）。
 3. **图幅宽度**：`save_fig` 内的宽度守卫必须通过；被撑宽通常是 `pad_inches`
    或画到轴外的 artist 造成的，先降 pad，仍超宽再查具体 artist。
 

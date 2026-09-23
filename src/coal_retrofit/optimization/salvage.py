@@ -27,7 +27,7 @@ effects are second order at the fleet level and symmetric between coal and indus
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, Sequence
 
 try:
     import gurobipy as gp
@@ -38,14 +38,22 @@ from ._shared import _discount_factor
 
 if TYPE_CHECKING:  # pragma: no cover
     from .scenario import OptimizationAssumptions, OptimizationScenario
+    from .year_types import YearPayload
 
 logger = logging.getLogger(__name__)
 
 
-def horizon_end_year(year_payloads: list[dict]) -> int:
+class _PlanningPeriod(Protocol):
+    """What `horizon_end_year` reads from a payload."""
+
+    year: int
+    interval_years: int
+
+
+def horizon_end_year(year_payloads: Sequence[_PlanningPeriod]) -> int:
     """Last planning year plus the interval it stands for."""
     last = year_payloads[-1]
-    return int(last["year"]) + int(last["interval_years"])
+    return int(last.year) + int(last.interval_years)
 
 
 def remaining_fraction(build_year: int, life_years: int, end_year: int) -> float:
@@ -56,7 +64,7 @@ def remaining_fraction(build_year: int, life_years: int, end_year: int) -> float
 
 
 def _add_salvage_credit(
-    year_payloads: list[dict],
+    year_payloads: list["YearPayload"],
     scenario: "OptimizationScenario",
     assumptions: "OptimizationAssumptions",
     cost_scale: float,
@@ -71,18 +79,18 @@ def _add_salvage_credit(
         cost_scale: The solver's objective scale (`_COST_SCALE`), applied to the credit as
             to every other cost expression.
     """
-    if not bool(getattr(assumptions, "end_of_horizon_salvage", True)):
+    if not bool(assumptions.end_of_horizon_salvage):
         return  # objective_expr already assembled without the key
     if gp is None:  # pragma: no cover
         raise ImportError("gurobipy is required to build the salvage credit")
     for payload in year_payloads:
-        payload["cost_exprs"]["salvage_credit"] = 0.0
+        payload.cost_exprs["salvage_credit"] = 0.0
     end_year = horizon_end_year(year_payloads)
     df_end = _discount_factor(end_year, scenario.discount_base_year, scenario.discount_rate)
     terms = []
     for payload in year_payloads:
-        build_year = int(payload["year"])
-        for name, expr, life in payload.get("salvage_ledger", []):
+        build_year = int(payload.year)
+        for name, expr, life in payload.salvage_ledger:
             frac = remaining_fraction(build_year, life, end_year)
             if frac <= 0.0:
                 continue
@@ -92,7 +100,7 @@ def _add_salvage_credit(
                 continue  # builder returned 0.0: nothing of this kind can be built this year
             terms.append(frac * expr)
     if terms:
-        year_payloads[-1]["cost_exprs"]["salvage_credit"] = -df_end * gp.quicksum(terms) / float(cost_scale)
+        year_payloads[-1].cost_exprs["salvage_credit"] = -df_end * gp.quicksum(terms) / float(cost_scale)
     for payload in year_payloads:
-        payload["objective_expr"] = gp.quicksum(list(payload["cost_exprs"].values()))
+        payload.objective_expr = gp.quicksum(list(payload.cost_exprs.values()))
     logger.info("salvage credit at horizon end %d (df=%.4f) on %d capex items", end_year, df_end, len(terms))

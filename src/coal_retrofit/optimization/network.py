@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import networkx as nx
 import numpy as np
 import pandas as pd
 
-from ..constants import NETWORK_DETOUR_FACTOR, NETWORK_DIRECT_SINK_TOP_K
+from ..constants import NETWORK_DETOUR_FACTOR
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
@@ -144,6 +145,34 @@ def _append_runtime_edge(
     )
 
 
+def _require_sources_reach_sinks(
+    graph: nx.Graph, sources: dict[str, str], sinks: set[str], inputs_dir: Path
+) -> None:
+    """每个参与求解的源（煤电 + 工业）都必须沿候选网络到达至少一个汇，否则报错。
+
+    builders 建网时已对每个源做过这项检查（`builders.network_repair._unreached_terminals`）。运行期
+    再查一次，拦的是代码与管网输入不配套：2026-09-12 之前的管网（例如仓库根的 v7 输入，
+    35 汇 / 923 边）不含工业节点；运行期直连弧去掉后，挂上去的工业点源会有一批到不了任何汇，
+    CCS 通路静默不可行，求解却照常完成。
+
+    Args:
+        graph: 含运行期接入边的完整候选网络。
+        sources: 标签（如 "industry H012"）-> 节点 ID。
+        sinks: 参与求解的封存汇节点 ID。
+        inputs_dir: 管网输入目录，只用于报错信息。
+    """
+    component = {node: i for i, part in enumerate(nx.connected_components(graph)) for node in part}
+    with_sink = {component[s] for s in sinks if s in component}
+    stranded = sorted(label for label, node in sources.items() if component.get(node) not in with_sink)
+    if stranded:
+        more = " …" if len(stranded) > 6 else ""
+        raise ValueError(
+            f"{len(stranded)} 个参与求解的源到不了任何封存汇（{', '.join(stranded[:6])}{more}）。"
+            f"{inputs_dir} 的管网多半不是本代码对应的版本：2026-09-12 重建后的管网把工业点源作为 "
+            "industry_hub 节点收进 pipeline_nodes.csv，并保证每个源都可达；仓库根的 v7 输入不满足这一点。"
+        )
+
+
 def build_runtime_network(
     paths: ProjectPaths,
     plants: pd.DataFrame,
@@ -264,6 +293,18 @@ def build_runtime_network(
                 ignore_index=True,
             )
             existing_industry_nodes[str(row.hub_id)] = runtime_node_id
+
+    solved_sources = {f"plant {pid}": existing_plant_nodes[pid] for pid in plants["plant_id"].astype(str)}
+    if industry_hubs is not None and len(industry_hubs):
+        solved_sources.update(
+            {f"industry {hid}": existing_industry_nodes[hid] for hid in industry_hubs["hub_id"].astype(str)}
+        )
+    _require_sources_reach_sinks(
+        graph,
+        sources=solved_sources,
+        sinks={existing_storage_nodes[sid] for sid in storages["storage_hub_id"].astype(str)},
+        inputs_dir=paths.inputs_dir,
+    )
 
     edges = base_edges.copy()
     if "capex_multiplier" not in edges.columns:

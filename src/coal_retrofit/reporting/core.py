@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import pandas as pd
 
@@ -347,7 +347,6 @@ def collect_results_summary(results_path: Path) -> ResultsSummary:
         lower_name = path.name.lower()
         lower_parent = path.parent.name.lower()
         matches_sanity = any(hint in lower_name or hint in lower_parent for hint in SANITY_NAME_HINTS)
-        matches_sensitivity = any(hint in lower_name or hint in lower_parent for hint in SENSITIVITY_NAME_HINTS)
 
         if _is_text_like(path) and matches_sanity:
             text = _load_text(path)
@@ -393,7 +392,7 @@ def collect_results_summary(results_path: Path) -> ResultsSummary:
 
 def render_results_markdown(summary: ResultsSummary) -> str:
     lines: list[str] = []
-    lines.append(f"# Results Summary")
+    lines.append("# Results Summary")
     lines.append("")
     lines.append(f"Source directory: `{summary.root.as_posix()}`")
     lines.append("")

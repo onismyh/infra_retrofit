@@ -159,7 +159,7 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             year_solution.get("air_share"),
         ))
         industry_detail_tables.append(_build_industry_detail_table(
-            prepared, year, year_data.get("industry"), year_solution.get("industry_share")
+            prepared, year, year_data.industry, year_solution.get("industry_share")
         ))
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, year_solution["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, year_solution["ammonia_flow_kg"], prepared.plants))

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,7 @@ def _water_available_by_node(
 
     frame = prepared.water_availability
     frame = frame[frame["planning_year"].astype(int) == int(year)]
-    wanted = str(getattr(scenario, "water_scenario_id", "") or "")
+    wanted = str(scenario.water_scenario_id or "")
     if wanted:
         frame = frame[frame["scenario_id"].astype(str) == wanted]
         if frame.empty:
@@ -52,7 +53,7 @@ def _water_available_by_node(
             logger.info("water: family %s has %d members; using %s", family, len(members), members[0])
         frame = frame[frame["scenario_id"].astype(str) == members[0]]
 
-    season = str(getattr(scenario, "water_season", "annual")).lower()
+    season = str(scenario.water_season).lower()
     column = "dry_season_water_m3_per_year" if season == "dry" else "available_water_m3_per_year"
     if column not in frame.columns:
         logger.warning("water: column %s missing, falling back to annual mean", column)
@@ -60,14 +61,14 @@ def _water_available_by_node(
 
     lookup = frame.set_index("water_node_id")[column].to_dict()
     # 偏差校正已烘进可用量列；`bias_factor` 是乘性因子，关掉时精确除回（只改水平不改季节性）。
-    if not float(getattr(assumptions, "apply_bias_correction", True)):
+    if not float(assumptions.apply_bias_correction):
         bias = frame.set_index("water_node_id")["bias_factor"].to_dict()
         lookup = {
             node_id: val / bias.get(str(node_id), 1.0)
             for node_id, val in lookup.items()
             if float(bias.get(str(node_id), 1.0)) > 0
         }
-    if str(getattr(assumptions, "water_budget", "runoff")) == "official_quota":
+    if str(assumptions.water_budget) == "official_quota":
         usable = WATER_EXTRACTABLE_FRACTION
     else:
         usable = WATER_EXTRACTABLE_FRACTION * (1.0 - float(assumptions.existing_withdrawal_share))
@@ -93,11 +94,11 @@ def _withdrawal_matrices(
     """
     from ..builders.water_quota import calibrated_withdrawal_intensities
 
-    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+    if str(assumptions.water_budget) != "official_quota":
         return None, None, 1.0
     if scenario.water_mode == "no_water":
         return None, None, 1.0
-    if not bool(getattr(assumptions, "apply_basin_cap", True)):
+    if not bool(assumptions.apply_basin_cap):
         return None, None, 1.0
 
     plants = prepared.plants
@@ -149,11 +150,11 @@ def _basin_cap_data(
 
     机组按所在地 `plants.basin_code` 归流域（取水许可按此发放），不按取水节点所在流域。
     """
-    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+    if str(assumptions.water_budget) != "official_quota":
         return None, None, []
     if scenario.water_mode == "no_water":
         return None, None, []
-    if not bool(getattr(assumptions, "apply_basin_cap", True)):
+    if not bool(assumptions.apply_basin_cap):
         logger.info("water: official-quota budget with the basin cap OFF (environmental flow only)")
         return None, None, []
 
@@ -176,7 +177,7 @@ def _basin_cap_data(
     return membership, residual, codes
 
 
-def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int) -> dict[str, object]:
+def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int) -> dict[str, Any]:
     """水链路关联矩阵、按计量水量定价的链路成本、节点可用量（缩放单位）。"""
     from ..constants import WATER_FLOW_SCALE
     nodes = prepared.water_nodes.copy().reset_index(drop=True)

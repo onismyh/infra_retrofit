@@ -64,9 +64,9 @@ from matplotlib.patches import Patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_style import (  # noqa: E402
     apply_style,
-    load_country,
+    country_main,
+    load_dash_line,
     load_map_provinces,
-    COUNTRY_GBCODES,
     add_scs_inset,
     mainland_extent,
     to_map_xy,
@@ -481,9 +481,9 @@ def panel_a(fig, ax, cax, legend_anchor, counts: pd.Series, capacity: pd.Series,
     basins.plot(ax=ax, facecolor="#F1F3F5", edgecolor="none", zorder=0)
     # 省界只给一点地理骨架，细到几乎看不见即可。
     load_map_provinces().boundary.plot(ax=ax, linewidth=0.13, edgecolor="#DFE3E7", zorder=1)
-    _country = load_country()
-    _country[_country["GBCODE"].isin(COUNTRY_GBCODES)].plot(
-        ax=ax, facecolor="none", edgecolor="#3D4348", linewidth=0.45, zorder=1.5)
+    # 国界只画大陆 / 台湾 / 海南三块，九段线单独一层；岛礁留给南海小图（同 draw_china_basemap）。
+    country_main().plot(ax=ax, facecolor="none", edgecolor="#3D4348", linewidth=0.45, zorder=1.5)
+    load_dash_line().plot(ax=ax, facecolor="none", edgecolor="#3D4348", linewidth=0.45, zorder=1.6)
 
     core_set = set(core)
     # 分档边界放在半整数上（(k-0.5)/n），一档对应一个可达到的计数。

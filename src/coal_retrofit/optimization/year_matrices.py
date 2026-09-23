@@ -1,14 +1,17 @@
 """组装单个规划年的全部系数：厂侧矩阵、资源与水链路、管网边系数、封存注入速率、部门上限。"""
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
-from ._shared import PreparedInputs, SolveState
+from ._shared import PATHWAY_INDEX, PreparedInputs, SolveState
 from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _water_intensity_matrices
 from .resource_access import _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matrices
+from .year_types import YearData
 
 
 def _offshore_edge_mask(prepared: PreparedInputs) -> np.ndarray:
@@ -48,7 +51,7 @@ def _edge_capex_multiplier(edge_class: str, existing_flag: int, assumptions: Opt
 
 def _edge_matrices(
     prepared: PreparedInputs, assumptions: OptimizationAssumptions, state: SolveState
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """管网边：存量与可新增容量、各管径档单根 capex、运输运维系数（均含海上倍率）。"""
     edge_base_stock = (
         prepared.network.edges["existing_corridor_flag"].fillna(0).astype(float).to_numpy() * assumptions.existing_corridor_capacity_mtpa
@@ -98,7 +101,7 @@ def _build_year_matrices(
     assumptions: OptimizationAssumptions,
     year: int,
     state: SolveState,
-) -> dict[str, object]:
+) -> YearData:
     biomass_hub_membership, biomass_node_membership, biomass_available, biomass_link_costs, biomass_flow_scale = _biomass_access_matrices(prepared, assumptions)
     from .industry import basin_membership as _industry_basin_membership
     from .industry import industry_year_data
@@ -141,52 +144,60 @@ def _build_year_matrices(
     sector_cap_fraction: dict[str, float] = {
         str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
     }
+    # 改造存量的 capex 系数：列 0 捕集岛按 CCS capex，列 1 BECCS 增量按 (BECCS - CCS) capex（见 `model_year`）。
+    capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
+    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
+    retrofit_stock_capex = np.column_stack([
+        capex_matrix[:, ccs_k],
+        np.maximum(0.0, capex_matrix[:, beccs_k] - capex_matrix[:, ccs_k]),
+    ])
 
-    return {
+    return YearData(
         **{k: v for k, v in plant.items() if k not in ("generation_cost_basis", "coal_price_per_plant")},
-        "carbon_price": scenario.carbon_price_for_year(year),
-        "coal_savings_per_gj": coal_savings_per_gj,
-        "coal_savings_per_kg_nh3": coal_savings_per_kg_nh3,
-        "storage_injectivity_mtpa": storage_injectivity_mtpa,
-        "storage_deployment_fraction": float(assumptions.storage_deployment_fraction(int(year))),
-        "sector_cap_fraction": sector_cap_fraction,
-        "industry_h2_links": industry_h2_data["links"],
-        "industry_h2_hub_membership": industry_h2_data["hub_membership"],
-        "industry_h2_node_membership": industry_h2_data["node_membership"],
-        "industry_h2_link_cost_cny_per_kg": industry_h2_data["link_cost_cny_per_kg"],
-        "biomass_link_hub_membership": biomass_hub_membership,
-        "biomass_link_node_membership": biomass_node_membership,
-        "biomass_available": biomass_available,
-        "biomass_link_cost_cny_per_gj": biomass_link_costs,
-        "biomass_flow_scale": biomass_flow_scale,
-        "biomass_nodes": prepared.biomass[["biomass_node_id", "province_name"]].copy(),
-        "ammonia_year": int(ammonia_data["year"]),
-        "ammonia_nodes": ammonia_data["nodes"][["ammonia_node_id", "province_name"]].copy() if not ammonia_data["nodes"].empty else pd.DataFrame(columns=["ammonia_node_id", "province_name"]),
-        "ammonia_links": ammonia_data["links"],
-        "ammonia_link_hub_membership": ammonia_data["hub_membership"],
-        "ammonia_link_node_membership": ammonia_data["node_membership"],
-        "ammonia_available_kg": ammonia_data["available_kg"],
-        "ammonia_link_cost_cny_per_kg": ammonia_data["link_cost_cny_per_kg"],
-        "water_nodes": water_data["nodes"],
-        "water_links": water_data["links"],
-        "water_link_hub_membership": water_data["hub_membership"],
-        "water_link_node_membership": water_data["node_membership"],
-        "water_available_m3": water_data["available_m3"],
-        "water_link_cost_cny_per_m3": water_data["link_cost_cny_per_m3"],
-        "water_intensity": water_intensity,
-        "air_water_intensity": air_water_intensity,
-        "withdrawal_intensity": withdrawal_intensity,
-        "air_withdrawal_intensity": air_withdrawal_intensity,
-        "once_through_calibration": once_through_factor,
-        "water_basin_membership": basin_membership,
-        "water_basin_available_m3": basin_residual,
-        "water_basin_codes": basin_codes,
-        "industry": industry_payload,
+        retrofit_stock_capex=retrofit_stock_capex,
+        carbon_price=scenario.carbon_price_for_year(year),
+        coal_savings_per_gj=coal_savings_per_gj,
+        coal_savings_per_kg_nh3=coal_savings_per_kg_nh3,
+        storage_injectivity_mtpa=storage_injectivity_mtpa,
+        storage_deployment_fraction=float(assumptions.storage_deployment_fraction(int(year))),
+        sector_cap_fraction=sector_cap_fraction,
+        industry_h2_links=industry_h2_data["links"],
+        industry_h2_hub_membership=industry_h2_data["hub_membership"],
+        industry_h2_node_membership=industry_h2_data["node_membership"],
+        industry_h2_link_cost_cny_per_kg=industry_h2_data["link_cost_cny_per_kg"],
+        biomass_link_hub_membership=biomass_hub_membership,
+        biomass_link_node_membership=biomass_node_membership,
+        biomass_available=biomass_available,
+        biomass_link_cost_cny_per_gj=biomass_link_costs,
+        biomass_flow_scale=biomass_flow_scale,
+        biomass_nodes=prepared.biomass[["biomass_node_id", "province_name"]].copy(),
+        ammonia_year=int(ammonia_data["year"]),
+        ammonia_nodes=ammonia_data["nodes"][["ammonia_node_id", "province_name"]].copy() if not ammonia_data["nodes"].empty else pd.DataFrame(columns=["ammonia_node_id", "province_name"]),
+        ammonia_links=ammonia_data["links"],
+        ammonia_link_hub_membership=ammonia_data["hub_membership"],
+        ammonia_link_node_membership=ammonia_data["node_membership"],
+        ammonia_available_kg=ammonia_data["available_kg"],
+        ammonia_link_cost_cny_per_kg=ammonia_data["link_cost_cny_per_kg"],
+        water_nodes=water_data["nodes"],
+        water_links=water_data["links"],
+        water_link_hub_membership=water_data["hub_membership"],
+        water_link_node_membership=water_data["node_membership"],
+        water_available_m3=water_data["available_m3"],
+        water_link_cost_cny_per_m3=water_data["link_cost_cny_per_m3"],
+        water_intensity=water_intensity,
+        air_water_intensity=air_water_intensity,
+        withdrawal_intensity=withdrawal_intensity,
+        air_withdrawal_intensity=air_withdrawal_intensity,
+        once_through_calibration=once_through_factor,
+        water_basin_membership=basin_membership,
+        water_basin_available_m3=basin_residual,
+        water_basin_codes=basin_codes,
+        industry=industry_payload,
         # (n_basins, n_industry_hubs)，与 `water_basin_membership` 分开：求解器用 flatnonzero 把后者转成厂索引，
         # 共用索引空间会让 hub 索引被当成厂索引而不报错。
-        "industry_basin_membership": industry_basin_membership,
+        industry_basin_membership=industry_basin_membership,
         **air,
-        "ammonia_flow_scale": ammonia_data.get("ammonia_flow_scale", 1.0),
-        "water_flow_scale": water_data.get("water_flow_scale", 1.0),
+        ammonia_flow_scale=ammonia_data.get("ammonia_flow_scale", 1.0),
+        water_flow_scale=water_data.get("water_flow_scale", 1.0),
         **edges,
-    }
+    )

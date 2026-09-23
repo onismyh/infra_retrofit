@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -164,7 +165,7 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
 
 def _ammonia_access_data(
     prepared: PreparedInputs, year: int, assumptions: OptimizationAssumptions
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """煤电侧 `year` 的氨链路：稀疏关联矩阵、到厂成本、按部署进度缩放的节点供给。"""
     from ..constants import AMMONIA_FLOW_SCALE
     source_year = _nearest_year(year, prepared.available_ammonia_years)
@@ -220,7 +221,7 @@ def _industry_h2_access_data(
     year: int,
     assumptions: OptimizationAssumptions,
     ammonia_nodes: pd.DataFrame,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """工业氢链路：与煤电氨共用节点。氢流量按缩放 kg 计；链路成本 = 节点 LCOH + 管束车运输。"""
     from ..constants import AMMONIA_FLOW_SCALE
 

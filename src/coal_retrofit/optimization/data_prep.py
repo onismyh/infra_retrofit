@@ -104,7 +104,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     # location rather than by the basin of the node a hub draws from, because that is how the
     # withdrawal permit is issued. Computed once here: it is a spatial join, and redoing it per
     # planning year per scenario would cost more than the whole rest of the preparation.
-    if str(getattr(assumptions, "water_budget", "runoff")) == "official_quota":
+    if str(assumptions.water_budget) == "official_quota":
         from ..builders.water import _assign_basin_codes
 
         located = plants.rename(columns={"centroid_latitude": "latitude",
@@ -115,7 +115,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
 
 def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumptions) -> pd.DataFrame:
     """Official 用水总量控制指标 per basin per planning year; empty unless that budget is on."""
-    if str(getattr(assumptions, "water_budget", "runoff")) != "official_quota":
+    if str(assumptions.water_budget) != "official_quota":
         return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
     path = paths.inputs_dir / "water_basin_caps.csv"
     if not path.exists():
@@ -387,5 +387,6 @@ def prepare_inputs(
         industry=industry,
         sector_targets=sector_targets,
         industry_h2_links=industry_h2_links,
+        inputs_dir=paths.inputs_dir,
     )
 

@@ -9,8 +9,6 @@ import numpy as np
 import rasterio
 from rasterio.features import rasterize
 
-from .constants import NETWORK_COORD_DECIMALS
-
 try:
     from pyproj import Geod
 except ImportError:  # pragma: no cover
@@ -67,13 +65,6 @@ def geometry_parts(geom) -> list:
     if geom.geom_type == "MultiLineString":
         return list(geom.geoms)
     raise ValueError(f"Unsupported geometry type: {geom.geom_type}")
-
-
-def round_coord(coord: tuple[float, float]) -> tuple[float, float]:
-    return (
-        round(float(coord[0]), NETWORK_COORD_DECIMALS),
-        round(float(coord[1]), NETWORK_COORD_DECIMALS),
-    )
 
 
 def geodesic_length_km(coords: Iterable[tuple[float, float]]) -> float:

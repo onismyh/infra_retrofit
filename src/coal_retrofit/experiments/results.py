@@ -3,11 +3,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 import csv
 import json
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from .registry import ExperimentDefinition
+    from .scenario import ScenarioRunContext
 
 
 def _json_default(value: Any) -> Any:

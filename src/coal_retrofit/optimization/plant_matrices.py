@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from ._shared import PATHWAY_INDEX, PreparedInputs
@@ -15,7 +17,7 @@ def _plant_operating_matrices(
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
     year: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex 与运维、搁浅资产。"""
     # 本年利用小时：`annual_generation_mwh` 是当前省级统计，按情景小时轨迹逐年缩放，
     # 发电、基线排放与每 MWh 成本同步移动。
@@ -205,8 +207,8 @@ def _air_cooling_matrices(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
-    plant: dict[str, object],
-) -> dict[str, object]:
+    plant: dict[str, Any],
+) -> dict[str, Any]:
     """湿冷→空冷改造：capex、背压能耗的排放/捕集/燃料成本矩阵，都只按仍湿冷的份额计。
 
     `air_share` 是按全空冷强度计价的发电份额，驱到 1 只转换仍湿冷的部分（基线强度已混入现有空冷），

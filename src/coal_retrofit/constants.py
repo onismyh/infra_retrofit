@@ -53,14 +53,11 @@ NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
 NH3_HB_CAPEX_DISCOUNT_RATE = 0.08
 NH3_HB_CAPEX_LIFETIME_YEARS = 20
 AMMONIA_NODE_AGGREGATION_DEGREES = 0.5
-AMMONIA_LINK_TOP_K = 20
 
-# Runtime grid coarsening (applied in data_prep before plant matching)
-BIOMASS_COARSE_GRID_DEGREES = 1.0    # coarsen from 0.25° to 1.0°
-AMMONIA_COARSE_GRID_DEGREES = 2.0    # coarsen from 0.5° to 2.0°
+# Water-grid coarsening, applied once when the inputs are built
+# (`builders.water.write_water_inputs` -> `coarsen_water_inputs`), never at solve time.
 WATER_COARSE_GRID_DEGREES = 2.0      # coarsen from 0.5° to 2.0°
 
-WATER_LINK_TOP_K = 4
 WATER_MATCH_BUFFER_KM = 200.0  # 200km water supply radius
 # BIBLIOGRAPHY KEY: richter2012. A presumptive environmental-flow standard: protecting 80%
 # of daily flows maintains ecological integrity, so 20% is notionally extractable. Applied

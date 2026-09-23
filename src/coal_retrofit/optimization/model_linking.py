@@ -5,11 +5,12 @@ import numpy as np
 
 from ._shared import PATHWAY_INDEX, SolveState, gp
 from .scenario import OptimizationAssumptions, OptimizationScenario
+from .year_types import YearPayload
 
 
 def add_inter_period_constraints(
     model,
-    year_payloads: list[dict[str, object]],
+    year_payloads: list[YearPayload],
     scenario: OptimizationScenario,
     plant_count: int,
     edge_count: int,
@@ -23,11 +24,11 @@ def add_inter_period_constraints(
         n_opts_b = len(scenario.biomass_blend_levels) + 1
         n_opts_a = len(scenario.ammonia_blend_levels) + 1
         for yi in range(1, len(year_payloads)):
-            sel_b_curr = year_payloads[yi]["select_b"]
-            sel_b_prev = year_payloads[yi - 1]["select_b"]
-            sel_a_curr = year_payloads[yi]["select_a"]
-            sel_a_prev = year_payloads[yi - 1]["select_a"]
-            year_sfx = str(year_payloads[yi]["year"])
+            sel_b_curr = year_payloads[yi].select_b
+            sel_b_prev = year_payloads[yi - 1].select_b
+            sel_a_curr = year_payloads[yi].select_a
+            sel_a_prev = year_payloads[yi - 1].select_a
+            year_sfx = str(year_payloads[yi].year)
             for p in range(plant_count):
                 cdf_b_curr = gp.LinExpr()
                 cdf_b_prev = gp.LinExpr()
@@ -45,7 +46,7 @@ def add_inter_period_constraints(
     # 工业减排不可逆。
     if len(year_payloads) > 1:
         add_industry_monotonicity(
-            model, [payload["industry"] for payload in year_payloads], industry_hub_count,
+            model, [payload.industry for payload in year_payloads], industry_hub_count,
         )
 
     # 退役单调：退了不能重启。捕集份额锁定：捕集岛投运后持续运行，份额只能通过退役离开捕集路径
@@ -54,9 +55,9 @@ def add_inter_period_constraints(
     ccs_idx, beccs_idx = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
-            share_curr = year_payloads[yi]["share"]
-            share_prev = year_payloads[yi - 1]["share"]
-            yr_sfx = str(year_payloads[yi]["year"])
+            share_curr = year_payloads[yi].share
+            share_prev = year_payloads[yi - 1].share
+            yr_sfx = str(year_payloads[yi].year)
             model.addConstrs(
                 (share_curr[p, retire_idx] >= share_prev[p, retire_idx] for p in range(plant_count)),
                 name=f"retire_mono_{yr_sfx}",
@@ -74,9 +75,9 @@ def add_inter_period_constraints(
     # 管道建成不可逆。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
-            be_curr = year_payloads[yi]["build_edge"]
-            be_prev = year_payloads[yi - 1]["build_edge"]
-            yr_sfx = str(year_payloads[yi]["year"])
+            be_curr = year_payloads[yi].build_edge
+            be_prev = year_payloads[yi - 1].build_edge
+            yr_sfx = str(year_payloads[yi].year)
             model.addConstrs(
                 (be_curr[e] >= be_prev[e] for e in range(edge_count)),
                 name=f"build_irreversible_{yr_sfx}",
@@ -84,11 +85,11 @@ def add_inter_period_constraints(
 
     # build_edge[e,t] = 1 当且仅当 t 或之前某期 add_cap 置 1。
     for yi, payload in enumerate(year_payloads):
-        yr_sfx = str(payload["year"])
+        yr_sfx = str(payload.year)
         model.addConstrs(
             (
-                payload["build_edge"][edge_idx]
-                <= gp.quicksum(year_payloads[pi]["add_cap"][edge_idx] for pi in range(yi + 1))
+                payload.build_edge[edge_idx]
+                <= gp.quicksum(year_payloads[pi].add_cap[edge_idx] for pi in range(yi + 1))
                 for edge_idx in range(edge_count)
             ),
             name=f"build_flag_tie_{yr_sfx}",
@@ -97,9 +98,9 @@ def add_inter_period_constraints(
     # 原址重建不可逆。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
-            rb_curr = year_payloads[yi]["rebuild"]
-            rb_prev = year_payloads[yi - 1]["rebuild"]
-            yr_sfx = str(year_payloads[yi]["year"])
+            rb_curr = year_payloads[yi].rebuild
+            rb_prev = year_payloads[yi - 1].rebuild
+            yr_sfx = str(year_payloads[yi].year)
             model.addConstrs(
                 (rb_curr[p] >= rb_prev[p] for p in range(plant_count)),
                 name=f"rebuild_irreversible_{yr_sfx}",
@@ -108,9 +109,9 @@ def add_inter_period_constraints(
     # 改造存量单调：已装 CCS/BECCS 改造容量不可逆。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
-            ri_curr = year_payloads[yi]["retrofit_installed"]
-            ri_prev = year_payloads[yi - 1]["retrofit_installed"]
-            yr_sfx = str(year_payloads[yi]["year"])
+            ri_curr = year_payloads[yi].retrofit_installed
+            ri_prev = year_payloads[yi - 1].retrofit_installed
+            yr_sfx = str(year_payloads[yi].year)
             for j in range(ri_curr.shape[1]):
                 model.addConstrs(
                     (ri_curr[p, j] >= ri_prev[p, j] for p in range(plant_count)),
@@ -120,8 +121,8 @@ def add_inter_period_constraints(
 
 def add_capacity_constraints(
     model,
-    payload: dict[str, object],
-    year_payloads: list[dict[str, object]],
+    payload: YearPayload,
+    year_payloads: list[YearPayload],
     year_position: int,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
@@ -132,16 +133,16 @@ def add_capacity_constraints(
     storage_count: int,
 ) -> None:
     """一年的管道新增/流量容量与封存累计容量约束。"""
-    year_suffix = str(payload["year"])
-    build_edge = payload["build_edge"]
-    add_cap = payload["add_cap"]
-    pipe_count = payload["pipe_count"]
-    new_cap_mtpa = payload["new_cap_mtpa"]
-    edge_flow_mtpa = payload["edge_flow_mtpa"]
-    edge_slack_mtpa = payload["edge_slack_mtpa"]
-    storage_use_mtpa = payload["storage_use_mtpa"]
-    storage_slack_mt = payload["storage_slack_mt"]
-    interval_years = int(payload["interval_years"])
+    year_suffix = str(payload.year)
+    build_edge = payload.build_edge
+    add_cap = payload.add_cap
+    pipe_count = payload.pipe_count
+    new_cap_mtpa = payload.new_cap_mtpa
+    edge_flow_mtpa = payload.edge_flow_mtpa
+    edge_slack_mtpa = payload.edge_slack_mtpa
+    storage_use_mtpa = payload.storage_use_mtpa
+    storage_slack_mt = payload.storage_slack_mt
+    interval_years = int(payload.interval_years)
     n_tiers = int(pipe_count.shape[1])
     edge_buildable = (edge_max_new_total > 1e-9).astype(float)
 
@@ -172,17 +173,17 @@ def add_capacity_constraints(
         name=f"edge_add_implies_build_{year_suffix}",
     )
 
-    current_year = int(payload["year"])
+    current_year = int(payload.year)
     lifetime = assumptions.pipeline_lifetime_years
     if scenario.carry_state_between_years:
         # 只累计仍在寿命内的往期新增容量。
         alive_indices = [
             past_idx for past_idx in range(year_position + 1)
-            if current_year - int(year_payloads[past_idx]["year"]) < lifetime
+            if current_year - int(year_payloads[past_idx].year) < lifetime
         ]
         model.addConstrs(
             (
-                gp.quicksum(year_payloads[pi]["new_cap_mtpa"][edge_idx] for pi in range(year_position + 1))
+                gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in range(year_position + 1))
                 <= edge_max_new_total[edge_idx]
                 for edge_idx in range(edge_count)
             ),
@@ -192,7 +193,7 @@ def add_capacity_constraints(
             (
                 edge_flow_mtpa[edge_idx]
                 <= edge_base_stock[edge_idx]
-                + gp.quicksum(year_payloads[pi]["new_cap_mtpa"][edge_idx] for pi in alive_indices)
+                + gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
                 + edge_slack_mtpa[edge_idx]
                 for edge_idx in range(edge_count)
             ),
@@ -201,7 +202,7 @@ def add_capacity_constraints(
         model.addConstrs(
             (
                 gp.quicksum(
-                    year_payloads[past_idx]["storage_use_mtpa"][storage_idx] * int(year_payloads[past_idx]["interval_years"])
+                    year_payloads[past_idx].storage_use_mtpa[storage_idx] * int(year_payloads[past_idx].interval_years)
                     for past_idx in range(year_position + 1)
                 )
                 <= float(state.remaining_storage_mt[storage_idx]) + storage_slack_mt[storage_idx]

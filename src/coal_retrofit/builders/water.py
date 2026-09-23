@@ -116,17 +116,6 @@ def _clean_series(series: np.ndarray, fill_value: float | None) -> np.ndarray:
     return data
 
 
-def _annualized_window_value(series: np.ndarray, years: np.ndarray, window: tuple[int, int]) -> float:
-    start_year, end_year = window
-    mask = (years >= start_year) & (years <= end_year)
-    if not mask.any():
-        return float("nan")
-    window_values = series[mask]
-    if not np.isfinite(window_values).any():
-        return float("nan")
-    return float(np.nanmean(window_values) * SECONDS_PER_YEAR)
-
-
 def _representative_scenario_rows(scenarios: pd.DataFrame) -> dict[str, pd.Series]:
     baseline_candidates = scenarios[scenarios["ssp"] == "ssp126"].sort_values(["hydrology_model", "gcm"]).reset_index(drop=True)
     if baseline_candidates.empty:

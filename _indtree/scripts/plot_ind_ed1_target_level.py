@@ -68,6 +68,19 @@ IDLE_C = "#C8CDD2"
 GRID = "#E4E7EA"
 
 
+def _require_registered(runs) -> None:
+    """IND_ 系已下线：明确停下并说明怎么重画旧图，而不是在读登记表时抛 KeyError。"""
+    from run_single import EXPERIMENTS
+
+    missing = [run for run in runs if run not in EXPERIMENTS]
+    if missing:
+        raise SystemExit(
+            f"{', '.join(missing)} 已不在情景登记表：IND_ 系（单一联合目标）于 ba967c1 删除，只剩 ST_。"
+            "这些结果是 2026-09-22 之前的旧成本口径，新代码既不能重解，也不该用新口径的成本函数去标注。"
+            "重画旧图请在 cf073be 的工作副本里、_indtree/ 下运行本脚本；ST_ 版需另行设计。"
+        )
+
+
 def target_fraction(run: str) -> float:
     """该运行的末年联合目标份额，直接读 `scripts/run_single.py` 的登记表。"""
     from run_single import EXPERIMENTS
@@ -245,6 +258,7 @@ def _clean(ax) -> None:
 # =========================================================================================
 def main() -> None:
     apply_style()
+    _require_registered([run for run, _, _ in RUNS])
     rows = [load(run, water_off) for run, _, water_off in RUNS]
     labels = [label for _, label, _ in RUNS]
     missing = [run for (run, _, _), r in zip(RUNS, rows) if r is None]

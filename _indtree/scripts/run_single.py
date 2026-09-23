@@ -144,14 +144,14 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         state_before = state_track.clone()
 
         # Aggregate summary, weighted by THIS year's generation (utilisation trajectory applied)
-        gen_year = np.asarray(year_data["generation"], dtype=np.float64)
+        gen_year = np.asarray(year_data.generation, dtype=np.float64)
         total_gen_year = float(gen_year.sum())
         pathway_shares = {}
         for pw, idx in PATHWAY_INDEX.items():
             pathway_shares[pw] = float((gen_year * share[:, idx]).sum() / total_gen_year) if total_gen_year > 0 else 0.0
         industry_summary = None
         if ys.get("industry_share") is not None:
-            iy = year_data["industry"]
+            iy = year_data.industry
             ish = ys["industry_share"]
             groups = np.asarray(iy["target_groups"]).astype(str)
             residual_hub = iy["baseline_emissions_mt"] - (iy["reduction_mt"] * ish).sum(axis=1)
@@ -173,19 +173,19 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
                     for idx, route in enumerate(INDUSTRY_ROUTES)
                 },
             }
-        coal_baseline_year = float(np.asarray(year_data["emissions_mt"], dtype=np.float64).sum())
+        coal_baseline_year = float(np.asarray(year_data.emissions_mt, dtype=np.float64).sum())
         coal_reduction = float(ys.get("total_reduction_mt", float("nan")))
         year_summaries[int(year)] = {
             "status": ys["status"],
             "objective_cny": float(ys["objective_cny"]),
-            "hours_scale": float(year_data.get("hours_scale", 1.0)),
+            "hours_scale": float(year_data.hours_scale),
             "coal_generation_twh": total_gen_year / 1e6,
             "coal_baseline_mt": coal_baseline_year,
             "pathway_shares": pathway_shares,
             "coal_reduction_mt": coal_reduction,
             "coal_residual_mt": coal_baseline_year - coal_reduction,
-            "sector_cap_fraction": dict(year_data.get("sector_cap_fraction") or {}),
-            "storage_deployment_fraction": float(year_data.get("storage_deployment_fraction", 1.0)),
+            "sector_cap_fraction": dict(year_data.sector_cap_fraction or {}),
+            "storage_deployment_fraction": float(year_data.storage_deployment_fraction),
             "industry": industry_summary,
             "cost_breakdown": {k: float(v) for k, v in ys["cost_breakdown_cny"].items()},
             "target_shortfall_mt": float(ys["slacks"]["target_shortfall_mt"]),
@@ -206,11 +206,11 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         province_tables.append(prov_table)
         edge_tables.append(_build_edge_table(
             prepared, year, ys["edge_flow_mtpa"], ys["build_edge"], ys["new_cap_mtpa"], state_before, assumptions,
-            pipe_count=ys.get("pipe_count"), pipe_tiers=tuple(year_data.get("pipe_tiers_mtpa", ())),
+            pipe_count=ys.get("pipe_count"), pipe_tiers=tuple(year_data.pipe_tiers_mtpa),
         ))
         storage_tables.append(_build_storage_table(
             prepared, year, ys["storage_use_mtpa"], state_before, interval_years,
-            injectivity_mtpa=year_data.get("storage_injectivity_mtpa"),
+            injectivity_mtpa=year_data.storage_injectivity_mtpa,
         ))
         supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"].get("water_basin_use_m3")))
         cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"]))
@@ -222,7 +222,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
             ys.get("air_share"), year_data=year_data, plant_reduction_mt=ys.get("plant_reduction_mt"),
         ))
         industry_detail_tables.append(_build_industry_detail_table(
-            prepared, year, year_data.get("industry"), ys.get("industry_share"),
+            prepared, year, year_data.industry, ys.get("industry_share"),
             prev_share_values=prev_industry_share, h2_flow_kg=ys.get("industry_h2_flow_kg"),
             year_data=year_data,
         ))

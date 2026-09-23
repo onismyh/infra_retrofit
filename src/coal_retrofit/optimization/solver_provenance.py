@@ -24,7 +24,7 @@ def _scale_optional_cost(value: float | int | str | None) -> float | None:
         return None
 
 
-def _solver_quality(model, status: str) -> dict[str, float | int | str | None]:
+def _solver_quality(model, status: str, inputs_dir: Path) -> dict[str, float | int | str | None]:
     """目标值、界、gap、耗时，外加 `_run_provenance` 的溯源字段。"""
     objective = _model_obj_value(model, default=float("nan"))
     sol_count = _optional_model_attr(model, "SolCount")
@@ -40,27 +40,48 @@ def _solver_quality(model, status: str) -> dict[str, float | int | str | None]:
         "runtime_seconds": _optional_model_attr(model, "Runtime"),
         "node_count": _optional_model_attr(model, "NodeCount"),
         "solution_count": sol_count_out,
-        **_run_provenance(model),
+        **_run_provenance(model, inputs_dir),
     }
 
 
-def _input_digest() -> dict:
-    """定义右端项的输入表的 SHA-256 前缀。列名与形状已由指纹覆盖，这里补数值的变化。"""
-    root = Path(__file__).resolve().parents[3]
-    out = {}
-    for key, rel in (("water_availability", "inputs/water_availability.csv"),
-                     ("water_nodes", "inputs/water_nodes.csv"),
-                     ("water_links", "inputs/water_supply_links.csv"),
-                     ("plants", "inputs/plants.csv")):
-        path = root / rel
+# 摘要覆盖的输入表：前四张定义右端项；后五张决定这次解跑在哪个输入版本上——仓库根
+# `inputs/`（v7 管网）与求解树 `_indtree/inputs/`（2026-09-12 重建的管网）恰在这几张上不同。
+_DIGEST_FILES = (
+    ("water_availability", "water_availability.csv"),
+    ("water_nodes", "water_nodes.csv"),
+    ("water_links", "water_supply_links.csv"),
+    ("plants", "plants.csv"),
+    ("pipeline_nodes", "pipeline_nodes.csv"),
+    ("pipeline_edges", "pipeline_candidate_edges.csv"),
+    ("storage_hubs", "storage_hubs.csv"),
+    ("industry_hubs", "industry_hubs.csv"),
+    ("water_basin_caps", "water_basin_caps.csv"),
+)
+
+
+def _input_digest(inputs_dir: Path) -> dict:
+    """本次求解实际读取的输入表的 SHA-256 前缀，外加输入目录。
+
+    列名与形状已由指纹覆盖，这里补数值的变化。`inputs_dir` 来自 `PreparedInputs`，即
+    `prepare_inputs` 真正读的目录；此前按源码位置推仓库根，求解树里的运行会记下仓库根
+    文件的摘要。`input_dir` 在仓库内时记相对路径（如 `_indtree/inputs`）。
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    inputs = Path(inputs_dir).resolve()
+    try:
+        shown = inputs.relative_to(repo_root).as_posix()
+    except ValueError:
+        shown = inputs.as_posix()
+    out: dict[str, str | None] = {"input_dir": shown}
+    for key, name in _DIGEST_FILES:
         try:
-            out[f"digest_{key}"] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+            out[f"digest_{key}"] = hashlib.sha256((inputs / name).read_bytes()).hexdigest()[:12]
         except OSError:
             out[f"digest_{key}"] = None
     return out
 
 
-def _run_provenance(model) -> dict[str, object]:
+def _run_provenance(model, inputs_dir: Path) -> dict[str, object]:
     """标识模型与求解，使两个结果可判断是否可比。
 
     Gurobi 只在 (模型, 参数, 线程数) 三者不变时确定性可复现：`fingerprint` 是模型哈希，
@@ -86,6 +107,6 @@ def _run_provenance(model) -> dict[str, object]:
         "threads_pinned": bool(threads_out),
         "seed": int(seed_env) if seed_env else 0,
         "mip_focus": int(os.environ.get("COAL_RETROFIT_MIPFOCUS") or 0),
-        **_input_digest(),
+        **_input_digest(inputs_dir),
         "host_cpu_count": os.cpu_count(),
     }
