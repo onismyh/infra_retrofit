@@ -89,7 +89,10 @@ class OptimizationAssumptions:
     ccs_learning_reference_year: int = 2030
     # 系统净成本框架
     baseline_om_cost_cny_per_mwh: float = 80.0       # 基线燃煤运行的非燃料运维；⚠ 假设（无出处）
-    stranded_asset_base_cny_per_kw: float = 3500.0    # 计算搁浅资产用的新建成本；⚠ 假设（无出处）
+    # 计算搁浅资产用的新建成本。对照 Fan et al. 2023（`fan2023cofiring`）SI Table 15 的煤电初始投资
+    # 3 636 000 CNY/MW（现值低 3.7%）；电规总院 2020 年水平 660-1 000 MW 超超临界 3 309-3 636 元/kW
+    # （经《中国能源报》2023-04-24 转述，该文即按 3 500 元/kW 计；未核原文）。
+    stranded_asset_base_cny_per_kw: float = 3500.0
     stranded_asset_accounting_life: int = 20           # 折旧年限；⚠ 假设（无出处）
     # 封存成本 32 CNY/t，对照 An et al. 2025 SI Table 7：5.0 (3.0-8.5) $/t = 35 (21-60) CNY/t。
     storage_cost_cny_per_t: float = 32.0
@@ -329,7 +332,11 @@ class OptimizationAssumptions:
     # "据预测"，二手）：69 / 91 Mt。
     # 空元组 = 关闭。
     green_h2_national_cap_mt_by_year: tuple[float, ...] = (6.5, 69.0, 91.0, 120.0)
-    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）。生物质档位：⚠ 假设（无出处）。
+    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）。生物质每档 500 元/kW，
+    # 满档（5 档）2 500 元/kW，落在 Wang et al. 2025（`wang2025reducing`，即上文的 Wang & Cai 2024）SI Table 3
+    # 的掺烧改造 capex 327.2（140.7-513.7）$/kW = 2 290（985-3 596）元/kW 之内；第 1 档（10%）500 元/kW 高于
+    # Fan et al. 2023 SI 式 (S56) 的 500 MW 锅炉 15% 掺烧 50 USD/kW = 350 元/kW（Fan 转引 IEA 2019，未核）。
+    # 逐档线性这个形状：⚠ 假设（无出处）。
     biomass_upgrade_capex_cny_per_mw_per_level: float = 500_000.0
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # 最高档（50% 掺烧）≈125 CNY/kW。
     # 中国全改造文献：90 CNY/kW（CNERI 2025，100% 改造）+ 储存；MIT 供应系统 ≈163 CNY/kW
@@ -513,7 +520,8 @@ class OptimizationScenario:
     discount_base_year: int = 2025
     # 系统净成本参数
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)
-    # 电价路径：⚠ 假设（逐年上涨路径无出处）。
+    # 电价路径。2030 年的 400 元/MWh 对照 Wang et al. 2025（`wang2025reducing`）SI Table 3：
+    # 0.06（0.048-0.072）$/kWh = 420（336-504）元/MWh。逐年上涨的路径：⚠ 假设（无出处）。
     electricity_price_cny_per_mwh_by_year: tuple[float, ...] = (400.0, 440.0, 490.0, 550.0)
     max_new_retirement_share_per_period: float = 0.15
     # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线可乘以此系数

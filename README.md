@@ -28,7 +28,7 @@
 > 批 1（工业侧 dataclass 与拆文件、ruff、过时注释与文档、`references.bib`、注释中文化，模型不变）、
 > 批 2（五项模型改动，每项一个提交加 toy 测试，见 `tests/test_capex_stock_and_lifetimes.py`；不求解的放在 `tests/test_discount_rate.py`、
 > `tests/test_h2_route_multiplier.py`）、
-> 批 3（无出处参数在代码注释与本节标 `⚠ 假设`，数值不动）。标"未改"的地方要不要统一，由作者决定。
+> 批 3（无出处参数在代码注释与本节标 `⚠ 假设`，其中 4 项按作者拍板补上出处；数值都不动）。标"未改"的地方要不要统一，由作者决定。
 > 下面的 §1–§11 停在 2026-09-06（v9 基线入库），其中的 `EXP-*` 实验族、`sequential` 模式、成本键名与
 > 规划年份都已过时；`ST_` 系求解树的现状见 [`_indtree/README.md`](_indtree/README.md)。
 
@@ -44,7 +44,7 @@
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44`、`optimization/_shared.py:166` |
 | 固定运维 | 捕集岛：学习后 capex × 5%/年，按改造 MW 计 | CCS：capex × 5%/年；H2 路线：capex × 3.5%/年；都按运行量计 | `optimization/plant_matrices.py:124`、`optimization/industry_matrices.py:176`、`:209` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:138-143` |
-| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `optimization/scenario.py:382`、`optimization/industry_matrices.py:133` |
+| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `optimization/scenario.py:389`、`optimization/industry_matrices.py:133` |
 | 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`:124`、`optimization/industry_matrices.py:169`、`:204` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:62`、`optimization/model_costs.py:61-83` |
 | 到寿命后 | 管道到 30 年退出，可在原址重铺；捕集岛、掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集岛、H2 路线同样照常运行 | `optimization/model_linking.py:176-202`；`optimization/salvage.py` 文件头注明为已知简化 |
@@ -85,7 +85,9 @@
 代码注释里同样标了 `⚠ 假设`，可用 `grep -rn "⚠ 假设" src/` 列出。工业侧完整书目见
 [`docs/工业部门参数溯源.md`](docs/工业部门参数溯源.md) §八，煤电侧见
 [`docs/工业联合减排实现说明.md`](docs/工业联合减排实现说明.md) §9.6 与 `optimization/scenario.py` 的字段注释。
-标 `⚠ 假设` 的参数已另做文献检索，候选出处与取值交作者逐项拍板；拍板前数值与标签都不动。
+标 `⚠ 假设` 的参数已另做文献检索，按作者拍板补了 4 项出处，数值都不动：40 年设计寿命、掺生物质升级 capex 的水平、
+2030 年电价水平落在全文核过的文献区间内；搁浅资产基数 3 500 元/kW 比全文核过的单值（Fan et al. 2023 的 3 636 元/kW）
+低 3.7%，3 309–3 636 元/kW 的区间只见于二手转述。其余参数的取值与标签不动。
 
 **煤电**
 
@@ -96,14 +98,15 @@
 | | 学习曲线 | 15%/倍增，5.6 年倍增 | 学习率：Li et al. 2012、DNV/Gassnova 2020；按 An et al. 2025 capex 轨迹拟合 | 有出处（倍增年数为推导） |
 | | 能耗惩罚 2030 年水平 | 15%（额外燃料比） | 逐年下降的形状取自 An et al. 2025 SI Table 7；该文 2030 年为 22.2%，15% 这个水平没有来源 | ⚠ 假设（无出处） |
 | BECCS | capex | 捕集岛同 CCS；生物质改造走掺烧档位 capex | 2026-09-23 起删掉原 +1 000 元/kW 增量，见 §0.1 (b) | 同 CCS 与掺生物质两行 |
-| 掺生物质 | 掺烧升级 capex | 50 万元/MW/档（5 档，满档 2 500 元/kW） | — | ⚠ 假设（无出处） |
+| 掺生物质 | 掺烧升级 capex | 50 万元/MW/档（5 档，满档 2 500 元/kW） | 满档落在 Wang et al. 2025 SI Table 3 的 2 290（985–3 596）元/kW 之内；第 1 档（10% 掺烧）500 元/kW 高于 Fan et al. 2023 SI 式 (S56) 的 15% 掺烧 350 元/kW（Fan 转引 IEA 2019，未核） | 水平有出处；逐档线性的形状 ⚠ 假设（无出处） |
 | | 运维 | 30 元/MWh | Wang & Cai 2024 SI Table 3 | 有出处 |
 | 掺氨 | 掺烧升级 capex | 2.5 万元/MW/档（满档 50% 掺烧 125 元/kW） | CNERI 2025、Deng et al. 2024；Li & Li 2022 未核实 | 有出处 |
 | | 运维 | 80 元/MWh | — | ⚠ 假设（无出处） |
 | 空冷改造 | capex | 300 元/kW | 注释只写"中国文献约 200–400 元/kW，取中点"，未列具体文献或项目 | ⚠ 假设（出处不具体） |
 | 退役 | 退役成本 | 450 元/MWh | — | ⚠ 假设（无出处） |
-| | 搁浅资产基数 / 会计寿命 | 3 500 元/kW / 20 年 | — | ⚠ 假设（无出处） |
-| | 设计寿命（决定搁浅的剩余寿命与重建时点） | 平均投产年 + 40 年 | —（`builders/plants.py:151`） | ⚠ 假设（无出处） |
+| | 搁浅资产基数 | 3 500 元/kW | Fan et al. 2023 SI Table 15（3 636 元/kW）；电规总院 2020 年水平 3 309–3 636 元/kW（经《中国能源报》转述，未核原文） | 有出处（全文为单值 3 636，现值低 3.7%） |
+| | 搁浅资产会计寿命 | 20 年 | — | ⚠ 假设（无出处） |
+| | 设计寿命（决定搁浅的剩余寿命与重建时点） | 平均投产年 + 40 年 | Fan et al. 2023 SI Table 10；Wang et al. 2025 正文与 SI Table 3（40 年，区间 25–40）（`builders/plants.py:151-153`） | 有出处 |
 | 原址重建 | capex | 新建的 70%（2 450 元/kW） | — | ⚠ 假设（无出处） |
 | 各技术 | 残值寿命 | CCS 20、掺烧升级 20、空冷 20、重建 30 年 | 注释给了取值理由，无文献 | ⚠ 假设（设定值） |
 
@@ -136,13 +139,15 @@
 小结：
 
 - 工业 CCS 的 capex 主体有来源（水泥、长流程钢有中国项目数据，化工为推导），只有电炉钢是假设。
-- 煤电只有 CCS 捕集岛与掺氨升级有文献；**掺生物质升级、空冷、退役、搁浅、重建（含 40 年设计寿命）
-  这几项投资参数没有可查出处**，其中多数在 `docs/算法实现审查_20260910.md` §四已列出。
-- 表外、同样进目标函数而无出处的：基线非燃料运维 80 元/MWh、电价逐年路径 400 / 440 / 490 / 550 元/MWh、
-  取水与输水 4.0 元/m³ 与 0.05 元/(m³·km)，代码注释同样标了 `⚠ 假设`；折现率 6%（`constants.DEFAULT_DISCOUNT_RATE`）与
+- 煤电的 CCS 捕集岛、掺氨升级、搁浅资产基数、40 年设计寿命有文献，掺生物质升级只有水平有文献；**空冷、退役成本、
+  搁浅会计寿命、原址重建这几项投资参数与掺生物质的逐档形状没有可查出处**，其中多数在 `docs/算法实现审查_20260910.md` §四已列出。
+- 表外、同样进目标函数而无出处的：基线非燃料运维 80 元/MWh、电价的逐年上涨路径 440 / 490 / 550 元/MWh（2030 年的
+  400 元/MWh 对照 Wang et al. 2025 SI Table 3 的 420（336–504）元/MWh，已补出处）、取水与输水 4.0 元/m³ 与 0.05 元/(m³·km)，代码注释同样标了 `⚠ 假设`；折现率 6%（`constants.DEFAULT_DISCOUNT_RATE`）与
   汇率 7.0 元/美元（`usd_to_cny`；欧元在注释里按 7.8 换算）是全模型口径，未标。全仓库没有价格指数折算，IEAGHG 的 2010 年美元、
   Lockwood 的 2016 年人民币都按原值用。
 - 书目：An et al. 2025 与 Knoope et al. 2013 已在批 1 补进 `references.bib`（`an2025repositioning`、`knoope2013review`）。
+  `wang2025reducing` 按本地 PDF 更正：页码 475 → 241，第五作者 Ma, Weiming → Ma, Weidong，并补 `and others`；
+  代码注释里的"Wang & Cai 2024""Wang et al. 2024"就是这篇（DOI 10.1038/s41467-024-55332-5，2025 年刊出）。
 - CLAUDE.md §二.7 说"参数出处在 `docs/工业部门参数溯源.md` §八"，但 §八 只有工业；煤电和管网的出处只在代码注释与
   `docs/工业联合减排实现说明.md` §9.6。
 
@@ -160,7 +165,7 @@
 | `src/coal_retrofit/` | 本轮前（0f8d999） | 现在 |
 |---|---|---|
 | 文件数 | 55 | 58（工业侧拆出 3 个） |
-| 中文行 / 英文行 | 449 / 1 610（22%） | 1 859 / 81（96%） |
+| 中文行 / 英文行 | 449 / 1 610（22%） | 1 867 / 81（96%） |
 | 中文为主 / 混合 / 英文为主 / 无注释 | 15 / 3 / 24 / 13 | 45 / 0 / 0 / 13 |
 
 - 剩下的 81 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
@@ -194,7 +199,7 @@
 还不清楚的地方（只报告，未改）：
 
 1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 593、`builders/supply.py` 592、
-   `optimization/scenario.py` 570、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
+   `optimization/scenario.py` 578、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
 2. **≥ 80 行的函数还有 29 个**：最长的是 `build_ammonia_supply_dataframe` 202 行、`build_runtime_network` 188 行、
    `build_water_availability_dataframe` 163 行；`industry_year_data` 140 行、`_one_off_capex` 111 行也没有拆。
 3. **mypy 剩 173 个错误**，集中在 `builders/network_repair.py`（32）、`optimization/network.py`（19）、

@@ -380,8 +380,8 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
     SECTOR_METHANOL: (3000.0, 16.5),
 }
 
-# 氢路线的改造 capex，单位为每吨年产能的 CNY；在路线份额的增量上一次性计入，并为
-# 残值规则按直线折旧。
+# 氢路线的改造 capex，单位为每吨年产能的 CNY；在能力存量的增量上一次性计入（2026-09-23 前
+# 计在路线份额的增量上），并为残值规则按直线折旧。
 #   steel_bf_bof  在现有厂址用 H2-DRI 竖炉 + EAF 替代 BF-BOF（烧结、焦炉、BF 和 BOF
 #                 弃用；铸造和轧制保留）：
 #                 竖炉：宝钢湛江百万吨级氢基竖炉 总投资 18.9 亿元，对应 1.0 Mt/a DRI
