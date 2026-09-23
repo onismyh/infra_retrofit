@@ -148,12 +148,11 @@ def _unordered_edge_key(from_node_id: str, to_node_id: str) -> tuple[str, str]:
 
 
 def _next_edge_index(edges: pd.DataFrame) -> int:
-    """One past the highest numeric suffix in `edge_id`.
+    """`edge_id` 中最大数字后缀加一。
 
-    Not `len(edges) + 1`: once the crossing filter has removed rows, the highest id in the table
-    exceeds its length, and numbering from the length silently reissues ids that are already in
-    use. `prepare_inputs` keys on `edge_id`, so duplicates are dropped rather than rejected -- an
-    earlier build lost 410 candidate edges that way without a single warning.
+    不是 `len(edges) + 1`：去交叉过滤删掉若干行之后，表中最大的 id 会超过表长，按表长编号
+    会悄悄重发已在使用的 id。`prepare_inputs` 以 `edge_id` 为键，所以重复项会被丢弃而不是
+    报错——早先有一次建网就这样丢了 410 条候选边，连一条警告都没有。
     """
     if edges.empty or "edge_id" not in edges.columns:
         return 1
@@ -258,9 +257,8 @@ def build_triangulation_candidate_edges(nodes: pd.DataFrame, edges: pd.DataFrame
         if direct_length_km > NETWORK_TRIANGULATION_MAX_EDGE_KM:
             continue
 
-        # A new pipeline does not run along the great circle. Existing-corridor edges in this
-        # table already carry their routed polyline length, so leaving triangulation edges at
-        # the raw geodesic made new build look cheaper than corridor reuse by construction.
+        # 新建管道不会沿大圆走。本表中既有走廊的边已带有实际路由的折线长度，所以把三角
+        # 剖分边留在原始大地线长度上，曾使新建管道从构造上就显得比复用走廊便宜。
         routed_length_km = direct_length_km * NETWORK_DETOUR_FACTOR
 
         try:
@@ -465,7 +463,7 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
         )
         nodes, edges = _merge_network_tables(main_nodes, main_edges, branch_nodes, branch_edges, corridor_degree_additions)
     else:
-        # Terminal-only network: plants + storage hubs, no corridors
+        # 只含端点的网络：电厂 + 封存 hub，没有走廊
         nodes, edges = _build_terminal_only_nodes(paths)
 
     triangulation_edges = build_triangulation_candidate_edges(nodes, edges)
@@ -474,7 +472,7 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
         edges = edges.sort_values(["edge_id"]).reset_index(drop=True)
     # 西藏不参与减排：先把穿过西藏的三角剖分候选边去掉，再去交叉。
     edges = _drop_edges_over_excluded_region(paths, nodes, edges)
-    # Prefer planarity, but never at the cost of disconnecting a terminal
+    # 优先保证平面性，但绝不以断开任何端点为代价
     edges = _remove_crossing_edges(nodes, edges)
     # 专线（源 -> 最近的 k 个汇）在去交叉之后补回，但逐条做相交检验：穿过已有管网的
     # 一律丢弃。既保住"可以为一个源单建一条专线"这个真实选项（2.8 倍造价溢价），
@@ -506,7 +504,7 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
 
 
 def _build_terminal_only_nodes(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build node table from plants and storage hubs only (no corridor nodes)."""
+    """只用电厂与封存 hub 构建节点表（不含走廊节点）。"""
     plants = pd.read_csv(paths.inputs_dir / "plants.csv")
     storage = pd.read_csv(paths.inputs_dir / "storage_hubs.csv")
 

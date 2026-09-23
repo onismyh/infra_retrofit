@@ -27,11 +27,9 @@ from .industry_inputs import IndustryInputs
 ROUTE_INDEX = {name: index for index, name in enumerate(INDUSTRY_ROUTES)}
 UNABATED, CCS, H2 = ROUTE_INDEX["unabated"], ROUTE_INDEX["ccs"], ROUTE_INDEX["h2"]
 
-# Feedstock key used when reading the advanced/general quota ratio per sector. The hub table
-# carries a capacity-weighted blend of its members' feedstocks but not the mix itself, so the
-# ratio is taken on the sector's default row and applied to the hub's own blended intensity.
-# The spread across feedstocks is small (0.61-0.73 for the three H2-route sectors), so this
-# cannot move a result; it is recorded rather than hidden.
+# 读取各行业先进值 / 通用值定额比时用的原料键。hub 表带的是成员原料按产能加权混合后的
+# 结果，不带原料构成本身，所以比值取该行业的 default 行，再作用到 hub 自己的混合强度上。
+# 各原料之间的差别很小（三个氢路线行业为 0.61-0.73），不可能改变结果；这里写明而不隐去。
 _DEFAULT_FEEDSTOCK = "default"
 
 
@@ -63,9 +61,9 @@ class IndustryYearData:
 
 
 def _h2_price_for_year(prices: dict[int, float], year: int) -> float:
-    """Hydrogen price in `year`, falling back to the nearest tabulated year.
+    """`year` 年的氢价；表中没有该年时退回到最近的已列年份。
 
-    Matches how `scenario.carbon_price_for_year` handles off-grid years.
+    与 `scenario.carbon_price_for_year` 处理网格外年份的方式一致。
     """
     if year in prices:
         return float(prices[year])
@@ -76,7 +74,7 @@ def _h2_price_for_year(prices: dict[int, float], year: int) -> float:
 
 
 def _advanced_quota_ratio(sector: str) -> float:
-    """Advanced-value / general-value water quota for a sector (both from GB/T 18916)."""
+    """某行业取水定额的先进值 / 通用值之比（两者都取自 GB/T 18916）。"""
     general = water_quota(sector, _DEFAULT_FEEDSTOCK, advanced=False)
     advanced = water_quota(sector, _DEFAULT_FEEDSTOCK, advanced=True)
     if general <= 0:
@@ -97,23 +95,21 @@ def _output_scale(industry: IndustryInputs, sectors: np.ndarray, year: int) -> n
 def industry_year_data(
     industry: IndustryInputs, scenario, assumptions, year: int
 ) -> IndustryYearData:
-    """Per-year cost, emission and water coefficients for every industrial hub and route.
+    """每个工业 hub、每条路线的逐年成本、排放与用水系数。
 
-    All arrays are shaped `(hub_count, len(INDUSTRY_ROUTES))` unless noted. Costs are split
-    into an ANNUAL part (`opex_cny` = fixed O&M + energy + consumables + non-hydrogen operating
-    delta, charged every operating year on the route share) and a ONE-TIME part (`capex_cny`
-    = retrofit capex of the whole hub on that route, charged on the increment of the route
-    share). The H2 route's hydrogen purchase is NOT in `opex_cny`: it is bought per link in
-    the solver. `reduction_mt[:, CCS]` is net of the vented reboiler-steam CO2.
+    除另有注明外，数组形状均为 `(hub_count, len(INDUSTRY_ROUTES))`。成本分成年度部分
+    （`opex_cny` = 固定运维 + 能耗 + 耗材 + 非氢运行差额，每个运行年按路线份额计）与一次性
+    部分（`capex_cny` = 整个 hub 在该路线上的改造 capex，按路线份额的增量计）。氢路线的买氢
+    不在 `opex_cny` 里：它在求解器里按链路购买。`reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
 
     Args:
-        industry: Prepared industrial inputs.
-        scenario: `OptimizationScenario`; capture rate, cost multipliers, discount rate.
-        assumptions: `OptimizationAssumptions`; the CCS learning curve is read from it.
-        year: Planning year.
+        industry: 准备好的工业输入。
+        scenario: `OptimizationScenario`；从中读取捕集率、成本乘数、贴现率。
+        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线。
+        year: 规划年。
 
     Returns:
-        Coefficient arrays plus scalars the solver needs.
+        系数数组，外加求解器需要的标量。
     """
     hubs = industry.hubs
     sectors = hubs["sector"].astype(str).to_numpy()
@@ -130,18 +126,16 @@ def industry_year_data(
     h2_intensity_t_per_t = np.nan_to_num(h2_intensity_t_per_t, nan=0.0)
 
     capture_rate = float(scenario.capture_rate)
-    # Same exogenous learning curve the coal retrofits get, so the two sectors' capture costs
-    # decline together. Using a different curve for industry would make the sectoral split a
-    # function of an arbitrary modelling choice rather than of the technologies.
+    # 与煤电改造用同一条外生学习曲线，两个部门的捕集成本一起下降。给工业另用一条曲线，
+    # 部门间的分工就会取决于一个任意的建模选择，而不是技术本身。
     learning = float(assumptions.ccs_learning_factor(year))
     cost_multiplier = float(scenario.industry_cost_multiplier)
     h2_multiplier = float(scenario.industry_h2_cost_multiplier)
     h2_price_mean = _h2_price_for_year(industry.h2_price_cny_per_kg, int(year))
     rate = float(scenario.discount_rate)
-    # Energy for capture is priced at the model's own prices: the hub's provincial coal price
-    # (same lookup the coal hubs use) for reboiler steam, the scenario electricity price for
-    # compression and auxiliaries. So a coal-price or power-price sensitivity moves the two
-    # sectors' capture costs together instead of leaving industry on a frozen literature price.
+    # 捕集能耗按模型自己的价格计价：再生蒸汽用 hub 所在省的煤价（与煤电 hub 用同一个查表），
+    # 压缩与辅机用情景电价。这样煤价或电价的敏感性分析会让两个部门的捕集成本一起变动，
+    # 而不是让工业停在一个冻结的文献价格上。
     provinces = hubs["province"].astype(str).to_numpy() if "province" in hubs.columns else np.array([""] * n)
     coal_price_gj = np.array([float(assumptions.province_coal_cost(p)) for p in provinces], dtype=np.float64)
     elec_price_mwh = float(scenario.electricity_price_for_year(int(year)))
@@ -155,19 +149,17 @@ def industry_year_data(
     opex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     capex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     water_m3 = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
-    h2_demand_kg = np.zeros(n, dtype=np.float64)  # kg H2 per unit share on the H2 route
+    h2_demand_kg = np.zeros(n, dtype=np.float64)  # 氢路线每单位份额的需氢量，kg H2
 
-    # unabated: the hub as it runs today. No abatement, no extra cost, its existing intake.
+    # unabated：hub 按现状运行。无减排、无额外成本，取水保持现状。
     water_m3[:, UNABATED] = base_water_m3
 
-    # ccs: capture `capture_rate` of everything the hub emits, combustion and process alike —
-    # which is the whole point for cement, where 63% of emissions are calcination and no fuel
-    # switch can touch them.
+    # ccs：按 `capture_rate` 捕集 hub 的全部排放，燃烧排放与工艺排放一视同仁——这对水泥
+    # 恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。
     captured_mt[:, CCS] = co2_mt * capture_rate
     captured_t = captured_mt[:, CCS] * 1e6
-    # Retrofit capex of the capture island sized to the hub's captured tonnage (CNY per t/a of
-    # capacity x t/a captured), learning-adjusted like the coal retrofits; fixed O&M as a share
-    # of that capex; energy and consumables per tonne captured at this year's prices.
+    # 捕集岛改造 capex 按 hub 的捕集吨数定规模（每 t/a 能力的 CNY x 捕集的 t/a），与煤电改造
+    # 一样做学习调整；固定运维取该 capex 的一个比例；能耗与耗材按当年价格、按每吨捕集量计。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
     variable_unit = np.array(
@@ -176,34 +168,32 @@ def industry_year_data(
     ) * cost_multiplier
     capex_cny[:, CCS] = captured_t * capex_unit
     opex_cny[:, CCS] = captured_t * (capex_unit * INDUSTRY_CCS_FIXED_OM_FRACTION + variable_unit)
-    # The reboiler steam is raised in a coal boiler whose CO2 is vented, so the route's net
-    # reduction is captured minus that steam CO2 (zero for the compression-only chemical
-    # streams). Same convention as the coal side's energy-penalty emissions.
+    # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
+    # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。
     steam_co2_per_t = np.array(
         [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj) for s in sectors], dtype=np.float64
     )
     reduction_mt[:, CCS] = captured_mt[:, CCS] * (1.0 - steam_co2_per_t)
     water_m3[:, CCS] = base_water_m3 + captured_t * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
 
-    # h2: only where the sector has a route at all.
+    # h2：只在该行业确有氢路线时开放。
     quota_ratio = {s: _advanced_quota_ratio(s) for s in set(sectors) if SECTOR_HAS_H2_ROUTE.get(s, False)}
     for hub_idx in range(n):
         sector = sectors[hub_idx]
         if not SECTOR_HAS_H2_ROUTE.get(sector, False):
             continue
         if h2_intensity_t_per_t[hub_idx] <= 0.0 or production_t[hub_idx] <= 0.0:
-            # A hub with an H2-capable sector but no hydrogen demand in the point-source table
-            # cannot be priced. Leave the route closed rather than price it at zero.
+            # 所在行业有氢路线、但点源表里没有需氢量的 hub 无法定价。
+            # 宁可让该路线保持关闭，也不按零价计。
             continue
         route_available[hub_idx, H2] = True
         reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
         k_kg_per_t = float(h2_intensity_t_per_t[hub_idx]) * 1000.0
-        # Capex of the rebuilt route on the hub's whole output; fixed O&M on it; and the
-        # non-hydrogen operating delta backed out of the literature anchor (module docstring).
-        # The annual part BEFORE the hydrogen purchase can be negative (the anchor credits the
-        # avoided fossil feedstock); the floor in the solver keeps annual + purchase >= 0.
-        # `h2_multiplier` scales the route's own costs (capex and the anchor premium),
-        # never the hydrogen: scaling the negative backed-out delta would invert the knob.
+        # 按 hub 的全部产量计重建路线的 capex，在其上计固定运维，再加由文献锚点反推的
+        # 非氢运行差额（见 `industry.py` 的模块 docstring）。买氢之前的年度部分可以为负
+        # （锚点把省下的化石原料计为收益）；求解器里的地板保证 annual + purchase >= 0。
+        # `h2_multiplier` 缩放路线自身的成本（capex 与锚点溢价），从不缩放氢：
+        # 若去缩放反推出的负差额，这个旋钮的作用方向就会反过来。
         route_capex_unit = h2_route_capex_cny_per_t_yr(sector) * h2_multiplier
         opex_delta_unit = h2_route_opex_delta_cny_per_t(
             sector, float(h2_intensity_t_per_t[hub_idx]), rate, h2_multiplier
@@ -216,8 +206,8 @@ def industry_year_data(
         ratio = quota_ratio[sector] if INDUSTRY_H2_USES_ADVANCED_QUOTA else 1.0
         water_m3[hub_idx, H2] = base_water_m3[hub_idx] * ratio
 
-    # NB: `scenario.water_multiplier` scales AVAILABILITY, not demand, so it is deliberately
-    # not applied here — it is applied once, to the basin residual, in `_basin_cap_data`.
+    # 注意：`scenario.water_multiplier` 缩放的是可用水量而不是需水量，所以这里故意不乘——
+    # 它只在 `_basin_cap_data` 里对流域余量乘一次。
     return IndustryYearData(
         hub_ids=hubs["hub_id"].astype(str).tolist(),
         sectors=sectors,
@@ -233,26 +223,26 @@ def industry_year_data(
         water_m3=water_m3,
         h2_price_cny_per_kg=h2_price_mean,
         capture_learning_factor=learning,
-        # Economic lives per route, read by the solver's end-of-horizon salvage credit.
+        # 各路线的经济寿命，供求解器的期末残值抵扣读取。
         capex_lifetime_years={CCS: INDUSTRY_CAPTURE_LIFETIME_YEARS, H2: INDUSTRY_H2_LIFETIME_YEARS},
     )
 
 
 def basin_membership(industry: IndustryInputs, basin_codes: list[str]) -> np.ndarray:
-    """(n_basins, n_hubs) indicator of which basin each industrial hub sits in.
+    """(n_basins, n_hubs) 指示矩阵：每个工业 hub 位于哪个流域。
 
-    Kept separate from the coal membership rather than concatenated: the two index spaces stay
-    distinct, so nothing downstream can silently read a hub index as a plant index.
+    与煤电的成员矩阵分开存放而不拼接：两套下标空间保持独立，下游就不可能悄悄把 hub 下标
+    当成电厂下标来读。
 
     Args:
-        industry: Prepared industrial inputs, carrying `basin_code`.
-        basin_codes: Basin codes in the order the cap constraint uses.
+        industry: 准备好的工业输入，带 `basin_code`。
+        basin_codes: 流域码，顺序与上限约束所用的一致。
 
     Returns:
-        Indicator matrix.
+        指示矩阵。
 
     Raises:
-        ValueError: A hub fell outside every basin in the cap table.
+        ValueError: 有 hub 不在上限表的任何一个流域里。
     """
     if "basin_code" not in industry.hubs.columns:
         raise ValueError("industry hubs carry no basin_code; prepare_industry ran without the official-quota budget")

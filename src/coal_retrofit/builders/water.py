@@ -67,8 +67,8 @@ def parse_water_file(paths: ProjectPaths, filename: str) -> dict[str, object]:
 
 
 def build_water_scenarios_dataframe(paths: ProjectPaths) -> pd.DataFrame:
-    """Scenario members only. The `historical` runs share the directory but are not members:
-    they are the baseline `basin_bias_factors` estimates each model's bias against."""
+    """只收情景成员。`historical` 运行与它们同在一个目录，但不是成员：
+    它们是 `basin_bias_factors` 估计各模型偏差时所对照的基准。"""
     files = sorted(
         path.name for path in (paths.data_dir / "water").glob("*.nc")
         if WATER_PATTERN.fullmatch(path.name)
@@ -150,7 +150,7 @@ def _resolve_source_path(paths: ProjectPaths, source: str) -> str:
 
 
 def _nc_path(path: Path) -> str:
-    """A path netCDF4 can open: its C layer rejects non-ASCII absolute paths on Windows."""
+    """netCDF4 能打开的路径：其 C 层在 Windows 上拒绝含非 ASCII 字符的绝对路径。"""
     try:
         return str(path.relative_to(Path.cwd()))
     except ValueError:
@@ -256,7 +256,7 @@ EARTH_RADIUS_M = 6_371_000.0
 
 
 def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
-    """Area of each latitude band's grid cell on a regular lat-lon grid (m²)."""
+    """规则经纬网格上每个纬度带的网格单元面积（m²）。"""
     half = cell_degrees / 2.0
     band = (
         EARTH_RADIUS_M ** 2
@@ -267,7 +267,7 @@ def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
 
 
 def _province_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, list[str]]:
-    """Rasterise province polygons onto the climate grid; 0 = outside China."""
+    """把省界多边形栅格化到气候网格上；0 = 中国境外。"""
     from rasterio.features import rasterize
     from rasterio.transform import from_origin
 
@@ -286,11 +286,10 @@ def _province_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -
 
 
 def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
-    """Level-1 basin code for each grid node, by nearest polygon.
+    """按最近的多边形，给每个网格节点分配一级流域代码。
 
-    Nearest rather than strict containment: cells on the coast and in the gaps between
-    polygons would otherwise be dropped from every basin budget, silently deleting their
-    water. Distances are computed in EPSG:2380 so they are metric.
+    用最近邻而不是严格包含：否则海岸上以及多边形之间缝隙里的网格会被所有流域预算
+    漏掉，其水量被悄悄删除。距离在 EPSG:2380 下计算，因此以米为单位。
     """
     basins = load_basins(paths).to_crs("EPSG:2380")
     points = gpd.GeoDataFrame(
@@ -304,7 +303,7 @@ def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
 
 
 def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
-    """Level-1 water-resource regions, the unit China publishes official water totals for."""
+    """水资源一级区，即中国公布官方水资源总量所用的单元。"""
     path = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
     if not path.exists():
         raise FileNotFoundError(
@@ -315,7 +314,7 @@ def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
 
 
 def _basin_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, list[str]]:
-    """Rasterise level-1 basin polygons onto the climate grid; 0 = outside every basin."""
+    """把一级流域多边形栅格化到气候网格上；0 = 不在任何流域内。"""
     from rasterio.features import rasterize
     from rasterio.transform import from_origin
 
@@ -333,13 +332,12 @@ def _basin_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> t
 
 
 def _historical_source(paths: ProjectPaths, hydrology_model: str, gcm: str) -> Path | None:
-    """The `historical` qtot run for one (hydrology model, GCM) pair, if downloaded.
+    """某个 (水文模型, GCM) 组合的 `historical` qtot 运行文件（若已下载）。
 
-    Both keys are required. ISIMIP3b drives each hydrology model with every GCM separately,
-    so `historical` runs exist per pair, not per hydrology model. Matching on the hydrology
-    model alone and taking the first sorted hit silently returned the gfdl-esm4 run for every
-    GCM (it sorts first), which would have applied one GCM's bias factor to all of them and
-    flattened exactly the GCM spread the ensemble is built to measure.
+    两个键缺一不可。ISIMIP3b 用每个 GCM 分别驱动每个水文模型，所以 `historical` 运行是
+    按组合存在的，而不是按水文模型。只按水文模型匹配、取排序后的第一个命中，曾对每个
+    GCM 都悄悄返回 gfdl-esm4 的运行（它排在最前），这本会把一个 GCM 的偏差因子套用到
+    所有 GCM 上，恰好抹平集合本来要度量的 GCM 间离散。
     """
     matches = sorted(
         p for p in (paths.data_dir / "water").glob("*historical*qtot*.nc")
@@ -351,8 +349,8 @@ def _historical_source(paths: ProjectPaths, hydrology_model: str, gcm: str) -> P
 def _basin_runoff_from_file(
     path: Path, window: tuple[int, int], zones: np.ndarray, codes: list[str], area_m2: np.ndarray
 ) -> dict[str, float]:
-    """Total runoff per basin over `window`, m3/yr, on an already-rasterised grid."""
-    # netCDF4's C layer cannot open absolute paths with non-ASCII characters on Windows.
+    """在已栅格化的网格上，逐流域求 `window` 内的总径流，m3/yr。"""
+    # netCDF4 的 C 层在 Windows 上打不开含非 ASCII 字符的绝对路径。
     with netCDF4.Dataset(_nc_path(path), "r") as ds:
         time_var = ds.variables["time"]
         years = np.array(
@@ -380,21 +378,18 @@ def basin_bias_factors(
     codes: list[str],
     area_m2: np.ndarray,
 ) -> dict[str, float]:
-    """Multiplicative correction bringing a model's basin runoff onto the official baseline.
+    """乘性校正因子：把某个模型的流域径流拉到官方基准上。
 
-    Global hydrological models at 0.5 deg carry large regional biases even when their national
-    total is right: over 1956-2014, WaterGAP2-2e reproduces China's total to 1.2% while
-    running 2.43x too wet in the Hai basin and 1.69x too wet in the Huai -- the two basins
-    that carry 358 GW of coal and where the availability constraint actually binds. Left
-    uncorrected, that bias is reported as if it were hydrological-model uncertainty.
+    0.5 deg 的全球水文模型即使全国总量正确，也带有很大的区域偏差：在 1956-2014 年，
+    WaterGAP2-2e 复现中国总量的误差在 1.2% 以内，却在海河流域偏湿 2.43x、在淮河偏湿
+    1.69x——这两个流域承载着 358 GW 煤电，也正是可用水量约束真正起作用的地方。若不
+    校正，这一偏差就会被当作水文模型不确定性报告出来。
 
-    The factor is estimated once per (hydrology model, GCM) pair from that pair's `historical`
-    run and applied to every year and SSP of the pair, so each member's rate of change is
-    preserved exactly and only the absolute level is replaced. Estimating it per pair rather
-    than per hydrology model matters for the ensemble: the historical bias is a property of the
-    forcing GCM as much as of the hydrology model, and reusing one GCM's factor across the
-    others would remove genuine between-GCM spread. Returns 1.0 for every basin when that
-    pair's historical run has not been downloaded.
+    该因子对每个 (水文模型, GCM) 组合只估计一次，取自该组合自己的 `historical` 运行，
+    并施加到该组合的每一年、每个 SSP 上，因此每个成员的变化率被精确保留，只替换绝对
+    水平。按组合而不是按水文模型估计，对集合很重要：历史偏差既是水文模型的属性，同样
+    也是驱动 GCM 的属性，把一个 GCM 的因子套用到其他 GCM 上会抹掉真实存在的 GCM 间
+    离散。若该组合的历史运行尚未下载，则对每个流域都返回 1.0。
     """
     source = _historical_source(paths, hydrology_model, gcm)
     if source is None:
@@ -413,55 +408,44 @@ def build_water_availability_dataframe(
     scenarios: pd.DataFrame,
     water_nodes: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Renewable water reaching each node, from LOCAL RUNOFF (ISIMIP `qtot`).
+    """到达每个节点的可再生水量，取自本地径流（ISIMIP `qtot`）。
 
-    The previous implementation read `dis` (routed river discharge) at each node's cell.
-    Discharge is cumulative — a downstream cell carries all of its upstream catchment —
-    so summing 293 nodes counted the same water tens of times: the national total came to
-    430 766 x10^8 m3/yr, 15x China's actual renewable water resources, and the resulting
-    constraint could never bind (demand/supply = 0.083%).
+    旧实现读取每个节点所在网格的 `dis`（经汇流演算的河道流量）。流量是累积量——下游
+    网格承载其整个上游集水区的来水——所以对 293 个节点求和会把同一份水重复计算几十次：
+    全国总量达到 430 766 x10^8 m3/yr，是中国实际可再生水资源量的 15x，由此得到的约束
+    永远不会起作用（需求/供给 = 0.083%）。
 
-    `qtot` is locally generated runoff (kg m-2 s-1), so a grid-cell sum is a genuine water
-    budget. Province-masked, this reproduces 26 291 x10^8 m3/yr against the official
-    multi-year mean of ~28 000 — a 6% difference.
+    `qtot` 是本地产生的径流（kg m-2 s-1），因此对网格求和就是真实的水量预算。按省界
+    掩膜后，它复现出 26 291 x10^8 m3/yr，对照官方多年平均 ~28 000，相差 6%。
 
-    Availability is budgeted per LEVEL-1 WATER-RESOURCE REGION and then split across that
-    basin's nodes in proportion to their local runoff, so summing all nodes returns the
-    basin's renewable water exactly once:
+    可用水量按水资源一级区做预算，再按各节点本地径流的比例分配到该流域的节点上，因此
+    对所有节点求和，每个流域的可再生水量恰好只计一次：
 
         basin_runoff   = sum(qtot x cell_area x seconds_per_year) x bias_factor   [m3/yr]
         node_available = basin_runoff x node_runoff / sum(node_runoff in basin)
 
-    The basin, not the province, is the unit here for two reasons: water is a basin quantity
-    (the Yellow River crosses nine provinces), and it is the scale at which global hydrology
-    models are calibrated and at which China publishes official totals. Budgeting by province
-    also produced ratios against official statistics from 0.34x to 4.00x, most of which was
-    an artefact of cutting a 0.5 deg grid with provincial boundaries; by basin the spread is
-    0.74x-2.43x, and `basin_bias_factors` removes even that.
+    这里以流域而不是省为单元，理由有二：水是流域量（黄河流经九个省），而流域也是全球
+    水文模型率定所用的尺度、中国公布官方总量所用的尺度。按省做预算还会使与官方统计之比
+    落在 0.34x 到 4.00x 之间，其中大部分是用省界切割 0.5 deg 网格造成的假象；按流域时
+    离散范围为 0.74x-2.43x，而 `basin_bias_factors` 连这一点也消除了。
 
-    Environmental flow and existing withdrawals are NOT applied here — they are policy
-    assumptions applied at solve time (see `WATER_EXTRACTABLE_FRACTION` and
-    `OptimizationAssumptions.existing_withdrawal_share`), so their sensitivity can be run
-    without rebuilding inputs.
+    环境流量与存量取水不在这里施加——它们是求解时才施加的政策假设（见
+    `WATER_EXTRACTABLE_FRACTION` 与 `OptimizationAssumptions.existing_withdrawal_share`），
+    因此不必重建输入就能跑它们的敏感性分析。
 
-    Both an annual mean and a dry-season (lowest three consecutive months, annualised)
-    column are produced: thermal power is curtailed in low-flow periods, not at the annual
-    mean, and the source data is monthly.
+    同时生成年均列和枯水期列（最低的连续三个月，年化）：火电受限发生在低流量时段，
+    而不是在年均水平上，且源数据是逐月的。
 
-    The low-flow quarter is selected on the BASIN AGGREGATE -- min over the 12 candidate
-    3-month windows of the basin's summed runoff -- not per grid cell. Selecting per cell
-    and summing gives sum(min) rather than min(sum), which understates the basin's dry-season
-    flow by 2.25x in the Hai and 2.13x in the Northwest Interior. See the comment block at the
-    selection itself.
+    枯水季是在流域汇总量上选取的——对流域径流总和的 12 个候选 3 个月窗口取最小值——
+    而不是逐网格选取。逐网格选取再求和得到的是 sum(min) 而不是 min(sum)，会把流域
+    枯水期流量在海河低估 2.25x、在西北诸河低估 2.13x。见选取处的注释块。
 
-    WHAT THIS COLUMN IS NOT. `qtot` is unrouted runoff GENERATION, so the dry-season number is
-    the rate at which water is produced in the basin's driest quarter -- not the rate at which
-    it is available in the river. Reservoir regulation lives in the routing scheme, which this
-    pipeline deliberately does not use (see the opening paragraph). Using this as a firm-yield
-    budget therefore assumes ZERO storage, which is a strict assumption in the Hai, the Yellow
-    and the Huai, where dry-season flow is largely a reservoir-release decision. It is stated
-    here because the resulting constraint is the study's tightest, and its severity comes from
-    this choice as much as from hydrology.
+    这一列不代表什么。`qtot` 是未经汇流演算的产流量，所以枯水期数值是流域最枯一季的
+    产水速率——而不是河道中可用水的速率。水库调节体现在汇流方案里，而本流程刻意不用
+    汇流（见开头一段）。因此把它当作保证供水量（firm yield）预算使用，就等于假设零调蓄；
+    这在海河、黄河和淮河是很严格的假设，因为那里的枯水期流量很大程度上是水库放水决策
+    的结果。在此写明，是因为由此得到的约束是本研究最紧的约束，其严格程度既来自水文，
+    同样也来自这一选择。
     """
     rows: list[dict[str, object]] = []
     lat_indices = water_nodes["lat_index"].astype(int).to_numpy()
@@ -495,7 +479,7 @@ def build_water_availability_dataframe(
             basin_zones, basin_codes = _basin_zone_grid(paths, lat, lon)
             hydrology_model = str(scenario_row["hydrology_model"])
             gcm = str(scenario_row["gcm"])
-            # Cache on the pair: one factor set per (hydrology model, GCM), shared across SSPs.
+            # 按组合缓存：每个 (水文模型, GCM) 一套因子，各 SSP 共用。
             bias_key = (hydrology_model, gcm)
             if bias_key not in bias_cache:
                 bias_cache[bias_key] = basin_bias_factors(
@@ -509,21 +493,21 @@ def build_water_availability_dataframe(
                 if not mask.any():
                     continue
                 window = _clean_series(np.asarray(runoff_var[mask]), fill_value)
-                # kg m-2 s-1 -> m3/yr per cell (water density 1000 kg m-3)
+                # kg m-2 s-1 -> 每个网格的 m3/yr（水的密度 1000 kg m-3）
                 annual = np.nan_to_num(np.nanmean(window, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
-                # Dry season: lowest 3 consecutive calendar months of the climatological cycle
+                # 枯水期：气候态年循环中最低的连续 3 个日历月
                 months = np.arange(window.shape[0]) % 12
                 monthly_clim = np.stack(
                     [np.nan_to_num(np.nanmean(window[months == m], axis=0)) for m in range(12)]
                 )
                 rolling = np.stack([monthly_clim[np.arange(m, m + 3) % 12].mean(axis=0) for m in range(12)])
-                # Volume per cell for each of the 12 candidate 3-month windows. The basin's
-                # low-flow quarter is chosen ONCE, on the basin total -- see the loop below.
+                # 12 个候选 3 个月窗口各自的每网格水量。流域的枯水季只选一次，
+                # 且是在流域总量上选——见下面的循环。
                 rolling_volume = rolling * area_m2 * SECONDS_PER_YEAR / 1000.0
 
                 node_annual = annual[lat_indices, lon_indices]
 
-                # Basin budgets, bias-corrected, then distributed across that basin's nodes.
+                # 流域预算：先做偏差校正，再分配到该流域的各节点。
                 node_annual_out = np.zeros(len(node_ids), dtype=np.float64)
                 node_dry_out = np.zeros(len(node_ids), dtype=np.float64)
                 for code in set(node_basins):
@@ -531,23 +515,20 @@ def build_water_availability_dataframe(
                     zone_idx = basin_codes.index(code) + 1 if code in basin_codes else 0
                     cells = basin_zones == zone_idx
                     total_annual = float(annual[cells].sum()) * bias_factors.get(code, 1.0)
-                    # Seasonality stays the model's own; only the level is corrected.
+                    # 季节性沿用模型自身的；只校正水平。
                     modelled_annual = float(annual[cells].sum())
-                    # THE DRY SEASON IS A BASIN QUANTITY, NOT A CELL QUANTITY.
-                    # The previous implementation took `rolling.min(axis=0)` -- a minimum per
-                    # grid cell, each cell free to pick its own low-flow quarter -- and summed
-                    # those independent minima over the basin. That is sum(min), when the
-                    # constraint needs min(sum): the basin's total flow during the basin's own
-                    # low-flow quarter. By Jensen the two differ whenever cells bottom out in
-                    # different months, always in the same direction, and the gap was largest
-                    # in precisely the basins this study calls over-limit (2021-2030 window,
-                    # cwatm|gfdl-esm4|ssp126, ratio min(sum)/sum(min)):
-                    #     C Hai 2.25x   K Northwest 2.13x   D Yellow 1.47x   E Huai 1.19x
-                    #     H Pearl 1.03x   F Yangtze 1.06x   G Southeast 1.11x
-                    # The per-cell phase information could not survive in any case: four lines
-                    # below, the basin collapses to ONE `dry_share` redistributed to nodes by
-                    # ANNUAL runoff weights, so which month a single cell bottomed out in is
-                    # discarded one statement after it is used.
+                    # 枯水期是流域量，不是网格量。
+                    # 旧实现取 `rolling.min(axis=0)`——逐网格取最小值，每个网格各自挑选
+                    # 自己的枯水季——再把这些互相独立的最小值在流域内求和。那是 sum(min)，
+                    # 而约束需要的是 min(sum)：流域在其自身枯水季内的总流量。由 Jensen
+                    # 不等式，只要各网格在不同月份见底，两者就不相等，且方向始终相同；差距
+                    # 最大的恰恰是本研究判为超限的那些流域（2021-2030 窗口，
+                    # cwatm|gfdl-esm4|ssp126，比值 min(sum)/sum(min)）：
+                    #     C 海河 2.25x   K 西北诸河 2.13x   D 黄河 1.47x   E 淮河 1.19x
+                    #     H 珠江 1.03x   F 长江 1.06x   G 东南诸河 1.11x
+                    # 逐网格的相位信息无论如何都保留不下来：往下四行，流域就坍缩成一个
+                    # `dry_share`，再按年径流权重重新分配到节点，所以单个网格在哪个月
+                    # 见底，在它被使用之后的下一条语句就被丢弃了。
                     basin_rolling = rolling_volume[:, cells].sum(axis=1)
                     dry_share = float(basin_rolling.min()) / modelled_annual if modelled_annual > 0 else 0.0
                     total_dry = total_annual * dry_share
@@ -555,7 +536,7 @@ def build_water_availability_dataframe(
                     weight_sum = float(weights.sum())
                     if weight_sum > 0:
                         share = weights / weight_sum
-                    else:  # basin with no modelled runoff at its nodes: split evenly
+                    else:  # 该流域的节点上没有模拟径流：均分
                         share = np.full(int(members.sum()), 1.0 / max(1, int(members.sum())))
                     node_annual_out[members] = total_annual * share
                     node_dry_out[members] = total_dry * share
@@ -592,15 +573,13 @@ def coarsen_water_inputs(
     fine_availability: pd.DataFrame,
     cell_degrees: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Aggregate the hydrology grid onto coarser cells for the optimisation.
+    """把水文网格聚合到更粗的网格上，供优化使用。
 
-    Cells are grouped by (basin, lon bin, lat bin) rather than by bin alone. Grouping on the
-    bin only lets one ~200 km cell straddle several budget units and be assigned wholly to
-    whichever unit holds its largest node, which moves water across their borders: under the
-    earlier provincial budget that gave Tianjin +347%, Beijing +107% and Ningxia +50% while
-    Shaanxi lost 40%, Shandong 33% and Hebei 25%. Since the availability budget is built per
-    basin, that would silently rewrite the very constraint the model is meant to test.
-    Splitting each cell by basin keeps basin totals identical before and after coarsening.
+    网格按 (流域, 经度分箱, 纬度分箱) 分组，而不是只按分箱分组。只按分箱分组时，一个
+    ~200 km 的网格会横跨多个预算单元，并被整体划给其最大节点所在的单元，从而把水量
+    搬过单元边界：在早先的分省预算下，这使天津 +347%、北京 +107%、宁夏 +50%，而陕西
+    减少 40%、山东减少 33%、河北减少 25%。由于可用水量预算是按流域构建的，这会悄悄
+    改写模型本来要检验的那条约束。按流域拆分每个网格，可使粗化前后的流域总量保持一致。
     """
     nodes = fine_nodes.copy()
     nodes["_ci"] = np.floor(nodes["longitude"].astype(float) / cell_degrees).astype(int)
@@ -642,8 +621,8 @@ def coarsen_water_inputs(
     mapping = dict(zip(nodes["water_node_id"], nodes["coarse_id"]))
     availability = fine_availability.copy()
     availability["water_node_id"] = availability["water_node_id"].map(mapping)
-    # scenario_id must stay in the key: without it every climate member of a family would be
-    # summed into one node total.
+    # scenario_id 必须留在分组键里：否则同一情景族（family）的所有气候成员会被加总
+    # 成一个节点总量。
     keys = ["water_node_id", "planning_year", "scenario_family", "scenario_id",
             "hydrology_model", "gcm", "ssp", "basin_code"]
     keys = [key for key in keys if key in availability.columns]
@@ -729,8 +708,8 @@ def write_water_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame,
     base = build_water_base_dataframe(scenarios)
     water_nodes = build_water_nodes_dataframe(paths, scenarios)
     water_availability = build_water_availability_dataframe(paths, scenarios, water_nodes)
-    # Coarsening used to be applied by hand after the build, so the committed inputs could
-    # not be regenerated from this entry point. It belongs here.
+    # 粗化以前是在构建之后手工施加的，所以已提交的输入无法从这个入口重新生成。
+    # 它应当放在这里。
     if WATER_COARSE_GRID_DEGREES > 0:
         water_nodes, water_availability = coarsen_water_inputs(
             water_nodes, water_availability, WATER_COARSE_GRID_DEGREES

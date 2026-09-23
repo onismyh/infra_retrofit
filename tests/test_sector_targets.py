@@ -1,4 +1,4 @@
-"""Sector-target caps and the utilisation trajectory on the single-plant toy model."""
+"""单厂 toy 模型上的部门碳目标上限与利用小时轨迹。"""
 from __future__ import annotations
 
 import numpy as np
@@ -28,9 +28,9 @@ def _solve(paths, scenario: OptimizationScenario) -> dict[str, object]:
 
 
 def test_power_cap_binds_on_the_2030_baseline_and_hours_scale_generation(tmp_path) -> None:
-    """Cap 1.0 in 2030 (nothing to do) and 0.4 of the 2030 baseline in 2040, with hours
-    falling from 4 000 to 3 000. The 2040 residual must equal 0.4 x E_2030 exactly, and the
-    2040 baseline must be 3/4 of the 2030 one because only the hours moved."""
+    """2030 年上限 1.0（无事可做），2040 年上限为 2030 年基线的 0.4，利用小时
+    从 4 000 降到 3 000。2040 年残余排放必须恰好等于 0.4 x E_2030，且 2040 年基线
+    必须是 2030 年的 3/4，因为只有利用小时变了。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 1.0, 2040: 0.4})
     scenario = OptimizationScenario(
@@ -52,13 +52,13 @@ def test_power_cap_binds_on_the_2030_baseline_and_hours_scale_generation(tmp_pat
     e_2030 = float(y1["year_data"].emissions_mt[0])
     e_2040 = float(y2["year_data"].emissions_mt[0])
     assert e_2040 == pytest.approx(0.75 * e_2030, rel=1e-9)
-    # Hours: the toy fleet is one Shanxi plant at 4 629.5 h, scaled to 4 000 in 2030.
+    # 利用小时：toy 机组群只有一座 4 629.5 h 的山西电厂，2030 年缩放到 4 000。
     assert y1["year_data"].hours_scale == pytest.approx(4000.0 / 4629.5, rel=1e-6)
 
-    # 2030: no abatement required, none bought.
+    # 2030 年：不要求减排，也没有买任何减排。
     assert y1["total_reduction_mt"] == pytest.approx(0.0, abs=1e-6)
     assert y1["slacks"]["target_shortfall_mt"] == pytest.approx(0.0, abs=1e-9)
-    # 2040: residual exactly at the cap, met by capture (retirement disabled), no slack.
+    # 2040 年：残余排放恰在上限，靠捕集满足（退役已禁用），无松弛。
     residual_2040 = e_2040 - float(y2["total_reduction_mt"])
     assert residual_2040 == pytest.approx(0.4 * e_2030, rel=1e-4)
     assert y2["slacks"]["target_shortfall_by_group"]["power"] == pytest.approx(0.0, abs=1e-9)
@@ -67,8 +67,8 @@ def test_power_cap_binds_on_the_2030_baseline_and_hours_scale_generation(tmp_pat
 
 
 def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
-    """A cap below what the pathways can reach lands in the named group's shortfall, and the
-    scalar shortfall equals the sum over groups."""
+    """上限低于各路径所能达到的水平时，差额落入对应目标组的缺口，且标量缺口
+    等于各组之和。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 1.0, 2040: -0.5})
     scenario = OptimizationScenario(
@@ -78,7 +78,7 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
         sector_target_source="toy",
         carbon_price_cny_per_t_by_year=(0.0, 0.0),
         electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
-        # Only CCS can act: no BECCS (biomass is out of reach in the toy), no retirement.
+        # 只有 CCS 能起作用：无 BECCS（toy 中生物质够不到），无退役。
         pathway_disable=("retire", "biomass", "beccs", "ammonia"),
         solver_time_limit=300,
     )
@@ -93,12 +93,10 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
 
 
 def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_path) -> None:
-    """With biomass the only pathway left and a 15% cut required in 2040, an uncapped fleet meets
-    the cap by co-firing; a national ceiling far below that demand binds exactly and the
-    unmet part shows up as the power group's shortfall."""
+    """生物质是唯一剩下的路径、2040 年要求减排 15% 时，不设上限的机组群靠掺烧满足上限；
+    远低于该需求的全国上限恰好绑定，未满足的部分表现为 power 组的缺口。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
-    # Move the biomass node next to the plant so a fuel link exists (the fixture parks it
-    # 2 000 km away on purpose).
+    # 把生物质节点挪到电厂旁边，使燃料链路存在（fixture 故意把它放在 2 000 km 之外）。
     pd.DataFrame(
         {
             "biomass_node_id": ["B1"],
@@ -150,9 +148,8 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
 
 
 def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
-    """Same shape as the biomass test with ammonia co-firing as the only pathway: uncapped, the
-    2040 cut is met; a fleet ceiling at half that demand binds exactly and the rest is
-    power-group shortfall."""
+    """与生物质测试同构，唯一路径换成掺氨：不设上限时，2040 年的减排要求得以满足；
+    机组群上限设为该需求的一半时恰好绑定，其余部分成为 power 组缺口。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     pd.DataFrame(
         {

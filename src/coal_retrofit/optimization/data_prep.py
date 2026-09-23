@@ -31,14 +31,14 @@ def _paths_df_from_assumptions(assumptions: OptimizationAssumptions, scenario: O
 def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
     plants = pd.read_csv(paths.inputs_dir / "plants.csv").copy()
     plants["province_name"] = plants["province_mode"].astype(str)
-    # Use province-specific operating hours for generation calculation
+    # 发电量按分省利用小时数计算
     plants["province_cf"] = plants["province_name"].map(
         lambda prov: assumptions.province_cf(prov)
     )
     plants["annual_generation_mwh"] = plants["total_capacity_mw"].astype(float) * plants["province_cf"] * 8760.0
-    # Capacity-weighted current fleet hours, the denominator of
-    # `scenario.operating_hours_scale`. Stored on every row so `_build_year_matrices` can
-    # read it without recomputing the weighting.
+    # 按装机容量加权的当前机组利用小时数，即
+    # `scenario.operating_hours_scale` 的分母。每一行都存一份，这样 `_build_year_matrices`
+    # 读取时无需重算加权。
     capacity = plants["total_capacity_mw"].astype(float)
     plants["fleet_hours_now"] = float(
         (capacity * plants["province_cf"] * 8760.0).sum() / max(float(capacity.sum()), 1e-9)
@@ -51,23 +51,20 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         if scenario.forced_cooling_technology
         else plants["dominant_cooling_technology"].astype(str)
     )
-    # Water that has to come from the freshwater system, on the basis the scenario selects.
-    # `builders/plants.py` writes four capacity-weighted intensities per site from the Wang
-    # (2023) table, looked up per unit by steam cycle and cooling system, with coastal
-    # seawater condensers already zeroed out. Older inputs without those columns fall back
-    # to the flat per-cooling consumption values.
-    # Three bases, three jobs. They are NOT interchangeable and the model uses all three:
+    # 必须来自淡水系统的水量，口径由情景选定。
+    # `builders/plants.py` 依据 Wang (2023) 表为每个厂址写出四个按装机容量加权的强度：
+    # 逐机组按蒸汽参数（steam cycle）与冷却方式查表，沿海的海水凝汽器已置零。没有这些列
+    # 的旧输入退回到按冷却方式取的统一耗水值。
+    # 三种口径，三种用途。它们不可互换，模型三种都用：
     #
-    #   consumption  what the basin actually loses      -> the availability constraint
-    #   quota        what China meters and charges       -> the water tariff
-    #   withdrawal   everything diverted, incl. the flow returned downstream -> reported only
+    #   consumption  流域实际损失的水量               -> 可用水量约束
+    #   quota        中国计量并收费的水量             -> 水价
+    #   withdrawal   全部引水量，含回流到下游的部分   -> 只作报告
     #
-    # Constraining on withdrawal was tried and abandoned: an environmental-flow allowance is
-    # a rule about DEPLETION, and applying it to once-through condenser flow — which returns
-    # to the river a few kilometres on — put the Yangtze basin 155% over its limit purely
-    # because 45.6% of its coal is once-through. What actually limits a once-through intake
-    # is instantaneous channel discharge at the intake, which needs routed flow (`dis`) at
-    # reach scale; until that exists, withdrawal is a diagnostic, never a constraint.
+    # 曾尝试按取水量设约束，后来放弃：生态流量预留是关于耗减（depletion）的规则，把它用到
+    # 直流冷却的凝汽器水量上——这些水在下游几公里处就回到河里——仅因长江流域 45.6% 的
+    # 煤电是直流冷却，就让该流域超出限额 155%。真正限制直流冷却取水的是取水口处的瞬时
+    # 河道流量，这需要河段尺度的河道演算流量（`dis`）；在此之前，取水量只作诊断，绝不作约束。
     base_column = "consumption_intensity_m3_per_mwh"
     ccs_column = "consumption_ccs_intensity_m3_per_mwh"
     has_table = base_column in plants.columns and ccs_column in plants.columns
@@ -81,10 +78,9 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         plants["baseline_water_intensity_m3_per_mwh"] = flat
         plants["capture_water_intensity_m3_per_mwh"] = flat * assumptions.ccs_water_multiplier
     plants["water_basis"] = "consumption"
-    # Charge ratio: the tariff is levied on the metered quota volume, but the variable the
-    # solver tracks is consumption, so the delivered price is scaled by quota/consumption per
-    # plant. Capture increments are charged at the base ratio — a <=25% approximation on a
-    # term worth ~5% of system cost. Falls back to 1.0 wherever the quota column is absent.
+    # 计费比：水价按计量的定额水量征收，但求解器跟踪的变量是耗水量，所以到厂水价要逐厂
+    # 乘以 quota/consumption。捕集带来的增量按基准比计费——这是对一个占系统成本 ~5% 的项
+    # 所做的 <=25% 的近似。凡没有定额列之处，退回 1.0。
     if "quota_intensity_m3_per_mwh" in plants.columns:
         consumption = plants["baseline_water_intensity_m3_per_mwh"].astype(float)
         ratio = plants["quota_intensity_m3_per_mwh"].astype(float) / consumption.where(consumption > 0)
@@ -92,7 +88,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     else:
         logger.warning("plants.csv lacks quota_intensity_m3_per_mwh; charging water at the consumption volume")
         plants["water_charge_ratio"] = 1.0
-    # Reported, never constrained.
+    # 只作报告，从不设约束。
     for column in ("withdrawal_intensity_m3_per_mwh", "withdrawal_ccs_intensity_m3_per_mwh"):
         if column not in plants.columns:
             plants[column] = 0.0
@@ -100,10 +96,9 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         assumptions.cooling_baseline_water_intensity
     )
     plants["source_dataset"] = "inputs/plants.csv"
-    # Level-1 basin of the hub's own location, for the official-quota cap. Attribution is by
-    # location rather than by the basin of the node a hub draws from, because that is how the
-    # withdrawal permit is issued. Computed once here: it is a spatial join, and redoing it per
-    # planning year per scenario would cost more than the whole rest of the preparation.
+    # hub 自身所在位置的一级流域，用于官方指标上限。按所在位置归属，而不是按 hub 取水
+    # 节点所在的流域归属，因为取水许可就是这样核发的。只在这里算一次：它是一次空间连接
+    # （spatial join），若按每个规划年、每个情景重做，耗时会超过其余全部准备工作之和。
     if str(assumptions.water_budget) == "official_quota":
         from ..builders.water import _assign_basin_codes
 
@@ -147,7 +142,7 @@ def _prepare_sector_targets(paths: ProjectPaths, scenario: OptimizationScenario)
 
 
 def _prepare_output_index(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[tuple[str, int], float]:
-    """{(sector, year): output index, 2030 = 1}; empty dict means output is held flat."""
+    """{(sector, year): 产量指数, 2030 = 1}；空 dict 表示产量保持不变。"""
     source = scenario.effective_output_index_source
     if not source:
         return {}
@@ -172,12 +167,11 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
     if scenario.storage_scope == "dsa_only":
         storages = storages[storages["storage_type"].astype(str) == "dsa"].copy()
     storages["available_capacity_mt"] = storages["storage_all_mt"].astype(float).clip(lower=0.0)
-    # Buildable injection rate from candidate-site density, not from summing the raster's
-    # per-cell geological rates (see OptimizationAssumptions.storage_site_block_pixels).
-    # One project per 50x50 km block of 5 km cells, at real project scale. The raster sum is
-    # still applied as a geological ceiling so a hub can never exceed what the formation
-    # accepts. Everything is resolved BEFORE injectivity_multiplier so SA_injectivity_half
-    # still bites.
+    # 可建注入速率按候选场址密度推算，而不是把栅格逐格的地质速率加总
+    # （见 OptimizationAssumptions.storage_site_block_pixels）。
+    # 由 5 km 栅格组成的每个 50x50 km 区块算一个项目，按真实项目规模计。栅格加总值仍作为
+    # 地质上限施加，使 hub 永远不会超过地层能接受的量。以上全部在乘 injectivity_multiplier
+    # 之前定下，这样 SA_injectivity_half 依然起作用。
     geological_ceiling = (
         storages["injectivity_dsa_avg_mtpa"].astype(float) + storages["injectivity_eor_avg_mtpa"].astype(float)
     ).clip(lower=0.0)
@@ -187,18 +181,17 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
             lower=0.0, upper=assumptions.max_hub_injectivity_mtpa
         )
     else:
-        # Inputs without the raster cell count (e.g. hand-written test fixtures) fall back
-        # to the raw rate under the ceiling.
+        # 没有栅格像元计数的输入（例如手写的测试夹具）退回到
+        # 上限之内的原始速率。
         logger.warning("storage_hubs.csv has no pixel_count column; using raw injectivity under the hub ceiling")
         buildable = geological_ceiling.clip(upper=assumptions.max_hub_injectivity_mtpa)
     storages["injectivity_mtpa"] = (
         np.minimum(buildable, geological_ceiling) * scenario.injectivity_multiplier
     )
-    # DSA capacity pays the base storage cost; EOR capacity earns the revenue credit against it.
-    # Priced on the CAPACITY SPLIT rather than on `storage_type`, because that label is only a
-    # majority vote whenever a hub holds both. Sinks built without a distance merge are pure, so
-    # the share is 0 or 1 and this reduces to the old rule exactly; under a merge it stops
-    # 7 232 Mt of EOR capacity from silently losing its credit by being outvoted.
+    # DSA 容量支付基准封存成本；EOR 容量在此之上获得收益抵扣（credit）。
+    # 按容量拆分计价，而不是按 `storage_type`，因为只要一个 hub 两者兼有，这个标签就只是
+    # 多数表决的结果。不做距离合并建出的汇是纯的，份额非 0 即 1，此式与旧规则完全一致；
+    # 在合并情形下，它能防止 7 232 Mt 的 EOR 容量因在表决中被压过而悄悄丢掉抵扣。
     dsa_mt = storages["storage_dsa_mt"].astype(float).clip(lower=0.0)
     eor_mt = storages["storage_eor_mt"].astype(float).clip(lower=0.0)
     eor_share = (eor_mt / (dsa_mt + eor_mt).replace(0.0, np.nan)).fillna(0.0)
@@ -215,7 +208,7 @@ def _prepare_biomass(paths: ProjectPaths, scenario: OptimizationScenario, assump
     biomass["available_gj"] = biomass["available_gj"].astype(float) * scenario.biomass_supply_multiplier
     biomass["cost_cny_per_gj"] = biomass["base_cost_cny_per_gj"].astype(float) * scenario.biomass_cost_multiplier
 
-    # Coarsen grid if configured
+    # 若已配置，则粗化网格
     if assumptions.biomass_coarse_grid_degrees > 0:
         biomass = _coarsen_resource_nodes(
             biomass, assumptions.biomass_coarse_grid_degrees,
@@ -262,7 +255,7 @@ def _prepare_ammonia_supply(
         * scenario.ammonia_cost_multiplier
     )
 
-    # Coarsen per year group if configured
+    # 若已配置，则按年份分组粗化
     coarse_deg = assumptions.ammonia_coarse_grid_degrees
     if coarse_deg > 0:
         coarsened_parts = []
@@ -273,7 +266,7 @@ def _prepare_ammonia_supply(
                 id_col="ammonia_node_id", id_prefix="AC",
             )
             coarsened["year"] = int(year)
-            # Carry forward nh3_cost_lb_usd_per_kg for downstream compatibility
+            # 为兼容下游，继续带上 nh3_cost_lb_usd_per_kg
             coarsened["nh3_cost_lb_usd_per_kg"] = coarsened["cost_cny_per_kg"] / (assumptions.usd_to_cny * scenario.ammonia_cost_multiplier) if scenario.ammonia_cost_multiplier != 0 else 0.0
             coarsened_parts.append(coarsened)
         ammonia = pd.concat(coarsened_parts, ignore_index=True)
@@ -309,12 +302,11 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     water_nodes = pd.read_csv(paths.inputs_dir / "water_nodes.csv").copy()
     water_availability = pd.read_csv(paths.inputs_dir / "water_availability.csv").copy()
 
-    # Coarsening is done once at build time (`builders.water.coarsen_water_inputs`), which
-    # groups by (basin, lon bin, lat bin) so basin budgets survive it. The runtime version
-    # that used to live here grouped by bin alone and, worse, aggregated availability on
-    # (node, year, scenario_family) — summing every climate member of a family into one
-    # number. It was never enabled (the parameter defaults to 0 and no scenario sets it),
-    # so removing it changes no result; leaving it would have been a loaded gun.
+    # 粗化只在构建输入时做一次（`builders.water.coarsen_water_inputs`），按（流域，经度分箱，
+    # 纬度分箱）分组，因此流域预算不受影响。原先放在这里的运行时版本只按分箱分组，更糟的是
+    # 按 (node, year, scenario_family) 汇总可用水量——把一个情景族里所有气候成员加成一个数。
+    # 它从未启用过（该参数默认为 0，也没有任何情景设置它），所以删掉它不改变任何结果；
+    # 留着它则是一把上了膛的枪。
     if assumptions.water_coarse_grid_degrees > 0:
         raise ValueError(
             "water_coarse_grid_degrees is no longer honoured at solve time; set "

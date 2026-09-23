@@ -15,9 +15,9 @@ from ..spatial import load_provinces
 
 logger = logging.getLogger(__name__)
 
-# Bridge small within-basin gaps (2 pixels = 10 km at 5 km resolution)
+# 弥合盆地内部的小间隙（5 km 分辨率下 2 个像素 = 10 km）
 _DILATION_PIXELS = 2
-# Drop noise components below both thresholds
+# 丢弃同时低于两个阈值的噪声连通域
 _MIN_STORAGE_MT = 10.0
 _MIN_INJECTIVITY_MTPA = 0.1
 
@@ -27,19 +27,19 @@ def _extract_storage_nodes(
     injectivity_path: object,
     storage_type: str,
 ) -> pd.DataFrame:
-    """Extract injection nodes from a pair of rasters via connected-component analysis.
+    """用连通域分析从一对栅格中提取注入节点。
 
-    Each connected component represents a geological formation (basin or oil field).
-    The injection centre is the storage-potential-weighted centroid of all valid pixels
-    in the component, reprojected to WGS84.
+    每个连通域代表一个地质构造（盆地或油田）。
+    注入中心是该连通域内全部有效像素按封存潜力加权的质心，
+    并重投影到 WGS84。
 
     Args:
-        storage_path: Path to storage potential raster (Mt CO2 per pixel).
-        injectivity_path: Path to injection rate raster (Mt/a per pixel).
-        storage_type: ``"dsa"`` or ``"eor"``.
+        storage_path: 封存潜力栅格的路径（每像素 Mt CO2）。
+        injectivity_path: 注入速率栅格的路径（每像素 Mt/a）。
+        storage_type: ``"dsa"`` 或 ``"eor"``。
 
     Returns:
-        DataFrame with one row per retained component.
+        每个保留下来的连通域占一行的 DataFrame。
     """
     with rasterio.open(storage_path) as src:
         storage = src.read(1).astype(np.float64)
@@ -51,7 +51,7 @@ def _extract_storage_nodes(
         injectivity = src.read(1).astype(np.float64)
         inj_nodata = src.nodata
 
-    # Replace nodata with zero so sums are safe
+    # 把 nodata 替换为零，保证求和安全
     if nodata is not None:
         storage_nodata = storage == nodata
     else:
@@ -63,11 +63,11 @@ def _extract_storage_nodes(
     if not valid.any():
         return pd.DataFrame()
 
-    # Dilate to bridge small intra-basin gaps, then label connected components
+    # 先膨胀以弥合盆地内部的小间隙，再标记连通域
     dilated = ndimage.binary_dilation(valid, iterations=_DILATION_PIXELS)
     labeled, _ = ndimage.label(dilated)
 
-    # Pixel centre coordinates in projected CRS
+    # 像素中心在投影 CRS 下的坐标
     rows_idx, cols_idx = np.where(valid)
     x_proj = transform.c + (cols_idx + 0.5) * transform.a
     y_proj = transform.f + (rows_idx + 0.5) * transform.e
@@ -90,7 +90,7 @@ def _extract_storage_nodes(
         if total_storage < _MIN_STORAGE_MT:
             continue
 
-        # Storage-weighted centroid → injection centre at the richest part of the basin
+        # 按封存量加权的质心 → 注入中心落在盆地最富集的部分
         total_weight = sv.sum()
         if total_weight > 0:
             weights = sv / total_weight
@@ -118,7 +118,7 @@ def _extract_storage_nodes(
 
 
 def _haversine_distance_matrix(lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-    """Compute pairwise Haversine distances (km) between points."""
+    """计算各点两两之间的 Haversine 距离（km）。"""
     lon_r = np.radians(lons)
     lat_r = np.radians(lats)
     dlon = lon_r[:, None] - lon_r[None, :]
@@ -131,15 +131,14 @@ _CLUSTER_DISTANCE_KM = 200.0
 
 
 def _cluster_storage_nodes(df: pd.DataFrame, max_distance_km: float = _CLUSTER_DISTANCE_KM) -> pd.DataFrame:
-    """Merge nearby storage nodes so that no two centres are within *max_distance_km*.
+    """合并相近的封存节点，使任意两个中心的距离都不在 *max_distance_km* 以内。
 
-    DSA and EOR are clustered **jointly** — hubs in the same basin are merged
-    into a single node regardless of storage type.  Within each cluster the
-    injection centre is the storage-weighted centroid; capacities and
-    injectivities are summed (DSA and EOR components tracked separately).
+    DSA 与 EOR **联合**聚类——同一盆地内的 hub 不论封存类型都合并为
+    单个节点。每个簇内的注入中心取按封存量加权的质心；容量和
+    注入能力相加（DSA 与 EOR 分量分别记录）。
 
-    A post-merge pass iteratively merges any remaining centroids closer than
-    *max_distance_km*, guaranteeing the final minimum inter-hub distance.
+    合并后再做一轮迭代，把仍然近于 *max_distance_km* 的质心继续合并，
+    从而保证最终 hub 间的最小距离。
     """
     if len(df) <= 1:
         return df
@@ -161,7 +160,7 @@ def _cluster_storage_nodes(df: pd.DataFrame, max_distance_km: float = _CLUSTER_D
 
     result = pd.DataFrame(rows)
 
-    # Post-merge: iteratively merge closest centroids until min distance >= threshold
+    # 合并后处理：迭代合并最近的两个质心，直到最小距离 >= 阈值
     while len(result) > 1:
         d = _haversine_distance_matrix(result["longitude"].to_numpy(), result["latitude"].to_numpy())
         np.fill_diagonal(d, np.inf)
@@ -176,7 +175,7 @@ def _cluster_storage_nodes(df: pd.DataFrame, max_distance_km: float = _CLUSTER_D
 
 
 def _merge_group(group: pd.DataFrame) -> dict:
-    """Merge a group of storage nodes into a single hub row."""
+    """把一组封存节点合并成一行 hub 记录。"""
     weights = group["storage_all_mt"].to_numpy().astype(float)
     total_w = weights.sum()
     w = weights / total_w if total_w > 0 else np.ones(len(weights)) / len(weights)
@@ -199,12 +198,11 @@ def _merge_group(group: pd.DataFrame) -> dict:
 
 
 def _flag_offshore(paths: ProjectPaths, hubs: pd.DataFrame) -> pd.Series:
-    """Flag hubs whose injection centre falls outside China's land provinces.
+    """标记注入中心落在中国陆地省份之外的 hub。
 
-    About 46% of the DSA storage raster lies outside the provincial land boundaries — the
-    offshore basins (East China Sea, Pearl River Mouth, Bohai, Beibu Gulf). Those hubs need
-    subsea pipelines and platforms, so the optimizer scales their transport cost
-    (OptimizationAssumptions.offshore_transport_multiplier).
+    DSA 封存栅格约有 46% 位于省级陆地边界之外——即海域盆地（东海、珠江口、渤海、
+    北部湾）。这些 hub 需要海底管道和平台，因此优化器会按系数缩放其运输成本
+    （OptimizationAssumptions.offshore_transport_multiplier）。
     """
     from shapely.geometry import Point
 
@@ -220,21 +218,19 @@ def _flag_offshore(paths: ProjectPaths, hubs: pd.DataFrame) -> pd.Series:
 def _offshore_basin_labels(
     storage_path: object, hubs: pd.DataFrame, dilation_px: int
 ) -> np.ndarray:
-    """Basin label for every hub, from a *dilation_px* dilation of the aquifer raster.
+    """基于对含水层栅格做 *dilation_px* 像素膨胀的结果，给出每个 hub 的盆地标签。
 
-    Bodies are delineated with a 2-pixel dilation (`_DILATION_PIXELS`). Growing the same mask
-    further fuses bodies of one sedimentary basin into a single connected component while
-    leaving distinct basins apart. The sweep behind the default (scratch `offshore_basin_sweep.py`,
-    2026-09-03) gave, for the 25 offshore bodies:
+    封存体按 2 像素膨胀（`_DILATION_PIXELS`）划定。把同一掩膜继续膨胀，会把
+    同一沉积盆地内的封存体融成一个连通域，而不同盆地仍保持分开。默认值背后的
+    扫描（scratch `offshore_basin_sweep.py`，2026-09-03）对 25 个海上封存体给出：
 
-        10 km -> 9 basins   20 km -> 8   **30 km -> 7**   40 km -> 5   60 km -> 4   100 km -> 3
+        10 km -> 9 个盆地   20 km -> 8   **30 km -> 7**   40 km -> 5   60 km -> 4   100 km -> 3
 
-    30 km is the smallest radius at which the count equals the **7 offshore basins the source
-    assessment itself evaluates**; the next step (40 km) fuses the Pearl River Mouth with the
-    Beibu Gulf and the Bohai with the North Yellow Sea, which are different basins. The number
-    therefore comes from the data set, not from a tuning knob. The EOR raster sits on a
-    different grid, so basins are drawn on the saline-aquifer raster alone and every body
-    (DSA or EOR) snaps to the nearest labelled pixel.
+    30 km 是盆地数恰好等于**来源评估本身所评价的 7 个海域盆地**的最小半径；
+    下一档（40 km）会把珠江口与北部湾、渤海与北黄海融在一起，而它们是不同的
+    盆地。因此这个数取自数据集，而不是来自调参旋钮。EOR 栅格在另一套网格上，
+    所以盆地只在咸水层栅格上划分，每个封存体（DSA 或 EOR）都吸附到最近的
+    已标记像素。
     """
     with rasterio.open(storage_path) as src:
         storage = src.read(1).astype(np.float64)
@@ -261,11 +257,11 @@ def _offshore_basin_labels(
 def _merge_offshore_by_basin(
     paths: ProjectPaths, hubs: pd.DataFrame, storage_path: object, dilation_px: int
 ) -> pd.DataFrame:
-    """Merge offshore bodies of one basin and one storage type into a single hub.
+    """把同一盆地、同一封存类型的海上封存体合并为单个 hub。
 
-    Onshore bodies are untouched. DSA and EOR stay separate inside a basin so the EOR credit
-    is never averaged away (the pricing argument in `build_storage_hub_dataframe`). Capacities,
-    injectivities and pixel counts add; the injection centre is the storage-weighted centroid.
+    陆上封存体不动。盆地内 DSA 与 EOR 仍然分开，这样 EOR 抵扣就不会被平均掉
+    （计价理由见 `build_storage_hub_dataframe`）。容量、注入能力和像素数
+    相加；注入中心取按封存量加权的质心。
     """
     offshore = _flag_offshore(paths, hubs).to_numpy()
     if not offshore.any():
@@ -285,12 +281,12 @@ def _merge_offshore_by_basin(
 
 
 def _validate_against_source_dataset(frame: pd.DataFrame) -> None:
-    """Check the extracted totals against the published national figures.
+    """用已发表的全国数字核对提取出的总量。
 
-    The rasters are the 5 km fine-grid assessment of 69 saline reservoirs and ~1 150 oilfields
-    across 24 major sedimentary basins (17 onshore, 7 offshore). Its published national storage
-    potential is 1 506-2 265 Gt for deep saline aquifers (90% interval) and 8.0-9.1 Gt for
-    oilfields. Extracting the rasters here must land inside those, or the extraction is wrong.
+    这些栅格来自对 24 个主要沉积盆地（陆上 17 个、海域 7 个）中 69 个咸水储层和
+    约 1 150 个油田所做的 5 km 精细网格评估。其发表的全国封存潜力为：深部咸水层
+    1 506-2 265 Gt（90% 区间），油田 8.0-9.1 Gt。这里对栅格的提取结果必须落在
+    这些区间内，否则就是提取出错了。
     """
     dsa_gt = float(frame.loc[frame["storage_type"] == "dsa", "storage_all_mt"].sum()) / 1e3
     eor_gt = float(frame.loc[frame["storage_type"] == "eor", "storage_all_mt"].sum()) / 1e3
@@ -309,22 +305,20 @@ def build_storage_hub_dataframe(
     merge_distance_km: float | None = None,
     offshore_basin_dilation_px: int | None = None,
 ) -> pd.DataFrame:
-    """Build the sink table.
+    """构建汇表。
 
-    *offshore_basin_dilation_px* merges offshore bodies basin-by-basin (and type-by-type);
-    see `_offshore_basin_labels` for why 6 px (30 km) is the defensible value. Onshore bodies
-    are never merged by it. Default None keeps every body, i.e. the 103-sink table.
+    *offshore_basin_dilation_px* 逐盆地（并逐类型）合并海上封存体；为什么 6 px（30 km）
+    是站得住的取值，见 `_offshore_basin_labels`。陆上封存体从不因它而合并。默认 None
+    保留每个封存体，即 103 个汇的表。
 
-    Each retained connected component of the storage raster is one sink -- a contiguous
-    geological storage body as delineated by the source assessment. DSA and EOR bodies stay
-    SEPARATE even where they overlie one another, because they carry different costs: EOR earns
-    `eor_credit_cny_per_t` against the base storage cost and deep saline storage does not.
+    封存栅格中每个保留下来的连通域就是一个汇——即来源评估所划定的一个连续的
+    地质封存体。DSA 与 EOR 封存体即使上下叠置也保持分开，因为二者成本不同：
+    EOR 可按 `eor_credit_cny_per_t` 抵减基础封存成本，深部咸水层封存则不能。
 
-    *merge_distance_km* reinstates the old behaviour of merging bodies whose centres fall within
-    that distance. It defaults to None (no merging). The 200 km merge that used to be
-    unconditional had no geological basis: it collapsed 103 bodies into 35, relabelled 7 232 Mt
-    of EOR capacity as DSA -- deleting its revenue credit -- and lengthened the capacity-weighted
-    haul from a plant to its nearest sink from 200 km to 234 km.
+    *merge_distance_km* 恢复旧行为：把中心相距在该距离以内的封存体合并。默认为
+    None（不合并）。过去无条件执行的 200 km 合并没有地质依据：它把 103 个封存体
+    压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把
+    按容量加权的电厂到最近汇的运距从 200 km 拉长到 234 km。
     """
     base = paths.data_dir / "封存汇图层-Fan"
 

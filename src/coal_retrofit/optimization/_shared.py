@@ -51,8 +51,8 @@ class PreparedInputs:
     water_nodes: pd.DataFrame
     water_links: pd.DataFrame
     water_availability: pd.DataFrame
-    # Official 用水总量控制指标 per basin per planning year, empty when the file has not
-    # been built. Only read when `assumptions.water_budget == 'official_quota'`.
+    # 各流域、各规划年的官方用水总量控制指标；文件尚未构建时为空。
+    # 只在 `assumptions.water_budget == 'official_quota'` 时读取。
     water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
@@ -90,23 +90,21 @@ def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000):
     except gp.GurobiError as exc:  # pragma: no cover
         raise RuntimeError("Could not initialize Gurobi. Please verify the local license environment.") from exc
     model.Params.OutputFlag = 1
-    model.Params.MIPGap = 0.01    # 1% gap for publication quality
-    model.Params.MIPFocus = 1     # Focus on finding good feasible solutions quickly
-    model.Params.Presolve = 2     # Aggressive presolve
+    model.Params.MIPGap = 0.01    # 1% gap，达到发表质量
+    model.Params.MIPFocus = 1     # 侧重于尽快找到好的可行解
+    model.Params.Presolve = 2     # 激进预求解
     model.Params.TimeLimit = time_limit
-    model.Params.Heuristics = 0.3        # More heuristic effort for better incumbents
-    model.Params.NumericFocus = 1        # Better numeric handling for large coefficient ranges
-    model.Params.ScaleFlag = 2           # Aggressive scaling for large coefficient models
+    model.Params.Heuristics = 0.3        # 加大启发式力度，以得到更好的当前最优可行解（incumbent）
+    model.Params.NumericFocus = 1        # 针对大系数范围加强数值处理
+    model.Params.ScaleFlag = 2           # 对大系数模型做激进缩放
     if threads > 0:
         model.Params.Threads = threads
-    # Diagnostic only, and deliberately NOT a model parameter: varying the seed changes the
-    # search path while leaving the model, the parameters and the feasible set bit-identical.
-    # That is the only way to measure this model's degeneracy. Gurobi is deterministic for a
-    # fixed (model, params, threads), so re-solving without changing the seed measures nothing,
-    # and perturbing any physical input measures physics rather than solver arbitrariness --
-    # which is exactly the error the `*_nobias` "floor" made (bias factor 0.412 in Hai means
-    # that switching bias correction off multiplies its availability by 2.43x, in the basin
-    # that binds). Unset by default, so default behaviour is unchanged.
+    # 仅用于诊断，并且有意不作为模型参数：改变 seed 会改变搜索路径，同时模型、参数与可行集
+    # 保持逐位相同。这是度量本模型简并度的唯一办法。Gurobi 在 (model, params, threads) 固定时
+    # 是确定性的，所以不换 seed 重解什么也测不到；而扰动任何物理输入，测到的是物理而不是
+    # 求解器的随意性——这正是 `*_nobias` 那个"地板"犯的错（Hai 的偏差因子为 0.412，意味着
+    # 在这个起约束作用的流域里，关掉偏差校正会把其可用量乘以 2.43x）。默认不设置，
+    # 因此默认行为不变。
     seed = os.environ.get("COAL_RETROFIT_GUROBI_SEED")
     if seed:
         model.Params.Seed = int(seed)
@@ -158,7 +156,7 @@ def _extract_solver_status(model) -> str:
 
 
 def _year_objective_weight(interval_years: int, rate: float = 0.0) -> float:
-    """Annuity factor: NPV of 1 unit/year for interval_years at discount rate."""
+    """年金系数：按贴现率计，interval_years 年内每年 1 单位的 NPV。"""
     n = max(1, interval_years)
     if rate <= 1e-9:
         return float(n)
@@ -166,5 +164,5 @@ def _year_objective_weight(interval_years: int, rate: float = 0.0) -> float:
 
 
 def _discount_factor(year: int, base_year: int, rate: float) -> float:
-    """Present-value discount factor: 1 / (1 + r)^(t - t0)."""
+    """现值折现因子：1 / (1 + r)^(t - t0)。"""
     return 1.0 / (1.0 + rate) ** max(0, year - base_year)

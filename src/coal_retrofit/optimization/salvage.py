@@ -1,28 +1,24 @@
-"""End-of-horizon salvage credit on one-time capex (author's decision 2026-09-22).
+"""一次性 capex 的期末残值抵扣（作者决定 2026-09-22）。
 
-Every capex the objective books once -- coal capture islands, blend upgrades, air-cooling
-retrofits, pipelines, site rebuilds, industrial capture and H2 routes -- buys an asset with an
-economic life. A retrofit built in 2060 on a horizon that ends in 2070 has served a third of
-its 30-year life when the model stops looking; charging its whole capex makes the last period
-under-invest, and levelising instead would bring back the capital-recovery assumption the
-author rejected. The fix is the standard one: straight-line depreciation over the economic
-life, and the undepreciated remainder credited back at the horizon end, discounted from there.
+目标函数一次性计入的每一笔 capex——煤电捕集岛、掺烧升级、空冷改造、管道、原址重建、
+工业捕集与氢路线——买到的都是有经济寿命的资产。在止于 2070 年的规划期里，2060 年建成的
+改造到模型不再往后看时，只用掉了 30 年寿命的三分之一；计入其全部 capex 会让最后一期投资
+不足，改用平准化又会带回作者已否决的资本回收假设。修正采用标准做法：在经济寿命内直线
+折旧，未折旧的余值在规划期末抵回，并从期末折现。
 
     credit = df(T_end) * sum_t sum_items  max(0, 1 - (T_end - t) / L_item) * capex_item(t)
 
-with `T_end = last planning year + its interval` (2070 on the 2030/40/50/60 grid). The credit
-can never exceed the capex it refers to and is discounted further than the charge, so it
-cannot make building profitable on its own; it only stops the horizon from punishing late
-investment. It is booked as one negative `salvage_credit` entry on the last payload (zero on
-the others, so the cost-breakdown schema is identical across years). With
-`end_of_horizon_salvage=False` the key is NOT written at all, so a run reproducing the
-pre-2026-09-22 objective also reproduces its `cost_breakdown.csv` schema.
+其中 `T_end = last planning year + its interval`（在 2030/40/50/60 网格上为 2070）。抵扣额
+永远不会超过它所对应的 capex，而且比那笔支出折现得更远，所以它本身不可能让建设变得有利
+可图；它只是让规划期末端不再惩罚晚期投资。它作为一条负的 `salvage_credit` 项记在最后一个
+payload 上（其余 payload 上为零，使各年成本分项的表结构相同）。
+`end_of_horizon_salvage=False` 时根本不写入这个键，因此复现 2026-09-22 之前目标函数的
+运行，也会复现当时的 `cost_breakdown.csv` 表结构。
 
-KNOWN SIMPLIFICATION: the economic life is the asset's, not the host unit's. A 2060
-air-cooling retrofit on a unit that retires exogenously in 2065 still earns half its capex
-back at 2070, and a 2030 capture island (20 a) keeps operating to 2070 with no replacement
-capex (pipelines, by contrast, do expire at `pipeline_lifetime_years` in the solver). Both
-effects are second order at the fleet level and symmetric between coal and industry.
+已知简化：经济寿命取资产自身的，而不是所在机组的。一台 2065 年外生退役的机组上，2060 年
+做的空冷改造到 2070 年仍能收回一半 capex；2030 年的捕集岛（20 a）一直运行到 2070 年，
+却不计更换 capex（相比之下，管道在求解器里确实会在 `pipeline_lifetime_years` 到期）。
+两种效应在整个机组群层面都是二阶的，且在煤电与工业之间对称。
 """
 from __future__ import annotations
 
@@ -44,20 +40,20 @@ logger = logging.getLogger(__name__)
 
 
 class _PlanningPeriod(Protocol):
-    """What `horizon_end_year` reads from a payload."""
+    """`horizon_end_year` 从 payload 读取的内容。"""
 
     year: int
     interval_years: int
 
 
 def horizon_end_year(year_payloads: Sequence[_PlanningPeriod]) -> int:
-    """Last planning year plus the interval it stands for."""
+    """最后一个规划年加上它所代表的间隔年数。"""
     last = year_payloads[-1]
     return int(last.year) + int(last.interval_years)
 
 
 def remaining_fraction(build_year: int, life_years: int, end_year: int) -> float:
-    """Undepreciated share of an asset built in `build_year` when the horizon ends."""
+    """在 `build_year` 建成的资产到规划期末时尚未折旧的比例。"""
     life = max(1, int(life_years))
     served = max(0, int(end_year) - int(build_year))
     return max(0.0, 1.0 - served / life)
@@ -69,18 +65,18 @@ def _add_salvage_credit(
     assumptions: "OptimizationAssumptions",
     cost_scale: float,
 ) -> None:
-    """Append `salvage_credit` to every payload's `cost_exprs` and refresh the objective.
+    """向每个 payload 的 `cost_exprs` 追加 `salvage_credit`，并刷新目标函数。
 
     Args:
-        year_payloads: Solver payloads in planning-year order; each carries `salvage_ledger`
-            as a list of `(name, undiscounted capex expr, life_years)`.
-        scenario: `OptimizationScenario`; discount rate and base year.
-        assumptions: `OptimizationAssumptions`; `end_of_horizon_salvage` switch.
-        cost_scale: The solver's objective scale (`_COST_SCALE`), applied to the credit as
-            to every other cost expression.
+        year_payloads: 按规划年顺序排列的求解器 payload；每个都带 `salvage_ledger`，
+            即 `(name, undiscounted capex expr, life_years)` 的列表。
+        scenario: `OptimizationScenario`；取其贴现率与基年。
+        assumptions: `OptimizationAssumptions`；取其 `end_of_horizon_salvage` 开关。
+        cost_scale: 求解器的目标函数缩放（`_COST_SCALE`），与其他所有成本表达式一样
+            也作用于抵扣额。
     """
     if not bool(assumptions.end_of_horizon_salvage):
-        return  # objective_expr already assembled without the key
+        return  # objective_expr 组装时本就不含该键
     if gp is None:  # pragma: no cover
         raise ImportError("gurobipy is required to build the salvage credit")
     for payload in year_payloads:
@@ -97,7 +93,7 @@ def _add_salvage_credit(
             if isinstance(expr, (int, float)):
                 if float(expr) != 0.0:
                     raise ValueError(f"salvage ledger item {name!r} in {build_year} is a constant {expr}")
-                continue  # builder returned 0.0: nothing of this kind can be built this year
+                continue  # 构建函数返回 0.0：本年这一类资产都建不了
             terms.append(frac * expr)
     if terms:
         year_payloads[-1].cost_exprs["salvage_credit"] = -df_end * gp.quicksum(terms) / float(cost_scale)

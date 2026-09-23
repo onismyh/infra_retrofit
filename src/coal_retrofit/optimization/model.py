@@ -10,7 +10,7 @@ from ..experiments.scenario import ScenarioRunContext
 from ..paths import ProjectPaths
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 
-# Re-export shared types so external code importing from .model still works
+# 重新导出共享类型，让从 .model 导入的外部代码继续可用
 from ._shared import PreparedInputs, SolveState, PATHWAY_INDEX, GUROBI_STATUS_NAMES  # noqa: F401
 from .data_prep import prepare_inputs, _paths_df_from_assumptions  # noqa: F401
 from .solver import _solve_joint_multi_period
@@ -35,8 +35,8 @@ from .results import (
 
 _SCENARIO_FIELD_NAMES = {f.name for f in fields(OptimizationScenario)}
 _TUPLE_FIELD_NAMES = {f.name for f in fields(OptimizationScenario) if isinstance(f.default, tuple)}
-# Fields owned by the run context or by explicit alias handling below; passing them
-# directly in scenario parameters is rejected (use the aliases instead).
+# 由运行上下文或下方显式别名处理负责的字段；在情景参数里直接传入
+# 会被拒绝（请改用别名）。
 _MANAGED_FIELD_NAMES = {
     "experiment_id", "description", "notes",
     "planning_years", "forced_pathways", "min_forced_path_share",
@@ -52,7 +52,7 @@ def _map_context_to_scenario(context: ScenarioRunContext) -> OptimizationScenari
     forced_pathways: tuple[str, ...] = ()
     if force_all_pathways:
         forced_pathways = tuple(PATHWAYS)
-        params.pop("forced_pathways", None)  # force_all takes precedence
+        params.pop("forced_pathways", None)  # force_all 优先
     elif "forced_pathways" in params:
         forced_pathways = tuple(
             str(item).strip().lower()

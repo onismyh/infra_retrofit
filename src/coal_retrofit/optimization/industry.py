@@ -1,78 +1,65 @@
-"""Industrial point sources as DECISION AGENTS, co-optimised with the coal fleet.
+"""工业点源作为决策主体，与煤电机组联合优化。
 
-Before this module the 2 552 industrial sources existed only as inputs: `builders/industry.py`
-clustered them into 390 sector hubs, and `builders/water_quota.py` subtracted their current
-withdrawal from the basin reservation so the coal fleet could compete for it. Nothing in
-`optimization/` ever read them. Their abatement was exogenous — zero — and the basin residual
-they created was handed entirely to coal.
+在本模块之前，2 552 个工业点源只作为输入存在：`builders/industry.py` 把它们聚类成
+390 个分行业 hub，`builders/water_quota.py` 把它们的现状取水从流域预留中扣除，以便煤电
+机组争用这份预留。`optimization/` 里从没有代码读过它们。它们的减排是外生的——为零——
+而由此形成的流域余量整份给了煤电。
 
-What is joint here:
+这里联合的是：
 
-1. **The CO2 network.** Industrial capture is injected at the hub's own node in the same
-   pipeline graph the coal hubs use, competes for the same edge capacity, and is stored in the
-   same sinks against the same injectivity limits. Every industrial hub also gets direct
-   candidate arcs to its nearest sinks, the same rule the coal hubs have.
-2. **The basin water cap.** Industrial site water and the water penalty of industrial capture
-   are counted against the same `residual_m3_per_year` that coal power draws on.
-3. **The hydrogen supply.** A hub on the H2 route draws hydrogen from the SAME green-ammonia
-   nodes that supply coal-side co-firing, within the same radius, and pays each node's own
-   plant-gate LCOH plus transport -- so the two hydrogen users compete for quantity, and the
-   price industry pays is the marginal one, not the national supply-weighted mean.
-4. **The emission targets.** One residual cap per sector group -- steel, cement, chemicals,
-   and power for the coal fleet -- read from `inputs/sector_targets_<source>.csv`. The
-   carbon price is normally zero under caps; when it is not, it is charged on industrial
-   residuals exactly as on coal residuals.
+1. **CO2 管网。** 工业捕集的 CO2 在 hub 自己的节点进入煤电 hub 所用的同一张管网图，
+   争用同样的边容量，封存在同样的汇里，受同样的注入能力上限约束。每个工业 hub 也有
+   到其最近几个汇的直连候选弧，规则与煤电 hub 相同。
+2. **流域取水上限。** 工业厂址用水与工业捕集的用水惩罚，记在煤电同样从中取水的
+   `residual_m3_per_year` 上。
+3. **氢供应。** 走氢路线的 hub 从为煤电侧掺烧供氨的同一批绿氨节点取氢，匹配半径相同，
+   付各节点自己的出厂 LCOH 加运输费——所以两类用氢方在量上相互竞争，工业付的是边际
+   价格，而不是全国供给加权均价。
+4. **排放目标。** 每个部门组一条残余排放上限（钢铁、水泥、化工，以及煤电机组所在的
+   电力组），读自 `inputs/sector_targets_<source>.csv`。有上限时碳价通常为零；不为零时，
+   工业残余排放与煤电残余排放按完全相同的方式计收碳价。
 
-Three routes per hub — `unabated`, `ccs`, `h2` — with `h2` available only where
-`SECTOR_HAS_H2_ROUTE` is true (so cement and EAF steel get capture or nothing, which is the
-right answer for a process-CO2 source). Route shares are continuous in [0, 1] and MONOTONE
-across planning years: a hub that installs capture cannot uninstall it, and it cannot swap
-capture for hydrogen.
+每个 hub 有三条路线——`unabated`、`ccs`、`h2`——其中 `h2` 只在 `SECTOR_HAS_H2_ROUTE`
+为真时开放（所以水泥与电炉钢要么捕集、要么不改造，对工艺 CO2 排放源而言这正是正确答案）。
+路线份额是 [0, 1] 上的连续量，并且跨规划年必须单调：装了捕集的 hub 不能再拆掉它，
+也不能把捕集换成氢。
 
-COST BASIS (author's decision 2026-09-22; the same one the coal side has always used). Every
-industrial route is priced as
+成本口径（作者 2026-09-22 的决定；与煤电侧一贯采用的口径相同）。每条工业路线都按下式计价：
 
-    capex   = unit retrofit capex x capacity built,  charged ONCE on the route-share increment
-              (shares are monotone, so the increment is the newly built stock)
-    annual  = fixed O&M (a share of that capex per year)
-            + energy and consumables at the model's OWN coal and electricity prices
-            + (H2 route) the non-hydrogen operating delta against the incumbent
-            + (H2 route) hydrogen bought per supply link in the solver
+    capex   = 单位改造 capex x 建成能力，只在路线份额增量上计一次
+              （份额单调，所以增量就是新建存量）
+    annual  = 固定运维（每年为该 capex 的一个比例）
+            + 能耗与耗材，按模型自己的煤价与电价计
+            + （氢路线）相对现有工艺的非氢运行差额
+            + （氢路线）求解器里按供氢链路购买的氢
 
-and the undepreciated part of every capex is credited back at the end of the horizon
-(`salvage_credit` in the solver). NO levelised per-tonne cost enters the objective any more.
-Between 2026-09-10 and 2026-09-22 the ACCA21 levelised capture costs were split into a
-capital share de-annualised at CRF and an annual remainder; that kept the levelised
-figure's implicit capital-recovery assumption inside a model whose whole point is to decide
-when to build. The ACCA21 ranges survive as a cross-check
-(`constants_industry.levelised_capture_cost_cny_per_t`).
+并在规划期末把每笔 capex 的未折旧部分抵扣回来（求解器中的 `salvage_credit`）。目标函数
+不再含任何平准化每吨成本。2026-09-10 至 2026-09-22 期间，ACCA21 的平准化捕集成本被拆成
+按 CRF 反年化的资本部分与年度余项；这样做把平准化数字隐含的资本回收假设保留在了一个
+本身就是要决定何时建设的模型里。ACCA21 的区间保留下来，作交叉核对
+（`constants_industry.levelised_capture_cost_cny_per_t`）。
 
-CCS route (`constants_industry.INDUSTRY_CCS_*`): capex per tonne of annual capture capacity
-from Chinese project filings (cement 1 150, steel 1 000, high-concentration chemicals 450
-CNY/(t/a)), 5%/a fixed O&M, reboiler steam raised in a site coal boiler at the hub's
-provincial coal price, electricity at the scenario price, 15 or 5 CNY/t consumables. The
-steam CO2 is VENTED and subtracted from the route's reduction (before 2026-09-22 the ACCA21
-unit cost was taken as energy-inclusive and nothing was vented). The coal-side learning
-curve scales the capex (and with it the fixed O&M), as before.
+CCS 路线（`constants_industry.INDUSTRY_CCS_*`）：按每吨年捕集能力计的 capex 取自中国项目
+备案（水泥 1 150、钢铁 1 000、高浓度化工 450 CNY/(t/a)），固定运维 5%/a；再生蒸汽由厂内
+燃煤锅炉产生，按 hub 所在省的煤价计价；电按情景电价；耗材 15 或 5 CNY/t。蒸汽的 CO2
+直接放空，并从该路线的减排量中扣除（2026-09-22 之前把 ACCA21 单位成本视为已含能耗，
+也没有放空任何 CO2）。煤电侧的学习曲线照旧缩放 capex（固定运维随之缩放）。
 
-H2 route (`INDUSTRY_H2_ROUTE_*`): capex per tonne of annual product capacity (H2-DRI shaft +
-EAF 3 500; ammonia / methanol hydrogen tie-in 500 CNY/(t/a)), 3.5%/a fixed O&M, and a
-non-hydrogen operating delta backed out of the literature premium anchor:
+氢路线（`INDUSTRY_H2_ROUTE_*`）：按每吨年产品产能计的 capex（H2-DRI 竖炉 + 电炉 3 500；
+合成氨 / 甲醇的氢接入 500 CNY/(t/a)），固定运维 3.5%/a，以及由文献溢价锚点反推的非氢
+运行差额：
 
     opex_delta = premium_ref - k * P_ref - capex * (CRF(r, life) + fom)
 
-so the anchor is reproduced exactly at its own reference hydrogen price and moved to the
-price actually paid through the hub's hydrogen intensity k. `opex_delta` is negative for
-steel (avoided coke and BF opex exceed the EAF power bill); the solver's floor
-`annual + hydrogen purchase >= 0` is the statement that switching cannot be cheaper than
-running the sunk incumbent, and it still credits the avoided fossil feedstock in full, so H2
-uptake remains an upper bound.
+这样锚点在它自己的参考氢价下被精确复现，再通过 hub 的氢强度 k 移到实际支付的氢价上。
+钢铁的 `opex_delta` 为负（省下的焦炭与高炉 opex 超过电炉电费）；求解器里的地板
+`annual + hydrogen purchase >= 0` 表达的是：换路线不可能比继续运行资本已沉没的现有工艺
+更便宜；它仍把省下的化石原料全额计为收益，所以氢路线的采用量仍是上界。
 
-KNOWN BIASES that remain:
-* Electrolysis water is not charged (10-22 L/kg H2): it belongs to the basin of the
-  electrolyser, and the coal side's ammonia co-firing does not charge it either.
-* Output follows an exogenous index (TIMES CN60 when `industry_output_index_source` is set);
-  there is no plant-level retirement decision for industry.
+仍然存在的已知偏差：
+* 电解用水不计（10-22 L/kg H2）：它属于电解槽所在的流域，煤电侧的掺氨也同样不计。
+* 产量按外生指数变化（设置了 `industry_output_index_source` 时为 TIMES CN60）；工业没有
+  厂级的退役决策。
 
 文件分工（2026-09-23 从本文件拆出，本文件只留设计说明并转导出，调用方的 import 不用改）：
 `industry_inputs.py` 输入准备（hub 表、氢链路）；`industry_matrices.py` 逐年系数

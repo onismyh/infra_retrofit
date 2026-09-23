@@ -20,26 +20,25 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class IndustryInputs:
-    """Industrial hubs prepared for optimisation, plus the hydrogen price path."""
+    """为优化准备好的工业 hub，以及氢价路径。"""
 
     hubs: pd.DataFrame
-    # industry_hubs.csv filtered to INDUSTRY_SECTORS, with `basin_code` added.
+    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，并加上 `basin_code`。
     h2_price_cny_per_kg: dict[int, float]
-    # National supply-weighted LCOH per planning year, REPORTING ONLY since 2026-09-10: the
-    # model buys hydrogen per link at the node's own price.
+    # 每个规划年的全国供给加权 LCOH，自 2026-09-10 起只作报告：
+    # 模型按链路、以各节点自己的价格买氢。
     output_index: dict[tuple[str, int], float] = field(default_factory=dict)
-    # {(sector, year): production index, 2030 = 1}; empty holds output flat.
+    # {(sector, year): 产量指数，2030 = 1}；为空时产量保持不变。
 
 
 def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, float]:
-    """Supply-weighted mean LCOH per year, CNY/kg, from the repo's own hydrogen supply curve.
+    """逐年的供给加权平均 LCOH（CNY/kg），取自本仓库自己的氢供给曲线。
 
-    Reported beside the per-link prices so a reader can see how far the marginal price the
-    model pays sits from the mean of the whole potential.
+    与逐链路价格并列报告，让读者看出模型实际支付的边际价格离全部潜力的均值有多远。
 
     Raises:
-        FileNotFoundError: The supply curve has not been built.
-        ValueError: The curve lacks the columns this needs.
+        FileNotFoundError: 供给曲线还没有构建。
+        ValueError: 供给曲线缺少这里需要的列。
     """
     path = paths.inputs_dir / "ammonia_supply_curve.csv"
     if not path.exists():
@@ -65,19 +64,19 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
 def prepare_industry(
     paths: ProjectPaths, assumptions, output_index: dict[tuple[str, int], float] | None = None
 ) -> IndustryInputs:
-    """Load and prepare the industrial hubs.
+    """读取并准备工业 hub。
 
     Args:
-        paths: Project paths.
-        assumptions: `OptimizationAssumptions`; `usd_to_cny` and `water_budget` are read.
-        output_index: {(sector, year): index}; None or empty holds output flat.
+        paths: 项目路径。
+        assumptions: `OptimizationAssumptions`；读取其中的 `usd_to_cny` 与 `water_budget`。
+        output_index: {(sector, year): index}；为 None 或为空时产量保持不变。
 
     Returns:
-        Prepared industrial inputs.
+        准备好的工业输入。
 
     Raises:
-        FileNotFoundError: `industry_hubs.csv` has not been built.
-        ValueError: A hub carries a sector this module has no parameters for.
+        FileNotFoundError: `industry_hubs.csv` 还没有构建。
+        ValueError: 有 hub 所属的行业在本模块里没有参数。
     """
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
@@ -105,13 +104,13 @@ def prepare_industry(
     if hubs["target_group"].isna().any():
         raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")
 
-    # Basin of the hub's own location, matching how `_prepare_plants` attributes coal hubs:
-    # the withdrawal permit follows the site, not the intake. Only needed for the basin cap.
+    # 按 hub 自身所在位置归流域，与 `_prepare_plants` 对煤电 hub 的归属方式一致：
+    # 取水许可跟着厂址走，而不是跟着取水口走。只有流域上限需要它。
     if str(assumptions.water_budget) == "official_quota":
         from ..builders.water import _assign_basin_codes
 
-        # industry_hubs.csv already names the columns `latitude`/`longitude`, which is what
-        # `_assign_basin_codes` expects; no rename needed (plants.csv needs one, this does not).
+        # industry_hubs.csv 的列名本来就是 `latitude`/`longitude`，正是 `_assign_basin_codes`
+        # 所要的；无需改名（plants.csv 需要改名，这里不需要）。
         hubs["basin_code"] = _assign_basin_codes(paths, hubs)
 
     prices = _national_h2_price(paths, float(assumptions.usd_to_cny))
@@ -136,19 +135,19 @@ def prepare_industry(
 def prepare_industry_h2_links(
     hubs: pd.DataFrame, ammonia_supply: pd.DataFrame, radius_km: float
 ) -> pd.DataFrame:
-    """Candidate (hub, ammonia node) hydrogen links per supply year, within `radius_km`.
+    """逐供给年列出 `radius_km` 以内的候选氢链路（hub, 氨节点）。
 
-    Only hubs whose sector has an H2 route get links. Nodes are the same 0.5-degree green
-    ammonia nodes the coal side draws on; `lcoh_usd_per_kg` is the node's plant-gate hydrogen
-    cost before Haber-Bosch, which is what an industrial hub taking hydrogen pays.
+    只有所在行业有氢路线的 hub 才有链路。节点就是煤电侧所用的同一批 0.5 度绿氨节点；
+    `lcoh_usd_per_kg` 是节点在 Haber-Bosch 合成之前的出厂氢成本，也就是取氢的工业 hub
+    所付的价格。
 
     Args:
-        hubs: Prepared industrial hubs (needs `hub_id`, `sector`, `longitude`, `latitude`).
-        ammonia_supply: `ammonia_supply_curve.csv` as loaded by `_prepare_ammonia_supply`.
-        radius_km: Matching radius, the coal side's `resource_match_radius_km`.
+        hubs: 准备好的工业 hub（需要 `hub_id`、`sector`、`longitude`、`latitude`）。
+        ammonia_supply: 由 `_prepare_ammonia_supply` 读入的 `ammonia_supply_curve.csv`。
+        radius_km: 匹配半径，即煤电侧的 `resource_match_radius_km`。
 
     Returns:
-        Columns `year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg`.
+        列为 `year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg` 的表。
     """
     from .resource_access import _haversine_distances_km
 

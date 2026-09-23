@@ -1,1 +1,1 @@
-"""Phase A builders."""
+"""A 阶段（Phase A）的输入构建器。"""

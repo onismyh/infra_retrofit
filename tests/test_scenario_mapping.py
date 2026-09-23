@@ -47,7 +47,7 @@ def test_unknown_parameter_raises_instead_of_silent_drop(tmp_path) -> None:
 
 
 def test_managed_field_passed_directly_raises(tmp_path) -> None:
-    # planning_years must be set via the 'year' alias, not passed as a raw field.
+    # planning_years 必须通过 'year' 别名设置，不能作为原始字段直接传入。
     with pytest.raises(ValueError, match="Unknown scenario parameter"):
         _map_context_to_scenario(_context(tmp_path, {"planning_years": [2050]}))
 

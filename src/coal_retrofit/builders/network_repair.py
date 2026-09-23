@@ -34,7 +34,7 @@ _EDGE_CLASS_PRIORITY = {
 
 
 def _build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, float]]) -> LineString | None:
-    """Build a Shapely LineString for an edge, using WKT if available."""
+    """为一条边构建 Shapely LineString；有 WKT 时直接用 WKT。"""
     wkt_str = row.get("geometry_wkt", "")
     if isinstance(wkt_str, str) and wkt_str.startswith("LINESTRING"):
         return shapely_wkt.loads(wkt_str)
@@ -56,7 +56,7 @@ def _terminal_ids(nodes: pd.DataFrame) -> tuple[set[str], set[str]]:
 
 
 def _unreached_terminals(nodes: pd.DataFrame, edges: pd.DataFrame) -> set[str]:
-    """Plant and sink nodes that cannot reach a sink over *edges*."""
+    """经 *edges* 无法到达任何汇的电厂节点与汇节点。"""
     plants, sinks = _terminal_ids(nodes)
     graph = nx.Graph()
     graph.add_nodes_from(plants | sinks)
@@ -159,17 +159,17 @@ def _repair_connectivity(
 
 
 def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
-    """Remove lower-priority edges that cross higher-priority ones, then repair connectivity.
+    """删去与高优先级边相交的低优先级边，然后修复连通性。
 
-    Priority: existing corridors > branches > triangulation candidates. The result is planar
-    wherever planarity costs nothing, and connected everywhere -- see `_repair_connectivity`.
+    优先级：既有走廊 > 支线 > 三角剖分候选边。结果在平面性不需付出代价的地方都是平面的，
+    并且处处连通——见 `_repair_connectivity`。
     """
     node_coords = {
         str(row.node_id): (float(row.lon), float(row.lat))
         for row in nodes.itertuples(index=False)
     }
 
-    # Build geometries and sort by priority
+    # 构建几何并按优先级排序
     records: list[tuple[int, int, LineString]] = []  # (priority, df_index, geom)
     for idx, row in edges.iterrows():
         geom = _build_edge_geometry(row, node_coords)
@@ -177,7 +177,7 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
             priority = _EDGE_CLASS_PRIORITY.get(row.get("edge_class", ""), 2)
             records.append((priority, idx, geom))
 
-    # Sort: lowest priority number first (keep these); within a priority, SHORTEST first.
+    # 排序：优先级数字最小的在前（这些要保留）；同一优先级内，最短的在前。
     # 同优先级下按建表顺序取舍是任意的，长边先占位会把一片短边全挤掉：实测按长度排序，
     # 保留边 1224 -> 1269，连通片 173 -> 157，每个源平均可选汇 32 -> 56。
     records.sort(key=lambda x: (x[0], x[2].length))

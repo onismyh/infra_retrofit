@@ -11,24 +11,23 @@ NETWORK_TRIANGULATION_CRS = "+proj=aea +lat_1=25 +lat_2=47 +lat_0=0 +lon_0=105 +
 NETWORK_TRIANGULATION_MAX_EDGE_KM = 500.0
 NETWORK_TRIANGULATION_MAX_STRETCH = 1.2
 NETWORK_EDGE_CLASS_DIRECT = "runtime_direct_fallback"
-# Detour factor on straight-line candidate edges. Measured on this model's OWN corridor layer:
-# the 62 existing oil and gas trunk segments run 24 338 km along 21 418 km of straight line, a
-# length-weighted factor of 1.136 (median 1.036, p90 1.306). Pipeline techno-economics normally
-# borrows 1.2-1.4 from international routes; China's built trunk network is straighter than that,
-# so the country's own infrastructure is the better anchor and it is internally consistent with
-# the corridor edges in the same table. Existing-corridor edges already carry their routed
-# polyline length and are NOT scaled by this.
+# 直线候选边的绕行系数。在本模型自己的走廊图层上实测：
+# 62 段既有油气干线的直线距离为 21 418 km，实际走线长 24 338 km，
+# 按长度加权的系数为 1.136（中位数 1.036，p90 1.306）。管道技术经济分析
+# 通常借用国际线路的 1.2-1.4；中国已建干线网比这更直，因此以本国自己的
+# 基础设施为锚更合适，而且与同一张表里的走廊边内部一致。既有走廊边
+# 已带有其路由折线长度，不乘这个系数。
 NETWORK_DETOUR_FACTOR = 1.136
-# Every plant gets direct candidate arcs to its k nearest sinks, so the candidate network can
-# never leave a source unable to reach storage. SimCCS guarantees the same invariant: every
-# source and sink must be joined by at least one feasible corridor even when the cost surface is
-# weighted to discourage crossings. Mirrors OptimizationAssumptions.top_k_storage_pairs, which
-# declared this rule and was never read.
+# 每个厂都有通往其最近 k 个汇的直连候选弧，因此候选网络永远不会
+# 留下到不了封存的源。SimCCS 保证的是同一个不变量：即使成本面经过
+# 加权以抑制穿越，每个源和汇也必须至少由一条可行走廊连通。
+# 与 OptimizationAssumptions.top_k_storage_pairs 对应——后者声明了这条规则，
+# 却从未被读取。
 NETWORK_DIRECT_SINK_TOP_K = 5
 
 BIOMASS_GJ_PER_TONNE = 15.0
-# Purchase cost anchor: Wang & Cai 2024 (Nat Commun, SI Table 3) 10.3 USD/MWh × 7.0 / 3.6 ≈ 20.0.
-# LOW/HIGH are the scenario spread around the base, not conversions.
+# 收购成本锚点：Wang & Cai 2024 (Nat Commun, SI Table 3) 10.3 USD/MWh × 7.0 / 3.6 ≈ 20.0。
+# LOW/HIGH 是围绕基准值的情景区间，不是换算得来的。
 BIOMASS_COST_BASE = 20.0
 BIOMASS_COST_LOW = 18.0
 BIOMASS_COST_HIGH = 26.0
@@ -39,69 +38,69 @@ NH3_H2_RATIO = 0.176
 NH3_HB_POWER_KWH_PER_KG = 0.74
 NH3_STORAGE_ADDER_USD_PER_KG = 0.017
 NH3_TRANSPORT_ADDER_USD_PER_KG = 0.0
-# Electrolysis routes admitted into the ammonia supply curve. China's installed electrolyser
-# fleet is >90% alkaline, and the PEM layers in data/H2 carry costs 2-3x the AE layers in the
-# near term (2025 production-weighted mean: AE 4.36 vs PEM 10.87 USD/kg H2). Including both
-# also double-counted the same wind/solar resource. Restricting to AE keeps the curve on the
-# route China actually builds; revisit when the joint wind-solar H2/NH3 dataset lands.
+# 纳入氨供给曲线的电解路线。中国已装机的电解槽中
+# >90% 是碱性的，而 data/H2 中 PEM 图层的近期成本是 AE 图层的 2-3 倍
+# （2025 年按产量加权的均值：AE 4.36 vs PEM 10.87 USD/kg H2）。两者都纳入
+# 还曾把同一份风 / 光资源重复计算。只保留 AE，让曲线落在中国实际建设的
+# 路线上；风光联合 H2/NH3 数据集到位后再复核。
 NH3_ELECTROLYSIS_TECHS = ("AE",)
-# Haber-Bosch synthesis loop + air separation unit + balance of plant, per tonne of annual
-# NH3 capacity. The electrolyser and its renewable supply are already inside LCOH, so only
-# the synthesis island is added here: greenfield green-ammonia CAPEX is 1300-2000 USD/(t·yr)
-# with the electrolyser at 40-50% of direct cost, leaving 650-1100 for the rest (midpoint).
+# Haber-Bosch 合成回路 + 空分装置 + 全厂辅助系统（balance of plant），按每吨年
+# NH3 产能计。电解槽及其可再生能源供给已包含在 LCOH 中，所以这里只加
+# 合成岛：新建绿氨 CAPEX 为 1300-2000 USD/(t·yr)，其中电解槽占直接成本的
+# 40-50%，其余部分为 650-1100（取中点）。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
 NH3_HB_CAPEX_DISCOUNT_RATE = 0.08
 NH3_HB_CAPEX_LIFETIME_YEARS = 20
 AMMONIA_NODE_AGGREGATION_DEGREES = 0.5
 
-# Water-grid coarsening, applied once when the inputs are built
-# (`builders.water.write_water_inputs` -> `coarsen_water_inputs`), never at solve time.
-WATER_COARSE_GRID_DEGREES = 2.0      # coarsen from 0.5° to 2.0°
+# 水网格粗化：构建输入时只做一次
+# （`builders.water.write_water_inputs` -> `coarsen_water_inputs`），求解时从不做。
+WATER_COARSE_GRID_DEGREES = 2.0      # 从 0.5° 粗化到 2.0°
 
-WATER_MATCH_BUFFER_KM = 200.0  # 200km water supply radius
-# BIBLIOGRAPHY KEY: richter2012. A presumptive environmental-flow standard: protecting 80%
-# of daily flows maintains ecological integrity, so 20% is notionally extractable. Applied
-# here as a single global factor to every basin, which is a simplification the Methods must
-# state -- Richter's standard is a screening-level default, not a basin-specific allocation,
-# and the Hai and the Yangtze would not carry the same value under a basin-specific study.
-WATER_EXTRACTABLE_FRACTION = 0.20  # 20% of natural discharge extractable for industrial cooling (80% env flow)
+WATER_MATCH_BUFFER_KM = 200.0  # 200km 供水半径
+# 参考文献键：richter2012。一种推定性的环境流量标准：保护 80% 的
+# 日流量即可维持生态完整性，因此名义上有 20% 可取用。这里把它作为
+# 单一全局系数施加于每个流域，这是方法部分必须写明的简化——Richter 的
+# 标准是筛查级的默认值，而不是针对具体流域的分配；在针对具体流域的
+# 研究中，海河与长江不会取同一个值。
+WATER_EXTRACTABLE_FRACTION = 0.20  # 天然径流的 20% 可取用于工业冷却（80% 为环境流量）
 
-# Solver unit scaling: reduce coefficient range for numerical stability
-# Flow variables use scaled units; costs are adjusted accordingly
-BIOMASS_FLOW_SCALE = 1e6   # solver flow vars in TJ instead of GJ (÷1e6)
-AMMONIA_FLOW_SCALE = 1e6   # solver flow vars in kt instead of kg (÷1e6)
-WATER_FLOW_SCALE = 1e6     # solver flow vars in Mm³ instead of m³ (÷1e6)
+# 求解器单位缩放：缩小系数范围，提高数值稳定性
+# 流量变量用缩放后的单位；成本相应调整
+BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 TJ 而非 GJ（÷1e6）
+AMMONIA_FLOW_SCALE = 1e6   # 求解器流量变量用 kt 而非 kg（÷1e6）
+WATER_FLOW_SCALE = 1e6     # 求解器流量变量用 Mm³ 而非 m³（÷1e6）
 
-# BIBLIOGRAPHY KEY: ndrc2015no9.
+# 参考文献键：ndrc2015no9。
 COOLING_WATER_INTENSITY_M3_PER_MWH = {
-    "once-through": 0.35,   # consumption basis, NDRC 2015 No.9: 0.29-0.41
+    "once-through": 0.35,   # 耗水口径，NDRC 2015 No.9：0.29-0.41
     "recirculating": 1.85,
     "air": 0.37,
 }
 
-# --- Water withdrawal and consumption by combustion technology and cooling system --------
-# BIBLIOGRAPHY KEYS: wang2023waterintensity (primary), macknick2011 (cross-check).
-# These were cited here and in a figure caption but were missing from references.bib until
-# v5, which is a poor state for the single most load-bearing input table in the study: every
-# water number in every figure is built from it.
+# --- 按燃烧技术与冷却方式分列的取水与耗水 ------------------------------------------------
+# 参考文献键：wang2023waterintensity（主要来源）、macknick2011（交叉核对）。
+# 这两篇在此处和一幅图注中都有引用，但在 v5 之前一直没有收进 references.bib；
+# 对本研究中分量最重的这张输入表来说，这种状态很不妥：每幅图里的
+# 每个水量数字都由它得出。
 #
-# Wang F., Wang P., Xu M. (2023) Water 15:1167, Table 1 — China-specific, and the only
-# source found that gives withdrawal AND consumption, with AND without capture, split by
-# both combustion technology and cooling system. Units m3/MWh.
+# Wang F., Wang P., Xu M. (2023) Water 15:1167, Table 1——针对中国，也是找到的
+# 唯一一个同时给出取水与耗水、有捕集与无捕集，并按燃烧技术和冷却方式
+# 双重细分的来源。单位 m3/MWh。
 #
-# Cross-checked against Macknick et al. (2011) NREL/TP-6A20-50900 for the US fleet
-# (reference/water/macknick_osti1009674.pdf, 1 m3 = 264.172 gal):
-#     tower subcritical      withdrawal 2.01 (US) vs 2.31 (CN);  consumption 1.78 vs 2.01
-#     tower supercritical+CCS           4.25      vs 4.14;                   3.20 vs 3.06
-#     once-through subcritical        102.54      vs 116.48
-# Two independent sources, different countries, agreeing to 5-14% on withdrawal.
+# 与 Macknick et al. (2011) NREL/TP-6A20-50900 中的美国机组数据交叉核对
+# （reference/water/macknick_osti1009674.pdf，1 m3 = 264.172 gal）：
+#     冷却塔 亚临界          取水 2.01 (US) vs 2.31 (CN);  耗水 1.78 vs 2.01
+#     冷却塔 超临界+CCS           4.25      vs 4.14;            3.20 vs 3.06
+#     直流冷却 亚临界           102.54      vs 116.48
+# 两个独立来源、不同国家，取水量相差 5-14%。
 #
-# Note how far apart the two bases are for once-through: ~100 m3/MWh withdrawn against
-# ~1 m3/MWh consumed, because the condenser flow is returned to the river. China's own
-# 取水定额 excludes that returned flow entirely, which is why the quota for once-through
-# (0.19-0.72 m3/MWh) is the LOWEST of the three cooling systems rather than the highest.
+# 注意直流冷却的两种口径相差多远：取水约 100 m3/MWh，而耗水约
+# 1 m3/MWh，因为凝汽器冷却水回到了河里。中国自己的
+# 取水定额完全不计这部分回流，所以直流冷却的定额
+# （0.19-0.72 m3/MWh）在三种冷却方式中最低，而不是最高。
 WATER_INTENSITY_BY_TECH_M3_PER_MWH: dict[tuple[str, str], dict[str, float]] = {
-    # (combustion class, cooling class): withdrawal / consumption, base and with capture
+    # (燃烧类别, 冷却类别)：取水 / 耗水，基准值与带捕集值
     ("subcritical", "once-through"):   {"withdrawal": 116.48, "consumption": 1.240,
                                         "withdrawal_ccs": 199.11, "consumption_ccs": 1.770},
     ("supercritical", "once-through"): {"withdrawal": 88.90, "consumption": 0.690,
@@ -122,17 +121,17 @@ WATER_INTENSITY_BY_TECH_M3_PER_MWH: dict[tuple[str, str], dict[str, float]] = {
                                      "withdrawal_ccs": 0.34, "consumption_ccs": 0.25},
 }
 
-# --- Chinese abstraction quota: the basis on which water is actually charged ------------
-# BIBLIOGRAPHY KEY: mwr_quota_2019.
+# --- 中国取水定额：实际计收水费所依据的口径 ---------------------------------------------
+# 参考文献键：mwr_quota_2019。
 # 《水利部关于印发钢铁等十八项工业用水定额的通知》, 燃煤发电 单位发电量取水量 基准值,
-# m3/MWh, by cooling system and unit size. Reproduced in 武汉产业能效指南 (2025) pp.88-89.
+# m3/MWh，按冷却方式和机组容量分档。武汉产业能效指南 (2025) pp.88-89 有转载。
 #
-# This is a THIRD basis, distinct from the two in WATER_INTENSITY_BY_TECH_M3_PER_MWH:
-#   consumption  what the basin actually loses           -> the availability constraint
-#   withdrawal   everything diverted, incl. returned flow -> reported, never constrained
-#   quota        what China meters and charges            -> the water tariff
-# The quota deliberately excludes once-through condenser flow, which is why its once-through
-# values (0.35-0.72) are the LOWEST of the three cooling systems rather than ~100x the highest.
+# 这是第三种口径，有别于 WATER_INTENSITY_BY_TECH_M3_PER_MWH 里的两种：
+#   耗水   流域实际损失的水量     -> 可用水量约束
+#   取水   全部引出的水量，含回流 -> 只报告，从不进约束
+#   定额   中国计量并收费的水量   -> 水费
+# 定额有意不计直流冷却的凝汽器水量，所以其直流冷却值
+# （0.35-0.72）在三种冷却方式中最低，而不是最高者的约 100 倍。
 CHINA_WATER_QUOTA_M3_PER_MWH: dict[tuple[str, str], float] = {
     ("recirculating", "<300"):    3.20,
     ("recirculating", "300"):     2.70,
@@ -150,7 +149,7 @@ CHINA_WATER_QUOTA_M3_PER_MWH: dict[tuple[str, str], float] = {
 
 
 def quota_capacity_band(capacity_mw: float) -> str:
-    """Map a unit's nameplate capacity to the quota table's size band."""
+    """把机组铭牌容量映射到定额表的容量分档。"""
     if capacity_mw >= 1000.0:
         return ">=1000"
     if capacity_mw >= 600.0:
@@ -160,19 +159,18 @@ def quota_capacity_band(capacity_mw: float) -> str:
     return "<300"
 
 
-# --- Official water resources by level-1 water-resource region, 10^8 m3/yr ---------------
-# Third National Water Resources Survey and Evaluation, multi-year mean 1956-2016, via
+# --- 各水资源一级区的官方水资源量，10^8 m3/yr --------------------------------------------
+# 第三次全国水资源调查评价，1956-2016 年多年平均，转引自
 # Wang G. et al. (2025) Advances in Water Science 36(6) Table 1
-# (reference/water/wangGQ2025_adv_water_sci_36_948.pdf). Internally consistent with that
-# paper's aggregates: north six 5221, south four 23078, national 28299.
+# （reference/water/wangGQ2025_adv_water_sci_36_948.pdf）。与该文的
+# 汇总值内部一致：北方六区 5221，南方四区 23078，全国 28299。
 #
-# Used to bias-correct modelled runoff basin by basin: global hydrological models are
-# calibrated against basin discharge, and at 0.5 deg they carry large regional biases even
-# when the national total looks right (WaterGAP2-2e reproduces China's total to 1.2% while
-# overestimating the Hai basin by 2.43x). Correction keeps each member's rate of change and
-# replaces only the absolute level.
+# 用于逐流域对模拟径流做偏差校正：全球水文模型是按流域流量率定的，
+# 在 0.5 deg 下即使全国总量看起来没问题，也带有很大的区域偏差
+# （WaterGAP2-2e 复现中国总量的误差为 1.2%，却把海河流域高估到 2.43 倍）。
+# 校正保留每个集合成员的变化率，只替换绝对水平。
 #
-# Code A merges Songhua and Liao because data/ChinaBasins/basin_l1.gpkg does.
+# 编码 A 合并了松花江与辽河，因为 data/ChinaBasins/basin_l1.gpkg 就是这样合并的。
 OFFICIAL_BASIN_WATER_1E8_M3: dict[str, float] = {
     "A": 1469.2 + 483.4,   # 东北诸河区 (松花江 + 辽河)
     "C": 327.6,            # 海河区
@@ -184,13 +182,13 @@ OFFICIAL_BASIN_WATER_1E8_M3: dict[str, float] = {
     "J": 5753.8,           # 西南诸河区
     "K": 1310.1,           # 西北诸河区
 }
-# Window used to estimate model bias against the official baseline. The historical ISIMIP3b
-# runs stop at 2014; the official series ends 2016.
+# 相对官方基准估计模型偏差所用的时间窗。ISIMIP3b 的历史期（historical）
+# 模拟止于 2014 年；官方序列止于 2016 年。
 BIAS_BASELINE_WINDOW = (1956, 2014)
 
-# GEM combustion labels -> the three classes in the table above. CFB units are subcritical
-# in steam conditions; IGCC (0.2 GW nationally) has no row in the source and is mapped to
-# supercritical. `.../CCS` suffixes describe the retrofit state, not the steam cycle.
+# GEM 燃烧技术标签 -> 上表中的三个类别。CFB 机组按蒸汽参数属于亚临界；
+# IGCC（全国 0.2 GW）在来源中没有对应行，映射为超临界。
+# `.../CCS` 后缀描述的是改造状态，而不是蒸汽循环。
 COMBUSTION_CLASS_MAP = {
     "subcritical": "subcritical",
     "supercritical": "supercritical",

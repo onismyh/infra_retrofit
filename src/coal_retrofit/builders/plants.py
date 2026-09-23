@@ -17,7 +17,7 @@ from ..constants import (
 )
 from ..paths import ProjectPaths
 
-# Default number of spatial hubs
+# 空间 hub 的默认个数
 DEFAULT_N_HUBS = 350
 
 
@@ -58,9 +58,9 @@ def build_plants_unit_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     col_status = pick_column(df, COLUMN_MAP["status"])
 
     status = df[col_status].astype(str).str.strip().str.lower()
-    # Include operating and under-construction units only (the "existing fleet"
-    # literature convention). Announced/permitted/pre-permit units (~257 GW in
-    # GEM Jul-2025) are excluded so the baseline matches the operating fleet.
+    # 只纳入在运与在建机组（沿用文献中"存量机组"（existing fleet）的惯例）。
+    # 已宣布 / 已获许可 / 许可前（announced/permitted/pre-permit）的机组
+    # （GEM Jul-2025 中 ~257 GW）被排除在外，使基准与在运机组一致。
     valid_statuses = ["operating", "construction"]
     df = df.loc[status.isin(valid_statuses)].copy()
 
@@ -150,11 +150,10 @@ def build_plant_dataframe(
         mean_commission = float(frame["commission_year"].mean())
         retirement_year = int(mean_commission + 40)
 
-        # Wang (2023) water table, looked up per unit by (steam cycle, cooling system) and
-        # capacity-weighted to the hub. Two variants are produced because whether a coastal
-        # once-through hub draws seawater is only known after its centroid is placed
-        # (add_seawater_classification): `_all` counts every once-through unit against
-        # freshwater, `_fresh` zeroes them.
+        # Wang (2023) 用水强度表：逐机组按蒸汽参数（steam cycle）与冷却方式查表，
+        # 再按装机容量加权到 hub。之所以产出两个变体，是因为沿海直流冷却 hub 是否取
+        # 海水，要等其质心定位之后（add_seawater_classification）才知道：`_all` 把
+        # 每台直流冷却机组都计入淡水，`_fresh` 把它们置零。
         water_intensities = _hub_water_intensities(frame, total_cap)
 
         rows.append(
@@ -188,12 +187,11 @@ WATER_KEYS = ("withdrawal", "consumption", "withdrawal_ccs", "consumption_ccs")
 
 
 def _hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[str, float]:
-    """Capacity-weighted water intensities for one hub, in both freshwater variants.
+    """单个 hub 按装机容量加权的用水强度，两种淡水变体都给出。
 
-    Also returns the Chinese abstraction-quota intensity, which needs no freshwater variant:
-    the quota already excludes condenser flow, so what remains (boiler make-up and service
-    water, 0.35-0.72 m3/MWh for once-through) is drawn from the freshwater system whether the
-    condenser is fed by a river or by the sea.
+    同时返回中国取水定额口径的强度，它不需要淡水变体：定额本身已不含凝汽器冷却水量，
+    剩下的部分（锅炉补给水与杂用水，直流冷却为 0.35-0.72 m3/MWh）无论凝汽器取的是
+    河水还是海水，都从淡水系统取用。
     """
     out = {f"{key}_intensity_{variant}": 0.0 for key in WATER_KEYS for variant in ("all", "fresh")}
     out["quota_intensity_m3_per_mwh"] = 0.0
@@ -220,11 +218,10 @@ def _hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[s
             quota = CHINA_WATER_QUOTA_M3_PER_MWH.get((cool, quota_capacity_band(float(unit_capacity))))
             if quota is not None:
                 out["quota_intensity_m3_per_mwh"] += (float(unit_capacity) / total_capacity) * quota
-    # What this hub's intensity would be if its condensers were converted to dry cooling.
-    # Same steam cycles, air rows of the same table, so the difference is attributable to
-    # the cooling system alone. All four bases, weighted by each unit's OWN steam cycle --
-    # deriving the withdrawal pair downstream as `air_consumption x ratio(dominant_combustion)`
-    # is not the same number and put five already-dry hubs above their own base withdrawal.
+    # 若该 hub 的凝汽器改为空冷，其用水强度会是多少。蒸汽参数不变，取同一张表的
+    # 空冷行，因此差值只归因于冷却方式。四种口径都算，并按每台机组自己的蒸汽参数
+    # 加权——若在下游以 `air_consumption x ratio(dominant_combustion)` 推出取水那一对，
+    # 得到的不是同一个数，而且曾把五个本已空冷的 hub 推到其自身基准取水量之上。
     for comb, index in units.groupby(combustion).groups.items():
         entry = WATER_INTENSITY_BY_TECH_M3_PER_MWH.get((comb, "air"))
         if entry is None:
@@ -237,15 +234,14 @@ def _hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[s
 
 
 def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
-    """Pick the freshwater variant for seawater-cooled hubs and drop the scratch columns.
+    """为海水冷却 hub 选用淡水变体，并删去临时列。
 
-    Seawater condensers draw no river water: on a withdrawal basis that is the difference
-    between ~100 m3/MWh of imagined abstraction and none at all, for 241 GW of capacity.
+    海水凝汽器不取河水：按取水口径，这就是 241 GW 装机上 ~100 m3/MWh 的虚构取水量
+    与完全不取水之间的差别。
 
-    The with-capture quota is the base quota plus the capture unit's extra consumptive
-    make-up water. The quota schedule predates CCS and has no row for it, but the increment
-    it would meter is exactly the additional water the plant must buy in, which is the
-    consumption increment from the Wang (2023) table.
+    带捕集的定额是基准定额加上捕集装置额外的耗水性补给水。定额表早于 CCS，没有对应的
+    行，但它本应计量的增量，恰好就是电厂必须额外购入的水量，即 Wang (2023) 表中的
+    耗水增量。
     """
     plants = plants.copy()
     seawater = plants["seawater_cooled"].astype(bool)
@@ -256,18 +252,16 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
         plants["quota_intensity_m3_per_mwh"]
         + (plants["consumption_ccs_intensity_m3_per_mwh"] - plants["consumption_intensity_m3_per_mwh"]).clip(lower=0.0)
     ).round(4)
-    # Freshwater once-through condenser flow, isolated. `_intensity_all` sums every cooling
-    # class and `_intensity_fresh` sums all but once-through, so the difference IS the
-    # once-through term -- exactly, per unit, at each unit's own steam cycle. Seawater hubs get
-    # zero because their published column already is the fresh variant.
+    # 单独拆出淡水直流冷却的凝汽器水量。`_intensity_all` 对所有冷却类别求和，
+    # `_intensity_fresh` 对除直流冷却外的所有类别求和，所以二者之差正是直流冷却这一项——
+    # 逐机组、按各机组自己的蒸汽参数，精确成立。海水 hub 取零，因为它们对外发布的列
+    # 本来就是 fresh 变体。
     #
-    # It is kept because it is the only part of the withdrawal column that has to be
-    # recalibrated: the once-through rows of WATER_INTENSITY_BY_TECH_M3_PER_MWH are Macknick
-    # (2011) US values and disagree with the 水资源公报 by a factor of two, while the
-    # recirculating and air rows agree to 5-14%. See `builders/water_quota`. Reconstructing it
-    # downstream from `dominant_combustion` x `capacity_mw_once_through` is NOT equivalent and
-    # was wrong by 24% on the fleet total: the hub's dominant steam cycle is often not the
-    # steam cycle of its once-through units.
+    # 保留这一项，是因为它是取水列中唯一需要重新标定的部分：WATER_INTENSITY_BY_TECH_M3_PER_MWH
+    # 的直流冷却行是 Macknick (2011) 的美国数值，与水资源公报约成 2 倍关系，而循环冷却与空冷行
+    # 吻合到 5-14%。见 `builders/water_quota`。在下游由 `dominant_combustion` x
+    # `capacity_mw_once_through` 重建它并不等价，曾在全机队合计上差了 24%：hub 的主导
+    # 蒸汽参数往往不是其直流冷却机组的蒸汽参数。
     for key in ("withdrawal", "withdrawal_ccs"):
         plants[f"once_through_{key}_intensity_m3_per_mwh"] = (
             (plants[f"{key}_intensity_all"] - plants[f"{key}_intensity_fresh"])
@@ -277,7 +271,7 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
 
 
 def _combustion_class(label: str) -> str:
-    """Map a GEM combustion label onto the three steam-cycle classes of the water table."""
+    """把 GEM 的燃烧技术标签映射到用水强度表的三个蒸汽参数等级。"""
     text = str(label).strip().lower().split("/")[0]
     return COMBUSTION_CLASS_MAP.get(text, "subcritical")
 
@@ -291,27 +285,25 @@ def _cooling_class(label: str) -> str:
     return "recirculating"
 
 
-# Seawater classification.
+# 海水冷却分类。
 #
-# GEM records `once-through` without saying whether the condenser draws sea or river water,
-# and the two behave completely differently in a freshwater budget: a coastal unit competes
-# for none of it, an inland one diverts ~85-115 m3/MWh. The split is inferred from distance
-# to the coastline.
+# GEM 只记 `once-through`，不说明凝汽器取的是海水还是河水，而二者在淡水预算中的表现
+# 完全不同：沿海机组一点也不争用淡水，内陆机组则要引走 ~85-115 m3/MWh。二者的划分
+# 由到海岸线的距离推断。
 #
-# The coastline comes from data/ChinaMap/boundary.shp, whose GBCODE field separates coast
-# (26010 open coast, 26080/26100 island coasts, 26 085 km in total) from the land national
-# boundary (61010). The earlier version measured distance to the national boundary as a
-# whole, which conflated the Yalu and Vietnam land borders with the sea and needed a
-# maritime-province whitelist to compensate.
+# 海岸线取自 data/ChinaMap/boundary.shp，其 GBCODE 字段把海岸（26010 开阔海岸，
+# 26080/26100 岛屿海岸，合计 26 085 km）与陆地国界（61010）区分开。早先的版本量的是
+# 到整条国界的距离，把鸭绿江与中越陆地边界也混同为海，只好再加一张沿海省份白名单
+# 来弥补。
 #
-# Distance to the true coast splits the once-through fleet in two with an almost empty band
-# between: 0-20 km holds 240.2 GW, 20-50 km holds 2.0 GW, beyond 50 km holds 222.9 GW. The
-# threshold sits in the middle of that gap, so the classification is insensitive to it.
+# 按到真实海岸的距离，直流冷却机组被分成两群，中间几乎是空带：0-20 km 有 240.2 GW，
+# 20-50 km 有 2.0 GW，50 km 以外有 222.9 GW。阈值取在这段空档的中间，因此分类结果
+# 对阈值不敏感。
 SEAWATER_COAST_DISTANCE_KM = 30.0
 
 
 def add_seawater_classification(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFrame:
-    """Split once-through capacity into seawater and freshwater by distance to the coast."""
+    """按到海岸的距离，把直流冷却装机拆分为海水与淡水两部分。"""
     import geopandas as gpd
     from shapely.geometry import Point
     from shapely.ops import unary_union
@@ -355,7 +347,7 @@ def write_plants_unit(paths: ProjectPaths) -> pd.DataFrame:
 
 
 def _haversine_distance_matrix(lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-    """Pairwise Haversine distances (km)."""
+    """两两之间的 Haversine 距离（km）。"""
     lon_r = np.radians(lons)
     lat_r = np.radians(lats)
     dlon = lon_r[:, None] - lon_r[None, :]
@@ -365,11 +357,11 @@ def _haversine_distance_matrix(lons: np.ndarray, lats: np.ndarray) -> np.ndarray
 
 
 def _cluster_plants_to_hubs(units: pd.DataFrame, n_hubs: int = DEFAULT_N_HUBS) -> pd.DataFrame:
-    """Spatially cluster unit-level data into *n_hubs* hubs.
+    """把逐机组数据按空间聚类为 *n_hubs* 个 hub。
 
-    Uses agglomerative clustering on unit coordinates. Each hub inherits
-    all units in its cluster; aggregation (capacity, cooling, etc.) is
-    done by build_plant_dataframe via a synthetic 'plant_site' label.
+    对机组坐标做凝聚层次聚类（agglomerative clustering）。每个 hub 继承其簇内的
+    全部机组；汇总（装机、冷却方式等）由 build_plant_dataframe 借助合成的
+    'plant_site' 标签完成。
     """
     valid = units.dropna(subset=["latitude", "longitude"]).copy()
     if len(valid) <= n_hubs:

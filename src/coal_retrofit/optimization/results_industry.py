@@ -20,26 +20,24 @@ def _build_industry_detail_table(
     h2_flow_kg: np.ndarray | None = None,
     year_data: YearData | None = None,
 ) -> pd.DataFrame:
-    """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
+    """每个工业 hub 每年一行：所选路线、减排、捕集、用水、成本。
 
-    Costs follow the model's own split: `cost_annual_cny` is the fixed O&M, capture energy
-    and consumables (H2 route: the non-hydrogen operating delta) plus the hydrogen actually
-    bought on the hub's links this year, `cost_capital_cny` the one-time retrofit capex on the
-    route-share increment (whole share in the first year). The end-of-horizon salvage credit
-    is not attributed per hub; it is the `salvage_credit` row of `cost_breakdown.csv`.
+    成本沿用模型自己的拆分：`cost_annual_cny` 是固定运维、捕集能耗与耗材（氢路线为非氢运行
+    差额），再加本年在该 hub 链路上实际买的氢；`cost_capital_cny` 是按路线份额增量计的一次性
+    改造 capex（第一年按整个份额计）。期末残值抵扣不分摊到各 hub，它是 `cost_breakdown.csv`
+    里的 `salvage_credit` 一行。
 
     Args:
-        prepared: Prepared inputs; `prepared.industry` carries the hub frame.
-        year: Planning year.
-        industry_year_data: The year's industrial coefficient block, or None when industry off.
-        share_values: Solved route shares, shape (hub_count, len(INDUSTRY_ROUTES)).
-        prev_share_values: Previous year's shares (None in the first year).
-        h2_flow_kg: Solved hydrogen flow per link, kg.
-        year_data: The year's matrices, for the hydrogen link costs and incidence.
+        prepared: 准备好的输入；`prepared.industry` 带 hub 表。
+        year: 规划年。
+        industry_year_data: 本年的工业系数块；工业关闭时为 None。
+        share_values: 求解得到的路线份额，形状 (hub_count, len(INDUSTRY_ROUTES))。
+        prev_share_values: 上一年的份额（第一年为 None）。
+        h2_flow_kg: 求解得到的每条链路氢流量，kg。
+        year_data: 本年的矩阵，用于取氢链路成本与关联矩阵。
 
     Returns:
-        Empty frame with the right columns when industry is off, so downstream readers get a
-        frame either way.
+        工业关闭时返回列齐全的空表，这样下游读取方无论哪种情况都能拿到一张表。
     """
     columns = [
         "year", "hub_id", "sector", "target_group", "province", "longitude", "latitude", "basin_code",
@@ -62,7 +60,7 @@ def _build_industry_detail_table(
     output_scale = industry_year_data.output_scale
     h2_price_mean = float(industry_year_data.h2_price_cny_per_kg)
     n_hubs = len(hubs)
-    # Hydrogen bought per hub: link flows x link costs, folded onto hubs with the incidence.
+    # 每个 hub 买的氢：链路流量 x 链路成本，用关联矩阵归到各 hub。
     h2_kg_by_hub = np.zeros(n_hubs)
     h2_cost_by_hub = np.zeros(n_hubs)
     if (

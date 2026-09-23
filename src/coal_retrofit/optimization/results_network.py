@@ -32,7 +32,7 @@ def _build_edge_table(
     edges["edge_active"] = ((edges["edge_flow_mtpa"] > 1e-6) | (edges["new_capacity_mtpa"] > 1e-6)).astype(int)
     edges["num_pipe_new"] = edges["new_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
     edges["num_pipe_stock"] = edges["total_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
-    # Whole pipes laid this year by diameter tier, e.g. "2x2|1x20" -- what was actually built.
+    # 本年按管径档铺设的整根管数，例如 "2x2|1x20"——即实际建成的内容。
     if pipe_count is not None and len(pipe_tiers):
         counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
         edges["pipes_new_by_tier"] = [
@@ -77,7 +77,7 @@ def _build_storage_table(
     table = prepared.storages.copy()
     table["year"] = year
     if injectivity_mtpa is not None:
-        # The year's deployed rate (buildable rate x ramp), which is what the constraint used.
+        # 本年已部署的速率（可建速率 x 爬坡），即约束所用的值。
         table["injectivity_mtpa"] = np.asarray(injectivity_mtpa, dtype=np.float64)
     table["storage_use_mtpa"] = storage_use_mtpa
     table["remaining_capacity_before_mt"] = state_before.remaining_storage_mt
@@ -110,7 +110,7 @@ def _build_co2_flow_direction_table(
     co2_flow_fwd: np.ndarray,
     co2_flow_bwd: np.ndarray,
 ) -> pd.DataFrame:
-    """CO2 flow direction on each active edge: resolved to source→sink with magnitude."""
+    """每条活跃边上的 CO2 流向：解析为源→汇方向，并给出大小。"""
     edges = prepared.network.edges
     fwd = np.asarray(co2_flow_fwd, dtype=np.float64)
     bwd = np.asarray(co2_flow_bwd, dtype=np.float64)
