@@ -55,11 +55,14 @@ NH3_ELECTROLYSIS_TECHS = ("AE",)
 # NH3 产能计。电解槽及其可再生能源供给已包含在 LCOH 中，所以这里只加
 # 合成岛：新建绿氨 CAPEX 为 1300-2000 USD/(t·yr)，其中电解槽占直接成本的
 # 40-50%，其余部分为 650-1100（取中点）。⚠ 假设（出处不具体：区间与电解槽占比都没有列出文献）。
-# 按 20 年折成年金计入氨价，贴现率与模型其余部分相同：构建输入时按 DEFAULT_DISCOUNT_RATE，
-# 求解时再按情景的 `discount_rate` 重算（`builders/supply.reprice_hb_capex`）。
+# 按 30 年折成年金计入氨价：DEA 103 绿氨合成装置（不含电解与空分）的技术寿命为 30 a，PyPSA technology-data 把这一值
+# 同时用于合成回路与空分（`dea_renewable_fuels`，经 `pypsa_techdata`）；2026-09-23 前取 20 a，无出处。30 a 是技术寿命，
+# 按经济寿命折的线索指向 25 a（J. Cleaner Production 2026 一文转引 IEA 2021，只见检索摘要）；工业捕集岛取的是
+# NPC 2019 的 20 a，不是 DEA 401 的技术寿命 25 a，两处口径不同。贴现率与模型其余部分相同：构建输入时按
+# DEFAULT_DISCOUNT_RATE，求解时再按情景的 `discount_rate` 重算（`builders/supply.reprice_hb_capex`）。
 # 2026-09-23 前这里单独用 8%。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
-NH3_HB_CAPEX_LIFETIME_YEARS = 20  # ⚠ 假设（无出处；DEA 103 合成回路的技术寿命为 30 a，PyPSA 把它同时用于空分）
+NH3_HB_CAPEX_LIFETIME_YEARS = 30
 AMMONIA_NODE_AGGREGATION_DEGREES = 0.5
 
 # 水网格粗化：构建输入时只做一次
