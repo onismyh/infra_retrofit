@@ -18,6 +18,8 @@ class OptimizationAssumptions:
     # 与 coal_plant_base_efficiency 不一致）。
     heat_rate_gj_per_mwh: float = 8.5714
     nh3_lhv_gj_per_kg: float = 0.0186
+    # 美元汇率取整，约为 2023 年年均：美联储 H.10 年均 7.0809（`fred_h10`）；国家统计局 2023 年统计公报
+    # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
     usd_to_cny: float = 7.0
     retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
     # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），
@@ -45,6 +47,10 @@ class OptimizationAssumptions:
     # +1 000 CNY/kW 的"生物质改造增量"，与档位 capex 重复计费，已删除。
     ccs_retrofit_capex_cny_per_kw: float = 3500.0
     biomass_efficiency_penalty_per_ratio: float = 0.0373  # 15% 掺烧时效率下降 0.56%（Fan et al. 2023）
+    # 全机组基准发电效率，低位热值口径，全期取常数。Fan et al. 2023 SI 式 (S42) 设煤电效率由 2020 年 0.4 平滑升至
+    # 2060 年 0.5，按线性插值 0.42 约为其 2028 年值；Wang et al. 2025 SI Table 1（引 NDRC 2022 基准水平，
+    # 285-323 gce/kWh）各机型折 0.380-0.431。文献值应是供电（净）口径，模型的发电量按利用小时计、应属毛口径
+    # （两者都是推断，未核），差一个厂用电率，未修正。
     coal_plant_base_efficiency: float = 0.42
     coal_fuel_cost_cny_per_gj: float = 38.2             # 全国均值，按省查表时被覆盖
     # 捕集岛固定运维，按每年占（经学习曲线调整的）改造 CAPEX 的比例计。
@@ -125,6 +131,10 @@ class OptimizationAssumptions:
     # ADB 中国系数 57,124 USD/(km·in) → ≈0.4e6；小规模实际项目（齐鲁-胜利，1.7 Mtpa，含站场）
     # 3.1e6。基准费率对应标准的 20-Mtpa 管道；更小的管道另带支线 / 直连乘数。
     # （原值 18,000 是单位错误，约低了 100 倍。）
+    # ⚠ 假设（出处不具体）：取的是 ADB 系数，但没能定位它出自哪份 ADB 报告，同处的 Smith 系数也没核到原文。
+    # 对照：按 Fan et al. 2023 SI 式 (S26)-(S28) 的材料法自算，20 Mt/a 时 0.12e6-0.16e6 CNY/(Mtpa·km)（式中 r 按
+    # 半径读；原文称其为直径，按直径读是 0.47e6-0.65e6，原式待核；壁厚与保温层为自设）；吉林石化—吉林油田 CO2
+    # 管道一期（13.67 亿元、282 km、3.3 Mt/a；只见环评公示的检索摘要）按 0.6 规模指数放大到 20 Mt/a 是 0.71e6。
     # 沿既有油气干线的 62 条候选边（`existing_corridor_flag`）所记的免费 CO2 容量。
     # 2026-09-10 之前为 20 Mtpa（无出处）；文献综述（docs/工业联合减排实现说明.md §9.6）
     # 的结论相反：复用的输气管只能在降压下输送小流量（IEAGHG 2013/18：Longannet
@@ -170,7 +180,7 @@ class OptimizationAssumptions:
     ccs_water_multiplier: float = 1.82
     biomass_water_multiplier: float = 1.00
     beccs_water_multiplier: float = 1.82
-    ammonia_water_multiplier: float = 1.01
+    ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
     # 供水成本（grid_supply 模式用）
     # 一个省的可再生水资源中已被农业、生活和其他工业占用的份额，在向电厂提供任何水量之前
     # 先扣除。0 保留原始的物理可用量；取水数据载入后按水资源公报设定。
@@ -281,7 +291,8 @@ class OptimizationAssumptions:
     # 方式。搁浅资产核销不计残值（它是损失，不是资产）。寿命：煤电捕集岛 20 a（同
     # `INDUSTRY_CAPTURE_LIFETIME_YEARS`）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
     # `air_retrofit_lifetime_years`）；管道 30 a（`pipeline_lifetime_years`）；重建的厂址
-    # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。
+    # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。工业捕集岛的 20 a 有出处（NPC 2019 的工业捕集改造，见
+    # `constants_industry.INDUSTRY_CAPTURE_LIFETIME_YEARS`），煤电捕集岛只是沿用同值，那份出处不含煤电。
     # 设 `end_of_horizon_salvage=False` 只去掉残值项；09-22 以来目标函数还有别的改动（README §0.1），复现不了更早的求解。
     end_of_horizon_salvage: bool = True
     ccs_retrofit_lifetime_years: int = 20
@@ -449,6 +460,8 @@ class OptimizationScenario:
     experiment_id: str
     description: str
     planning_years: tuple[int, ...] = field(default_factory=lambda: tuple(PLANNING_YEARS))
+    # 燃烧后捕集率，全期不变：Fan et al. 2023 SI p.43-44（取 90% 并设研究期内不变）；An et al. 2025 SI p.20；
+    # Wang et al. 2025 SI Table 5。三处都是煤电；工业 CCS 也用这个值（`industry_matrices`），未另找工业侧出处。
     capture_rate: float = 0.90
     biomass_blend_levels: tuple[float, ...] = (0.10, 0.25, 0.50, 0.75, 1.00)
     ammonia_blend_levels: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
@@ -519,17 +532,28 @@ class OptimizationScenario:
     discount_rate: float = DEFAULT_DISCOUNT_RATE
     discount_base_year: int = 2025
     # 系统净成本参数
+    # 碳价，元/t CO2，2030/2040/2050/2060 年：⚠ 假设（情景设定，无出处），每 10 年加 380 元的直线；模型没有价格指数，
+    # 按不变价用。登记表里只有 `ST_CP_BASE` 用它，另两个 `ST_` 情景置零（`scripts/run_single.py`）。对照（都只见
+    # 检索摘要，未核原文）：ICF 2022 中国碳价调查对 2030 年的预期 130 元/t；C-GEM（张希良等 2022，管理世界 38(1)）
+    # 2030 年 100 以上、2060 年 2 700 以上；Zhang & Chen 2022（`zhang2022probabilistic`）2060 年中位数 168-1 096 USD/t。
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)
     # 电价路径。2030 年的 400 元/MWh 对照 Wang et al. 2025（`wang2025reducing`）SI Table 3：
     # 0.06（0.048-0.072）$/kWh = 420（336-504）元/MWh。逐年上涨的路径：⚠ 假设（无出处）。
     electricity_price_cny_per_mwh_by_year: tuple[float, ...] = (400.0, 440.0, 490.0, 550.0)
+    # 每个规划期新增的自愿退役（未到设计寿命的机组）不超过当年总发电量的 15%，约合每年 1.5%：⚠ 假设（无出处）。
+    # 对照：REMIND 的提前退役上限，中国落在缺省组 2%/年，常规煤电再乘 1.2，即 2.4%/年（`remind`，按装机计）；
+    # An et al. 2025 不设速率上限，其 Base 情景 2030-2040 年仅比 Flex 情景多出的提前退役就有 302.8-397.1 GW。
+    # v9 的 `*_noair` 结果正好卡在这个上限上（`scripts/plot_fig5_pathway_succession.py`）。
     max_new_retirement_share_per_period: float = 0.15
-    # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线可乘以此系数
-    # （例如 1.15 = 因优先调度 +15%）
+    # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线乘以此系数，是必然多发，不是上限。
+    # ⚠ 假设（用法无出处）：数值与 Fan et al. 2023 SI Table 11 里 CCS 类机组与未改造煤电的最大容量因子之比
+    # 0.69/0.60 = 1.15 相同，但那是上限之比，且只有 CCS 类；生物质、掺氨两列没有出处。
     retrofit_cf_boost: float = 1.15
     # 原址重建参数：到期电厂可按新建成本的 70% 重建
     rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%；⚠ 假设（无出处）
-    rebuild_efficiency: float = 0.45  # 重建电厂取 USC 效率（基线为 0.42）
+    # 重建电厂取超超临界效率（基线为 0.42）：Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs"
+    # 一行为 270 gce/kWh，按低位热值折 0.455，取值低 1.1%。该行名原文如此、含义有歧义；NDRC 原文未核。
+    rebuild_efficiency: float = 0.45
     notes: str = ""
 
     def _interpolate_year_tuple(self, values: tuple[float, ...], year: int) -> float:

@@ -580,3 +580,98 @@
   note={Source of the cooling-system consumption intensities used for the aggregate
         cooling classes.}
 }
+
+% ============================================================
+% 2026-09-23 补：表外参数的出处（README §0.2"表外参数"表，代码注释按键名引用）。
+% 开源数据集的数值都从 raw.githubusercontent.com 下载后逐行核过；"经 pypsa_techdata"表示
+% 数值取自 PyPSA technology-data 收录的表，原始报告本身没有打开。
+% ============================================================
+
+% 工业用水按取水计的论证（constants_industry 模块说明）引用其 p.3 §2.2 的部门耗水 / 取水比。
+% 书目取自 reference/water/jin2022_energy_123339.pdf 首页与元数据。
+@article{jin2022climate,
+  title={Climate change and {CCS} increase the water vulnerability of {China}'s thermoelectric power fleet},
+  author={Jin, Yi and Scherer, Laura and Sutanudjaja, Edwin H and Tukker, Arnold and Behrens, Paul},
+  journal={Energy},
+  volume={245},
+  pages={123339},
+  year={2022},
+  doi={10.1016/j.energy.2022.123339}
+}
+
+% v0.15.0（2026-06-09 发布）的 inputs/manual_input.csv、inputs/data_sheets_for_renewable_fuels.xlsx、
+% outputs/costs_2030.csv，以及 2026-09-23 的 master 分支（DEA 碳捕集与工业供热两张 xlsx）。
+@misc{pypsa_techdata,
+  title={{PyPSA} technology-data},
+  author={{PyPSA developers}},
+  year={2026},
+  howpublished={\url{https://github.com/PyPSA/technology-data}}
+}
+
+% 用 103 Hydrogen to Ammonia（合成回路电耗、技术寿命 30 a）与 98 Methanol from hydrogen（技术寿命 30 a）。
+% 数据表 Index 页标 Version 0014；空分电耗 0.25 MWh/t N2 引自同一报告 p.288（经 pypsa_techdata）。
+@misc{dea_renewable_fuels,
+  title={Technology Data for Renewable Fuels},
+  author={{Danish Energy Agency}},
+  howpublished={\url{https://ens.dk/en/our-services/projections-and-models/technology-data/technology-data-renewable-fuels}}
+}
+
+% 用 401.a/401.c 燃烧后捕集表：压缩与脱水电耗、可变运维（2020 年欧元）、胺补充量、技术寿命 25 a。
+% 数据表 Index 页记 2021-11-01 首次发布。
+@misc{dea_ccts,
+  title={Technology Data for Carbon Capture, Transport and Storage},
+  author={{Danish Energy Agency}},
+  year={2021},
+  howpublished={\url{https://ens.dk/en/our-services/projections-and-models/technology-data}}
+}
+
+% 用 311.1a Steam boiler, Coal：年均净效率 89%（2030 年区间 87-90.8）。数据表 Index 页最近一次修改 2021-11-01。
+@misc{dea_iph,
+  title={Technology Data for Industrial Process Heat},
+  author={{Danish Energy Agency}},
+  year={2021},
+  howpublished={\url{https://ens.dk/en/our-services/projections-and-models/technology-data}}
+}
+
+% 第 2 章 p.2-20、p.2-21：合成氨捕集改造电耗 0.1 MWh/t；钢铁、水泥、合成氨、乙醇捕集改造寿命 20 a（经 pypsa_techdata）。
+@techreport{npc2019dualchallenge,
+  title={Meeting the Dual Challenge: A Roadmap to At-Scale Deployment of Carbon Capture, Use, and Storage},
+  author={{National Petroleum Council}},
+  institution={National Petroleum Council},
+  year={2019},
+  url={https://dualchallenge.npc.org/files/CCUS-Chap_2-030521.pdf}
+}
+
+% 提交 9eca52db92bd2d9715f30e98ccaaf36677fdb516：mppsteel/data/import_data/Technology Business Cases.csv 的
+% "Emissivity wout CCS"一行；mppsteel/config/model_config.py 的钢厂寿命 40 a、投资周期 20 a。
+% 题名取自 pypsa_techdata 的出处字段（"Model assumptions from MPP Steel Transition Tool"）；仓库文件没有标发布年份。
+@misc{mpp_steel,
+  title={{MPP} Steel Transition Tool},
+  author={{Mission Possible Partnership}},
+  howpublished={\url{https://github.com/missionpossiblepartnership/mpp-steel-model}}
+}
+
+% 液氨罐：9 kt 罐 8 M$(2010)（Fig. 55、Fig. 58）、寿命 20 a（p.290），经 pypsa_techdata 转引，原文未读。
+% 题名、作者、年份与 DOI 取自 pypsa_techdata 的出处字段；文献类型与所属学校未核。
+@misc{morgan2013ammonia,
+  title={Techno-Economic Feasibility Study of Ammonia Plants Powered by Offshore Wind},
+  author={Morgan, E.},
+  year={2013},
+  doi={10.7275/11KT-3F59}
+}
+
+% develop 分支 main.gms 第 1512-1518 行（提前退役上限，缺省组 2%/年）与 core/datainput.gms 第 784 行（常规煤电 x1.2），
+% 2026-09-23 读取。
+@misc{remind,
+  title={{REMIND}: REgional Model of INvestments and Development},
+  author={{Potsdam Institute for Climate Impact Research}},
+  howpublished={\url{https://github.com/remindmodel/remind}}
+}
+
+% 年均序列 AEXCHUS（人民币 / 美元）与 AEXUSEU（美元 / 欧元），经 datasets/exchange-rates 汇编的 data/annual.csv，
+% 2026-09-23 下载：2023 年 7.0809；2018 年 6.6090 与 0.8462，2024 年 7.1957 与 0.9242（欧元列已取倒数）。
+@misc{fred_h10,
+  title={Foreign Exchange Rates -- H.10},
+  author={{Board of Governors of the Federal Reserve System}},
+  howpublished={\url{https://raw.githubusercontent.com/datasets/exchange-rates/main/data/annual.csv}}
+}

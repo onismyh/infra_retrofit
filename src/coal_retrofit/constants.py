@@ -35,7 +35,14 @@ BIOMASS_MATCH_BUFFER_KM = 150.0
 BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 
 NH3_H2_RATIO = 0.176
+# 合成岛用电（合成回路 + 空分 + 辅助），kWh/kg NH3，按同址风光 LCOE 计价：⚠ 假设（无单一出处）。"合成回路 + 空分"
+# 口径的开源数据在 0.55-1.17 之间：下端 0.55 = DEA 103 合成回路 0.34 + DEA 空分 0.25 MWh/t N2 x 0.839 t N2/t NH3
+# （后一项 0.21；`dea_renewable_fuels`，经 `pypsa_techdata`）；上端是 Joule 2018
+# （doi:10.1016/j.joule.2018.04.017）Table 13，经 PyPSA-Eur-Sec 配置转引。
 NH3_HB_POWER_KWH_PER_KG = 0.74
+# 液氨罐储存附加，USD/kg 通过量，定值（不随情景贴现率重算）：⚠ 假设（储存天数无出处）。罐价与寿命可查：
+# Morgan 2013 的 9 kt 罐 8 M$(2010)、寿命 20 a（`morgan2013ammonia`，经 `pypsa_techdata`，后者另估固定运维 2%/a）。
+# 按这些数与 6% 贴现，0.017 相当于常年保有约 47-65 天储量（罐价按 2025 年或 2010 年币值计）；保有 30 天约为 0.008-0.011。
 NH3_STORAGE_ADDER_USD_PER_KG = 0.017
 NH3_TRANSPORT_ADDER_USD_PER_KG = 0.0
 # 纳入氨供给曲线的电解路线。中国已装机的电解槽中
@@ -52,7 +59,7 @@ NH3_ELECTROLYSIS_TECHS = ("AE",)
 # 求解时再按情景的 `discount_rate` 重算（`builders/supply.reprice_hb_capex`）。
 # 2026-09-23 前这里单独用 8%。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
-NH3_HB_CAPEX_LIFETIME_YEARS = 20
+NH3_HB_CAPEX_LIFETIME_YEARS = 20  # ⚠ 假设（无出处；DEA 103 合成回路的技术寿命为 30 a，PyPSA 把它同时用于空分）
 AMMONIA_NODE_AGGREGATION_DEGREES = 0.5
 
 # 水网格粗化：构建输入时只做一次
@@ -204,4 +211,7 @@ PLANNING_YEARS = [2030, 2040, 2050, 2060]
 # 情景的这一个值，需要缺省贴现率时引用这里、不另写数字；氨价里的合成岛年金也按它重算。
 # 外生的 LCOH（`data/H2`，占氨价的 72-85%，工业买氢也用它）内含该数据集自己的资本成本率，
 # 仓库里没有记录，不随情景贴现率变。
+# 取值 6%：⚠ 假设（待核规范原文）。《建设项目经济评价方法与参数（第三版）》（发改投资〔2006〕1325号）的社会折现率
+# 为 8%，受益期长的项目可降低但不低于 6%（只见检索摘要，条款与后续修订未核）；Wang et al. 2025 取 5%（敏感性
+# 3-8%），`reference/CCS_Network_Optimize.gms` 取 8%。
 DEFAULT_DISCOUNT_RATE = 0.06

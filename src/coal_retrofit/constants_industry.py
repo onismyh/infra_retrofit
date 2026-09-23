@@ -1,11 +1,14 @@
 """工业点源参数：取水定额、氢路线、资产寿命。
 
-这里的每个数字都附有出处。沿用 `constants.py` 的两条规则：
+这里的每个数字要么附出处，要么标 `⚠ 假设`。沿用 `constants.py` 的两条规则：
 
-1. **水量口径。** 流域约束作用于耗水，而不是取水（`optimization/data_prep.py`）。
-   对工业而言，二者远比电厂直流冷却时接近：中国工业企业运行闭式水循环，重复利用率 >95%，
-   所以 GB 的"单位产品取水量"是补充蒸发损失的补水，即几乎全部属于耗水。这是一个假设，
-   必须在 Methods 里交代；承载它的旋钮是 `INDUSTRY_CONSUMPTION_SHARE`。
+1. **水量口径。** 工业点源的用水只进流域取水上限（`optimization/model_resources.add_basin_withdrawal_cap`，
+   `water_budget="official_quota"` 且流域上限打开时才有）；作用于耗水的生态流量那一档只含煤电。
+   定额（GB/T 18916 单位产品取水量）与流域指标（国办发〔2013〕2号 附件1 用水总量控制指标）都是取水口径，
+   所以工业用水按取水计，`INDUSTRY_CONSUMPTION_SHARE` = 1.0 是定义性取值。它不是"取水≈耗水"的判断，
+   那一说没有数据支撑：全国工业耗水/取水比只有 0.23（Jin et al. 2022，`jin2022climate`），但全国工业
+   用水里约 37% 是直流火（核）电冷却（2016 年水资源公报），不能直接当点源耗水率；钢铁等部门级数据只见
+   检索摘要，在 0.34-0.87 之间。若将来把工业接入耗水档，这里要换成分部门耗水率。
 2. **出处与中国匹配。** 所有定额都取自 GB/T 18916《取水定额》系列——与
    `CHINA_WATER_QUOTA_M3_PER_MWH` 中已有的煤电定额同属一族（GB/T 18916.1，经由
    水利部《钢铁等十八项工业用水定额》水节约〔2019〕373号）。若把中国的电力定额与
@@ -109,9 +112,8 @@ WATER_INTAKE_QUOTA_M3_PER_T: Final[dict[tuple[str, str], tuple[float, float] | N
     (SECTOR_COAL_CHEM, "default"): None,
 }
 
-# 单位产品取水量中离开流域的比例（蒸发、产品带走的水分、污泥）。1.0 = 取水全部被
-# 消耗，即模块 docstring 中论证的那条假设。单独暴露出来，供
-# `SA_industry_consumption_share` 检验。
+# 工业点源用水计入流域取水上限时乘的系数（`builders/industry.py` 用它乘定额 x 产量）。1.0 = 按取水计，
+# 是定义性取值：定额（GB/T 18916）与流域指标（国办发〔2013〕2号 附件1）都是取水口径，见模块 docstring 第 1 条。
 INDUSTRY_CONSUMPTION_SHARE: Final[float] = 1.0
 
 
@@ -284,8 +286,9 @@ INDUSTRY_CCS_FIXED_OM_FRACTION: Final[float] = 0.05
 #     MEA 3.0-3.5 GJ/t；对 2030 年的改造而言，2.8 是这一分布的中心。
 #     电耗 130 kWh/t，含压缩：PKU/Baowu 总出力损失 142 kWh/t
 #     （蒸汽 + 电力，Table 9）；Gardarsdottir et al. 2019 水泥 MEA ~130 kWh/t。
-#   高浓度流股（合成氨、甲醇）：无再沸器；只有压缩 + 脱水，~110 kWh/t
-#     （0.1 -> 11 MPa 密相；与延长 105 元/t 的全成本自洽）。
+#   高浓度流股（合成氨、甲醇）：无再沸器；只有压缩 + 脱水，~110 kWh/t（0.1 -> 11 MPa 密相）。
+#     DEA 401 压缩与脱水 0.1 MWh/t（2025 年，区间 0.09-0.11，压至 150 bar、脱水至 <50 ppmv；`dea_ccts`）；
+#     NPC 2019 合成氨捕集改造 0.1 MWh/t（`npc2019dualchallenge`，经 `pypsa_techdata`）。110 在 DEA 区间上端。
 INDUSTRY_CCS_STEAM_GJ_PER_T_CO2: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 2.8,
     SECTOR_STEEL_EAF: 2.8,
@@ -301,7 +304,9 @@ INDUSTRY_CCS_ELECTRICITY_KWH_PER_T_CO2: Final[dict[str, float]] = {
     SECTOR_METHANOL: 110.0,
 }
 # 溶剂补充、废胺处置、水：PKU/Baowu 胺 40 000 元/t、水 6.5 元/t CO2；
-# 胺法系统取 ~15 元/t CO2，仅压缩的系统取 5。
+# 胺法系统取 ~15 元/t CO2：DEA 401 可变运维 2.5（1.5-3.5）€2020/t，按 7.8 元/EUR 折 19.5（11.7-27.3）元/t，
+# 胺补充 0.2-0.3 kg/t（`dea_ccts`）。仅压缩的系统取 5：⚠ 假设（无出处；NPC 2019 与 PyPSA 把这类非能源运维
+# 都放在固定运维里，本模型的固定运维已按 capex 的 5% 另计）。
 INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 15.0,
     SECTOR_STEEL_EAF: 15.0,
@@ -313,9 +318,12 @@ INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
 # 其 CO2 直接排空（改造捕集的是工艺流股，不是辅助锅炉——PKU/Baowu 案例也这样计，
 # 辅助电厂按 743 g/kWh），所以 CCS 路线的净减排是捕集量减去这部分蒸汽 CO2。
 # 2026-09-22 之前，模型把 ACCA21 单位成本视为已含能耗，且什么都不排空。
+# 效率 0.88：DEA 311.1a 燃煤蒸汽锅炉年均净效率 89%（2030 年区间 87-90.8；`dea_iph`），是为捕集新建锅炉的口径；
+# 若蒸汽取自存量工业锅炉，运行效率低得多（检索摘要称 60-72%，未核原文）。
 INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
-# 捕集岛的经济寿命。PKU/Baowu 假定 25 a；煤电侧的改造捕集岛依附于剩余 15-25 a 的
-# 机组；两侧统一取 20 a，使残值规则对捕集岛一视同仁，无论它建在哪里。
+# 捕集岛的经济寿命 20 a：NPC 2019 的钢铁、水泥、合成氨、乙醇捕集改造都取 20 a（`npc2019dualchallenge`，经
+# `pypsa_techdata`）；DEA 401 的技术寿命为 25 a（`dea_ccts`），可作敏感性。PKU/Baowu 假定 25 a；煤电侧的改造
+# 捕集岛依附于剩余 15-25 a 的机组；两侧统一取 20 a，使残值规则对捕集岛一视同仁，无论它建在哪里。
 INDUSTRY_CAPTURE_LIFETIME_YEARS: Final[int] = 20
 
 # ACCA21 / China Energy News 的平准化捕集成本，CNY/吨，仅作交叉核对（2026-09-22 起不进
@@ -342,10 +350,11 @@ INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2: Final[float] = 1.65
 # --- 氢替代路线 -----------------------------------------------------------------------------
 # 氢路线能去除的 hub CO2 比例。没有一处取 1.0：每条路线都留有氢触及不到的残余。
 #   steel_bf_bof  H2-DRI + EAF 替代焦炭还原；石灰、电极和 EAF 自身的电网用电仍在
-#                 （每吨粗钢 1.8 t CO2 中的 ~0.2-0.3）。
-#   ammonia       绿氢完全替代气化 + 水煤气变换；公用工程和空分装置仍在。
-#   methanol      绿氢调节 H/C 比，并不去除碳原料，所以残余比合成氨大。
-# 三种情形均为假设——这些是对路线化学的判断，不是引用值。
+#                 （每吨粗钢 1.8 t CO2 中的 ~0.2-0.3）。⚠ 假设（对路线化学的判断，无出处）。
+#   ammonia       绿氢完全替代气化 + 水煤气变换；公用工程和空分装置仍在。⚠ 假设（无直接出处）：
+#                 只去掉过程排放时约 0.67，连公用工程一起电气化时接近 1.0（只见检索摘要），0.95 取上端。
+#   methanol      绿氢调节 H/C 比，并不去除碳原料，所以残余比合成氨大。⚠ 假设（无直接出处）：
+#                 绿氢耦合煤制甲醇的案例减排约 70%-98%（化工学报 2022 等，只见检索摘要）。
 INDUSTRY_H2_ABATEMENT_FRACTION: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 0.85,
     SECTOR_AMMONIA: 0.95,
@@ -388,7 +397,8 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
 #                 （中国钢铁新闻网 2022-02-17；2023-12 投产）-> 1 890 元/(t DRI·a)，
 #                 ×1.08 t DRI/t 粗钢 = 2 040；EAF 184 EUR/(t·a)（Vogl, Åhman & Nilsson
 #                 2018, J Clean Prod 203:736, cost assumptions）~ 1 430 元/(t·a)，按
-#                 7.8 元/EUR 折算——未找到中国 EAF 的每吨投资备案（"80 t 电炉 5 000 万元"
+#                 7.8 元/EUR 折算（约为 2018 年、2024 年的年均汇率 7.81、7.79，美联储 H.10
+#                 交叉汇率，`fred_h10`）——未找到中国 EAF 的每吨投资备案（"80 t 电炉 5 000 万元"
 #                 这类数字只含炉体）。合计 ~3 470；取 3 500。
 #   ammonia       现有煤制合成氨厂改用外购绿氢：Haber-Bosch 回路与空分装置保留，
 #                 气化炉、变换和净化工段停用。新增：H2 接收/压缩、N2 接入、控制系统。
@@ -406,7 +416,8 @@ INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR: Final[dict[str, float]] = {
 # 钢厂维护费 142 M$/a，安装成本 3 928 M$，即 3.6%/a；取 3.5%。
 INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION: Final[float] = 0.035
 # 重建路线（DRI 竖炉、EAF、合成接入）的经济寿命：25 a（PKU/Baowu 对捕集改造用
-# 25 a；DRI/EAF 模块是比它更长寿的资产）。
+# 25 a；DRI/EAF 模块是比它更长寿的资产）。⚠ 假设（无直接出处）：开源数据给出 20-40 a，即 MPP 钢铁模型的
+# 投资周期 20 a、钢厂寿命 40 a（`mpp_steel`），DEA 合成氨与甲醇的技术寿命 30 a（`dea_renewable_fuels`）。
 INDUSTRY_H2_LIFETIME_YEARS: Final[int] = 25
 
 # 上面的文献溢价锚点是平准化的（其中含路线自身的资本回收）。现在 capex 已显式给出，
