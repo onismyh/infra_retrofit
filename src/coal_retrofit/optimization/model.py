@@ -15,6 +15,7 @@ from ._shared import PreparedInputs, SolveState, PATHWAY_INDEX, GUROBI_STATUS_NA
 from .data_prep import prepare_inputs, _paths_df_from_assumptions  # noqa: F401
 from .solver import _solve_joint_multi_period
 from .results import (
+    _alive_edge_added_stock,
     _build_cost_breakdown,
     _build_pathway_table,
     _build_province_table,
@@ -83,9 +84,9 @@ def _map_context_to_scenario(context: ScenarioRunContext) -> OptimizationScenari
     )
 
 
-def _update_state(state: SolveState, new_cap_mtpa: np.ndarray, storage_use_mtpa: np.ndarray, interval_years: int) -> SolveState:
+def _update_state(state: SolveState, storage_use_mtpa: np.ndarray, interval_years: int) -> SolveState:
+    """推进封存剩余容量；管道在役存量按建成年由 `_alive_edge_added_stock` 逐年重算。"""
     next_state = state.clone()
-    next_state.edge_added_stock_mtpa = next_state.edge_added_stock_mtpa + new_cap_mtpa
     next_state.remaining_storage_mt = np.maximum(0.0, next_state.remaining_storage_mt - storage_use_mtpa * interval_years)
     return next_state
 
@@ -121,8 +122,12 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
     prev_share_values: np.ndarray | None = None
     prev_retrofit_installed: np.ndarray | None = None
 
+    new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
         interval_years = scenario.interval_years(years, year_index, assumptions)
+        state.edge_added_stock_mtpa = _alive_edge_added_stock(
+            new_cap_by_year, year, assumptions.pipeline_lifetime_years, len(prepared.network.edges)
+        )
         state_before = state.clone()
         year_solution = joint_solution["year_solutions"][year]
         year_data = year_solution["year_data"]
@@ -191,7 +196,8 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
         overview_rows.append(overview_row)
 
         if scenario.carry_state_between_years:
-            state = _update_state(state_before, year_solution["new_cap_mtpa"], year_solution["storage_use_mtpa"], interval_years)
+            new_cap_by_year[year] = year_solution["new_cap_mtpa"]
+            state = _update_state(state_before, year_solution["storage_use_mtpa"], interval_years)
         else:
             state = SolveState(edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64), remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy())
         prev_share_values = year_solution["share"]

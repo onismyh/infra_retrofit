@@ -8,6 +8,21 @@ from ._shared import PreparedInputs, SolveState
 from .scenario import OptimizationAssumptions
 
 
+def _alive_edge_added_stock(
+    new_cap_by_year: dict[int, np.ndarray], year: int, lifetime_years: int, edge_count: int
+) -> np.ndarray:
+    """`year` 年仍在寿命内的往期新增管道容量（Mtpa），不含 `year` 本年的新增。
+
+    与求解器 `edge_capacity_limit` 同口径：`year - 建成年 < lifetime_years` 的管才在役。到寿命的管
+    不再计入存量，它在原址重建的容量记在重建那一年的新增里。
+    """
+    stock = np.zeros(edge_count, dtype=np.float64)
+    for built_year, new_cap in new_cap_by_year.items():
+        if int(built_year) < int(year) and int(year) - int(built_year) < int(lifetime_years):
+            stock += np.asarray(new_cap, dtype=np.float64)
+    return stock
+
+
 def _build_edge_table(
     prepared: PreparedInputs,
     year: int,

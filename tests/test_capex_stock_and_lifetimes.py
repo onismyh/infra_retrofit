@@ -2,6 +2,7 @@
 
 (a) 工业 capex 计在能力存量的增量上，不计在路线份额的增量上。
 (b) BECCS 的捕集岛按 CCS 计价，生物质改造只走掺烧档位 capex，各收一次。
+(c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
 """
 from __future__ import annotations
 
@@ -21,8 +22,10 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_capex_expr,
     industry_year_data,
 )
+from coal_retrofit.optimization.results_network import _alive_edge_added_stock  # noqa: E402
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
+from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
 from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs  # noqa: E402
 
 
@@ -130,3 +133,68 @@ def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_
     blend = assumptions.biomass_upgrade_capex_cny_per_mw_per_level * capacity_mw * blend_level
     assert costs["blend_upgrade_capex"] == pytest.approx(blend * df, rel=1e-6)
     assert not hasattr(assumptions, "beccs_retrofit_capex_cny_per_kw")
+
+
+# ------------------------------------------------- (c) 管道到寿命后可原位重建 ---
+def _one_pipe_assumptions() -> OptimizationAssumptions:
+    """每条边只容一根 5 Mtpa 管（标准管 5 x 1 根）；封存不爬坡。"""
+    return OptimizationAssumptions(
+        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0),
+        standard_pipe_capacity_mtpa=5.0,
+        max_parallel_pipes=1,
+    )
+
+
+def test_alive_edge_stock_drops_pipes_at_the_end_of_their_lifetime() -> None:
+    """在役 = 建成年早于当年且未满寿命；满 30 年当年即退出，当年新建的不算往期存量。"""
+    added = {2030: np.array([5.0, 0.0]), 2050: np.array([0.0, 2.0])}
+    np.testing.assert_allclose(_alive_edge_added_stock(added, 2050, 30, 2), [5.0, 0.0])
+    np.testing.assert_allclose(_alive_edge_added_stock(added, 2059, 30, 2), [5.0, 2.0])
+    np.testing.assert_allclose(_alive_edge_added_stock(added, 2060, 30, 2), [0.0, 2.0])
+
+
+def test_expired_pipeline_can_be_rebuilt_in_place(tmp_path) -> None:
+    """1 座电厂 - 1 条边 - 1 个汇，只开放 CCS，两年都要捕集约一半排放（> 2 Mtpa，只有 5 Mtpa 档够用）。
+    2030 年铺的管 2060 年满 30 年寿命，2060 年必须在原址重铺。2026-09-23 前累计新增上限
+    把已到寿命的管也算进去（5 + 5 > 5），2060 年铺不了，只能走管道松弛或目标缺口。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2030: 0.5, 2040: 0.5, 2050: 0.5, 2060: 0.5})
+    scenario = OptimizationScenario(
+        experiment_id="TEST-REBUILD", description="toy", planning_years=(2030, 2060),
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0),
+        electricity_price_cny_per_mwh_by_year=(400.0, 550.0),
+        pathway_disable=("retire", "biomass", "beccs", "ammonia"),
+        solver_time_limit=300,
+    )
+    solution = _solve_toy(paths, scenario, _one_pipe_assumptions())
+    for year in (2030, 2060):
+        ys = solution["year_solutions"][year]
+        assert float(ys["new_cap_mtpa"][0]) == pytest.approx(5.0, abs=1e-6), year
+        assert float(np.sum(ys["slacks"]["edge_slack_mtpa"])) == pytest.approx(0.0, abs=1e-6), year
+        assert float(ys["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
+
+
+def test_warm_start_reseeds_an_expired_pipe(tmp_path) -> None:
+    """LP 热启动取整同样只数在役的管：2030 年铺满的边 2050 年不能再铺，2060 年到寿命后重铺。"""
+    assumptions = _one_pipe_assumptions()
+    years, n_tiers = (2030, 2050, 2060), len(assumptions.pipe_capacity_tiers_mtpa)
+    model = gp.Model()
+    model.Params.OutputFlag = 0
+    for year in years:
+        model.addMVar((1, n_tiers), vtype=gp.GRB.INTEGER, ub=1.0, name=f"pipe_count_{year}")
+        model.addMVar(1, vtype=gp.GRB.BINARY, name=f"add_cap_{year}")
+        model.addMVar(1, vtype=gp.GRB.BINARY, name=f"build_edge_{year}")
+    sol = tmp_path / "relaxed.sol"
+    sol.write_text("".join(f"new_cap_mtpa_{year}[0] 5.0\n" for year in years), encoding="utf-8")
+    _apply_rounded_start(model, sol, assumptions)
+    model.update()
+    five = assumptions.pipe_capacity_tiers_mtpa.index(5.0)
+    start = {
+        year: [model.getVarByName(f"pipe_count_{year}[0,{k}]").Start for k in range(n_tiers)]
+        for year in years
+    }
+    assert start[2030][five] == 1.0 and sum(start[2030]) == 1.0
+    assert sum(start[2050]) == 0.0
+    assert start[2060][five] == 1.0 and sum(start[2060]) == 1.0
+    assert model.getVarByName("add_cap_2060[0]").Start == 1.0

@@ -9,7 +9,12 @@ import pandas as pd
 from ..experiments.scenario import ScenarioRunContext
 from ._shared import PreparedInputs
 from .results_industry import _build_industry_detail_table
-from .results_network import _build_co2_flow_direction_table, _build_edge_table, _build_storage_table
+from .results_network import (
+    _alive_edge_added_stock,
+    _build_co2_flow_direction_table,
+    _build_edge_table,
+    _build_storage_table,
+)
 from .results_plant import (
     _build_pathway_table,
     _build_plant_cost_table,
@@ -26,6 +31,7 @@ from .scenario import OptimizationScenario
 from .year_types import YearData
 
 __all__ = [
+    "_alive_edge_added_stock",
     "_build_ammonia_flow_table",
     "_build_biomass_flow_table",
     "_build_co2_flow_direction_table",

@@ -42,9 +42,9 @@ def _pipe_combo_for(capacity: float, tiers: tuple[float, ...], capex: tuple[floa
 def _apply_rounded_start(model, sol_path: Path, assumptions: OptimizationAssumptions) -> None:
     """用 Gurobi .sol 文件给整数变量设 MIP 起点。
 
-    管道：每条边每年松弛解的 `new_cap_mtpa` 用最便宜的整根组合覆盖（累计不超过边上限），
-    `add_cap` / `build_edge` 随之确定；掺烧档位选择行（`sel_b*` / `sel_a*`）取有正值的最高档；
-    其余整数变量向上取整；连续变量不设起点。
+    管道：每条边每年松弛解的 `new_cap_mtpa` 用最便宜的整根组合覆盖（在役新增累计不超过边上限，
+    到寿命的管不再占额度，与 `edge_total_new_cap_limit` 一致），`add_cap` / `build_edge` 随之确定；
+    掺烧档位选择行（`sel_b*` / `sel_a*`）取有正值的最高档；其余整数变量向上取整；连续变量不设起点。
     """
     values: dict[str, float] = {}
     with open(sol_path, encoding="utf-8") as handle:
@@ -59,17 +59,19 @@ def _apply_rounded_start(model, sol_path: Path, assumptions: OptimizationAssumpt
     capex = tuple(float(c) for c in assumptions.pipe_capex_cny_per_km_by_tier)
     max_pipes = int(assumptions.max_parallel_pipes)
     cap_total = float(assumptions.standard_pipe_capacity_mtpa) * max_pipes
+    lifetime = int(assumptions.pipeline_lifetime_years)
     years = sorted({int(m.group(1)) for m in (re.match(r"pipe_count_(\d+)\[", n) for n in by_name) if m})
     edge_ids = sorted({int(m.group(1)) for m in (re.match(r"pipe_count_\d+\[(\d+),", n) for n in by_name) if m})
     n_set = 0
     for e in edge_ids:
-        used = 0.0
+        added_by_year: dict[int, float] = {}
         built = False
         for year in years:
             need = values.get(f"new_cap_mtpa_{year}[{e}]", 0.0)
+            used = sum(cap for built_year, cap in added_by_year.items() if year - built_year < lifetime)
             counts = _pipe_combo_for(need, tiers, capex, max_pipes, cap_total - used)
             added = sum(t * c for t, c in zip(tiers, counts))
-            used += added
+            added_by_year[year] = added
             built = built or added > 0
             for k, c in enumerate(counts):
                 by_name[f"pipe_count_{year}[{e},{k}]"].Start = float(c)

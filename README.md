@@ -553,7 +553,8 @@ python scripts/run_phase_a.py
 
 11. 跨期累计管网容量约束
    后续年份可用边容量等于：
-   `initial stock + cumulative new capacity up to year y`
+   `initial stock + 截至 year y 仍在寿命内的新增容量`（`y − 建成年 < pipeline_lifetime_years`）；
+   累计新增上限同样只数在役的管，到寿命的管可在原址重铺（2026-09-23 起）
 
 12. 跨期累计封存容量约束
    截至年份 `y` 的累计注入量不能超过初始可用封存容量

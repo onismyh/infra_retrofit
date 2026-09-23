@@ -39,6 +39,7 @@ from coal_retrofit.optimization.results import (
     _build_co2_flow_direction_table,
     _build_plant_cost_table,
     _build_industry_detail_table,
+    _alive_edge_added_stock,
 )
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.constants import PLANNING_YEARS
@@ -136,11 +137,15 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
 
     year_summaries = {}
     prev_industry_capacity = None
+    new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
         share = ys["share"]
         year_data = ys["year_data"]
         interval_years = scenario.interval_years(years, year_index, assumptions)
+        state_track.edge_added_stock_mtpa = _alive_edge_added_stock(
+            new_cap_by_year, year, assumptions.pipeline_lifetime_years, len(prepared.network.edges)
+        )
         state_before = state_track.clone()
 
         # Aggregate summary, weighted by THIS year's generation (utilisation trajectory applied)
@@ -243,7 +248,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         ))
 
         if scenario.carry_state_between_years:
-            state_track.edge_added_stock_mtpa = state_track.edge_added_stock_mtpa + ys["new_cap_mtpa"]
+            new_cap_by_year[year] = ys["new_cap_mtpa"]
             state_track.remaining_storage_mt = np.maximum(0.0, state_track.remaining_storage_mt - ys["storage_use_mtpa"] * interval_years)
         prev_share_values = share
         prev_retrofit_installed = ys["retrofit_installed"]
