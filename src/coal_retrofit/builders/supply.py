@@ -103,6 +103,9 @@ def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFram
 
     Returns:
         换过年金的副本；缺这一列时是原表的副本。
+
+    Raises:
+        ValueError: 年金列或成本列有缺失值或非数值时，列出涉及的节点，免得 NaN 价格进入目标函数。
     """
     repriced = ammonia.copy()
     if "nh3_hb_capex_usd_per_kg" not in repriced.columns:
@@ -111,12 +114,17 @@ def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFram
             "using nh3_cost_lb_usd_per_kg as is (no re-annuitisation at the scenario discount rate)"
         )
         return repriced
+    cost = pd.to_numeric(repriced["nh3_cost_lb_usd_per_kg"], errors="coerce")
+    old_annuity = pd.to_numeric(repriced["nh3_hb_capex_usd_per_kg"], errors="coerce")
+    bad = cost.isna() | old_annuity.isna()
+    if bad.any():
+        nodes = repriced.loc[bad, "ammonia_node_id"] if "ammonia_node_id" in repriced.columns else repriced.index[bad]
+        raise ValueError(
+            "ammonia supply curve has missing or non-numeric nh3_cost_lb_usd_per_kg / nh3_hb_capex_usd_per_kg "
+            f"in {int(bad.sum())} rows; ammonia_node_id: {sorted({str(node) for node in nodes})[:10]}"
+        )
     annuity = hb_capex_annuity_usd_per_kg(discount_rate)
-    repriced["nh3_cost_lb_usd_per_kg"] = (
-        repriced["nh3_cost_lb_usd_per_kg"].astype(float)
-        - repriced["nh3_hb_capex_usd_per_kg"].astype(float)
-        + annuity
-    )
+    repriced["nh3_cost_lb_usd_per_kg"] = cost - old_annuity + annuity
     repriced["nh3_hb_capex_usd_per_kg"] = annuity
     return repriced
 

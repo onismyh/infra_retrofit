@@ -62,3 +62,16 @@ def test_reprice_hb_capex_leaves_its_input_alone_and_passes_through_tables_witho
     passed = reprice_hb_capex(bare, 0.06)
     assert passed is not bare
     pd.testing.assert_frame_equal(passed, bare)
+
+
+def test_reprice_hb_capex_rejects_missing_or_non_numeric_costs() -> None:
+    """年金列或成本列有缺失值或非数值时报错并列出涉及的节点，不让 NaN 价格进入目标函数。"""
+    curve = pd.DataFrame({
+        "ammonia_node_id": ["A1", "A2", "A3"],
+        "nh3_hb_capex_usd_per_kg": [_HB_ANNUITY_AT_8PCT, float("nan"), _HB_ANNUITY_AT_8PCT],
+        "nh3_cost_lb_usd_per_kg": [1.5, 1.5, "n/a"],
+    })
+    with pytest.raises(ValueError) as error:
+        reprice_hb_capex(curve, 0.06)
+    message = str(error.value)
+    assert "A2" in message and "A3" in message and "A1" not in message

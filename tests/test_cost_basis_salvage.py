@@ -2,7 +2,8 @@
 
 分两组。第一组是闭式检查：工业成本辅助函数必须复现它们据以分解的文献锚点，
 并落在 ACCA21 交叉核对区间之内。第二组求解煤电 toy 模型，检查求解器记入的残值抵扣
-等于它所计每笔 capex 按直线法的剩余部分，并从期末折现。
+等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条收紧 toy 里水泥 hub 的目标，
+核对工业两项 capex 也进了残值台账。
 """
 from __future__ import annotations
 
@@ -145,8 +146,11 @@ def test_horizon_end_year_uses_last_interval() -> None:
     ]) == 2090
 
 
-def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5)):
-    _write_targets(paths, dict(zip((2030, 2040, 2050), power_caps, strict=True)))
+def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1.0, 1.0)):
+    years = (2030, 2040, 2050)
+    _write_targets(
+        paths, dict(zip(years, power_caps, strict=True)), dict(zip(years, cement_caps, strict=True))
+    )
     scenario = OptimizationScenario(
         experiment_id="TEST-SALVAGE",
         description="toy",
@@ -204,6 +208,48 @@ def test_salvage_credit_equals_straight_line_remainder_of_booked_capex(tmp_path)
     df_2050 = 1.0 / (1.0 + rate) ** (2050 - base)
     assert capex_2050 > 0.0
     assert abs(credit) >= 0.5 * capex_2050 * df_end / df_2050 * (1 - 1e-6)
+
+
+def test_salvage_ledger_carries_both_industry_capex_items(tmp_path, monkeypatch) -> None:
+    """工业两项 capex 各带自己的寿命进残值台账（捕集岛 20 a、氢路线 25 a）。水泥目标只在 2050 年收紧，
+    逼出 2050 年的工业捕集岛：残值抵扣里要有它未折旧的一半，否则末期的工业 capex 被全额计入。"""
+    from coal_retrofit.optimization import solver as solver_module
+
+    ledgers: list[list[tuple[str, object, int]]] = []
+    original = solver_module._add_salvage_credit
+
+    def _spy(year_payloads, *args, **kwargs):
+        ledgers.extend(list(payload.salvage_ledger) for payload in year_payloads)
+        return original(year_payloads, *args, **kwargs)
+
+    monkeypatch.setattr(solver_module, "_add_salvage_credit", _spy)
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    scenario, assumptions, solution = _solve(paths, salvage=True, cement_caps=(1.0, 1.0, 0.5))
+    assert solution["status"] == "optimal"
+    lives = {name: life for ledger in ledgers for name, _, life in ledger}
+    assert lives["industry_ccs_capex"] == ci.INDUSTRY_CAPTURE_LIFETIME_YEARS
+    assert lives["industry_h2_capex"] == ci.INDUSTRY_H2_LIFETIME_YEARS
+
+    ys = solution["year_solutions"]
+    rate, base, end_year = scenario.discount_rate, scenario.discount_base_year, 2060
+    df_end = 1.0 / (1.0 + rate) ** (end_year - base)
+    booked_lives = {
+        "ccs_retrofit_capex": assumptions.ccs_retrofit_lifetime_years,
+        "pipe_capex": assumptions.pipeline_lifetime_years,
+        "blend_upgrade_capex": assumptions.blend_upgrade_lifetime_years,
+        "air_retrofit_capex": assumptions.air_retrofit_lifetime_years,
+        "rebuild_capex": assumptions.rebuild_lifetime_years,
+        # 水泥没有氢路线，工业 capex 全是捕集岛。
+        "industry_capex": ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
+    }
+    expected = 0.0
+    for year in (2030, 2040, 2050):
+        df_t = 1.0 / (1.0 + rate) ** (year - base)
+        for key, life in booked_lives.items():
+            booked = float(ys[year]["cost_breakdown_cny"][key])  # 已按 df_t 折现
+            expected -= remaining_fraction(year, life, end_year) * booked / df_t * df_end
+    assert float(ys[2050]["cost_breakdown_cny"]["industry_capex"]) > 0.0
+    assert float(ys[2050]["cost_breakdown_cny"]["salvage_credit"]) == pytest.approx(expected, rel=1e-6)
 
 
 def test_salvage_switch_off_reproduces_pre_20260922_objective(tmp_path) -> None:

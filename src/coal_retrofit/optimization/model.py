@@ -121,6 +121,7 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
     overview_rows: list[dict[str, object]] = []
     prev_share_values: np.ndarray | None = None
     prev_retrofit_installed: np.ndarray | None = None
+    prev_industry_capacity: np.ndarray | None = None
 
     new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
@@ -163,9 +164,13 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             year_solution["blend_level_b"], year_solution["blend_level_a"],
             year_solution.get("air_share"),
         ))
+        # 与 scripts/run_single.py 同样传能力存量与上一年存量：capital 列按存量增量计，不再每年按整个存量重复计入。
         industry_detail_tables.append(_build_industry_detail_table(
-            prepared, year, year_data.industry, year_solution.get("industry_share")
+            prepared, year, year_data.industry, year_solution.get("industry_share"),
+            h2_flow_kg=year_solution.get("industry_h2_flow_kg"), year_data=year_data,
+            capacity_mt=year_solution.get("industry_capacity_mt"), prev_capacity_mt=prev_industry_capacity,
         ))
+        prev_industry_capacity = year_solution.get("industry_capacity_mt")
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, year_solution["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, year_solution["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, year_solution["water_flow_m3"], prepared.plants))

@@ -145,13 +145,16 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
     return paths
 
 
-def _write_targets(paths: ProjectPaths, power_caps: dict[int, float]) -> None:
-    """写 sector_targets_toy.csv：power 组按给定上限，水泥组恒为 1.0（不约束）。"""
+def _write_targets(
+    paths: ProjectPaths, power_caps: dict[int, float], cement_caps: dict[int, float] | None = None
+) -> None:
+    """写 sector_targets_toy.csv：power 组按给定上限，水泥组按 `cement_caps`（缺省恒为 1.0，不约束）。"""
+    cement = cement_caps or {}
     pd.DataFrame(
         [
             {"sector_group": group, "planning_year": year, "cap_fraction_of_2030": cap}
             for year, power_cap in power_caps.items()
-            for group, cap in (("power", power_cap), ("cement", 1.0))
+            for group, cap in (("power", power_cap), ("cement", cement.get(year, 1.0)))
         ]
     ).to_csv(paths.inputs_dir / "sector_targets_toy.csv", index=False)
 
