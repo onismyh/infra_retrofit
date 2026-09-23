@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..constants import PLANNING_YEARS
-from .emissions import captured_fraction, reduction_fraction
 
 
 PATHWAYS = ("unabated", "retire", "ccs", "biomass", "beccs", "ammonia")
@@ -604,22 +603,3 @@ class OptimizationScenario:
 
     def path_enabled(self, pathway: str) -> bool:
         return pathway not in set(self.pathway_disable)
-
-    def path_forced(self, pathway: str) -> bool:
-        return pathway in set(self.forced_pathways)
-
-    def reduction_factor(self, pathway: str) -> float:
-        """Representative reduction factor using max blend level (for output tables only)."""
-        max_b = float(self.biomass_blend_levels[-1]) if self.biomass_blend_levels else 0.10
-        max_a = float(self.ammonia_blend_levels[-1]) if self.ammonia_blend_levels else 0.20
-        return reduction_fraction(
-            pathway,
-            self.capture_rate,
-            biomass_blend=max_b,
-            ammonia_blend=max_a,
-        )
-
-    def captured_factor(self, pathway: str) -> float:
-        """Representative capture factor using max blend level (for output tables only)."""
-        max_b = float(self.biomass_blend_levels[-1]) if self.biomass_blend_levels else 0.10
-        return captured_fraction(pathway, self.capture_rate, biomass_blend=max_b)

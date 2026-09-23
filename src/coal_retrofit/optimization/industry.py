@@ -87,7 +87,7 @@ try:
 except ImportError:  # pragma: no cover
     gp = None
 
-from ..constants import AMMONIA_FLOW_SCALE, NH3_H2_RATIO, WATER_FLOW_SCALE
+from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
 from ..constants_industry import (
     INDUSTRY_CAPTURE_LIFETIME_YEARS,
     INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2,
@@ -212,7 +212,7 @@ def prepare_industry(
 
     # Basin of the hub's own location, matching how `_prepare_plants` attributes coal hubs:
     # the withdrawal permit follows the site, not the intake. Only needed for the basin cap.
-    if str(getattr(assumptions, "water_budget", "runoff")) == "official_quota":
+    if str(assumptions.water_budget) == "official_quota":
         from ..builders.water import _assign_basin_codes
 
         # industry_hubs.csv already names the columns `latitude`/`longitude`, which is what
@@ -361,8 +361,8 @@ def industry_year_data(
     # decline together. Using a different curve for industry would make the sectoral split a
     # function of an arbitrary modelling choice rather than of the technologies.
     learning = float(assumptions.ccs_learning_factor(year))
-    cost_multiplier = float(getattr(scenario, "industry_cost_multiplier", 1.0))
-    h2_multiplier = float(getattr(scenario, "industry_h2_cost_multiplier", 1.0))
+    cost_multiplier = float(scenario.industry_cost_multiplier)
+    h2_multiplier = float(scenario.industry_h2_cost_multiplier)
     h2_price_mean = _h2_price_for_year(industry.h2_price_cny_per_kg, int(year))
     rate = float(scenario.discount_rate)
     # Energy for capture is priced at the model's own prices: the hub's provincial coal price
@@ -662,6 +662,3 @@ def basin_membership(industry: IndustryInputs, basin_codes: list[str]) -> np.nda
     if unmatched:
         raise ValueError(f"{unmatched} industrial hubs fell outside every basin in water_basin_caps.csv")
     return membership
-
-
-H2_PER_NH3 = NH3_H2_RATIO

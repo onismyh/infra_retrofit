@@ -43,7 +43,3 @@ def discover_project_root(start: Path | None = None) -> Path:
         if (candidate / "data").exists() and (candidate / "scripts").exists():
             return candidate
     raise FileNotFoundError("Could not discover project root containing data/ and scripts/")
-
-
-def default_paths(start: Path | None = None) -> ProjectPaths:
-    return ProjectPaths(root=discover_project_root(start))

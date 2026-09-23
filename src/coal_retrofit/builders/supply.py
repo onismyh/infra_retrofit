@@ -288,7 +288,6 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             lcoe_path = year_dir / f"{resource}_lcoe.tif"
             with rasterio.open(prod_path) as prod_src:
                 prod = prod_src.read(1).astype(np.float64)
-                pixel_area_m2 = abs(prod_src.transform.a * prod_src.transform.e)
                 prod_transform = prod_src.transform
                 prod_crs = prod_src.crs
                 cache_key = (

@@ -71,7 +71,7 @@ def _add_salvage_credit(
         cost_scale: The solver's objective scale (`_COST_SCALE`), applied to the credit as
             to every other cost expression.
     """
-    if not bool(getattr(assumptions, "end_of_horizon_salvage", True)):
+    if not bool(assumptions.end_of_horizon_salvage):
         return  # objective_expr already assembled without the key
     if gp is None:  # pragma: no cover
         raise ImportError("gurobipy is required to build the salvage credit")

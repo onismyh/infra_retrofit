@@ -634,7 +634,6 @@ def _build_plant_cost_table(
     """
     plants = prepared.plants
     n = len(plants)
-    gen = np.asarray(year_data["generation"], dtype=np.float64)
     emissions = np.asarray(year_data["emissions_mt"], dtype=np.float64)
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
     carbon_price = float(year_data["carbon_price"])
@@ -646,7 +645,6 @@ def _build_plant_cost_table(
     rows: list[dict[str, object]] = []
     for p in range(n):
         share = share_values[p]
-        g = float(gen[p])
         e = float(emissions[p])
         cap = float(capacity_mw[p])
         bio_blend = blend_level_to_ratio(

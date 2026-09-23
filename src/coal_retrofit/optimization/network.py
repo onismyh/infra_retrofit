@@ -7,7 +7,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from ..constants import NETWORK_DETOUR_FACTOR, NETWORK_DIRECT_SINK_TOP_K
+from ..constants import NETWORK_DETOUR_FACTOR
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
