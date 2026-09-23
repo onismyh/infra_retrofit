@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from .constants import DEFAULT_DISCOUNT_RATE
+
 # --- 部门键 ------------------------------------------------------------------------------
 SECTOR_STEEL_BF: Final = "steel_bf_bof"
 SECTOR_STEEL_EAF: Final = "steel_eaf"
@@ -566,7 +568,7 @@ def h2_premium_cny_per_t(
     sector: str,
     h2_price_cny_per_kg: float,
     h2_intensity_t_per_t: float,
-    discount_rate: float = 0.06,
+    discount_rate: float = DEFAULT_DISCOUNT_RATE,
     multiplier: float = 1.0,
 ) -> float:
     """给定氢价下氢路线的平准化净溢价，单位为每吨产品的 CNY。

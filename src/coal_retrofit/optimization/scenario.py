@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..constants import PLANNING_YEARS
+from ..constants import DEFAULT_DISCOUNT_RATE, PLANNING_YEARS
 
 
 PATHWAYS = ("unabated", "retire", "ccs", "biomass", "beccs", "ammonia")
@@ -506,7 +506,7 @@ class OptimizationScenario:
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）
-    discount_rate: float = 0.06
+    discount_rate: float = DEFAULT_DISCOUNT_RATE
     discount_base_year: int = 2025
     # 系统净成本参数
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)

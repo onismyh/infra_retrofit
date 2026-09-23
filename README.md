@@ -26,7 +26,7 @@
 
 > 回答作者 2026-09-23 提的四个问题。核查基线为 `feature/industrial-sectors` @ 0f8d999，本节同时记录本轮已改的部分：
 > 批 1（工业侧 dataclass 与拆文件、ruff、过时注释与文档、`references.bib`、注释中文化，模型不变）、
-> 批 2（五项模型改动，每项一个提交加 toy 测试，见 `tests/test_capex_stock_and_lifetimes.py`）、
+> 批 2（五项模型改动，每项一个提交加 toy 测试，见 `tests/test_capex_stock_and_lifetimes.py`；不求解的放在 `tests/test_discount_rate.py`）、
 > 批 3（无出处参数在代码注释与本节标 `⚠ 假设`，数值不动）。标"未改"的地方要不要统一，由作者决定。
 > 下面的 §1–§11 停在 2026-09-06（v9 基线入库），其中的 `EXP-*` 实验族、`sequential` 模式、成本键名与
 > 规划年份都已过时；`ST_` 系求解树的现状见 [`_indtree/README.md`](_indtree/README.md)。
@@ -56,12 +56,14 @@
 | (b) BECCS 的生物质改造 | 捕集岛之上另收 +1 000 元/kW 的"生物质改造增量"（`beccs_retrofit_capex_cny_per_kw` = 4 500），又按掺烧档位收升级 capex，付了两次 | 删掉 +1 000；BECCS 捕集岛的 capex 与固定运维同 CCS，生物质改造只走档位 capex |
 | (c) 管道到寿命 | 每条边的累计新增上限把到寿命的管也算进去：2030 年铺满的边，2060 年管退出后不能再铺 | 累计新增上限、LP 热启动取整、结果表的"铺前存量"都只数在役的管 |
 | (d) 成本乘子 | 煤电乘 capex 与每 MWh 附加项（BECCS 的 30 元/MWh 掺烧运维随之变动），不乘固定运维；工业还乘能耗与耗材 | 两侧都只乘 capex 与随 capex 的固定运维 |
-| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | **待作者选择实现方式，未改** |
+| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply.py:92-121` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元）。氨价里占 72–85% 的 LCOH 是外生数据，内含的资本成本率不随情景变 |
 
-对已有结果：(a)(b)(c) 改了目标函数或约束，`_indtree/results/` 里此前落盘的 `ST_` 结果与新代码的求解**不得相减**，需重解；
+对已有结果：(a)(b)(c)(e) 改了目标函数或约束，`_indtree/results/` 里此前落盘的 `ST_` 结果与新代码的求解**不得相减**，需重解；
 (d) 在乘子为 1.0 时不改任何系数，登记表里三个 `ST_` 情景的乘子都是 1.0。toy 上 (a) 使 5 个变体的目标值在 1% gap 内移动
 （gap = 0 时不变）；(b) 删掉 BECCS 增量那一列存量，模型变小，gap = 0 时目标值不变；(c) 只让 2060 年的累计新增上限
-少了已到期的 2030 年项，解不变；(d) 模型与解逐字节不变。
+少了已到期的 2030 年项，解不变；(d) 模型与解逐字节不变；(e) toy 的氨供给表没有合成岛那一列（原样使用），模型逐字节不变，
+重算由 `tests/test_discount_rate.py` 覆盖（不求解，不依赖 Gurobi）——真实输入（v7 / v9 / v9.1 都是 8% 的 0.0891 USD/kg；
+`_indtree/inputs/` 的 v9.2 那张表不在 git 里，未核）上每条氨链路的成本都会变。
 
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
@@ -129,7 +131,7 @@
 | 封存成本 | 32 元/t | An et al. 2025 SI Table 7 | 有出处 |
 | EOR 抵扣 | 12 元/t | — | ⚠ 假设（无出处） |
 | 管道寿命 | 30 年 | — | ⚠ 假设（设定值） |
-| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按 8%、20 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献；8% 与模型折现率 6% 不一致（`constants.py:47-53`、`builders/supply.py:75-80`；见 §0.1 (e)） | ⚠ 假设（出处不具体） |
+| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、20 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.py:47-55`、`builders/supply.py:76-121`）；2026-09-23 前单用 8%，见 §0.1 (e) | ⚠ 假设（出处不具体） |
 | 工业用氢运费 | 0.03 元/(kg·km) | 注释称取中国氢能联盟白皮书 2019 的量级，未核到原文 | ⚠ 假设（临时值） |
 
 小结：
@@ -138,8 +140,8 @@
 - 煤电只有 CCS 捕集岛与掺氨升级有文献；**掺生物质升级、空冷、退役、搁浅、重建（含 40 年设计寿命）
   这几项投资参数没有可查出处**，其中多数在 `docs/算法实现审查_20260910.md` §四已列出。
 - 表外、同样进目标函数而无出处的：基线非燃料运维 80 元/MWh、电价逐年路径 400 / 440 / 490 / 550 元/MWh、
-  取水与输水 4.0 元/m³ 与 0.05 元/(m³·km)，代码注释同样标了 `⚠ 假设`；折现率 6% 与汇率 7.0 元/美元
-  （`usd_to_cny`；欧元在注释里按 7.8 换算）是全模型口径，未标。全仓库没有价格指数折算，IEAGHG 的 2010 年美元、
+  取水与输水 4.0 元/m³ 与 0.05 元/(m³·km)，代码注释同样标了 `⚠ 假设`；折现率 6%（`constants.DEFAULT_DISCOUNT_RATE`）与
+  汇率 7.0 元/美元（`usd_to_cny`；欧元在注释里按 7.8 换算）是全模型口径，未标。全仓库没有价格指数折算，IEAGHG 的 2010 年美元、
   Lockwood 的 2016 年人民币都按原值用。
 - 书目：An et al. 2025 与 Knoope et al. 2013 已在批 1 补进 `references.bib`（`an2025repositioning`、`knoope2013review`）。
 - CLAUDE.md §二.7 说"参数出处在 `docs/工业部门参数溯源.md` §八"，但 §八 只有工业；煤电和管网的出处只在代码注释与
@@ -159,11 +161,11 @@
 | `src/coal_retrofit/` | 本轮前（0f8d999） | 现在 |
 |---|---|---|
 | 文件数 | 55 | 58（工业侧拆出 3 个） |
-| 中文行 / 英文行 | 449 / 1 610（22%） | 1 834 / 77（96%） |
+| 中文行 / 英文行 | 449 / 1 610（22%） | 1 854 / 81（96%） |
 | 中文为主 / 混合 / 英文为主 / 无注释 | 15 / 3 / 24 / 13 | 45 / 0 / 0 / 13 |
 
-- 剩下的 77 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
-- `tests/`：中文 26 / 英文 105（20%）→ 142 / 5（97%）。
+- 剩下的 81 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
+- `tests/`：中文 26 / 英文 105（20%）→ 150 / 5（97%）。
 - 13 个无注释文件（`experiments/` 全部、`reporting/core.py`、`paths.py`、`spatial.py` 等）没有补注释；
   `scripts/` 与 `_indtree/scripts/` 不在本轮范围，仍约 26–27% 中文。
 
@@ -186,14 +188,14 @@
 | 超 800 行的文件 | 4 | 2 | 0 | 0 |
 | 超 400 行的文件 | 13 | 11 | 10 | 7 |
 | 最长函数 | 1 198 行（`_solve_joint_multi_period`） | 357 行（`add_year_block`） | 202 行（`build_ammonia_supply_dataframe`） | 202 行（同左） |
-| ≥ 80 行的函数 | 25 / 320 | 30 / 332 | 30 / 341 | 29 / 342 |
+| ≥ 80 行的函数 | 25 / 320 | 30 / 332 | 30 / 341 | 29 / 343 |
 | mypy 错误（`--ignore-missing-imports`） | 397 | 406 | 175 | 173 |
 | ruff（默认规则，`src/`） | — | — | 7 | 0 |
 
 还不清楚的地方（只报告，未改）：
 
-1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 592、`optimization/scenario.py` 567、
-   `builders/network.py` 559、`builders/supply.py` 551、`reporting/core.py` 501、`optimization/constraints.py` 449。
+1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 594、`builders/supply.py` 592、
+   `optimization/scenario.py` 567、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
 2. **≥ 80 行的函数还有 29 个**：最长的是 `build_ammonia_supply_dataframe` 202 行、`build_runtime_network` 188 行、
    `build_water_availability_dataframe` 163 行；`industry_year_data` 141 行、`_one_off_capex` 111 行也未动。
 3. **mypy 剩 173 个错误**，集中在 `builders/network_repair.py`（32）、`optimization/network.py`（19）、

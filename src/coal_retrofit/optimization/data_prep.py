@@ -249,6 +249,10 @@ def _prepare_ammonia_supply(
     ammonia = pd.read_csv(paths.inputs_dir / "ammonia_supply_curve.csv").copy()
     ammonia = ammonia.replace([np.inf, -np.inf], np.nan)
     ammonia = ammonia.dropna(subset=["ammonia_node_id", "year", "nh3_supply_kg_per_year", "nh3_cost_lb_usd_per_kg"])
+    # 合成岛 capex 年金按情景贴现率重算（CSV 里那一份是构建输入时算的）。
+    from ..builders.supply import reprice_hb_capex
+
+    ammonia = reprice_hb_capex(ammonia, float(scenario.discount_rate))
     ammonia["cost_cny_per_kg"] = (
         (ammonia["nh3_cost_lb_usd_per_kg"].astype(float) + scenario.ammonia_transport_adder_usd_per_kg)
         * assumptions.usd_to_cny

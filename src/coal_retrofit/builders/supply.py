@@ -17,15 +17,16 @@ from ..constants import (
     BIOMASS_GJ_PER_TONNE,
     BIOMASS_MATCH_BUFFER_KM,
     BIOMASS_NODE_AGGREGATION_DEGREES,
+    DEFAULT_DISCOUNT_RATE,
     NH3_ELECTROLYSIS_TECHS,
     NH3_H2_RATIO,
-    NH3_HB_CAPEX_DISCOUNT_RATE,
     NH3_HB_CAPEX_LIFETIME_YEARS,
     NH3_HB_CAPEX_USD_PER_TONNE_YEAR,
     NH3_HB_POWER_KWH_PER_KG,
     NH3_STORAGE_ADDER_USD_PER_KG,
     NH3_TRANSPORT_ADDER_USD_PER_KG,
 )
+from ..constants_industry import capital_recovery_factor
 from ..paths import ProjectPaths
 from ..spatial import latlon_row_areas, load_provinces, rasterize_provinces_to_match
 
@@ -72,12 +73,52 @@ def _pixel_centers_lonlat(
     return np.asarray(lon, dtype=np.float64), np.asarray(lat, dtype=np.float64)
 
 
-def _hb_capex_annuity_usd_per_kg() -> float:
-    """Haber-Bosch + ASU 的年化资本成本，以每生产 1 kg NH3 的 USD 计。"""
-    rate = NH3_HB_CAPEX_DISCOUNT_RATE
-    years = NH3_HB_CAPEX_LIFETIME_YEARS
-    crf = rate / (1.0 - (1.0 + rate) ** (-years)) if rate > 0 else 1.0 / years
+def hb_capex_annuity_usd_per_kg(discount_rate: float) -> float:
+    """Haber-Bosch + ASU 的年化资本成本，以每生产 1 kg NH3 的 USD 计。
+
+    构建输入时按 `DEFAULT_DISCOUNT_RATE` 写进 `ammonia_supply_curve.csv`；求解时
+    `reprice_hb_capex` 再按情景的 `discount_rate` 算一次，换掉 CSV 里的那一份。
+
+    Args:
+        discount_rate: 年贴现率。
+
+    Returns:
+        按满负荷、`NH3_HB_CAPEX_LIFETIME_YEARS` 年折算的每 kg NH3 年金（USD）。
+    """
+    crf = capital_recovery_factor(discount_rate, NH3_HB_CAPEX_LIFETIME_YEARS)
     return NH3_HB_CAPEX_USD_PER_TONNE_YEAR * crf / 1000.0
+
+
+def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFrame:
+    """把氨供给曲线里的合成岛年金换成按 `discount_rate` 算的，返回新表，不改动传入的表。
+
+    `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_hb_capex_usd_per_kg`、加上新年金，该列随之改写。
+    表里那一份是构建输入时算的（2026-09-23 前的输入按 8%），模型自己折现与折年金的地方则都用情景贴现率。
+    由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。没有这一列的表
+    （toy 测试的输入）不拆分成本，原样使用并记 warning。
+
+    Args:
+        ammonia: 读入的 `ammonia_supply_curve.csv`。
+        discount_rate: 情景贴现率。
+
+    Returns:
+        换过年金的副本；缺这一列时是原表的副本。
+    """
+    repriced = ammonia.copy()
+    if "nh3_hb_capex_usd_per_kg" not in repriced.columns:
+        logger.warning(
+            "ammonia supply curve has no nh3_hb_capex_usd_per_kg column; "
+            "using nh3_cost_lb_usd_per_kg as is (no re-annuitisation at the scenario discount rate)"
+        )
+        return repriced
+    annuity = hb_capex_annuity_usd_per_kg(discount_rate)
+    repriced["nh3_cost_lb_usd_per_kg"] = (
+        repriced["nh3_cost_lb_usd_per_kg"].astype(float)
+        - repriced["nh3_hb_capex_usd_per_kg"].astype(float)
+        + annuity
+    )
+    repriced["nh3_hb_capex_usd_per_kg"] = annuity
+    return repriced
 
 
 def _haversine_distances_km(
@@ -381,7 +422,7 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             grouped["nh3_hb_power_cost_usd_per_kg"] = (
                 NH3_HB_POWER_KWH_PER_KG * grouped["weighted_lcoe_usd_per_mwh"].fillna(0.0) / 1000.0
             )
-            grouped["nh3_hb_capex_usd_per_kg"] = _hb_capex_annuity_usd_per_kg()
+            grouped["nh3_hb_capex_usd_per_kg"] = hb_capex_annuity_usd_per_kg(DEFAULT_DISCOUNT_RATE)
             grouped["nh3_storage_adder_usd_per_kg"] = NH3_STORAGE_ADDER_USD_PER_KG
             grouped["nh3_transport_adder_usd_per_kg"] = NH3_TRANSPORT_ADDER_USD_PER_KG
             # 完整到岸成本：H2 原料 + HB/ASU 电力 + HB/ASU 资本 + 储存。

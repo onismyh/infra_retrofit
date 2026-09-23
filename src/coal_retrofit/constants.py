@@ -48,8 +48,10 @@ NH3_ELECTROLYSIS_TECHS = ("AE",)
 # NH3 产能计。电解槽及其可再生能源供给已包含在 LCOH 中，所以这里只加
 # 合成岛：新建绿氨 CAPEX 为 1300-2000 USD/(t·yr)，其中电解槽占直接成本的
 # 40-50%，其余部分为 650-1100（取中点）。⚠ 假设（出处不具体：区间与电解槽占比都没有列出文献）。
+# 按 20 年折成年金计入氨价，贴现率与模型其余部分相同：构建输入时按 DEFAULT_DISCOUNT_RATE，
+# 求解时再按情景的 `discount_rate` 重算（`builders/supply.reprice_hb_capex`）。
+# 2026-09-23 前这里单独用 8%。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
-NH3_HB_CAPEX_DISCOUNT_RATE = 0.08
 NH3_HB_CAPEX_LIFETIME_YEARS = 20
 AMMONIA_NODE_AGGREGATION_DEGREES = 0.5
 
@@ -198,3 +200,8 @@ COMBUSTION_CLASS_MAP = {
 }
 
 PLANNING_YEARS = [2030, 2040, 2050, 2060]
+# 模型的贴现率缺省值（`OptimizationScenario.discount_rate`）。模型自己折现与折年金的地方都用
+# 情景的这一个值，需要缺省贴现率时引用这里、不另写数字；氨价里的合成岛年金也按它重算。
+# 外生的 LCOH（`data/H2`，占氨价的 72-85%，工业买氢也用它）内含该数据集自己的资本成本率，
+# 仓库里没有记录，不随情景贴现率变。
+DEFAULT_DISCOUNT_RATE = 0.06
