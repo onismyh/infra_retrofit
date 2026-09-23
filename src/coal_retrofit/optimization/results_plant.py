@@ -222,9 +222,9 @@ def _build_plant_cost_table(
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
     carbon_price = float(year_data.carbon_price)
     retire_idx = PATHWAY_INDEX["retire"]
-    # 捕集岛 / BECCS 增量两类存量的系数（见 solver）；两存量形式出现之前写出的结果
-    # 退回用逐路径矩阵。
+    # 改造存量的系数（只有捕集岛一列，见 `model_year._add_retrofit_stock`）。
     stock_coeff = year_data.retrofit_stock_capex
+    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
 
     rows: list[dict[str, object]] = []
     for p in range(n):
@@ -275,22 +275,22 @@ def _build_plant_cost_table(
         # 搁浅资产（与模型一致：计在新增退役份额上）
         prev_retire = float(prev_share_values[p, retire_idx]) if prev_share_values is not None else 0.0
         stranded = float(year_data.stranded_per_plant[p]) * max(0.0, float(share[retire_idx]) - prev_retire)
-        # CCS 改造 CAPEX（与模型一致：计在已装存量的增量上，即历史最高份额；
-        # coeff 已含学习系数）
+        # CCS 改造 CAPEX（与模型一致：计在已装捕集岛存量的增量上，即 ccs + beccs 的历史最高份额；
+        # coeff 已含学习系数）。未传入存量时按本年与上年的捕集份额近似。
         ccs_capex = 0.0
-        for j, k in enumerate(capex_pathway_indices):
-            coeff = (
-                float(stock_coeff[p, j]) if stock_coeff is not None and j < np.asarray(stock_coeff).shape[1]
-                else float(year_data.ccs_retrofit_capex_matrix[p, k])
-            )
+        for j, _k in enumerate(capex_pathway_indices):
+            coeff = float(stock_coeff[p, j])
             if coeff <= 0:
                 continue
             if retrofit_installed is not None:
                 inst = float(retrofit_installed[p, j])
                 prev_inst = float(prev_retrofit_installed[p, j]) if prev_retrofit_installed is not None else 0.0
             else:
-                inst = float(share[k])
-                prev_inst = float(prev_share_values[p, k]) if prev_share_values is not None else 0.0
+                inst = float(share[ccs_k] + share[beccs_k])
+                prev_inst = (
+                    float(prev_share_values[p, ccs_k] + prev_share_values[p, beccs_k])
+                    if prev_share_values is not None else 0.0
+                )
             ccs_capex += coeff * max(0.0, inst - prev_inst)
 
         rows.append({

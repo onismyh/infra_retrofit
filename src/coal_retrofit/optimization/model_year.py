@@ -175,25 +175,20 @@ def add_year_block(
 
 
 def _add_retrofit_stock(model, share: GrbMVar, plant_count: int, year_suffix: str) -> GrbMVar:
-    """改造存量（一次性 capex 的计费基数），两列：
+    """改造存量（一次性 capex 的计费基数），一列：捕集岛 >= share_ccs + share_beccs，按 CCS capex 计价。
 
-      j=0 捕集岛 >= share_ccs + share_beccs，按 CCS capex 计价
-      j=1 BECCS 增量 >= share_beccs，按 (BECCS - CCS) capex 计价
-
-    CCS↔BECCS 切换只为捕集岛付一次钱。存量只设下界（跨期单调在 `model_linking`），capex 计在存量增量上，
-    份额暂时下降不会重复触发。两列的 capex 系数在 `YearData.retrofit_stock_capex`。
+    BECCS 的捕集岛就是 CCS 捕集岛，CCS↔BECCS 切换只为捕集岛付一次钱；BECCS 的生物质改造走掺烧档位
+    capex（2026-09-23 前另有一列 BECCS 增量按 (BECCS - CCS) capex 计价，与档位 capex 重复，已删除）。
+    存量只设下界（跨期单调在 `model_linking`），capex 计在存量增量上，份额暂时下降不会重复触发。
+    capex 系数在 `YearData.retrofit_stock_capex`。
     """
     ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     retrofit_installed = model.addMVar(
-        (plant_count, 2), lb=0.0, name=f"retrofit_installed_{year_suffix}"
+        (plant_count, 1), lb=0.0, name=f"retrofit_installed_{year_suffix}"
     )
     model.addConstrs(
         (retrofit_installed[p, 0] >= share[p, ccs_k] + share[p, beccs_k] for p in range(plant_count)),
         name=f"retrofit_installed_lb_capture_{year_suffix}",
-    )
-    model.addConstrs(
-        (retrofit_installed[p, 1] >= share[p, beccs_k] for p in range(plant_count)),
-        name=f"retrofit_installed_lb_beccs_{year_suffix}",
     )
     return retrofit_installed
 

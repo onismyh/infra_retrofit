@@ -144,13 +144,9 @@ def _build_year_matrices(
     sector_cap_fraction: dict[str, float] = {
         str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
     }
-    # 改造存量的 capex 系数：列 0 捕集岛按 CCS capex，列 1 BECCS 增量按 (BECCS - CCS) capex（见 `model_year`）。
+    # 改造存量的 capex 系数，(plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
     capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
-    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
-    retrofit_stock_capex = np.column_stack([
-        capex_matrix[:, ccs_k],
-        np.maximum(0.0, capex_matrix[:, beccs_k] - capex_matrix[:, ccs_k]),
-    ])
+    retrofit_stock_capex = capex_matrix[:, [PATHWAY_INDEX["ccs"]]]
 
     return YearData(
         **{k: v for k, v in plant.items() if k not in ("generation_cost_basis", "coal_price_per_plant")},

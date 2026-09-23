@@ -39,10 +39,11 @@ class OptimizationAssumptions:
     #     （~2 670 / 2 140 CNY/kW），学习曲线下沿；
     #   国能锦界 4 Mt/a 全烟气 CCUS，600 MW 级机组上 19.9 亿元（2024 年备案）：
     #     ~3 000-3 300 CNY/kW，真实改造项目，含试点封存。
-    # 2026-09-10 之前为 4 000（无出处）；BECCS 数值在捕集岛之上保留 +1 000 CNY/kW 的
-    # 生物质改造增量（两存量 capex）。
+    # 2026-09-10 之前为 4 000（无出处）。BECCS 的捕集岛与 CCS 相同，capex 与固定运维都按此计；
+    # 它的生物质改造只走掺烧档位 capex（`biomass_upgrade_capex_cny_per_mw_per_level`）。
+    # 2026-09-23 之前另有 `beccs_retrofit_capex_cny_per_kw` = 4 500，在捕集岛之上再收
+    # +1 000 CNY/kW 的"生物质改造增量"，与档位 capex 重复计费，已删除。
     ccs_retrofit_capex_cny_per_kw: float = 3500.0
-    beccs_retrofit_capex_cny_per_kw: float = 4500.0
     biomass_efficiency_penalty_per_ratio: float = 0.0373  # 15% 掺烧时效率下降 0.56%（Fan et al. 2023）
     coal_plant_base_efficiency: float = 0.42
     coal_fuel_cost_cny_per_gj: float = 38.2             # 全国均值，按省查表时被覆盖

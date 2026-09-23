@@ -102,26 +102,29 @@ def _plant_operating_matrices(
         biomass_penalty_emissions_coeff_per_level * float(scenario.capture_rate)
     )
 
-    # CCS/BECCS 改造 capex（含学习曲线）。
+    # CCS/BECCS 改造 capex（含学习曲线）。BECCS 的捕集岛就是 CCS 捕集岛，同价；生物质改造
+    # 另由掺烧档位 capex 计（`constraints._build_blend_upgrade_capex`）。
     lf = assumptions.ccs_learning_factor(year)
+    capture_island_capex_per_mw = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * scenario.ccs_cost_multiplier * lf
     ccs_capex_per_mw = np.array([
         0.0,
         0.0,
-        assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * scenario.ccs_cost_multiplier * lf,   # ccs
+        capture_island_capex_per_mw,   # ccs
         0.0,
-        assumptions.beccs_retrofit_capex_cny_per_kw * 1000.0 * scenario.ccs_cost_multiplier * lf,  # beccs
+        capture_island_capex_per_mw,   # beccs
         0.0,
     ], dtype=np.float64)
     capacity_mw = prepared.plants["total_capacity_mw"].astype(float).to_numpy()
     ccs_retrofit_capex_matrix = capacity_mw[:, None] * ccs_capex_per_mw[None, :]
 
     # CCS 固定运维 = ccs_om_fraction x 学习后 capex，按改造容量 MW 计（An et al. 2025 SI Table 7），不按 MWh。
+    capture_island_om_per_mw = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * lf * assumptions.ccs_om_fraction
     ccs_om_per_mw = np.array([
         0.0,
         0.0,
-        assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * lf * assumptions.ccs_om_fraction,
+        capture_island_om_per_mw,
         0.0,
-        assumptions.beccs_retrofit_capex_cny_per_kw * 1000.0 * lf * assumptions.ccs_om_fraction,
+        capture_island_om_per_mw,
         0.0,
     ], dtype=np.float64)
     ccs_om_matrix = capacity_mw[:, None] * ccs_om_per_mw[None, :]

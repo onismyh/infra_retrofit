@@ -1,14 +1,18 @@
 """一次性 capex 的计费基数与资产寿命（2026-09-23 的模型改动），每项一组 toy 回归测试。
 
 (a) 工业 capex 计在能力存量的增量上，不计在路线份额的增量上。
+(b) BECCS 的捕集岛按 CCS 计价，生物质改造只走掺烧档位 capex，各收一次。
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
+from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState  # noqa: E402
+from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.industry import (  # noqa: E402
     CCS,
     IndustryInputs,
@@ -18,6 +22,8 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_year_data,
 )
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
+from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs  # noqa: E402
 
 
 # ---------------------------------------------------------- (a) 工业 capex 按能力存量计 ---
@@ -79,3 +85,48 @@ def test_industry_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -
     v30 = data[2030].capacity_mt_per_share[0, CCS]
     assert capex[2030] == pytest.approx(data[2030].capex_cny_per_mt[0, CCS] * 0.5 * v30, rel=1e-9)
     assert capex[2040] == pytest.approx(0.0, abs=1e-6)
+
+
+# ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---
+def _solve_toy(paths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> dict:
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
+    )
+    solution = _solve_joint_multi_period(prepared, scenario, assumptions, scenario.planning_years, state)
+    assert solution["status"] == "optimal"
+    return solution
+
+
+def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_path) -> None:
+    """只开放 BECCS，2050 年电力目标为零排放：必须掺生物质。捕集岛按 CCS capex 计一次，
+    生物质改造按掺烧档位 capex 计一次；2026-09-23 前捕集岛之上还要再付 +1 000 CNY/kW。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    bio = pd.read_csv(paths.inputs_dir / "biomass_supply_curve.csv")
+    bio["longitude"], bio["latitude"], bio["province_name"], bio["available_gj"] = 112.05, 37.0, "Shanxi", 1.0e9
+    bio.to_csv(paths.inputs_dir / "biomass_supply_curve.csv", index=False)
+    _write_targets(paths, {2030: 1.0, 2040: 1.0, 2050: 0.0, 2060: 0.0})
+    scenario = OptimizationScenario(
+        experiment_id="TEST-BECCS", description="toy", planning_years=(2050, 2060),
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0),
+        electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
+        pathway_disable=("retire", "ccs", "biomass", "ammonia"),
+        solver_time_limit=300,
+    )
+    assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+    y50 = _solve_toy(paths, scenario, assumptions)["year_solutions"][2050]
+    capacity_mw = 1000.0
+    beccs_share = float(y50["share"][0, PATHWAY_INDEX["beccs"]])
+    blend_level = float(y50["blend_level_b"][0])
+    assert beccs_share > 0.5 and blend_level >= 1.0 - 1e-6
+    assert y50["retrofit_installed"].shape == (1, 1)
+    assert float(y50["retrofit_installed"][0, 0]) == pytest.approx(beccs_share, rel=1e-6)
+    df = 1.0 / (1.0 + scenario.discount_rate) ** (2050 - scenario.discount_base_year)
+    island = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * capacity_mw * assumptions.ccs_learning_factor(2050)
+    costs = y50["cost_breakdown_cny"]
+    assert costs["ccs_retrofit_capex"] == pytest.approx(island * beccs_share * df, rel=1e-6)
+    blend = assumptions.biomass_upgrade_capex_cny_per_mw_per_level * capacity_mw * blend_level
+    assert costs["blend_upgrade_capex"] == pytest.approx(blend * df, rel=1e-6)
+    assert not hasattr(assumptions, "beccs_retrofit_capex_cny_per_kw")

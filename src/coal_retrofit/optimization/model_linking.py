@@ -106,7 +106,7 @@ def add_inter_period_constraints(
                 name=f"rebuild_irreversible_{yr_sfx}",
             )
 
-    # 改造存量单调：已装 CCS/BECCS 改造容量不可逆。
+    # 改造存量单调：已装捕集岛（CCS 与 BECCS 共用）不可逆。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
             ri_curr = year_payloads[yi].retrofit_installed
