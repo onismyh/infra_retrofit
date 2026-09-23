@@ -8,7 +8,7 @@
 
     credit = df(T_end) * sum_t sum_items  max(0, 1 - (T_end - t) / L_item) * capex_item(t)
 
-其中 `T_end = last planning year + its interval`（在 2030/40/50/60 网格上为 2070）。抵扣额
+其中 `T_end` = 最后一个规划年 + 该年的区间长度（在 2030/40/50/60 网格上为 2070）。抵扣额
 永远不会超过它所对应的 capex，而且比那笔支出折现得更远，所以它本身不可能让建设变得有利
 可图；它只是让规划期末端不再惩罚晚期投资。它作为一条负的 `salvage_credit` 项记在最后一个
 payload 上（其余 payload 上为零，使各年成本分项的表结构相同）。
@@ -69,7 +69,7 @@ def _add_salvage_credit(
 
     Args:
         year_payloads: 按规划年顺序排列的求解器 payload；每个都带 `salvage_ledger`，
-            即 `(name, undiscounted capex expr, life_years)` 的列表。
+            即 `(名称, 未折现的 capex 表达式, 寿命年数)` 的列表。
         scenario: `OptimizationScenario`；取其贴现率与基年。
         assumptions: `OptimizationAssumptions`；取其 `end_of_horizon_salvage` 开关。
         cost_scale: 求解器的目标函数缩放（`_COST_SCALE`），与其他所有成本表达式一样

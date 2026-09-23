@@ -162,9 +162,9 @@ def industry_year_data(
     captured_mt[:, CCS] = co2_mt * capture_rate
     captured_t = captured_mt[:, CCS] * 1e6
     # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造
-    # 一样做学习调整；固定运维取该 capex 的一个比例，与能耗、耗材一样按运行的捕集量计
-    # （煤电 `ccs_om_matrix` 同样按份额计），不按能力存量计。成本乘子只乘 capex（固定运维随之），
-    # 能耗与耗材按模型价格计、不乘，与煤电 `ccs_cost_multiplier` 同口径（2026-09-23 前也乘）。
+    # 一样做学习调整；固定运维取该 capex 的一个比例，与能耗、耗材一样按当年捕集量计，不按能力存量计，
+    # 随产量升降（煤电 `ccs_om_matrix` 则按改造 MW x 份额计，与利用小时无关）。成本乘子只乘 capex
+    # （固定运维随之），能耗与耗材按模型价格计、不乘，与煤电 `ccs_cost_multiplier` 同口径（2026-09-23 前也乘）。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
     variable_unit = np.array(

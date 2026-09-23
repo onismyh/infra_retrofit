@@ -109,7 +109,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
 
 
 def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumptions) -> pd.DataFrame:
-    """Official 用水总量控制指标 per basin per planning year; empty unless that budget is on."""
+    """读入按流域、按规划年的官方用水总量控制指标余量（`water_basin_caps.csv`）；未启用 `official_quota` 口径时返回空表。"""
     if str(assumptions.water_budget) != "official_quota":
         return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
     path = paths.inputs_dir / "water_basin_caps.csv"

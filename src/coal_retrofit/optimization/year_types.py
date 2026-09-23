@@ -52,7 +52,7 @@ class YearData:
     ccs_om_matrix: np.ndarray
     baseline_net_matrix: np.ndarray
     stranded_per_plant: np.ndarray
-    # 改造存量的 capex 系数 (plant_count, 2)：列 0 捕集岛，列 1 BECCS 增量（见 `model_year`）。
+    # 改造存量的 capex 系数 (plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
     retrofit_stock_capex: np.ndarray
 
     # --- 价格、封存部署、部门上限 ---

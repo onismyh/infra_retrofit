@@ -23,7 +23,7 @@ class OptimizationAssumptions:
     # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），
     # 因此不再另设每 MWh 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留
     # 生物质掺烧运维，与纯生物质路径承担的 30 CNY/MWh 相同（Wang & Cai 2024 SI Table 3，
-    # gamma2 18.85 $/kW/yr ~ 132 CNY/kW/yr，按全机组平均运行小时数计）。
+    # gamma2 18.85 $/kW/yr ~ 132 CNY/kW/yr，按全机组平均运行小时数计；只计 gamma2，同表可变运维 gamma3 未计）。
     ccs_fixed_cost_cny_per_mwh: float = 0.0
     biomass_fixed_cost_cny_per_mwh: float = 30.0
     beccs_fixed_cost_cny_per_mwh: float = 30.0
@@ -90,7 +90,7 @@ class OptimizationAssumptions:
     # 系统净成本框架
     baseline_om_cost_cny_per_mwh: float = 80.0       # 基线燃煤运行的非燃料运维；⚠ 假设（无出处）
     # 计算搁浅资产用的新建成本。对照 Fan et al. 2023（`fan2023cofiring`）SI Table 15 的煤电初始投资
-    # 3 636 000 CNY/MW（现值低 3.7%）；电规总院 2020 年水平 660-1 000 MW 超超临界 3 309-3 636 元/kW
+    # 3 636 000 CNY/MW（取值比原文低 3.7%）；电规总院 2020 年水平 660-1 000 MW 超超临界 3 309-3 636 元/kW
     # （经《中国能源报》2023-04-24 转述，该文即按 3 500 元/kW 计；未核原文）。
     stranded_asset_base_cny_per_kw: float = 3500.0
     stranded_asset_accounting_life: int = 20           # 折旧年限；⚠ 假设（无出处）
@@ -287,7 +287,7 @@ class OptimizationAssumptions:
     ccs_retrofit_lifetime_years: int = 20
     blend_upgrade_lifetime_years: int = 20
     rebuild_lifetime_years: int = 30
-    water_extraction_cost_cny_per_m3: float = 4.0       # 工业取水成本；⚠ 假设（无出处）
+    water_extraction_cost_cny_per_m3: float = 4.0       # 煤电取水单价（只用于煤电取水链路）；⚠ 假设（无出处）
     water_transport_cost_cny_per_m3_km: float = 0.05     # 水的管道 / 罐车运输；⚠ 假设（无出处）
     # 直连弧与支线的 capex 乘数：⚠ 假设（无出处）。
     direct_fallback_capex_multiplier: float = 2.8
