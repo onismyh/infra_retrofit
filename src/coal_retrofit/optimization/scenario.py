@@ -19,7 +19,7 @@ class OptimizationAssumptions:
     heat_rate_gj_per_mwh: float = 8.5714
     nh3_lhv_gj_per_kg: float = 0.0186
     usd_to_cny: float = 7.0
-    retire_cost_cny_per_mwh: float = 450.0
+    retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
     # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），
     # 因此不再另设每 MWh 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留
     # 生物质掺烧运维，与纯生物质路径承担的 30 CNY/MWh 相同（Wang & Cai 2024 SI Table 3，
@@ -27,7 +27,7 @@ class OptimizationAssumptions:
     ccs_fixed_cost_cny_per_mwh: float = 0.0
     biomass_fixed_cost_cny_per_mwh: float = 30.0
     beccs_fixed_cost_cny_per_mwh: float = 30.0
-    ammonia_fixed_cost_cny_per_mwh: float = 80.0
+    ammonia_fixed_cost_cny_per_mwh: float = 80.0  # 掺氨运维；⚠ 假设（无出处）
     # 学习参考年（2030）的捕集岛改造 CAPEX，含压缩，在既有 300-1000 MW 机组上做 90% 胺法
     # 捕集。文献综述 2026-09-10（docs/工业联合减排实现说明.md §9.6）：中值 3 500 CNY/kW，
     # 区间 2 700-4 400。
@@ -53,7 +53,7 @@ class OptimizationAssumptions:
     ccs_om_fraction: float = 0.05
     # CCS 能耗惩罚，表示为单位产出所需的额外燃料（无量纲，= 额外 GJ / 基线 GJ）。
     # 取代旧的绝对效率惩罚点值：模型保持发电量不变、买入额外的煤，所以额外燃料比
-    # 才是真正进入成本与排放的量。水平锚定在 2030 年的 15%；下降路径沿用
+    # 才是真正进入成本与排放的量。水平锚定在 2030 年的 15%（⚠ 假设：15% 这个水平无出处）；下降路径沿用
     # An et al. 2025 SI Table 7（煤电能耗惩罚 2030/2040/2050/2060 年为
     # 22.2 / 15.6 / 13.3 / 11.1 %，即归一化后 1.000 / 0.703 / 0.599 / 0.500）。
     ccs_energy_penalty_ratio_by_year: tuple[float, ...] = (0.1500, 0.1054, 0.0899, 0.0750)
@@ -88,12 +88,12 @@ class OptimizationAssumptions:
     ccs_deployment_doubling_years: float = 5.6
     ccs_learning_reference_year: int = 2030
     # 系统净成本框架
-    baseline_om_cost_cny_per_mwh: float = 80.0       # 基线燃煤运行的非燃料运维
-    stranded_asset_base_cny_per_kw: float = 3500.0    # 计算搁浅资产用的新建成本
-    stranded_asset_accounting_life: int = 20           # 折旧年限
+    baseline_om_cost_cny_per_mwh: float = 80.0       # 基线燃煤运行的非燃料运维；⚠ 假设（无出处）
+    stranded_asset_base_cny_per_kw: float = 3500.0    # 计算搁浅资产用的新建成本；⚠ 假设（无出处）
+    stranded_asset_accounting_life: int = 20           # 折旧年限；⚠ 假设（无出处）
     # 封存成本 32 CNY/t，对照 An et al. 2025 SI Table 7：5.0 (3.0-8.5) $/t = 35 (21-60) CNY/t。
     storage_cost_cny_per_t: float = 32.0
-    eor_credit_cny_per_t: float = 12.0
+    eor_credit_cny_per_t: float = 12.0  # EOR 每吨抵扣；⚠ 假设（无出处）
     # --- hub 注入速率，由候选场址密度推得 ------------------------------------------------
     # 源栅格（Fan 5 km 网格；见 data/封存汇图层-Fan）按每个 5x5 km 格子存的是地层能接受的
     # 地质注入速率（全国均值 8.0，单格最大 134 Mt/a）——已用数据集自带的分省表核对，
@@ -115,7 +115,7 @@ class OptimizationAssumptions:
     # 复现了来源的中值。
     route_opex_cny_per_t_km: float = 0.15
     # 海上盆地（东海、珠江口、渤海、北部湾）要承担海底管道与平台成本：凡与海上封存 hub
-    # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。
+    # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。⚠ 假设（无出处）。
     offshore_transport_multiplier: float = 1.5
     pipe_capex_cny_per_mtpa_km: float = 400_000.0  # 干线规模（>=20 Mtpa）的系数法估算：
     # MIT Smith et al. 2021 (IJGGC) $52,892/(in·mi) → 20-in 干线 ≈4.6M CNY/km ≈0.23e6 CNY/(Mtpa·km)；
@@ -157,7 +157,7 @@ class OptimizationAssumptions:
     ammonia_supply_deployment_fraction_by_year: tuple[float, ...] = (1.0, 1.0, 1.0, 1.0)
     # 工业用氢由长管拖车从供给节点运送。临时值：取中国长管拖车成本的量级（每 100 km
     # ~3 CNY/kg，中国氢能联盟白皮书 2019 区间 2-4），待作者给出有出处的数值。作用同煤电侧
-    # 的 `ammonia_transport_cost_cny_per_kg_km`。
+    # 的 `ammonia_transport_cost_cny_per_kg_km`。⚠ 假设（临时值；白皮书区间未核到原文）。
     h2_transport_cost_cny_per_kg_km: float = 0.03
     cooling_once_through_water_intensity_m3_per_mwh: float = 0.35  # 耗水口径（耗水量）：
     # 0.29-0.41 m³/MWh，依据 NDRC et al. 2015 No.9 清洁生产基准（中位数 ≈0.35）。
@@ -239,7 +239,7 @@ class OptimizationAssumptions:
     # 从而高估缺水的成本。
     #
     # 中国文献中的 capex 跨度很大（在既有机组上更换凝汽器与 ACC 岛大约 200-400 CNY/kW）；
-    # 300 取中点，并做敏感性。
+    # 300 取中点，并做敏感性。⚠ 假设（出处不具体：没有列出具体文献或项目）。
     #
     # 空冷真正的主导成本是效率惩罚，而不是 capex。在已求解的算例中，能耗惩罚项是空冷改造
     # capex 的 11-23 倍，所以这个数远比上面的 300 CNY/kW 重要。其单位是净效率的百分点：
@@ -278,13 +278,15 @@ class OptimizationAssumptions:
     # 方式。搁浅资产核销不计残值（它是损失，不是资产）。寿命：煤电捕集岛 20 a（同
     # `INDUSTRY_CAPTURE_LIFETIME_YEARS`）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
     # `air_retrofit_lifetime_years`）；管道 30 a（`pipeline_lifetime_years`）；重建的厂址
-    # 30 a。设 `end_of_horizon_salvage=False` 可复现 2026-09-22 之前求解的结果。
+    # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。
+    # 设 `end_of_horizon_salvage=False` 可复现 2026-09-22 之前求解的结果。
     end_of_horizon_salvage: bool = True
     ccs_retrofit_lifetime_years: int = 20
     blend_upgrade_lifetime_years: int = 20
     rebuild_lifetime_years: int = 30
-    water_extraction_cost_cny_per_m3: float = 4.0       # 工业取水成本
-    water_transport_cost_cny_per_m3_km: float = 0.05     # 水的管道 / 罐车运输
+    water_extraction_cost_cny_per_m3: float = 4.0       # 工业取水成本；⚠ 假设（无出处）
+    water_transport_cost_cny_per_m3_km: float = 0.05     # 水的管道 / 罐车运输；⚠ 假设（无出处）
+    # 直连弧与支线的 capex 乘数：⚠ 假设（无出处）。
     direct_fallback_capex_multiplier: float = 2.8
     branch_capex_multiplier: float = 1.35
     # 在既有管道走廊内新铺管道：节省的是路权（以及未量化的审批时间）。NETL 2013
@@ -327,7 +329,7 @@ class OptimizationAssumptions:
     # "据预测"，二手）：69 / 91 Mt。
     # 空元组 = 关闭。
     green_h2_national_cap_mt_by_year: tuple[float, ...] = (6.5, 69.0, 91.0, 120.0)
-    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）
+    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）。生物质档位：⚠ 假设（无出处）。
     biomass_upgrade_capex_cny_per_mw_per_level: float = 500_000.0
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # 最高档（50% 掺烧）≈125 CNY/kW。
     # 中国全改造文献：90 CNY/kW（CNERI 2025，100% 改造）+ 储存；MIT 供应系统 ≈163 CNY/kW
@@ -508,13 +510,14 @@ class OptimizationScenario:
     discount_base_year: int = 2025
     # 系统净成本参数
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)
+    # 电价路径：⚠ 假设（逐年上涨路径无出处）。
     electricity_price_cny_per_mwh_by_year: tuple[float, ...] = (400.0, 440.0, 490.0, 550.0)
     max_new_retirement_share_per_period: float = 0.15
     # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线可乘以此系数
     # （例如 1.15 = 因优先调度 +15%）
     retrofit_cf_boost: float = 1.15
     # 原址重建参数：到期电厂可按新建成本的 70% 重建
-    rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%
+    rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%；⚠ 假设（无出处）
     rebuild_efficiency: float = 0.45  # 重建电厂取 USC 效率（基线为 0.42）
     notes: str = ""
 

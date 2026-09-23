@@ -47,7 +47,7 @@ NH3_ELECTROLYSIS_TECHS = ("AE",)
 # Haber-Bosch 合成回路 + 空分装置 + 全厂辅助系统（balance of plant），按每吨年
 # NH3 产能计。电解槽及其可再生能源供给已包含在 LCOH 中，所以这里只加
 # 合成岛：新建绿氨 CAPEX 为 1300-2000 USD/(t·yr)，其中电解槽占直接成本的
-# 40-50%，其余部分为 650-1100（取中点）。
+# 40-50%，其余部分为 650-1100（取中点）。⚠ 假设（出处不具体：区间与电解槽占比都没有列出文献）。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
 NH3_HB_CAPEX_DISCOUNT_RATE = 0.08
 NH3_HB_CAPEX_LIFETIME_YEARS = 20

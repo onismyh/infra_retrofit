@@ -148,7 +148,7 @@ def build_plant_dataframe(
                     has_water_cooling = True
 
         mean_commission = float(frame["commission_year"].mean())
-        retirement_year = int(mean_commission + 40)
+        retirement_year = int(mean_commission + 40)  # 设计寿命 40 年：⚠ 假设（无出处）
 
         # Wang (2023) 用水强度表：逐机组按蒸汽参数（steam cycle）与冷却方式查表，
         # 再按装机容量加权到 hub。之所以产出两个变体，是因为沿海直流冷却 hub 是否取

@@ -244,7 +244,7 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 
 # --- CO2 捕集：改造 capex，单位为每吨年捕集能力的 CNY -------------------------------------
 # 基准年 2030（由煤电改造同样使用的 `ccs_learning_factor` 对其缩放），含压缩至管输压力。
-# 中国项目备案，只计捕集岛：
+# 只计捕集岛。水泥、长流程钢为中国项目备案；电炉钢为 ⚠ 假设，合成氨 / 甲醇由全成本反推：
 #   cement   中联水泥青州 20 万 t/a 全氧燃烧耦合碳捕集示范线 2.56 亿元 -> 1 280 元/(t·a)
 #            （中国建材，2023 开工）；中联 20 万 t/a 捕集提纯项目 1.98 亿元 -> 990；
 #            海螺白马山 5 万 t/a 5 500 万元 -> 1 100（2018 投运，含食品级提纯）。
@@ -255,7 +255,7 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 #            CNY 360 M + 7% 业主费 + 20 M 流动资金 = 407 M，对应 0.5 Mt/a -> 814；
 #            IEAGHG 2013/04 Table 6, Case 2A：捕集装置 US$(2010) 679 M，对应捕集量
 #            ~4.7 Mt/a -> ~145 USD/(t·a) ~ 1 000 元/(t·a)。中值取 1 000。
-#   steel_eaf 假设：无出处。尾气稀薄且间歇，即难度高于水泥窑，所以取水泥的值。
+#   steel_eaf ⚠ 假设（无出处）。尾气稀薄且间歇，即难度高于水泥窑，所以取水泥的值。
 #            EAF 占模型内工业 CO2 的 1.7%。
 #   ammonia / methanol   高浓度（>95%）气化尾气：无需吸收，只需脱水 + 压缩/液化。
 #            延长石油榆林煤化 30 万 t/a（2022）报告捕集全成本 105 元/t；扣除 ~110 kWh/t
@@ -390,11 +390,11 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
 #                 这类数字只含炉体）。合计 ~3 470；取 3 500。
 #   ammonia       现有煤制合成氨厂改用外购绿氢：Haber-Bosch 回路与空分装置保留，
 #                 气化炉、变换和净化工段停用。新增：H2 接收/压缩、N2 接入、控制系统。
-#                 假设：500 元/(t·a) ~ 绿地合成岛的 8%（875 USD/(t·a)，
+#                 ⚠ 假设（无出处）：500 元/(t·a) ~ 绿地合成岛的 8%（875 USD/(t·a)，
 #                 `constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR`）。未找到中国的改造
 #                 备案；Yara Pilbara（2022-24）只公布了电解槽一侧。
 #   methanol      绿氢耦合煤制甲醇：氢替代变换段来调节 H/C 比，合成回路保留。接入范围
-#                 与合成氨相同；假设 500 元/(t·a)。
+#                 与合成氨相同；⚠ 假设（无出处）：500 元/(t·a)。
 INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 3500.0,
     SECTOR_AMMONIA: 500.0,
