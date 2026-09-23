@@ -139,7 +139,7 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
         if year_data.allow_air_cooling_retrofit:
             per_path = per_path - (w - year_data.air_withdrawal_intensity) * ys["air_share"]
         coal = float(year_data.water_basin_membership[0] @ (year_data.generation_by_pathway * per_path).sum(axis=1))
-        industry_by_hub = (np.asarray(year_data.industry["water_m3"]) * ys["industry_share"]).sum(axis=1)
+        industry_by_hub = (np.asarray(year_data.industry.water_m3) * ys["industry_share"]).sum(axis=1)
         industry = float(year_data.industry_basin_membership[0] @ industry_by_hub)
         assert industry > 0.0
         assert float(ys["slacks"]["water_basin_use_m3"][0]) == pytest.approx(coal + industry, rel=1e-6)

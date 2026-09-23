@@ -88,38 +88,38 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     captured_t = 2.0e6 * scenario.capture_rate
     capex_unit = ci.capture_capex_cny_per_t_yr("steel_bf_bof") * learning
     var_unit = ci.capture_variable_cost_cny_per_t("steel_bf_bof", assumptions.province_coal_cost("Shanxi"), elec)
-    assert data["capex_cny"][0, CCS] == pytest.approx(captured_t * capex_unit, rel=1e-9)
-    assert data["opex_cny"][0, CCS] == pytest.approx(
+    assert data.capex_cny[0, CCS] == pytest.approx(captured_t * capex_unit, rel=1e-9)
+    assert data.opex_cny[0, CCS] == pytest.approx(
         captured_t * (capex_unit * ci.INDUSTRY_CCS_FIXED_OM_FRACTION + var_unit), rel=1e-9
     )
     # Reboiler steam CO2 is vented: reduction < captured for amine capture, equal for ammonia.
     steam = ci.capture_steam_co2_t_per_t("steel_bf_bof", ef_gj)
     assert 0.2 < steam < 0.4
-    assert data["reduction_mt"][0, CCS] == pytest.approx(data["captured_mt"][0, CCS] * (1.0 - steam), rel=1e-9)
-    assert data["reduction_mt"][2, CCS] == pytest.approx(data["captured_mt"][2, CCS], rel=1e-9)
+    assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
+    assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
     # Unknown province falls back to the national coal price, not a crash.
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
-    assert data["opex_cny"][2, CCS] == pytest.approx(
+    assert data.opex_cny[2, CCS] == pytest.approx(
         1.0e6 * scenario.capture_rate * (capex_nat * ci.INDUSTRY_CCS_FIXED_OM_FRACTION + var_nat), rel=1e-9
     )
 
     # H2 route: capex on the whole output; annual = FOM + opex delta; hydrogen bought per link.
-    assert data["route_available"][0, H2] and data["route_available"][2, H2]
-    assert not data["route_available"][1, H2]
+    assert data.route_available[0, H2] and data.route_available[2, H2]
+    assert not data.route_available[1, H2]
     production = 1000.0e3
     route_capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
     delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", 0.081, scenario.discount_rate)
-    assert data["capex_cny"][0, H2] == pytest.approx(production * route_capex, rel=1e-9)
-    assert data["opex_cny"][0, H2] == pytest.approx(
+    assert data.capex_cny[0, H2] == pytest.approx(production * route_capex, rel=1e-9)
+    assert data.opex_cny[0, H2] == pytest.approx(
         production * (route_capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
-    assert data["h2_demand_kg_per_share"][0] == pytest.approx(81.0e6, rel=1e-9)
-    assert data["capex_lifetime_years"] == {
+    assert data.h2_demand_kg_per_share[0] == pytest.approx(81.0e6, rel=1e-9)
+    assert data.capex_lifetime_years == {
         CCS: ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
         H2: ci.INDUSTRY_H2_LIFETIME_YEARS,
     }
-    assert data["capex_cny"][:, UNABATED].sum() == 0.0
+    assert data.capex_cny[:, UNABATED].sum() == 0.0
 
 
 # ------------------------------------------------------------------- solver: salvage ---

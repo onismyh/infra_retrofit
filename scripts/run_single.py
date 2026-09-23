@@ -153,23 +153,23 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         if ys.get("industry_share") is not None:
             iy = year_data.industry
             ish = ys["industry_share"]
-            groups = np.asarray(iy["target_groups"]).astype(str)
-            residual_hub = iy["baseline_emissions_mt"] - (iy["reduction_mt"] * ish).sum(axis=1)
+            groups = np.asarray(iy.target_groups).astype(str)
+            residual_hub = iy.baseline_emissions_mt - (iy.reduction_mt * ish).sum(axis=1)
             industry_summary = {
-                "baseline_mt": float(iy["baseline_emissions_mt"].sum()),
-                "reduction_mt": float((iy["reduction_mt"] * ish).sum()),
+                "baseline_mt": float(iy.baseline_emissions_mt.sum()),
+                "reduction_mt": float((iy.reduction_mt * ish).sum()),
                 "residual_by_group_mt": {
                     g: float(residual_hub[groups == g].sum()) for g in sorted(set(groups))
                 },
-                "captured_mt": float((iy["captured_mt"] * ish).sum()),
+                "captured_mt": float((iy.captured_mt * ish).sum()),
                 "h2_kg": float(np.sum(ys.get("industry_h2_flow_kg", np.zeros(0)))),
-                "water_m3": float((iy["water_m3"] * ish).sum()),
+                "water_m3": float((iy.water_m3 * ish).sum()),
                 "cost_annual_cny": float(ys["cost_breakdown_cny"].get("industry_cost", 0.0)),
                 "cost_capex_cny": float(ys["cost_breakdown_cny"].get("industry_capex", 0.0)),
-                "h2_price_national_mean_cny_per_kg": float(iy["h2_price_cny_per_kg"]),
+                "h2_price_national_mean_cny_per_kg": float(iy.h2_price_cny_per_kg),
                 "share_by_route": {
-                    route: float((iy["baseline_emissions_mt"] * ish[:, idx]).sum()
-                                 / max(float(iy["baseline_emissions_mt"].sum()), 1e-9))
+                    route: float((iy.baseline_emissions_mt * ish[:, idx]).sum()
+                                 / max(float(iy.baseline_emissions_mt.sum()), 1e-9))
                     for idx, route in enumerate(INDUSTRY_ROUTES)
                 },
             }

@@ -107,7 +107,7 @@ def _build_year_matrices(
     from .industry import industry_year_data
 
     industry_basin_membership = None
-    industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
+    industry_data = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
     industry_h2_data = _industry_h2_access_data(prepared, year, assumptions, ammonia_data["nodes"])
     water_data = _water_access_data(prepared, scenario, assumptions, year)
@@ -192,7 +192,7 @@ def _build_year_matrices(
         water_basin_membership=basin_membership,
         water_basin_available_m3=basin_residual,
         water_basin_codes=basin_codes,
-        industry=industry_payload,
+        industry=industry_data,
         # (n_basins, n_industry_hubs)，与 `water_basin_membership` 分开：求解器用 flatnonzero 把后者转成厂索引，
         # 共用索引空间会让 hub 索引被当成厂索引而不报错。
         industry_basin_membership=industry_basin_membership,

@@ -7,14 +7,14 @@ import pandas as pd
 from ..constants import AMMONIA_FLOW_SCALE
 from ..constants_industry import INDUSTRY_ROUTES
 from ._shared import PreparedInputs
-from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED
+from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED, IndustryYearData
 from .year_types import YearData
 
 
 def _build_industry_detail_table(
     prepared: PreparedInputs,
     year: int,
-    industry_year_data: dict | None,
+    industry_year_data: IndustryYearData | None,
     share_values: np.ndarray | None,
     prev_share_values: np.ndarray | None = None,
     h2_flow_kg: np.ndarray | None = None,
@@ -53,14 +53,14 @@ def _build_industry_detail_table(
     if industry_year_data is None or share_values is None:
         return pd.DataFrame(columns=columns)
     hubs = prepared.industry.hubs
-    reduction = industry_year_data["reduction_mt"]
-    baseline = industry_year_data["baseline_emissions_mt"]
-    captured = industry_year_data["captured_mt"]
-    water = industry_year_data["water_m3"]
-    opex = industry_year_data["opex_cny"]
-    capex = industry_year_data["capex_cny"]
-    output_scale = industry_year_data.get("output_scale", np.ones(len(hubs)))
-    h2_price_mean = float(industry_year_data["h2_price_cny_per_kg"])
+    reduction = industry_year_data.reduction_mt
+    baseline = industry_year_data.baseline_emissions_mt
+    captured = industry_year_data.captured_mt
+    water = industry_year_data.water_m3
+    opex = industry_year_data.opex_cny
+    capex = industry_year_data.capex_cny
+    output_scale = industry_year_data.output_scale
+    h2_price_mean = float(industry_year_data.h2_price_cny_per_kg)
     n_hubs = len(hubs)
     # Hydrogen bought per hub: link flows x link costs, folded onto hubs with the incidence.
     h2_kg_by_hub = np.zeros(n_hubs)

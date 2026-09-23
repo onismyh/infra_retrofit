@@ -87,10 +87,10 @@ def build_model_index(
         prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
     )
     base_2030 = industry_year_data(prepared.industry, scenario, assumptions, 2030)
-    groups = base_2030["target_groups"]
+    groups = base_2030.target_groups
     for group in sorted(set(str(g) for g in groups)):
         sector_base_2030[str(group)] = float(
-            base_2030["baseline_emissions_mt"][groups == group].sum()
+            base_2030.baseline_emissions_mt[groups == group].sum()
         )
     logger.info("sector targets from %s; 2030 baselines (Mt): %s",
                 scenario.sector_target_source,
