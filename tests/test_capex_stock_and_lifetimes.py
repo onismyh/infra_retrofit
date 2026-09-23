@@ -9,11 +9,13 @@
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
@@ -39,22 +41,29 @@ from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs 
 
 
 # ---------------------------------------------------------- (a) 工业 capex 按能力存量计 ---
-def _capex_by_year(industry: IndustryInputs, ccs_share: dict[int, float]) -> tuple[dict[int, float], dict]:
-    """固定各年 CCS 份额，最小化一次性 capex 之和，返回每年的 capex 与逐年系数。"""
+def _capex_by_year(
+    industry: IndustryInputs, share: dict[int, float], route: int = CCS,
+) -> tuple[dict[int, float], dict]:
+    """固定各年 `route` 的份额，最小化一次性 capex 之和，返回每年的 capex 与逐年系数。
+    氢路线没有氢链路时份额被钉在 0，所以测氢路线时给唯一的 hub 接一条链路。"""
     scenario = OptimizationScenario(experiment_id="T", description="toy")
     assumptions = OptimizationAssumptions()
     model = gp.Model()
     model.Params.OutputFlag = 0
-    years = sorted(ccs_share)
+    h2_link_cost = np.array([1.0]) if route == H2 else None
+    h2_membership = sparse.csr_matrix(np.ones((1, 1))) if route == H2 else None
+    years = sorted(share)
     payloads, data = [], {}
     for year in years:
         data[year] = industry_year_data(industry, scenario, assumptions, year)
-        payload = add_industry_year(model, industry, data[year], str(year))
-        model.addConstr(payload.share[0, CCS] == ccs_share[year], name=f"fix_ccs_{year}")
+        payload = add_industry_year(
+            model, industry, data[year], str(year), h2_link_cost=h2_link_cost, h2_hub_membership=h2_membership,
+        )
+        model.addConstr(payload.share[0, route] == share[year], name=f"fix_share_{year}")
         payloads.append(payload)
     add_industry_monotonicity(model, payloads, 1)
     exprs = [
-        industry_capex_expr(payload, payloads[i - 1] if i else None, routes=(CCS,))
+        industry_capex_expr(payload, payloads[i - 1] if i else None, routes=(route,))
         for i, payload in enumerate(payloads)
     ]
     model.setObjective(gp.quicksum(exprs))
@@ -84,6 +93,34 @@ def test_industry_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -
     capex, data = _capex_by_year(industry, {2030: 0.5, 2040: 0.8})
     v30 = data[2030].capacity_mt_per_share[0, CCS]
     assert capex[2030] == pytest.approx(data[2030].capex_cny_per_mt[0, CCS] * 0.5 * v30, rel=1e-9)
+    assert capex[2040] == pytest.approx(0.0, abs=1e-6)
+
+
+def _steel_hub_indexed(output_index: dict[tuple[str, int], float]) -> IndustryInputs:
+    """`_steel_hub` 加上逐年产量指数。"""
+    return replace(_steel_hub(), output_index=output_index)
+
+
+def test_h2_route_capex_charges_output_growth_at_a_constant_share() -> None:
+    """氢路线与 CCS 同法：份额两年都是 1，产量 1.0 -> 1.5，多出的 50% 产能要付 capex。
+    锁住三件事：氢路线的产能存量有下界，所需产能随产量指数变化，capex 计在存量的增量上。"""
+    industry = _steel_hub_indexed({("steel_bf_bof", 2030): 1.0, ("steel_bf_bof", 2040): 1.5})
+    capex, data = _capex_by_year(industry, {2030: 1.0, 2040: 1.0}, route=H2)
+    k30 = data[2030].capacity_mt_per_share[0, H2]
+    k40 = data[2040].capacity_mt_per_share[0, H2]
+    assert k40 == pytest.approx(1.5 * k30, rel=1e-12)
+    assert capex[2030] == pytest.approx(data[2030].capex_cny_per_mt[0, H2] * k30, rel=1e-9)
+    assert capex[2040] == pytest.approx(data[2040].capex_cny_per_mt[0, H2] * (k40 - k30), rel=1e-9)
+    assert capex[2040] > 0.0
+
+
+def test_h2_route_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -> None:
+    """产量 1.0 -> 0.5，份额 0.5 -> 0.8：2040 年只需 0.40 份 2030 年产能，已建 0.50 份，不必新建。
+    产能存量跨年不降；去掉这条单调约束，存量会缩回 0.40，2040 年的 capex 成为负数。"""
+    industry = _steel_hub_indexed({("steel_bf_bof", 2030): 1.0, ("steel_bf_bof", 2040): 0.5})
+    capex, data = _capex_by_year(industry, {2030: 0.5, 2040: 0.8}, route=H2)
+    k30 = data[2030].capacity_mt_per_share[0, H2]
+    assert capex[2030] == pytest.approx(data[2030].capex_cny_per_mt[0, H2] * 0.5 * k30, rel=1e-9)
     assert capex[2040] == pytest.approx(0.0, abs=1e-6)
 
 
@@ -237,3 +274,12 @@ def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> Non
         assert doubled.energy_penalty_matrix[0, k] == pytest.approx(base.energy_penalty_matrix[0, k], rel=1e-12)
     assert base.fixed_cost_matrix[0, PATHWAY_INDEX["beccs"]] > 0.0
     np.testing.assert_array_equal(doubled.fixed_cost_matrix, base.fixed_cost_matrix)
+
+
+def test_beccs_fixed_om_equals_the_capture_island_om_of_ccs(tmp_path) -> None:
+    """(b) 的另一半：BECCS 的捕集岛就是 CCS 捕集岛，固定运维一列与 CCS 相同（学习后 capex x `ccs_om_fraction`）。
+    2026-09-23 前按 BECCS 的 4 500 元/kW 计，比 CCS 高 29%。不求解。"""
+    matrices = _toy_year_matrices(tmp_path / "m", 2050)
+    ccs, beccs = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
+    assert matrices.ccs_om_matrix[0, ccs] > 0.0
+    assert matrices.ccs_om_matrix[0, beccs] == pytest.approx(matrices.ccs_om_matrix[0, ccs], rel=1e-12)

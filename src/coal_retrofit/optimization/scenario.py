@@ -498,7 +498,7 @@ class OptimizationScenario:
     # 只让平准化溢价增加钢铁 25%、合成氨 14%、甲醇 2%。2026-09-23 前还乘该差额里路线自身的成本，
     # 锚点价下溢价恰为乘子 x 锚点溢价（乘子取 2 即 +100%）。与上面的乘子分开，因为氢锚点带有已知的
     # 向下偏差——它是新建对新建的比较，却套用在现有资本已沉没的存量工厂上——所以其采用量是上界，
-    # 需要单独的调节参数。见 optimization/industry.py 的"已知偏差"（KNOWN BIASES）一节。
+    # 需要单独的调节参数。见 `optimization/industry.py` 模块说明中氢路线一段。
     industry_h2_cost_multiplier: float = 1.0
     ammonia_cost_multiplier: float = 1.0
     ammonia_transport_adder_usd_per_kg: float = 0.0

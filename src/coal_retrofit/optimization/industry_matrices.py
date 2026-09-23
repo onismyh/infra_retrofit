@@ -106,8 +106,8 @@ def industry_year_data(
 
     Args:
         industry: 准备好的工业输入。
-        scenario: `OptimizationScenario`；从中读取捕集率、成本乘数、贴现率。
-        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线。
+        scenario: `OptimizationScenario`；从中读取捕集率、两个工业成本乘数、贴现率与本年电价。
+        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线、分省煤价、燃煤排放因子与热耗率。
         year: 规划年。
 
     Returns:

@@ -1,4 +1,4 @@
-"""逐年结果表。成本分项、诊断（sanity checks、逐节点松弛）与情景摘要在本模块；
+"""逐年结果表。成本分项、诊断（合理性检查 `_build_sanity_checks`、逐节点松弛）与情景摘要在本模块；
 煤电厂侧、管网封存、资源、工业四类表在 `results_*` 模块，这里统一转出，调用方照旧从 `results` 导入。
 """
 from __future__ import annotations

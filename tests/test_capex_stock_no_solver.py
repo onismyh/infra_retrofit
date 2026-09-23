@@ -62,7 +62,7 @@ def test_industry_cost_multiplier_leaves_energy_and_consumables_alone() -> None:
 # ------------------------------------------------ (a) 明细表的 capital 按能力存量增量计 ---
 def test_industry_detail_table_charges_capital_on_the_capacity_increment() -> None:
     """明细表的 capital 列与目标函数同法：单位 capex x 能力存量增量，CCS 与氢路线各算各的；
-    不传上一年存量时（第一年）按整个存量计。2026-09-23 前 context model 不传存量，
+    不传上一年存量时（第一年）按整个存量计。2026-09-23 前 `run_context_model` 不传存量，
     每年都按整个存量计，跨年重复计入。"""
     industry = _steel_hub()
     data = industry_year_data(industry, OptimizationScenario(experiment_id="T", description="toy"), OptimizationAssumptions(), 2030)
