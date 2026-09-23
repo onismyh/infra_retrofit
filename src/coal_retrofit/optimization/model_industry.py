@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
 from ..constants_industry import INDUSTRY_ROUTES
 from .industry_inputs import IndustryInputs
-from .industry_matrices import CCS, H2, IndustryYearData
+from .industry_matrices import CCS, H2, UNABATED, IndustryYearData
 from .year_types import GrbExpr, GrbMVar
 
 
@@ -23,7 +23,7 @@ class IndustryPayload:
 
     求解器把它们接进 CO2 管网（`captured_by_hub`）、流域取水上限（`withdrawal_by_hub_scaled`）、
     部门目标（`residual_by_group`）、氢节点（`h2_flow_kg`）与目标函数（`annual_cost_expr`，
-    一次性 capex 另由 `industry_capex_expr` 从 `share` 与 `year_data.capex_cny` 构造）。
+    一次性 capex 另由 `industry_capex_expr` 从 `capacity_mt` 与 `year_data.capex_cny_per_mt` 构造）。
     """
 
     share: GrbMVar                            # (hub_count, len(INDUSTRY_ROUTES))
@@ -37,6 +37,9 @@ class IndustryPayload:
     annual_cost_expr: GrbExpr
     h2_flow_kg: GrbMVar                       # 每条氢链路，kg / AMMONIA_FLOW_SCALE
     h2_route_cost: GrbMVar                    # (hub_count,)，氢路线年度成本（地板变量）
+    # (hub_count, len(INDUSTRY_ROUTES))，路线能力存量，Mt/yr（CCS 为捕集能力，氢路线为产能）；
+    # 只设下界，跨年单调，一次性 capex 计在它的增量上。unabated 列恒为 0。
+    capacity_mt: GrbMVar
     year_data: IndustryYearData
 
 
@@ -142,6 +145,20 @@ def add_industry_year(
                 model.addConstr(share[hub, H2] == 0.0, name=f"ind_h2_no_supply_{hub}_{year_suffix}")
     annual_cost = annual_cost + h2_route_cost.sum()
 
+    # 能力存量（一次性 capex 的计费基数）：K >= 份额为 1 时所需能力 x 份额。所需能力随产量指数
+    # 变化，所以份额不变而产量增长时要新建能力，产量萎缩后闲置的已建能力可以接住份额的上升。
+    capacity_ub = np.full((n, n_routes), gp.GRB.INFINITY)
+    capacity_ub[:, UNABATED] = 0.0
+    capacity_mt = model.addMVar((n, n_routes), lb=0.0, ub=capacity_ub, name=f"ind_capacity_mt_{year_suffix}")
+    need = ydata.capacity_mt_per_share
+    model.addConstrs(
+        (
+            capacity_mt[hub, route] >= float(need[hub, route]) * share[hub, route]
+            for hub in range(n) for route in (CCS, H2)
+        ),
+        name=f"ind_capacity_lb_{year_suffix}",
+    )
+
     return IndustryPayload(
         share=share,
         year_suffix=year_suffix,
@@ -153,15 +170,17 @@ def add_industry_year(
         annual_cost_expr=annual_cost,
         h2_flow_kg=h2_flow_kg,
         h2_route_cost=h2_route_cost,
+        capacity_mt=capacity_mt,
         year_data=ydata,
     )
 
 
 def add_industry_monotonicity(model, payloads: list[IndustryPayload], hub_count: int) -> None:
-    """减排路线不可逆：`ccs` 与 `h2` 的份额跨年从不下降。
+    """减排路线不可逆：`ccs` 与 `h2` 的份额与能力存量跨年都不下降。
 
-    份额之和为 1，因此这同时禁止了把捕集换成氢——没有人会拆掉捕集岛去建 DRI 竖炉——
-    也正是它让一次性资本费用可以按份额的增量收取：增量就是新建存量。
+    份额之和为 1，因此这同时禁止了把捕集换成氢——没有人会拆掉捕集岛去建 DRI 竖炉。
+    能力存量单调，一次性资本费用才能按存量的增量收取：增量就是新建能力。只看份额不够：
+    产量随外生指数变化，份额的增量与新建能力并不相等。
 
     Args:
         model: Gurobi 模型。
@@ -177,33 +196,40 @@ def add_industry_monotonicity(model, payloads: list[IndustryPayload], hub_count:
                 (current[hub, route] >= previous[hub, route] for hub in range(hub_count)),
                 name=f"ind_mono_{INDUSTRY_ROUTES[route]}_{suffix}",
             )
+        current_cap = payloads[index].capacity_mt
+        previous_cap = payloads[index - 1].capacity_mt
+        for route in (CCS, H2):
+            model.addConstrs(
+                (current_cap[hub, route] >= previous_cap[hub, route] for hub in range(hub_count)),
+                name=f"ind_capacity_mono_{INDUSTRY_ROUTES[route]}_{suffix}",
+            )
 
 
 def industry_capex_expr(
     payload: IndustryPayload, previous: IndustryPayload | None, routes: tuple[int, ...] = (CCS, H2)
 ) -> GrbExpr:
-    """本年的一次性资本费用：capex 系数 x 路线份额增量。
+    """本年的一次性资本费用：本年单位能力 capex x 能力存量增量。
 
-    份额单调（`add_industry_monotonicity`），所以 `share_t - share_{t-1}` 就是新建存量，
-    且从不为负；第一年整个份额都是新建的。
+    能力存量单调（`add_industry_monotonicity`），所以 `K_t - K_{t-1}` 就是新建能力，且从不为负；
+    第一年整个存量都是新建的。与煤电 `retrofit_installed` 同法：按已建存量而不是按份额计费。
 
     Args:
-        payload: 本年的工业 payload（`share` 变量与 `year_data`）。
+        payload: 本年的工业 payload（`capacity_mt` 变量与 `year_data`）。
         previous: 上一年的 payload；第一年为 None。
         routes: 要计入的路线下标；求解器分别请求 CCS 与 H2，好让两者在残值抵扣里
             各带自己的经济寿命。
     """
-    share = payload.share
-    capex = payload.year_data.capex_cny
-    n = share.shape[0]
+    capacity = payload.capacity_mt
+    unit = payload.year_data.capex_cny_per_mt
+    n = capacity.shape[0]
     terms = []
     for hub in range(n):
         for route in routes:
-            coeff = float(capex[hub, route])
+            coeff = float(unit[hub, route])
             if coeff <= 0.0:
                 continue
             if previous is None:
-                terms.append(coeff * share[hub, route])
+                terms.append(coeff * capacity[hub, route])
             else:
-                terms.append(coeff * (share[hub, route] - previous.share[hub, route]))
+                terms.append(coeff * (capacity[hub, route] - previous.capacity_mt[hub, route]))
     return gp.quicksum(terms) if terms else 0.0

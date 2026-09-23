@@ -83,11 +83,14 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     ef_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
     elec = scenario.electricity_price_for_year(2030)
 
-    # 钢铁 hub：capex = 捕集量 t/a x 单位 capex x 学习系数；opex = 固定运维 + 可变成本。
+    # 钢铁 hub：份额为 1 时 capex = 捕集能力 t/a x 单位 capex x 学习系数；opex = 固定运维 + 可变成本。
     captured_t = 2.0e6 * scenario.capture_rate
     capex_unit = ci.capture_capex_cny_per_t_yr("steel_bf_bof") * learning
     var_unit = ci.capture_variable_cost_cny_per_t("steel_bf_bof", assumptions.province_coal_cost("Shanxi"), elec)
-    assert data.capex_cny[0, CCS] == pytest.approx(captured_t * capex_unit, rel=1e-9)
+    assert data.capacity_mt_per_share[0, CCS] == pytest.approx(captured_t / 1e6, rel=1e-12)
+    assert data.capex_cny_per_mt[0, CCS] * data.capacity_mt_per_share[0, CCS] == pytest.approx(
+        captured_t * capex_unit, rel=1e-9
+    )
     assert data.opex_cny[0, CCS] == pytest.approx(
         captured_t * (capex_unit * ci.INDUSTRY_CCS_FIXED_OM_FRACTION + var_unit), rel=1e-9
     )
@@ -109,7 +112,10 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     production = 1000.0e3
     route_capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
     delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", 0.081, scenario.discount_rate)
-    assert data.capex_cny[0, H2] == pytest.approx(production * route_capex, rel=1e-9)
+    assert data.capacity_mt_per_share[0, H2] == pytest.approx(production / 1e6, rel=1e-12)
+    assert data.capex_cny_per_mt[0, H2] * data.capacity_mt_per_share[0, H2] == pytest.approx(
+        production * route_capex, rel=1e-9
+    )
     assert data.opex_cny[0, H2] == pytest.approx(
         production * (route_capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
@@ -118,7 +124,8 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
         CCS: ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
         H2: ci.INDUSTRY_H2_LIFETIME_YEARS,
     }
-    assert data.capex_cny[:, UNABATED].sum() == 0.0
+    assert data.capex_cny_per_mt[:, UNABATED].sum() == 0.0
+    assert data.capacity_mt_per_share[:, UNABATED].sum() == 0.0
 
 
 # ---------------------------------------------------------------------- 求解器：残值 ---

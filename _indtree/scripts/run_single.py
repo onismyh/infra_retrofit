@@ -135,7 +135,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
     )
 
     year_summaries = {}
-    prev_industry_share = None
+    prev_industry_capacity = None
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
         share = ys["share"]
@@ -223,10 +223,10 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         ))
         industry_detail_tables.append(_build_industry_detail_table(
             prepared, year, year_data.industry, ys.get("industry_share"),
-            prev_share_values=prev_industry_share, h2_flow_kg=ys.get("industry_h2_flow_kg"),
-            year_data=year_data,
+            h2_flow_kg=ys.get("industry_h2_flow_kg"), year_data=year_data,
+            capacity_mt=ys.get("industry_capacity_mt"), prev_capacity_mt=prev_industry_capacity,
         ))
-        prev_industry_share = ys.get("industry_share")
+        prev_industry_capacity = ys.get("industry_capacity_mt")
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, ys["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, ys["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, ys["water_flow_m3"], prepared.plants))

@@ -66,7 +66,7 @@ def add_year_costs(
         ("rebuild_capex", one_off["rebuild_capex"], int(assumptions.rebuild_lifetime_years)),
     ]
     # 工业：年度部分（固定运维、捕集能耗与耗材、氢路线非氢运行差额、按链路买的氢）用同一折现/年金权重；
-    # 改造 capex 一次性计在路线份额增量上，与煤电 `ccs_retrofit_capex` 同法。
+    # 改造 capex 一次性计在能力存量增量上，与煤电 `ccs_retrofit_capex` 计在改造存量增量上同法。
     payload.cost_exprs["industry_cost"] = (
         df * interval_weight * payload.industry.annual_cost_expr / _COST_SCALE
     )

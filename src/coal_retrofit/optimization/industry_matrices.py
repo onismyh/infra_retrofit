@@ -38,9 +38,9 @@ class IndustryYearData:
     """`industry_year_data` 的输出：一个规划年里每个工业 hub、每条路线的系数。
 
     路线矩阵形状 (hub_count, len(INDUSTRY_ROUTES))、列序同 INDUSTRY_ROUTES；其余形状在旁注明。
-    成本分两部分：`opex_cny` 是年度部分，每个运行年按路线份额计；`capex_cny` 是一次性改造 capex，
-    按路线份额增量计（`model_industry.industry_capex_expr`）。氢路线买氢不在 `opex_cny` 里，
-    由求解器按链路采购。
+    成本分两部分：`opex_cny` 是年度部分，每个运行年按路线份额计；一次性改造 capex 是
+    `capex_cny_per_mt` x 新增能力，计在能力存量的增量上（`model_industry.industry_capex_expr`），
+    能力存量 >= `capacity_mt_per_share` x 份额。氢路线买氢不在 `opex_cny` 里，由求解器按链路采购。
     """
 
     hub_ids: list[str]
@@ -52,7 +52,8 @@ class IndustryYearData:
     reduction_mt: np.ndarray             # CCS 列已扣除放空的再生蒸汽 CO2
     captured_mt: np.ndarray
     opex_cny: np.ndarray                 # 年度：固定运维 + 能耗 + 耗材 + 氢路线非氢运行差额
-    capex_cny: np.ndarray                # 一次性：整个 hub 在该路线上的改造 capex
+    capacity_mt_per_share: np.ndarray    # 份额为 1 时所需能力，Mt/yr：CCS 为捕集量，氢路线为产量
+    capex_cny_per_mt: np.ndarray         # 一次性：每 Mt/yr 新增能力的改造 capex，本年价
     h2_demand_kg_per_share: np.ndarray   # (hub_count,)，氢路线份额为 1 时的年需氢量，kg
     water_m3: np.ndarray
     h2_price_cny_per_kg: float           # 全国供给加权均价，只作报告
@@ -99,8 +100,9 @@ def industry_year_data(
 
     除另有注明外，数组形状均为 `(hub_count, len(INDUSTRY_ROUTES))`。成本分成年度部分
     （`opex_cny` = 固定运维 + 能耗 + 耗材 + 非氢运行差额，每个运行年按路线份额计）与一次性
-    部分（`capex_cny` = 整个 hub 在该路线上的改造 capex，按路线份额的增量计）。氢路线的买氢
-    不在 `opex_cny` 里：它在求解器里按链路购买。`reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
+    部分（`capex_cny_per_mt` x 能力存量的增量；份额为 1 时所需能力是 `capacity_mt_per_share`，
+    随产量指数变化）。氢路线的买氢不在 `opex_cny` 里：它在求解器里按链路购买。
+    `reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
 
     Args:
         industry: 准备好的工业输入。
@@ -147,7 +149,8 @@ def industry_year_data(
     reduction_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     captured_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     opex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
-    capex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    capacity_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    capex_cny_per_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     water_m3 = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     h2_demand_kg = np.zeros(n, dtype=np.float64)  # 氢路线每单位份额的需氢量，kg H2
 
@@ -158,15 +161,17 @@ def industry_year_data(
     # 恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。
     captured_mt[:, CCS] = co2_mt * capture_rate
     captured_t = captured_mt[:, CCS] * 1e6
-    # 捕集岛改造 capex 按 hub 的捕集吨数定规模（每 t/a 能力的 CNY x 捕集的 t/a），与煤电改造
-    # 一样做学习调整；固定运维取该 capex 的一个比例；能耗与耗材按当年价格、按每吨捕集量计。
+    # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造
+    # 一样做学习调整；固定运维取该 capex 的一个比例，与能耗、耗材一样按运行的捕集量计
+    # （煤电 `ccs_om_matrix` 同样按份额计），不按能力存量计。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
     variable_unit = np.array(
         [capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh) for s, c in zip(sectors, coal_price_gj)],
         dtype=np.float64,
     ) * cost_multiplier
-    capex_cny[:, CCS] = captured_t * capex_unit
+    capacity_mt[:, CCS] = captured_mt[:, CCS]
+    capex_cny_per_mt[:, CCS] = capex_unit * 1e6
     opex_cny[:, CCS] = captured_t * (capex_unit * INDUSTRY_CCS_FIXED_OM_FRACTION + variable_unit)
     # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
     # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。
@@ -198,7 +203,8 @@ def industry_year_data(
         opex_delta_unit = h2_route_opex_delta_cny_per_t(
             sector, float(h2_intensity_t_per_t[hub_idx]), rate, h2_multiplier
         )
-        capex_cny[hub_idx, H2] = production_t[hub_idx] * route_capex_unit
+        capacity_mt[hub_idx, H2] = production_t[hub_idx] / 1e6
+        capex_cny_per_mt[hub_idx, H2] = route_capex_unit * 1e6
         opex_cny[hub_idx, H2] = production_t[hub_idx] * (
             route_capex_unit * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + opex_delta_unit
         )
@@ -218,7 +224,8 @@ def industry_year_data(
         reduction_mt=reduction_mt,
         captured_mt=captured_mt,
         opex_cny=opex_cny,
-        capex_cny=capex_cny,
+        capacity_mt_per_share=capacity_mt,
+        capex_cny_per_mt=capex_cny_per_mt,
         h2_demand_kg_per_share=h2_demand_kg,
         water_m3=water_m3,
         h2_price_cny_per_kg=h2_price_mean,
