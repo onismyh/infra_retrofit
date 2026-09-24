@@ -19,7 +19,7 @@ from scipy import sparse
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
-from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState  # noqa: E402
+from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.industry import (  # noqa: E402
     CCS,
@@ -44,7 +44,9 @@ from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs 
 def _capex_by_year(
     industry: IndustryInputs, share: dict[int, float], route: int = CCS,
 ) -> tuple[dict[int, float], dict]:
-    """固定各年 `route` 的份额，最小化一次性 capex 之和，返回每年的 capex 与逐年系数。
+    """固定各年 `route` 的份额，最小化一次性 capex 的现值之和，返回每年未折现的 capex 与逐年系数。
+    与求解器一样按 `_discount_factor` 折现：氢路线的单价不随年份下降，不折现时，产量增长的用例里
+    2030 年的存量在一段区间里都是最优解，结果取决于求解器参数。
     氢路线没有氢链路时份额被钉在 0，所以测氢路线时给唯一的 hub 接一条链路。"""
     scenario = OptimizationScenario(experiment_id="T", description="toy")
     assumptions = OptimizationAssumptions()
@@ -66,7 +68,10 @@ def _capex_by_year(
         industry_capex_expr(payload, payloads[i - 1] if i else None, routes=(route,))
         for i, payload in enumerate(payloads)
     ]
-    model.setObjective(gp.quicksum(exprs))
+    model.setObjective(gp.quicksum(
+        _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * expr
+        for year, expr in zip(years, exprs)
+    ))
     model.optimize()
     assert model.Status == gp.GRB.OPTIMAL
     values = {year: float(expr.getValue()) for year, expr in zip(years, exprs)}
@@ -277,9 +282,12 @@ def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> Non
 
 
 def test_beccs_fixed_om_equals_the_capture_island_om_of_ccs(tmp_path) -> None:
-    """(b) 的另一半：BECCS 的捕集岛就是 CCS 捕集岛，固定运维一列与 CCS 相同（学习后 capex x `ccs_om_fraction`）。
-    2026-09-23 前按 BECCS 的 4 500 元/kW 计，比 CCS 高 29%。不求解。"""
+    """(b) 的另一半，放在本节是为了借用 `_toy_year_matrices`：BECCS 的捕集岛就是 CCS 捕集岛，固定运维一列
+    与 CCS 相同，都等于学习后 capex x `ccs_om_fraction`。2026-09-23 前按 BECCS 的 4 500 元/kW 计，比 CCS 高 29%。
+    不求解。"""
     matrices = _toy_year_matrices(tmp_path / "m", 2050)
     ccs, beccs = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     assert matrices.ccs_om_matrix[0, ccs] > 0.0
     assert matrices.ccs_om_matrix[0, beccs] == pytest.approx(matrices.ccs_om_matrix[0, ccs], rel=1e-12)
+    fraction = OptimizationAssumptions().ccs_om_fraction
+    assert matrices.ccs_om_matrix[0, ccs] == pytest.approx(matrices.ccs_retrofit_capex_matrix[0, ccs] * fraction, rel=1e-12)
