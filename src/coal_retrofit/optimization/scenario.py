@@ -24,8 +24,8 @@ class OptimizationAssumptions:
     retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
     # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），因此不再另设每 MWh
     # 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留生物质掺烧运维，与纯生物质路径的 30 CNY/MWh
-    # 相同：Wang & Cai 2024 SI Table 3 的 gamma2 18.85 $/kW/yr ~ 132 CNY/kW/yr，可变运维 gamma3 未计；按约 4 400 h
-    # 折算，这个小时数：⚠ 假设（无出处）。按改造发电量逐 MWh 收，ST_ 系只收回 gamma2 的 94%-39%（推算见 README §0.2）。
+    # 相同：Wang & Cai 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr，可变运维 γ3 未计；按约 4 400 h
+    # 折算，这个小时数：⚠ 假设（无出处）。按改造发电量逐 MWh 收，ST_ 系只收回 γ2 的 94%-39%（推算见 README §0.2）。
     ccs_fixed_cost_cny_per_mwh: float = 0.0
     biomass_fixed_cost_cny_per_mwh: float = 30.0
     beccs_fixed_cost_cny_per_mwh: float = 30.0

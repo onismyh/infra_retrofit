@@ -1,9 +1,9 @@
 """2026-09-22 的成本口径：显式 capex + 固定运维 + 能耗，并在期末计残值。
 
-分两组。第一组是闭式检查：工业成本辅助函数必须复现它们据以分解的文献锚点，
-并落在 ACCA21 交叉核对区间之内。第二组求解煤电 toy 模型，检查求解器记入的残值抵扣
-等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条收紧 toy 里水泥 hub 的目标，
-核对工业两项 capex 也进了残值台账。
+分两组。第一组是闭式检查：工业成本辅助函数必须复现它们据以分解的文献锚点，隐含的捕集
+成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，允许至多低 10%）。第二组求解煤电 toy 模型，
+检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条
+收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。
 """
 from __future__ import annotations
 
@@ -101,7 +101,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert 0.2 < steam < 0.4
     assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
     assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
-    # 未知省份回退到缺省煤价 `coal_fuel_cost_cny_per_gj`，而不是崩溃。
+    # 未知省份不崩溃。合成氨捕集不用蒸汽，煤价不进这一项，所以这里测不出回退到哪个煤价。
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
     assert data.opex_cny[2, CCS] == pytest.approx(
