@@ -49,7 +49,7 @@ def test_h2_premium_reproduces_its_anchor_and_floors_at_capital(sector: str) -> 
 def test_levelised_capture_cost_sits_near_the_acca21_range(sector: str) -> None:
     lo, hi = ci.INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T[sector]
     implied = ci.levelised_capture_cost_cny_per_t(sector, 0.06, 38.2, 400.0)
-    # 中国项目备案落在 ACCA21 区间低端；允许低于区间下限 10%。
+    # 隐含成本多在 ACCA21 区间低端，长流程钢低于下限 348，所以允许低于区间下限 10%。
     assert 0.9 * lo <= implied <= hi, (sector, implied, lo, hi)
 
 
@@ -101,7 +101,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert 0.2 < steam < 0.4
     assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
     assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
-    # 未知省份回退到全国煤价，而不是崩溃。
+    # 未知省份回退到缺省煤价 `coal_fuel_cost_cny_per_gj`，而不是崩溃。
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
     assert data.opex_cny[2, CCS] == pytest.approx(

@@ -22,17 +22,17 @@ class OptimizationAssumptions:
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
     usd_to_cny: float = 7.0
     retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
-    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），
-    # 因此不再另设每 MWh 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留生物质掺烧运维，
-    # 与纯生物质路径承担的 30 CNY/MWh 相同（Wang & Cai 2024 SI Table 3，gamma2 18.85 $/kW/yr ~ 132 CNY/kW/yr，
-    # 按约 4 400 h 折，4 400 h 无出处，按全机组平均 4 643 h 为 28.4；只计 gamma2，同表可变运维 gamma3 未计）。
+    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），因此不再另设每 MWh
+    # 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留生物质掺烧运维，与纯生物质路径的 30 CNY/MWh
+    # 相同：Wang & Cai 2024 SI Table 3 的 gamma2 18.85 $/kW/yr ~ 132 CNY/kW/yr，可变运维 gamma3 未计；按约 4 400 h
+    # 折算，这个小时数：⚠ 假设（无出处）。按改造发电量逐 MWh 收，ST_ 系只收回 gamma2 的 94%-39%（推算见 README §0.2）。
     ccs_fixed_cost_cny_per_mwh: float = 0.0
     biomass_fixed_cost_cny_per_mwh: float = 30.0
     beccs_fixed_cost_cny_per_mwh: float = 30.0
     ammonia_fixed_cost_cny_per_mwh: float = 80.0  # 掺氨运维；⚠ 假设（无出处）
     # 学习参考年（2030）的捕集岛改造 CAPEX，含压缩，在既有 300-1000 MW 机组上做 90% 胺法
     # 捕集。文献综述 2026-09-10（docs/工业联合减排实现说明.md §9.6）：中值 3 500 CNY/kW，
-    # 区间 2 700-4 400（区间的出处没有记录；主引与上沿原文未核，本地 PDF 的对照值见 README §0.2）。
+    # 区间 2 700-4 400（区间的出处没有记录；主引、上沿与国能锦界原文未核，本地 PDF 的对照值见 README §0.2）。
     #   Yuan J-H et al. 2022, 气候变化研究进展 18(6) 764-776, Table 2：分省 3 318-3 925 CNY/kW，
     #     改造口径（主引）；
     #   Lockwood 2018, IEA Clean Coal Centre for CIAB, Table 4：4 121 CNY(2016)/kW，1000 MW
@@ -52,7 +52,7 @@ class OptimizationAssumptions:
     # 285-323 gce/kWh）各机型折 0.380-0.431。文献值应是供电（净）口径，模型的发电量按利用小时计、应属毛口径
     # （两者都是推断，未核），差一个厂用电率，未修正。
     coal_plant_base_efficiency: float = 0.42
-    coal_fuel_cost_cny_per_gj: float = 38.2             # 查不到省名时用；⚠ 设定值（见 README §0.1）
+    coal_fuel_cost_cny_per_gj: float = 38.2             # 查不到省名时用；⚠ 假设（设定值，见 README §0.1）
     # 捕集岛固定运维，按每年占（经学习曲线调整的）改造 CAPEX 的比例计。
     # An et al. 2025 (Nat Commun) SI Table 7 给出煤电 CCS 改造在每个预测年的
     # 固定运维 / 投资 = 20.7/381.9 = 5.4%；此处取 5%。
@@ -305,7 +305,7 @@ class OptimizationAssumptions:
     branch_capex_multiplier: float = 1.35
     # 在既有管道走廊内新铺管道：节省的是路权（以及未量化的审批时间）。NETL 2013
     # （DOE/NETL-2013/1614，转载于 IEAGHG 2013/18 Table 20）：ROW = 51 200 + 1.28 L
-    # (577 D + 29 788) USD，即 24-40 inch 管道在 100 miles 长度上 capex 的 2-3%。
+    # (577 D + 29 788) USD，即 24-40 英寸管道在 100 英里长度上 capex 的 2-3%。
     # 0.97 = 去掉这部分 ROW 份额。原为 0.4（无出处）；据称一篇德国拓扑论文用了 10% 的
     # 走廊折扣，但未能打开（ScienceDirect S2772656826001004）——须经作者核实后才可用 0.9。
     corridor_capex_multiplier: float = 0.97
@@ -352,7 +352,7 @@ class OptimizationAssumptions:
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # 最高档（50% 掺烧）≈125 CNY/kW。
     # 中国全改造文献：90 CNY/kW（CNERI 2025，100% 改造）+ 储存；MIT 供应系统 ≈163 CNY/kW
     # （Deng et al. 2024）；仅燃烧器 121.6 CNY/kW（Li & Li 2022，未确认）。三者口径各异，中位数
-    # 121.6 取整为 125，对应第 5 档；每档线性 25 CNY/kW，这个形状：⚠ 假设（无出处）。
+    # 121.6，取 125（每档 25 的整数倍），对应第 5 档；每档线性 25 CNY/kW，这个形状：⚠ 假设（无出处）。
     # （原值 800,000 是中国文献集中区间的 ~30 倍。）
     # 生物质到厂成本构成（Wang et al. 2024, Nat Commun）
     # 收购价 base_cost_cny_per_gj 在供给曲线 CSV 里（`constants.BIOMASS_COST_BASE` = 20 元/GJ）。

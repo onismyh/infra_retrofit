@@ -222,7 +222,7 @@ def _offshore_basin_labels(
 
     封存体按 2 像素膨胀（`_DILATION_PIXELS`）划定。把同一掩膜继续膨胀，会把
     同一沉积盆地内的封存体融成一个连通域，而不同盆地仍保持分开。默认值背后的
-    扫描（scratch `offshore_basin_sweep.py`，2026-09-03）对 25 个海上封存体给出：
+    扫描（临时脚本 `offshore_basin_sweep.py`，2026-09-03）对 25 个海上封存体给出：
 
         10 km -> 9 个盆地   20 km -> 8   **30 km -> 7**   40 km -> 5   60 km -> 4   100 km -> 3
 

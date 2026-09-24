@@ -95,7 +95,7 @@ def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFram
     `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_hb_capex_usd_per_kg`、加上新年金，该列随之改写。
     表里那一份是构建输入时算的（2026-09-23 前的输入按 8%、20 年），模型自己折现与折年金的地方则都用情景贴现率。
     由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。没有这一列的表
-    （toy 测试的输入）不拆分成本，原样使用并记 warning。
+    （toy 测试的输入）不拆分成本，原样使用并记一条告警日志。
 
     Args:
         ammonia: 读入的 `ammonia_supply_curve.csv`。

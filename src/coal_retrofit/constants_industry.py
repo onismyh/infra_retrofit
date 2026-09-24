@@ -248,7 +248,7 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 
 # --- CO2 捕集：改造 capex，单位为每吨年捕集能力的 CNY -------------------------------------
 # 基准年 2030（由煤电改造同样使用的 `ccs_learning_factor` 对其缩放），含压缩至管输压力。
-# 只计捕集岛。水泥、长流程钢为中国项目备案；电炉钢为 ⚠ 假设，合成氨 / 甲醇由全成本反推：
+# 只计捕集岛。水泥、长流程钢为中国项目备案（后者另含 IEAGHG 一个值）；电炉钢为 ⚠ 假设，合成氨 / 甲醇由全成本反推：
 #   cement   中联水泥青州 20 万 t/a 全氧燃烧耦合碳捕集示范线 2.56 亿元 -> 1 280 元/(t·a)
 #            （中国建材，2023 开工）；中联 20 万 t/a 捕集提纯项目 1.98 亿元 -> 990；
 #            海螺白马山 5 万 t/a 5 500 万元 -> 1 100（2018 投运，含食品级提纯）。
@@ -329,9 +329,9 @@ INDUSTRY_CAPTURE_LIFETIME_YEARS: Final[int] = 20
 # ACCA21 / China Energy News 的平准化捕集成本，CNY/吨，仅作交叉核对（2026-09-22 起不进
 # 目标函数）。水泥 305-730（ACCA21；China Energy News 430-650），钢铁 348-560，煤电
 # 300-450，高浓度煤化工 <100（ACCA21 105-250）。按 38 元/GJ 煤价、0.40 元/kWh 电价和
-# 6%/20 a 计，上面的参数隐含：水泥 ~345，钢铁 ~325，高浓度 ~110 元/t——都在各自区间的
-# 低端（钢铁比 ACCA21 的 348 低 7%），因为 capex 锚点是中国项目备案而非欧洲首台套
-# （FOAK）估算，且能源按模型的煤价与电价计价，而不是按文献价格。
+# 6%/20 a 计，上面的参数隐含：水泥 ~345，钢铁 ~325，高浓度 ~110 元/t。水泥与高浓度落在各自
+# 区间的低端，钢铁比 ACCA21 的下限 348 低 7%。能源按模型的煤价与电价计价，而不是按文献价格；
+# capex 的取值与出处见上方 `INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR` 的注释。
 INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T: Final[dict[str, tuple[float, float]]] = {
     SECTOR_STEEL_BF: (348.0, 560.0),
     SECTOR_STEEL_EAF: (305.0, 730.0),
@@ -369,7 +369,7 @@ INDUSTRY_H2_ABATEMENT_FRACTION: Final[dict[str, float]] = {
 # 氢路线的净增量成本，单位为每吨产品的 CNY，对应旁边给出的参考氢价。"净" = 绿氢采购
 # + 新路线 CAPEX + 运维 - 省下的化石原料/还原剂。模型按求解年份的氢价重新计价：
 #
-#     premium(P) = premium_ref + h2_intensity_t_per_t * 1000 * (P - P_ref)   [CNY / t product]
+#     premium(P) = premium_ref + h2_intensity_t_per_t * 1000 * (P - P_ref)   [CNY / t 产品]
 #
 # 即在文献点附近做一阶展开。在氢价维度上精确——氢价是主导项（据 NER 2024，占绿色
 # 甲醇成本的 ~70%）——其余各方面保持不变。这里 `h2_intensity` 不是常数：它取自点源表
