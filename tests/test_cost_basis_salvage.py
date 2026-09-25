@@ -3,7 +3,8 @@
 分两组。第一组是闭式检查：工业成本辅助函数必须复现它们据以分解的文献锚点，隐含的捕集
 成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，允许至多低 10%）。第二组求解煤电 toy 模型，
 检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条
-收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。
+收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。第二组要 Gurobi，在 `_solve` 里
+`importorskip`，第一组没有 Gurobi 也照跑。
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from coal_retrofit.optimization.salvage import horizon_end_year, remaining_fract
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from test_multiperiod_investment_logic import _toy_assumptions, _write_targets, _write_toy_inputs
+from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs
 
 
 # ---------------------------------------------------------------------------- 闭式检查 ---
@@ -147,6 +148,7 @@ def test_horizon_end_year_uses_last_interval() -> None:
 
 
 def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1.0, 1.0)):
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     years = (2030, 2040, 2050)
     _write_targets(
         paths, dict(zip(years, power_caps, strict=True)), dict(zip(years, cement_caps, strict=True))

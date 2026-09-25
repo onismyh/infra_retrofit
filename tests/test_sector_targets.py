@@ -11,7 +11,7 @@ from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs
+from toy_inputs import _write_targets, _write_toy_inputs
 
 YEARS = (2030, 2040)
 
