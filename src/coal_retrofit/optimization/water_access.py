@@ -102,7 +102,8 @@ def _withdrawal_matrices(
         return None, None, 1.0
 
     plants = prepared.plants
-    hours = plants["province_mode"].astype(str).map(assumptions.province_operating_hours)
+    # 与 `province_cf` 同样按换过写法的省名查（`_prepare_plants`）。
+    hours = plants["province_name"].map(assumptions.province_operating_hours)
     hours = hours.fillna(assumptions.capacity_factor * 8760.0)
     generation = plants["total_capacity_mw"].astype(float) * hours
     base, capture, air_base, air_capture, factor = calibrated_withdrawal_intensities(

@@ -49,7 +49,7 @@
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44`、`optimization/_shared.py:166` |
 | 固定运维 | 捕集岛：学习后 capex × 5%/年，按改造 MW × 份额计 | CCS：capex × 5%/年；H2 路线：capex × 3.5%/年；都按当年运行量（捕集量或产量 × 份额）计，不按能力存量 K 计 | `optimization/plant_matrices.py:124`、`optimization/industry_matrices.py:176`、`:209` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:138-143` |
-| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `optimization/scenario.py:400`、`optimization/industry_matrices.py:133` |
+| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `optimization/scenario.py:428`、`optimization/industry_matrices.py:133` |
 | 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`:124`、`optimization/industry_matrices.py:169`、`:204` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:62`、`optimization/model_costs.py:61-83` |
 | 到寿命后 | 管道到 30 年退出，可在原址重铺；捕集岛、掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集岛、H2 路线同样照常运行 | `optimization/model_linking.py:176-202`；`optimization/salvage.py` 文件头注明为已知简化 |
@@ -72,28 +72,28 @@
 重算由 `tests/test_discount_rate.py` 覆盖（不求解，不依赖 Gurobi）——真实输入（v7 / v9 / v9.1 都是按 8%、20 年算的 0.0891 USD/kg；
 `_indtree/inputs/` 的那张表按 `_indtree/README.md` 是仓库根的副本，但不在 git 里，未核）上每条氨链路的成本都会变。
 
-另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/scenario.py:67-70`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
+另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/scenario.py:76-79`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
 9.92 $/GJ 是气价；京津两行的气价、生物质价与潜力完全相同，取天津的 5.51 $/GJ。煤电没有北京机组；仓库根
 `inputs/industry_hubs.csv` 里只有 1 个北京 hub（水泥 cement_039），它的捕集蒸汽变便宜（`_indtree/inputs/` 的 hub 表不在 git 里，未核）。
 查不到省名时用的缺省煤价 38.2 元/GJ（`coal_fuel_cost_cny_per_gj`）原是 30 省的简单平均，含北京误取的 69.4；更正后简单平均
 为 37.2，缺省值没有跟改，改标 ⚠ 假设（设定值）。仓库根 hub 表里用到它的原是写作 "Neimenggu" 的 28 个 hub（煤价表里是
 "Inner Mongolia"，其中 14 个水泥 hub 的捕集蒸汽因此按 38.2 而不是 17.9 计价）与 4 个西藏 hub（优化侧已剔除）。
-2026-09-25 起读入时按 `optimization/scenario.py` 的 `PROVINCE_NAME_ALIASES` 把 "Neimenggu" 换成 "Inner Mongolia"，
+2026-09-25（PR #3 合入）起读入时按 `optimization/scenario.py` 的 `PROVINCE_NAME_ALIASES` 把 "Neimenggu" 换成 "Inner Mongolia"，
 仍查不到煤价的省名会告警；仓库根输入里已没有 hub 或机组用到缺省煤价（`_indtree/inputs/` 不在 git 里，未核，
 看建模时有无这条告警）。
 
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
 1. **煤电有几项运维不是"capex 的比例"。** 生物质掺烧、BECCS 的掺烧部分、掺氨按发电量收 30 / 30 / 80 元/MWh
-   （`optimization/scenario.py:30-32`），与掺烧档位无关，和 §二.7 字面的"固定运维 = capex 比例/年"不一致；空冷改造只有
+   （`optimization/scenario.py:39-41`），与掺烧档位无关，和 §二.7 字面的"固定运维 = capex 比例/年"不一致；空冷改造只有
    capex（300 元/kW）和背压能耗，没有固定运维项。工业 CCS 另有 15 或 5 元/t 的耗材，煤电 CCS 没有单列。
 2. **工业没有退役和搁浅资产。** 煤电有退役份额、搁浅资产（3 500 元/kW × 剩余寿命 / 20 年）和原址重建
    （3 500 × 70% 元/kW）；工业产量完全外生，没有厂址级退役决策（`optimization/industry.py` 模块说明的"已知偏差"）。
 3. **工业 H2 路线的 capex 没有学习曲线**（两侧 CCS 都有）。H2 路线的非氢运行差额由文献溢价锚点反推，目标计入
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:113` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
-   （`optimization/data_prep.py:333`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep.py:81-90`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access.py:189-206`、`optimization/model_costs.py:163-167`）。
+   （`optimization/data_prep.py:334`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep.py:82-91`），再加情景加价
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access.py:190-207`、`optimization/model_costs.py:163-167`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **固定运维的计费基数不同。** 煤电捕集岛按改造容量 MW × 份额计（`optimization/plant_matrices.py:122-133`、
    `optimization/model_costs.py:138-141`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；工业按当年运行量计
@@ -254,7 +254,7 @@ docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中
 | 中文为主 / 混合 / 英文为主 / 无注释 | 15 / 3 / 24 / 13 | 45 / 0 / 0 / 13 |
 
 - 剩下的 80 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
-- `tests/`：中文 26 / 英文 105（20%）→ 196 / 5（98%）。
+- `tests/`：中文 26 / 英文 105（20%）→ PR #2 合入时 196 / 5（98%）。
 - 13 个无注释文件（`experiments/` 全部、`reporting/core.py`、`paths.py`、`spatial.py` 等）没有补注释；
   `scripts/` 与 `_indtree/scripts/` 不在本轮范围，仍约 26–27% 中文。
 
@@ -269,7 +269,7 @@ docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中
   还要再补残值项。原来工业侧的 `dict[str, Any]` 和两处含义不同的 `annual_cost_cny` 键已去掉。
 - 原 `optimization/industry.py`（664 行）按职责拆为 `industry_inputs.py`（输入与氢链路，183 行）、
   `industry_matrices.py`（逐年系数，263 行）、`model_industry.py`（变量、约束与 capex 表达式，235 行），
-  `industry.py` 只留模块说明与再导出（104 行）。
+  `industry.py` 只留模块说明与再导出（104 行）；行数均为 PR #2 合入时。
 - 结果按表拆为 `results_plant` / `results_network` / `results_resources` / `results_industry`。
 - 批 1 前后，toy 上 15 个变体的模型与解逐字节一致。
 

@@ -13,7 +13,7 @@ PATHWAYS = ("unabated", "retire", "ccs", "biomass", "beccs", "ammonia")
 # 输入表里与分省煤价表（`OptimizationAssumptions.province_coal_cost_cny_per_gj`）写法不同的省名，
 # 读入时（`prepare_industry`、`_prepare_plants`）由 `OptimizationAssumptions.canonical_provinces`
 # 换成煤价表的写法。只收有证据的：仓库根 `inputs/industry_hubs.csv` 的 28 个合成氨、水泥、甲醇 hub
-# 把内蒙古写作拼音 "Neimenggu"，2026-09-25 前查不到煤价，退回 `coal_fuel_cost_cny_per_gj`。
+# 把内蒙古写作拼音 "Neimenggu"，2026-09-25（PR #3 合入）前查不到煤价，退回 `coal_fuel_cost_cny_per_gj`。
 PROVINCE_NAME_ALIASES: dict[str, str] = {"Neimenggu": "Inner Mongolia"}
 
 

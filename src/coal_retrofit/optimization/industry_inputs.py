@@ -23,7 +23,7 @@ class IndustryInputs:
     """为优化准备好的工业 hub，以及氢价路径。"""
 
     hubs: pd.DataFrame
-    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，并加上 `basin_code`。
+    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，省名已换成分省煤价表的写法，并加上 `basin_code`。
     h2_price_cny_per_kg: dict[int, float]
     # 每个规划年的全国供给加权 LCOH，自 2026-09-10 起只作报告：
     # 模型按链路、以各节点自己的价格买氢。

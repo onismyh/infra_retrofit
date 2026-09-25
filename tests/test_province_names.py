@@ -7,15 +7,20 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
+from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from coal_retrofit.builders import water_quota
 from coal_retrofit.constants_industry import capture_variable_cost_cny_per_t
 from coal_retrofit.optimization.data_prep import _prepare_plants
 from coal_retrofit.optimization.industry import CCS, industry_year_data
 from coal_retrofit.optimization.industry_inputs import prepare_industry
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.water_access import _withdrawal_matrices
 from coal_retrofit.paths import ProjectPaths
 
 _SCENARIO = OptimizationScenario(experiment_id="T", description="toy")
@@ -81,15 +86,54 @@ def test_unknown_province_warns_and_prices_steam_at_the_default_coal_price(tmp_p
 
 
 def test_plant_province_names_get_the_same_alias_and_warning(tmp_path, caplog) -> None:
-    """煤电侧同样换写法、同样告警（现有 plants.csv 的省名全部查得到，这里是防护）。"""
+    """煤电侧同样换写法、同样告警（现有 plants.csv 的省名全部查得到，这里是防护）。利用小时也按换过的
+    写法查：别名机组取内蒙古的小时数，查不到的退回 `capacity_factor`。"""
     paths = ProjectPaths(root=tmp_path)
     paths.ensure_inputs_dir()
     pd.DataFrame({
         "plant_id": ["P1", "P2"], "province_mode": ["Neimenggu", "Atlantis"],
         "total_capacity_mw": [1000.0, 1000.0], "dominant_cooling_technology": ["recirculating", "recirculating"],
     }).to_csv(paths.inputs_dir / "plants.csv", index=False)
+    assumptions = OptimizationAssumptions()
     with caplog.at_level(logging.WARNING):
-        plants = _prepare_plants(paths, _SCENARIO, OptimizationAssumptions())
+        plants = _prepare_plants(paths, _SCENARIO, assumptions)
     assert list(plants["province_name"]) == ["Inner Mongolia", "Atlantis"]
     warnings = _coal_price_warnings(caplog)
     assert len(warnings) == 1 and "Atlantis" in warnings[0]
+    hours = assumptions.province_operating_hours["Inner Mongolia"]
+    assert plants.loc[0, "province_cf"] * 8760.0 == pytest.approx(hours, rel=1e-12)
+    assert plants.loc[1, "province_cf"] == pytest.approx(assumptions.capacity_factor, rel=1e-12)
+
+
+def test_the_warning_counts_rows_and_names_each_missing_province_once(caplog) -> None:
+    """同一张表只告警一次：行数按行计，省名去重后排序；别名照换，按原顺序返回。"""
+    with caplog.at_level(logging.WARNING):
+        names = OptimizationAssumptions().canonical_provinces(["Atlantis", "Neimenggu", "Atlantis", "Lemuria"], "plants")
+    assert names == ["Atlantis", "Inner Mongolia", "Atlantis", "Lemuria"]
+    warnings = _coal_price_warnings(caplog)
+    assert len(warnings) == 1
+    assert "3 row(s)" in warnings[0] and "['Atlantis', 'Lemuria']" in warnings[0]
+
+
+def test_withdrawal_calibration_reads_hours_by_the_canonical_province_name(monkeypatch) -> None:
+    """流域取水指标的直流冷却标定按分省利用小时估发电量，与 `province_cf` 一样按换过写法的省名
+    （`province_name`）查。按原始 `province_mode` 查时，"Neimenggu" 会退回 `capacity_factor` x 8760。"""
+    captured: dict[str, np.ndarray] = {}
+
+    def _calibrate(
+        plants: pd.DataFrame, generation_mwh: pd.Series
+    ) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, float]:
+        captured["generation"] = generation_mwh.to_numpy()
+        zeros = pd.Series(np.zeros(len(plants)), index=plants.index)
+        return zeros, zeros, zeros, zeros, 1.0
+
+    monkeypatch.setattr(water_quota, "calibrated_withdrawal_intensities", _calibrate)
+    plants = pd.DataFrame({
+        "province_mode": ["Neimenggu"], "province_name": ["Inner Mongolia"], "total_capacity_mw": [1000.0],
+    })
+    scenario = OptimizationScenario(experiment_id="T", description="toy", water_mode="grid_supply")
+    assumptions = replace(OptimizationAssumptions(), water_budget="official_quota")
+    intensity = np.ones((1, len(PATHWAYS)))
+    _withdrawal_matrices(SimpleNamespace(plants=plants), scenario, assumptions, intensity, intensity, 2030)
+    hours = assumptions.province_operating_hours["Inner Mongolia"]
+    assert captured["generation"][0] == pytest.approx(1000.0 * hours, rel=1e-12)
