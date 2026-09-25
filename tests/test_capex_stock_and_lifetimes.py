@@ -175,7 +175,8 @@ def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
 def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
     """全模型求解：钢铁组 2040、2050 年要比 2030 年减 70%。长流程钢的 CCS 最多减约 63%（捕集 90% x
     (1 - 再生蒸汽放空约 0.30)），氢路线减 95%，所以必须新建氢路线产能。目标函数里的 `industry_capex`
-    逐年等于折现后的明细表 `cost_capital_cny` 之和；目标函数漏掉氢路线 capex 时（残值台账里仍有），
+    逐年等于折现后的明细表 `cost_capital_cny` 之和。目标函数漏掉氢路线 capex、残值台账里仍有时，能力存量
+    没有上界，期末残值抵扣使目标无下界，求解返回 unbounded，在 status 断言处失败；台账里也一起漏掉时，
     2040 年两者差出氢路线那一份。"""
     years = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
