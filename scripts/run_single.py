@@ -39,6 +39,7 @@ from coal_retrofit.optimization.results import (
     _build_co2_flow_direction_table,
     _build_plant_cost_table,
     _build_industry_detail_table,
+    _alive_edge_added_stock,
 )
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.constants import PLANNING_YEARS
@@ -48,8 +49,8 @@ from coal_retrofit.constants import PLANNING_YEARS
 #
 # ST_ 系（作者决定 2026-09-10/11）：部门碳目标（China TIMES CN60 四组轨迹，各组自身 2030 基线的比例）
 # + 煤电利用小时轨迹 3600/3100/2000/1500 h + 工业产量指数；MIPGap 统一 3%（CLAUDE.md 二.2），
-# 任何差值只能按可证区间报告。成本口径自 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，
-# 此前落盘的 _indtree/results/ 不得与新解相减。
+# 任何差值只能按可证区间报告。成本口径自 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，09-23 的
+# PR #2 又改了目标函数与约束：PR #2 合入之前落盘的 _indtree/results/ 都不得与之后的新解相减。
 _ST_COMMON: dict = {
     "mip_gap": 0.03,
     "sector_target_source": "times_cn60",
@@ -135,12 +136,16 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
     )
 
     year_summaries = {}
-    prev_industry_share = None
+    prev_industry_capacity = None
+    new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
         share = ys["share"]
         year_data = ys["year_data"]
         interval_years = scenario.interval_years(years, year_index, assumptions)
+        state_track.edge_added_stock_mtpa = _alive_edge_added_stock(
+            new_cap_by_year, year, assumptions.pipeline_lifetime_years, len(prepared.network.edges)
+        )
         state_before = state_track.clone()
 
         # Aggregate summary, weighted by THIS year's generation (utilisation trajectory applied)
@@ -153,23 +158,23 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         if ys.get("industry_share") is not None:
             iy = year_data.industry
             ish = ys["industry_share"]
-            groups = np.asarray(iy["target_groups"]).astype(str)
-            residual_hub = iy["baseline_emissions_mt"] - (iy["reduction_mt"] * ish).sum(axis=1)
+            groups = np.asarray(iy.target_groups).astype(str)
+            residual_hub = iy.baseline_emissions_mt - (iy.reduction_mt * ish).sum(axis=1)
             industry_summary = {
-                "baseline_mt": float(iy["baseline_emissions_mt"].sum()),
-                "reduction_mt": float((iy["reduction_mt"] * ish).sum()),
+                "baseline_mt": float(iy.baseline_emissions_mt.sum()),
+                "reduction_mt": float((iy.reduction_mt * ish).sum()),
                 "residual_by_group_mt": {
                     g: float(residual_hub[groups == g].sum()) for g in sorted(set(groups))
                 },
-                "captured_mt": float((iy["captured_mt"] * ish).sum()),
+                "captured_mt": float((iy.captured_mt * ish).sum()),
                 "h2_kg": float(np.sum(ys.get("industry_h2_flow_kg", np.zeros(0)))),
-                "water_m3": float((iy["water_m3"] * ish).sum()),
+                "water_m3": float((iy.water_m3 * ish).sum()),
                 "cost_annual_cny": float(ys["cost_breakdown_cny"].get("industry_cost", 0.0)),
                 "cost_capex_cny": float(ys["cost_breakdown_cny"].get("industry_capex", 0.0)),
-                "h2_price_national_mean_cny_per_kg": float(iy["h2_price_cny_per_kg"]),
+                "h2_price_national_mean_cny_per_kg": float(iy.h2_price_cny_per_kg),
                 "share_by_route": {
-                    route: float((iy["baseline_emissions_mt"] * ish[:, idx]).sum()
-                                 / max(float(iy["baseline_emissions_mt"].sum()), 1e-9))
+                    route: float((iy.baseline_emissions_mt * ish[:, idx]).sum()
+                                 / max(float(iy.baseline_emissions_mt.sum()), 1e-9))
                     for idx, route in enumerate(INDUSTRY_ROUTES)
                 },
             }
@@ -223,10 +228,10 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         ))
         industry_detail_tables.append(_build_industry_detail_table(
             prepared, year, year_data.industry, ys.get("industry_share"),
-            prev_share_values=prev_industry_share, h2_flow_kg=ys.get("industry_h2_flow_kg"),
-            year_data=year_data,
+            h2_flow_kg=ys.get("industry_h2_flow_kg"), year_data=year_data,
+            capacity_mt=ys.get("industry_capacity_mt"), prev_capacity_mt=prev_industry_capacity,
         ))
-        prev_industry_share = ys.get("industry_share")
+        prev_industry_capacity = ys.get("industry_capacity_mt")
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, ys["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, ys["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, ys["water_flow_m3"], prepared.plants))
@@ -243,7 +248,7 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
         ))
 
         if scenario.carry_state_between_years:
-            state_track.edge_added_stock_mtpa = state_track.edge_added_stock_mtpa + ys["new_cap_mtpa"]
+            new_cap_by_year[year] = ys["new_cap_mtpa"]
             state_track.remaining_storage_mt = np.maximum(0.0, state_track.remaining_storage_mt - ys["storage_use_mtpa"] * interval_years)
         prev_share_values = share
         prev_retrofit_installed = ys["retrofit_installed"]

@@ -106,7 +106,7 @@ def add_inter_period_constraints(
                 name=f"rebuild_irreversible_{yr_sfx}",
             )
 
-    # 改造存量单调：已装 CCS/BECCS 改造容量不可逆。
+    # 改造存量单调：已装捕集岛（CCS 与 BECCS 共用）不可逆。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
             ri_curr = year_payloads[yi].retrofit_installed
@@ -176,14 +176,15 @@ def add_capacity_constraints(
     current_year = int(payload.year)
     lifetime = assumptions.pipeline_lifetime_years
     if scenario.carry_state_between_years:
-        # 只累计仍在寿命内的往期新增容量。
+        # 只累计仍在寿命内的往期新增容量：流量上限与累计新增上限都只数在役的管，到寿命的管可在
+        # 原址重建。2026-09-23 前累计新增上限把已到寿命的管也算进去，边一旦铺满就再也不能重建。
         alive_indices = [
             past_idx for past_idx in range(year_position + 1)
             if current_year - int(year_payloads[past_idx].year) < lifetime
         ]
         model.addConstrs(
             (
-                gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in range(year_position + 1))
+                gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
                 <= edge_max_new_total[edge_idx]
                 for edge_idx in range(edge_count)
             ),

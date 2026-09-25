@@ -7,7 +7,7 @@ def captured_fraction(
     biomass_blend: float = 0.0,
     ammonia_blend: float = 0.0,
 ) -> float:
-    """Physical CO2 sent to transport/storage per baseline plant emission."""
+    """每单位电厂基线排放中，送去运输 / 封存的物理 CO2。"""
     pathway_name = pathway.strip().lower()
     if pathway_name in {"ccs", "beccs"}:
         return float(capture_rate)
@@ -20,12 +20,11 @@ def reduction_fraction(
     biomass_blend: float = 0.0,
     ammonia_blend: float = 0.0,
 ) -> float:
-    """Net emission reduction per baseline plant emission.
+    """每单位电厂基线排放的净减排量。
 
-    BECCS separates physical capture from net accounting:
-    captured CO2 is eta * E, while net reduction includes biomass substitution
-    and the captured biogenic fraction, giving eta + beta under the model's
-    equal-carbon-intensity assumption.
+    BECCS 把物理捕集与净核算分开：
+    捕集的 CO2 为 eta * E，而净减排还包括生物质替代和被捕集的生物源部分，
+    在模型的等碳强度假设下合计为 eta + beta。
     """
     pathway_name = pathway.strip().lower()
     if pathway_name == "unabated":
@@ -49,7 +48,7 @@ def residual_fraction(
     biomass_blend: float = 0.0,
     ammonia_blend: float = 0.0,
 ) -> float:
-    """Net residual emissions per baseline plant emission."""
+    """每单位电厂基线排放的净残余排放。"""
     return 1.0 - reduction_fraction(
         pathway,
         capture_rate,
@@ -59,7 +58,7 @@ def residual_fraction(
 
 
 def blend_level_to_ratio(level: object, levels: tuple[float, ...]) -> float:
-    """Convert a solver blend-level index into a physical blend ratio."""
+    """把求解器的掺烧档位下标转换为物理掺烧比例。"""
     if level is None:
         return 0.0
     value = float(level)

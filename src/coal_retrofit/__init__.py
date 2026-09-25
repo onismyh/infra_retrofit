@@ -1,1 +1,1 @@
-"""Coal retrofit preprocessing package."""
+"""煤电改造预处理包。"""

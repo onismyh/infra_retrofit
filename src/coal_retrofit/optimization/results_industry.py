@@ -7,44 +7,45 @@ import pandas as pd
 from ..constants import AMMONIA_FLOW_SCALE
 from ..constants_industry import INDUSTRY_ROUTES
 from ._shared import PreparedInputs
-from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED
+from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED, IndustryYearData
 from .year_types import YearData
 
 
 def _build_industry_detail_table(
     prepared: PreparedInputs,
     year: int,
-    industry_year_data: dict | None,
+    industry_year_data: IndustryYearData | None,
     share_values: np.ndarray | None,
-    prev_share_values: np.ndarray | None = None,
     h2_flow_kg: np.ndarray | None = None,
     year_data: YearData | None = None,
+    capacity_mt: np.ndarray | None = None,
+    prev_capacity_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """One row per industrial hub per year: routes chosen, abatement, capture, water, cost.
+    """每个工业 hub 每年一行：所选路线、减排、捕集、用水、成本。
 
-    Costs follow the model's own split: `cost_annual_cny` is the fixed O&M, capture energy
-    and consumables (H2 route: the non-hydrogen operating delta) plus the hydrogen actually
-    bought on the hub's links this year, `cost_capital_cny` the one-time retrofit capex on the
-    route-share increment (whole share in the first year). The end-of-horizon salvage credit
-    is not attributed per hub; it is the `salvage_credit` row of `cost_breakdown.csv`.
+    成本沿用模型自己的拆分：`cost_annual_cny` 是固定运维、捕集能耗与耗材（氢路线为非氢运行
+    差额），再加本年在该 hub 链路上实际买的氢；`cost_capital_cny` 是按能力存量增量计的一次性
+    改造 capex（第一年按整个存量计）。期末残值抵扣不分摊到各 hub，它是 `cost_breakdown.csv`
+    里的 `salvage_credit` 一行。
 
     Args:
-        prepared: Prepared inputs; `prepared.industry` carries the hub frame.
-        year: Planning year.
-        industry_year_data: The year's industrial coefficient block, or None when industry off.
-        share_values: Solved route shares, shape (hub_count, len(INDUSTRY_ROUTES)).
-        prev_share_values: Previous year's shares (None in the first year).
-        h2_flow_kg: Solved hydrogen flow per link, kg.
-        year_data: The year's matrices, for the hydrogen link costs and incidence.
+        prepared: 准备好的输入；`prepared.industry` 带 hub 表。
+        year: 规划年。
+        industry_year_data: 本年的工业系数块；工业关闭时为 None。
+        share_values: 求解得到的路线份额，形状 (hub_count, len(INDUSTRY_ROUTES))。
+        h2_flow_kg: 求解得到的每条链路氢流量，kg。
+        year_data: 本年的矩阵，用于取氢链路成本与关联矩阵。
+        capacity_mt: 求解得到的路线能力存量，Mt/yr，形状同 `share_values`；None 时按
+            `capacity_mt_per_share` x 份额近似。
+        prev_capacity_mt: 上一年的能力存量（第一年为 None）。
 
     Returns:
-        Empty frame with the right columns when industry is off, so downstream readers get a
-        frame either way.
+        工业关闭时返回列齐全的空表，这样下游读取方无论哪种情况都能拿到一张表。
     """
     columns = [
         "year", "hub_id", "sector", "target_group", "province", "longitude", "latitude", "basin_code",
         "output_index", "production_kt_per_year", "baseline_co2_mt", "process_co2_mt",
-        "share_unabated", "share_ccs", "share_h2",
+        "share_unabated", "share_ccs", "share_h2", "capacity_ccs_mt", "capacity_h2_mt",
         "reduction_mt", "residual_mt", "captured_mt", "h2_kg",
         "water_m3", "water_base_m3", "water_capture_increment_m3",
         "cost_cny", "cost_capital_cny", "cost_annual_cny", "cost_h2_purchase_cny",
@@ -53,16 +54,18 @@ def _build_industry_detail_table(
     if industry_year_data is None or share_values is None:
         return pd.DataFrame(columns=columns)
     hubs = prepared.industry.hubs
-    reduction = industry_year_data["reduction_mt"]
-    baseline = industry_year_data["baseline_emissions_mt"]
-    captured = industry_year_data["captured_mt"]
-    water = industry_year_data["water_m3"]
-    opex = industry_year_data["opex_cny"]
-    capex = industry_year_data["capex_cny"]
-    output_scale = industry_year_data.get("output_scale", np.ones(len(hubs)))
-    h2_price_mean = float(industry_year_data["h2_price_cny_per_kg"])
+    reduction = industry_year_data.reduction_mt
+    baseline = industry_year_data.baseline_emissions_mt
+    captured = industry_year_data.captured_mt
+    water = industry_year_data.water_m3
+    opex = industry_year_data.opex_cny
+    unit_capex = industry_year_data.capex_cny_per_mt
+    if capacity_mt is None:
+        capacity_mt = industry_year_data.capacity_mt_per_share * share_values
+    output_scale = industry_year_data.output_scale
+    h2_price_mean = float(industry_year_data.h2_price_cny_per_kg)
     n_hubs = len(hubs)
-    # Hydrogen bought per hub: link flows x link costs, folded onto hubs with the incidence.
+    # 每个 hub 买的氢：链路流量 x 链路成本，用关联矩阵归到各 hub。
     h2_kg_by_hub = np.zeros(n_hubs)
     h2_cost_by_hub = np.zeros(n_hubs)
     if (
@@ -77,12 +80,13 @@ def _build_industry_detail_table(
     rows: list[dict[str, object]] = []
     for hub_idx, hub in enumerate(hubs.itertuples(index=False)):
         share = share_values[hub_idx]
-        prev = prev_share_values[hub_idx] if prev_share_values is not None else np.zeros_like(share)
+        cap = capacity_mt[hub_idx]
+        prev_cap = prev_capacity_mt[hub_idx] if prev_capacity_mt is not None else np.zeros_like(cap)
         annual_ccs = float(opex[hub_idx, _CCS] * share[_CCS])
         annual_h2 = max(0.0, float(opex[hub_idx, _H2] * share[_H2]) + float(h2_cost_by_hub[hub_idx]))
         capital = float(
-            capex[hub_idx, _CCS] * max(0.0, share[_CCS] - prev[_CCS])
-            + capex[hub_idx, _H2] * max(0.0, share[_H2] - prev[_H2])
+            unit_capex[hub_idx, _CCS] * max(0.0, cap[_CCS] - prev_cap[_CCS])
+            + unit_capex[hub_idx, _H2] * max(0.0, cap[_H2] - prev_cap[_H2])
         )
         base_water = float(water[hub_idx, _UNABATED])
         total_water = float(sum(water[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))
@@ -103,6 +107,8 @@ def _build_industry_detail_table(
             "share_unabated": float(share[_UNABATED]),
             "share_ccs": float(share[_CCS]),
             "share_h2": float(share[_H2]),
+            "capacity_ccs_mt": float(cap[_CCS]),
+            "capacity_h2_mt": float(cap[_H2]),
             "reduction_mt": red,
             "residual_mt": float(baseline[hub_idx]) - red,
             "captured_mt": float(captured[hub_idx, _CCS] * share[_CCS]),

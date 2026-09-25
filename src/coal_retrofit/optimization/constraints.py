@@ -13,7 +13,7 @@ from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 from ._shared import PATHWAY_INDEX
 from .year_types import YearData, YearPayload
 
-# Import flow scaling factors for numerical stability
+# 导入流量缩放系数，用于数值稳定
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE, BIOMASS_FLOW_SCALE
 
 
@@ -26,7 +26,7 @@ def _add_vector_upper_bound(model, lhs, rhs, length: int, name: str) -> None:
 
 
 def _add_mccormick_product(model, share_var, binary_var, name: str):
-    """Linearize z = share_var * binary_var where binary in {0,1}, share in [0,1]."""
+    """线性化 z = share_var * binary_var，其中 binary 取值 {0,1}，share 取值 [0,1]。"""
     z = model.addVar(lb=0.0, ub=1.0, name=name)
     model.addConstr(z <= share_var,                      name=f"{name}_u1")
     model.addConstr(z <= binary_var,                     name=f"{name}_u2")
@@ -42,13 +42,12 @@ def _build_air_retrofit_capex(
     yr_sfx: str,
     prev_payload: YearPayload | None = None,
 ):
-    """One-time capex for converting wet condensers to dry cooling.
+    """湿冷凝汽器改为空冷的一次性 capex。
 
-    Charged on the increment of the INSTALLED STOCK, not of the period's converted share:
-    like the CCS retrofit, an air-cooled condenser once built stays built, so a hub whose
-    dry-cooled share dips in one period and recovers in the next must not pay twice. The
-    stock is only bounded below (>= this period's converted share, >= last period's stock),
-    which is enough because the objective is minimising and the coefficient positive.
+    按已装存量的增量计费，而不是按本期改造份额的增量：与 CCS 改造一样，
+    空冷凝汽器一旦建成就一直在，所以空冷份额在某一期下降、下一期回升的 hub
+    不能付两次钱。存量只设下限（>= 本期改造份额，>= 上期存量），
+    这就够了，因为目标是最小化且系数为正。
     """
     if not bool(year_data.allow_air_cooling_retrofit):
         return 0.0
@@ -83,14 +82,14 @@ def _build_blend_upgrade_capex(
     prev_blend_level_b=None,
     prev_blend_level_a=None,
 ):
-    """Blend upgrade capex expression. If prev_* is None, assumes starting from level 0."""
+    """掺烧升级 capex 表达式。prev_* 为 None 时，视为从档位 0 起步。"""
     cap = np.asarray(capacity_mw, dtype=np.float64)
     coeff_b = cap * assumptions.biomass_upgrade_capex_cny_per_mw_per_level
     coeff_a = cap * assumptions.ammonia_upgrade_capex_cny_per_mw_per_level
     if prev_blend_level_b is None:
         return coeff_b @ blend_level_b + coeff_a @ blend_level_a
-    # Use max(0, delta) via auxiliary variables to prevent negative CAPEX
-    # when retired plants reset blend level to 0
+    # 用辅助变量实现 max(0, delta)，防止退役电厂把掺烧档位
+    # 重置为 0 时出现负 CAPEX
     delta_b_pos = model.addMVar(plant_count, lb=0.0, name=f"blend_delta_b_pos{sfx}")
     delta_a_pos = model.addMVar(plant_count, lb=0.0, name=f"blend_delta_a_pos{sfx}")
     model.addConstr(delta_b_pos >= blend_level_b - prev_blend_level_b, name=f"blend_delta_b_lb{sfx}")
@@ -107,22 +106,22 @@ def _add_blend_level_constraints(
     year_data: YearData,
     sfx: str,
 ) -> tuple:
-    """Add per-plant blend-level binary variables, linearization zetas, and usage constraints.
+    """为每个厂添加掺烧档位二元变量、线性化用的 zeta 以及用量约束。
 
     Returns
     -------
-    select_b : MVar (plant_count, L_b+1)  — level 0 = no biomass
-    select_a : MVar (plant_count, L_a+1)  — level 0 = no ammonia
-    blend_level_b : MVar (plant_count,)   — numeric level index (Σ l·select_b)
+    select_b : MVar (plant_count, L_b+1)  — 档位 0 = 不掺生物质
+    select_a : MVar (plant_count, L_a+1)  — 档位 0 = 不掺氨
+    blend_level_b : MVar (plant_count,)   — 数值档位索引（Σ l·select_b）
     blend_level_a : MVar (plant_count,)
     biomass_use_gj : MVar (plant_count,)
     ammonia_use_kg : MVar (plant_count,)
-    bio_red_exprs   : list[LinExpr]  — E_retrofit · Σ β_b[l] · zeta_bio[p,l]  per plant
-    beccs_blend_red_exprs : list[LinExpr]  — E_retrofit · Σ β_b[l]·zeta_beccs[p,l] per plant
-        (blend-displacement part only; the η·share capture part is added by the caller)
-    amm_red_exprs   : list[LinExpr]  — E_retrofit · Σ β_a[l] · zeta_amm[p,l] per plant
-    bio_penalty_exprs : list[LinExpr] — blend-level-dependent energy penalty cost per plant
-    bio_penalty_emissions_exprs : list[LinExpr] — extra vented CO2 from the penalty fuel (Mt)
+    bio_red_exprs   : list[LinExpr]  — E_retrofit · Σ β_b[l] · zeta_bio[p,l]，每厂一项
+    beccs_blend_red_exprs : list[LinExpr]  — E_retrofit · Σ β_b[l]·zeta_beccs[p,l]，每厂一项
+        （只含掺烧替代部分；η·share 的捕集部分由调用方加上）
+    amm_red_exprs   : list[LinExpr]  — E_retrofit · Σ β_a[l] · zeta_amm[p,l]，每厂一项
+    bio_penalty_exprs : list[LinExpr] — 每个厂随掺烧档位变化的能耗惩罚成本
+    bio_penalty_emissions_exprs : list[LinExpr] — 惩罚燃料额外排放的 CO2（Mt）
     """
     blend_b = np.asarray(scenario.biomass_blend_levels, dtype=np.float64)
     blend_a = np.asarray(scenario.ammonia_blend_levels, dtype=np.float64)
@@ -130,9 +129,9 @@ def _add_blend_level_constraints(
     L_a = len(blend_a)
     lhv = float(assumptions.nh3_lhv_gj_per_kg)
 
-    # select_b/select_a: column 0 = "no blend", column l+1 = "blend level l"
-    # One-hot binaries (a hub picks one level) or continuous shares of the hub's capacity
-    # converted to each level; see `OptimizationAssumptions.hub_decisions_continuous`.
+    # select_b/select_a：第 0 列 = "不掺烧"，第 l+1 列 = "掺烧档位 l"
+    # 独热二元变量（一个 hub 选一个档位），或 hub 容量中改造到各档位的
+    # 连续份额；见 `OptimizationAssumptions.hub_decisions_continuous`。
     sel_vtype = GRB.CONTINUOUS if assumptions.hub_decisions_continuous else GRB.BINARY
     select_b = model.addMVar((plant_count, L_b + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_b{sfx}")
     select_a = model.addMVar((plant_count, L_a + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_a{sfx}")
@@ -144,21 +143,21 @@ def _add_blend_level_constraints(
     bio_red_exprs: list[object] = []
     beccs_blend_red_exprs: list[object] = []
     amm_red_exprs: list[object] = []
-    bio_penalty_exprs: list[object] = []  # blend-level-dependent energy penalty per plant
-    bio_penalty_emissions_exprs: list[object] = []  # extra CO2 from the penalty fuel (Mt)
+    bio_penalty_exprs: list[object] = []  # 每个厂随掺烧档位变化的能耗惩罚
+    bio_penalty_emissions_exprs: list[object] = []  # 惩罚燃料额外产生的 CO2（Mt）
 
     bio_pen_coeff_data = year_data.biomass_penalty_coeff_per_level
     bio_pen_em_coeff_data = year_data.biomass_penalty_emissions_coeff_per_level
-    # On BECCS the co-firing penalty fuel burns in the same boiler as the captured flue gas,
-    # so only the uncaptured share is vented (Fan et al. 2023 SI eq. S42) -- and the captured
-    # share is a real tonne that has to be piped and stored.
+    # BECCS 下，掺烧惩罚燃料与被捕集的烟气在同一台锅炉里燃烧，所以只有
+    # 未捕集的份额排放（Fan et al. 2023 SI eq. S42）——而被捕集的份额是
+    # 实实在在的吨数，必须经管道输送并封存。
     beccs_pen_em_coeff_data = year_data.beccs_penalty_emissions_coeff_per_level
     beccs_pen_cap_coeff_data = year_data.beccs_penalty_captured_coeff_per_level
     beccs_penalty_captured_exprs: list[object] = []
 
     for p in range(plant_count):
-        # Retrofit operations carry the efficiency ratio (rebuilt plants) and the
-        # retrofit CF boost; fuel use additionally scales with the plant heat rate.
+        # 改造后的运行带有效率比（重建电厂）和改造后的
+        # CF 提升；燃料用量还要再按电厂热耗率缩放。
         E_rt = float(year_data.emissions_retrofit_mt[p])
         hr_p = float(year_data.heat_rate_eff[p])
         G_bp = year_data.generation_by_pathway[p, :]
@@ -173,55 +172,55 @@ def _add_blend_level_constraints(
         s_beccs = share[p, PATHWAY_INDEX["beccs"]]
         s_amm = share[p, PATHWAY_INDEX["ammonia"]]
 
-        # --- Exactly one blend level selected per pathway type ---
+        # --- 每类路径恰好选一个掺烧档位 ---
         model.addConstr(select_b[p, :].sum() == 1.0, name=f"sel_b_{p}{sfx}")
         model.addConstr(select_a[p, :].sum() == 1.0, name=f"sel_a_{p}{sfx}")
 
-        # --- If level 0 (no blend), the relevant shares must be 0 ---
+        # --- 若选档位 0（不掺烧），相关份额必须为 0 ---
         model.addConstr(s_bio + s_beccs <= 1.0 - select_b[p, 0], name=f"nb_b_{p}{sfx}")
         model.addConstr(s_amm <= 1.0 - select_a[p, 0], name=f"nb_a_{p}{sfx}")
 
-        # --- Numeric blend level (for upgrade cost computation) ---
+        # --- 数值掺烧档位（用于计算升级成本） ---
         model.addConstr(
-            blend_level_b[p] == gp.quicksum(l * select_b[p, l] for l in range(L_b + 1)),
+            blend_level_b[p] == gp.quicksum(level * select_b[p, level] for level in range(L_b + 1)),
             name=f"blv_b_{p}{sfx}",
         )
         model.addConstr(
-            blend_level_a[p] == gp.quicksum(l * select_a[p, l] for l in range(L_a + 1)),
+            blend_level_a[p] == gp.quicksum(level * select_a[p, level] for level in range(L_a + 1)),
             name=f"blv_a_{p}{sfx}",
         )
 
-        # --- Linearize: zeta = select_b[p, l+1] × share (binary × continuous in [0,1]) ---
+        # --- 线性化：zeta = select_b[p, l+1] × share（二元变量 × [0,1] 内的连续变量） ---
         bio_use_expr = gp.LinExpr()
         bio_red = gp.LinExpr()
         beccs_blend_red = gp.LinExpr()
-        bio_penalty = gp.LinExpr()  # blend-level-dependent energy penalty (cost)
-        bio_penalty_emissions = gp.LinExpr()  # same penalty fuel, as vented CO2 (Mt)
-        beccs_penalty_captured = gp.LinExpr()  # the captured share of the BECCS penalty fuel (Mt)
+        bio_penalty = gp.LinExpr()  # 随掺烧档位变化的能耗惩罚（成本）
+        bio_penalty_emissions = gp.LinExpr()  # 同一份惩罚燃料，折为排放的 CO2（Mt）
+        beccs_penalty_captured = gp.LinExpr()  # BECCS 惩罚燃料中被捕集的份额（Mt）
 
         z_bio_all: list[object] = []
         z_beccs_all: list[object] = []
-        for l, beta_b in enumerate(blend_b):
-            bin_b = select_b[p, l + 1]
-            z_bio = _add_mccormick_product(model, s_bio, bin_b, f"zb_{p}_{l}{sfx}")
-            z_beccs = _add_mccormick_product(model, s_beccs, bin_b, f"zbc_{p}_{l}{sfx}")
-            # The two pathways share the capacity converted to this level. Implied by the
-            # one-hot form; binding (and the physical meaning) when the levels are shares.
-            model.addConstr(z_bio + z_beccs <= bin_b, name=f"zlvl_b_{p}_{l}{sfx}")
+        for level, beta_b in enumerate(blend_b):
+            bin_b = select_b[p, level + 1]
+            z_bio = _add_mccormick_product(model, s_bio, bin_b, f"zb_{p}_{level}{sfx}")
+            z_beccs = _add_mccormick_product(model, s_beccs, bin_b, f"zbc_{p}_{level}{sfx}")
+            # 两条路径共用改造到该档位的容量。独热形式下此式自动成立；
+            # 档位取份额时它才真正起约束作用，也才有物理含义。
+            model.addConstr(z_bio + z_beccs <= bin_b, name=f"zlvl_b_{p}_{level}{sfx}")
             z_bio_all.append(z_bio)
             z_beccs_all.append(z_beccs)
             bio_use_expr += hr_p * beta_b * (G_bio * z_bio + G_beccs * z_beccs) / BIOMASS_FLOW_SCALE
             bio_red  += E_rt * beta_b * z_bio
             beccs_blend_red += E_rt * beta_b * z_beccs
-            # Energy penalty: β_b × coeff × (G_bio·z_bio + G_beccs·z_beccs)
+            # 能耗惩罚：β_b × coeff × (G_bio·z_bio + G_beccs·z_beccs)
             bio_penalty += beta_b * bio_pen_coeff * (G_bio * z_bio + G_beccs * z_beccs)
             bio_penalty_emissions += beta_b * (
                 bio_pen_em_coeff * G_bio * z_bio + beccs_pen_em_coeff * G_beccs * z_beccs
             )
             beccs_penalty_captured += beta_b * beccs_pen_cap_coeff * G_beccs * z_beccs
 
-        # A pathway share is split across levels at most once (no double counting of the
-        # reduction when several levels carry a positive share).
+        # 一条路径的份额在各档位间至多分摊一次（多个档位份额为正时，
+        # 减排量不会被重复计算）。
         model.addConstr(gp.quicksum(z_bio_all) <= s_bio, name=f"zsum_bio_{p}{sfx}")
         model.addConstr(gp.quicksum(z_beccs_all) <= s_beccs, name=f"zsum_beccs_{p}{sfx}")
         model.addConstr(biomass_use_gj[p] == bio_use_expr, name=f"bu_{p}{sfx}")
@@ -229,9 +228,9 @@ def _add_blend_level_constraints(
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()
         z_amm_all: list[object] = []
-        for l, beta_a in enumerate(blend_a):
-            bin_a = select_a[p, l + 1]
-            z_amm = _add_mccormick_product(model, s_amm, bin_a, f"za_{p}_{l}{sfx}")
+        for level, beta_a in enumerate(blend_a):
+            bin_a = select_a[p, level + 1]
+            z_amm = _add_mccormick_product(model, s_amm, bin_a, f"za_{p}_{level}{sfx}")
             z_amm_all.append(z_amm)
 
             amm_use_expr += G_amm * hr_p / lhv * beta_a * z_amm / AMMONIA_FLOW_SCALE
@@ -271,19 +270,17 @@ def _add_plant_path_constraints(
     captured_mt_by_plant = model.addMVar(plant_count, lb=0.0, name=f"captured_mt_by_plant{sfx}")
     water_use_m3 = model.addMVar(plant_count, lb=0.0, name=f"water_use_m3{sfx}")
 
-    # Wet-to-dry cooling conversion. `air_share[p, k]` is the part of hub p's generation that
-    # is both on pathway k and dry-cooled, so 0 <= air_share <= share and the hub's converted
-    # fraction is sum_k air_share[p, k]. Writing it per pathway keeps every term linear: the
-    # alternative, a single air fraction multiplying the pathway shares, is bilinear and
-    # would need either binaries or a McCormick envelope. It also represents a real degree of
-    # freedom, since a hub aggregates ~10 units and the operator chooses which of them get
-    # both the capture island and the air-cooled condenser.
+    # 湿冷改空冷。`air_share[p, k]` 是 hub p 发电量中既走路径 k 又采用空冷的部分，
+    # 因此 0 <= air_share <= share，hub 的改造比例为 sum_k air_share[p, k]。
+    # 按路径分列可让每一项都保持线性：另一种写法是用单一空冷比例去乘
+    # 各路径份额，那是双线性的，需要二元变量或 McCormick 包络。它还对应
+    # 一个真实的自由度：一个 hub 聚合了约 10 台机组，运营方要选择其中
+    # 哪几台同时配捕集岛和空冷凝汽器。
     allow_air = bool(year_data.allow_air_cooling_retrofit) and year_data.air_water_intensity is not None
     air_share = model.addMVar((plant_count, pathway_count), lb=0.0, ub=1.0, name=f"air_share{sfx}")
-    # Installed stock, so capex is charged on the high-water mark and not re-charged when a
-    # converted hub's dry-cooled share dips in one period and recovers in the next. Same
-    # device as `retrofit_installed` for CCS; without it, an air-cooled condenser could be
-    # paid for twice.
+    # 已装存量：capex 按历史最高值计费，已改造 hub 的空冷份额在某一期下降、
+    # 下一期回升时不会重复计费。与 CCS 的 `retrofit_installed` 是同一手法；
+    # 没有它，空冷凝汽器可能被付两次钱。
     air_installed = model.addMVar(plant_count, lb=0.0, ub=1.0, name=f"air_installed{sfx}")
     if not allow_air:
         model.addConstr(air_share == 0.0, name=f"air_share_off{sfx}")
@@ -314,9 +311,9 @@ def _add_plant_path_constraints(
     air_penalty_captured = year_data.air_penalty_captured_matrix
 
     for plant_idx in range(plant_count):
-        E_p = float(year_data.emissions_mt[plant_idx])               # baseline
-        E_op = float(year_data.emissions_operating_mt[plant_idx])    # efficiency-adjusted
-        E_rt = float(year_data.emissions_retrofit_mt[plant_idx])     # efficiency × CF boost
+        E_p = float(year_data.emissions_mt[plant_idx])               # 基准
+        E_op = float(year_data.emissions_operating_mt[plant_idx])    # 经效率调整
+        E_rt = float(year_data.emissions_retrofit_mt[plant_idx])     # 效率 × CF 提升
         G_bp = year_data.generation_by_pathway[plant_idx, :]
         s_un = share[plant_idx, PATHWAY_INDEX["unabated"]]
         s_ccs = share[plant_idx, PATHWAY_INDEX["ccs"]]
@@ -324,9 +321,9 @@ def _add_plant_path_constraints(
         s_beccs = share[plant_idx, PATHWAY_INDEX["beccs"]]
         s_amm = share[plant_idx, PATHWAY_INDEX["ammonia"]]
 
-        # Water use (scaled by WATER_FLOW_SCALE for numerical stability); per-pathway
-        # generation (retrofit boost, retire = 0) times pathway water intensity, with the
-        # dry-cooled part of each pathway priced at the air-cooled intensity instead.
+        # 用水量（按 WATER_FLOW_SCALE 缩放以保证数值稳定）；各路径发电量
+        # （含改造提升，退役 = 0）乘以该路径的用水强度，其中各路径的
+        # 空冷部分改按空冷强度计。
         air_intensity = year_data.air_water_intensity if allow_air else None
         water_expr = gp.quicksum(
             float(G_bp[path_idx])
@@ -353,11 +350,11 @@ def _add_plant_path_constraints(
                     name=f"air_share_le_share_{plant_idx}_{path_idx}{sfx}",
                 )
 
-        # Physical captured CO2 differs from BECCS net reduction. Beyond eta x the boiler's
-        # own flue gas, the capture train also takes eta of every penalty fuel burnt in the
-        # same boiler (CCS energy penalty, BECCS co-firing penalty, dry-cooling backpressure);
-        # those tonnes were vented at (1-eta) in the residual but never counted here, so they
-        # were abated on paper without being transported or stored.
+        # 物理捕集的 CO2 不同于 BECCS 的净减排。除锅炉自身烟气的 eta x 之外，
+        # 捕集装置还会捕获同一锅炉里燃烧的每一份惩罚燃料的 eta
+        # （CCS 能耗惩罚、BECCS 掺烧惩罚、空冷背压）；这些吨数在残余排放里
+        # 按 (1-eta) 计了排放，但从未计入这里，于是它们在账面上被减掉了，
+        # 却没有经过输送和封存。
         captured_expr = E_rt * eta * (s_ccs + s_beccs) + beccs_penalty_captured_exprs[plant_idx]
         if ccs_penalty_captured is not None:
             captured_expr = captured_expr + gp.quicksum(
@@ -373,11 +370,11 @@ def _add_plant_path_constraints(
             )
         model.addConstr(captured_mt_by_plant[plant_idx] == captured_expr, name=f"captured_balance_{plant_idx}{sfx}")
 
-        # Actual (residual) emissions under each pathway, then reduction vs baseline.
-        # With unit CF boost and efficiency ratio this reduces exactly to the classic
-        # per-pathway reduction fractions times baseline emissions.
-        # The efficiency-penalty fuel (CCS fixed + blend-level-dependent) is burned and
-        # vented like any other coal, so its emissions are part of the residual.
+        # 先算各路径下的实际（残余）排放，再算相对基准的减排量。
+        # CF 提升与效率比都取 1 时，这恰好化简为经典的
+        # 各路径减排比例乘以基准排放。
+        # 效率惩罚燃料（CCS 固定部分 + 随掺烧档位变化部分）与其他煤一样燃烧并
+        # 排放，因此其排放属于残余排放的一部分。
         residual_expr = (
             E_op * s_un
             + E_rt * (1.0 - eta) * s_ccs
@@ -389,7 +386,7 @@ def _add_plant_path_constraints(
                 for path_idx in range(pathway_count)
             )
             + bio_penalty_emissions_exprs[plant_idx]
-            # Backpressure penalty of dry cooling: burnt and vented like any other coal.
+            # 空冷的背压惩罚：与其他煤一样燃烧并排放。
             + (
                 gp.quicksum(
                     float(year_data.air_penalty_emissions_matrix[plant_idx, path_idx])

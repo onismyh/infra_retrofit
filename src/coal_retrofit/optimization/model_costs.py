@@ -66,12 +66,12 @@ def add_year_costs(
         ("rebuild_capex", one_off["rebuild_capex"], int(assumptions.rebuild_lifetime_years)),
     ]
     # 工业：年度部分（固定运维、捕集能耗与耗材、氢路线非氢运行差额、按链路买的氢）用同一折现/年金权重；
-    # 改造 capex 一次性计在路线份额增量上，与煤电 `ccs_retrofit_capex` 同法。
+    # 改造 capex 一次性计在能力存量增量上，与煤电 `ccs_retrofit_capex` 计在改造存量增量上同法。
     payload.cost_exprs["industry_cost"] = (
-        df * interval_weight * payload.industry["annual_cost_cny"] / _COST_SCALE
+        df * interval_weight * payload.industry.annual_cost_expr / _COST_SCALE
     )
     prev_industry = None if prev_payload is None else prev_payload.industry
-    ind_lives = payload.industry["year_data"]["capex_lifetime_years"]
+    ind_lives = payload.industry.year_data.capex_lifetime_years
     ind_ccs_capex = industry_capex_expr(payload.industry, prev_industry, routes=(_IND_CCS,))
     ind_h2_capex = industry_capex_expr(payload.industry, prev_industry, routes=(_IND_H2,))
     payload.cost_exprs["industry_capex"] = (
@@ -103,7 +103,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             for p in range(plant_count)
         )
         carbon_cost = carbon_cost + carbon_price_t * 1e6 * gp.quicksum(
-            payload.industry["residual_by_group"].values()
+            payload.industry.residual_by_group.values()
         )
 
     # 掺烧替代的煤（负成本）：baseline_net 对所有运行路径按全煤热耗计费，所以生物质与氨都要返还。

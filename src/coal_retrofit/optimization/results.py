@@ -1,4 +1,4 @@
-"""逐年结果表。成本分项、诊断（sanity checks、逐节点松弛）与情景摘要在本模块；
+"""逐年结果表。成本分项、诊断（合理性检查 `_build_sanity_checks`、逐节点松弛）与情景摘要在本模块；
 煤电厂侧、管网封存、资源、工业四类表在 `results_*` 模块，这里统一转出，调用方照旧从 `results` 导入。
 """
 from __future__ import annotations
@@ -9,7 +9,12 @@ import pandas as pd
 from ..experiments.scenario import ScenarioRunContext
 from ._shared import PreparedInputs
 from .results_industry import _build_industry_detail_table
-from .results_network import _build_co2_flow_direction_table, _build_edge_table, _build_storage_table
+from .results_network import (
+    _alive_edge_added_stock,
+    _build_co2_flow_direction_table,
+    _build_edge_table,
+    _build_storage_table,
+)
 from .results_plant import (
     _build_pathway_table,
     _build_plant_cost_table,
@@ -26,6 +31,7 @@ from .scenario import OptimizationScenario
 from .year_types import YearData
 
 __all__ = [
+    "_alive_edge_added_stock",
     "_build_ammonia_flow_table",
     "_build_biomass_flow_table",
     "_build_co2_flow_direction_table",
@@ -67,7 +73,7 @@ def _build_sanity_checks(
     rows = [
         {"year": year, "check_name": "target_shortfall", "status": "fail" if slacks["target_shortfall_mt"] > 1e-6 else "pass", "metric": "mt", "value": slacks["target_shortfall_mt"], "threshold": 0.0, "detail": "Emission target slack should remain zero."},
     ]
-    # Under sector targets, one row per group so the report says WHICH cap was missed.
+    # 部门碳目标下每个目标组一行，报告才能指明究竟是哪一个上限没达到。
     for group, value in sorted((slacks.get("target_shortfall_by_group") or {}).items()):
         rows.append({
             "year": year, "check_name": f"target_shortfall_{group}",
@@ -79,10 +85,9 @@ def _build_sanity_checks(
         {"year": year, "check_name": "biomass_overuse", "status": "warn" if float(np.sum(slacks["biomass_slack_gj"])) > 1e-3 else "pass", "metric": "GJ", "value": float(np.sum(slacks["biomass_slack_gj"])), "threshold": 0.0, "detail": "Biomass use should fit shared biomass-node availability within hub buffers."},
         {"year": year, "check_name": "ammonia_overuse", "status": "warn" if float(np.sum(slacks["ammonia_slack_kg"])) > 1e-3 else "pass", "metric": "kg", "value": float(np.sum(slacks["ammonia_slack_kg"])), "threshold": 0.0, "detail": "Ammonia use should fit shared ammonia-node availability under hub competition."},
         {"year": year, "check_name": "water_overuse", "status": "warn" if float(np.sum(slacks["water_slack_m3"])) > 1e-3 else "pass", "metric": "m3", "value": float(np.sum(slacks["water_slack_m3"])), "threshold": 0.0, "detail": "Consumptive water use should fit the shared grid-water-node availability proxy under local competition."},
-        # Official-quota basin cap. Always emitted -- with a zero value when the budget is off --
-        # so a reader can tell "the cap held" apart from "the cap was never applied", which an
-        # absent row cannot do. Any positive value means a basin's 用水总量控制指标 was breached
-        # and the model paid the big-M rather than complying.
+        # 官方指标流域上限。总是输出（水预算关闭时值为零），这样读者能区分"上限守住了"
+        # 与"上限从未施加"，缺了这一行就做不到。任何正值都表示某个流域的用水总量控制指标
+        # 被突破，模型付了 big-M 而没有遵守。
         {"year": year, "check_name": "water_basin_quota_breach", "status": "warn" if float(np.sum(slacks.get("water_basin_slack_m3", np.zeros(0)))) > 1e-3 else "pass", "metric": "m3", "value": float(np.sum(slacks.get("water_basin_slack_m3", np.zeros(0)))), "threshold": 0.0, "detail": "Basin withdrawal should fit the official 用水总量控制指标 net of non-power use."},
         {"year": year, "check_name": "storage_or_network_stress", "status": "warn" if float(np.sum(slacks["injectivity_slack_mtpa"]) + np.sum(slacks["storage_slack_mt"]) + np.sum(slacks["edge_slack_mtpa"])) > 1e-6 else "pass", "metric": "aggregate_slack", "value": float(np.sum(slacks["injectivity_slack_mtpa"]) + np.sum(slacks["storage_slack_mt"]) + np.sum(slacks["edge_slack_mtpa"])), "threshold": 0.0, "detail": "Transport and storage slacks indicate infeasible corridor or sink assumptions."},
         {"year": year, "check_name": "single_route_lock_in", "status": "warn" if max_path_share > 0.80 else "pass", "metric": "share", "value": max_path_share, "threshold": 0.80, "detail": "A single route dominating the annual mix may indicate lock-in."},
@@ -133,7 +138,7 @@ def _build_slack_detail_table(
     year_data: YearData,
     slacks: dict[str, object],
 ) -> pd.DataFrame:
-    """Per-node slack values for all resource/infrastructure constraints."""
+    """所有资源 / 基础设施约束的逐节点松弛值。"""
     rows: list[dict[str, object]] = []
 
     bio_slack = np.asarray(slacks["biomass_slack_gj"], dtype=np.float64)
@@ -153,9 +158,9 @@ def _build_slack_detail_table(
         if water_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "water_supply", "node_id": str(water_nodes.iloc[i]["water_node_id"]), "province": str(water_nodes.iloc[i].get("province_name", "")), "slack_value": float(water_slack[i]), "unit": "m3"})
 
-    # Official-quota basin cap. Absent (zero-length) unless water_budget='official_quota'.
-    # Reported separately from `water_supply` because it is a different rule on a different
-    # basis: allocation on withdrawal, against the environmental-flow limit on consumption.
+    # 官方指标流域上限。除非 water_budget='official_quota'，否则不存在（长度为零）。
+    # 与 `water_supply` 分开报告，因为它是另一口径上的另一条规则：它是取水口径上的
+    # 指标分配，而非耗水口径上的环境流量限值。
     basin_slack = np.asarray(slacks.get("water_basin_slack_m3", np.zeros(0)), dtype=np.float64)
     basin_codes = list(slacks.get("water_basin_codes") or year_data.water_basin_codes or [])
     for i, code in enumerate(basin_codes[:len(basin_slack)]):

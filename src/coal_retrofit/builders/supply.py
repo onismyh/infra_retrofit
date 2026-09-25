@@ -17,15 +17,16 @@ from ..constants import (
     BIOMASS_GJ_PER_TONNE,
     BIOMASS_MATCH_BUFFER_KM,
     BIOMASS_NODE_AGGREGATION_DEGREES,
+    DEFAULT_DISCOUNT_RATE,
     NH3_ELECTROLYSIS_TECHS,
     NH3_H2_RATIO,
-    NH3_HB_CAPEX_DISCOUNT_RATE,
     NH3_HB_CAPEX_LIFETIME_YEARS,
     NH3_HB_CAPEX_USD_PER_TONNE_YEAR,
     NH3_HB_POWER_KWH_PER_KG,
     NH3_STORAGE_ADDER_USD_PER_KG,
     NH3_TRANSPORT_ADDER_USD_PER_KG,
 )
+from ..constants_industry import capital_recovery_factor
 from ..paths import ProjectPaths
 from ..spatial import latlon_row_areas, load_provinces, rasterize_provinces_to_match
 
@@ -72,12 +73,60 @@ def _pixel_centers_lonlat(
     return np.asarray(lon, dtype=np.float64), np.asarray(lat, dtype=np.float64)
 
 
-def _hb_capex_annuity_usd_per_kg() -> float:
-    """Annualised Haber-Bosch + ASU capital cost, USD per kg of NH3 produced."""
-    rate = NH3_HB_CAPEX_DISCOUNT_RATE
-    years = NH3_HB_CAPEX_LIFETIME_YEARS
-    crf = rate / (1.0 - (1.0 + rate) ** (-years)) if rate > 0 else 1.0 / years
+def hb_capex_annuity_usd_per_kg(discount_rate: float) -> float:
+    """Haber-Bosch + ASU 的年化资本成本，以每生产 1 kg NH3 的 USD 计。
+
+    构建输入时按 `DEFAULT_DISCOUNT_RATE` 写进 `ammonia_supply_curve.csv`；求解时
+    `reprice_hb_capex` 再按情景的 `discount_rate` 算一次，换掉 CSV 里的那一份。
+
+    Args:
+        discount_rate: 年贴现率。
+
+    Returns:
+        按满负荷、`NH3_HB_CAPEX_LIFETIME_YEARS` 年折算的每 kg NH3 年金（USD）。
+    """
+    crf = capital_recovery_factor(discount_rate, NH3_HB_CAPEX_LIFETIME_YEARS)
     return NH3_HB_CAPEX_USD_PER_TONNE_YEAR * crf / 1000.0
+
+
+def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFrame:
+    """把氨供给曲线里的合成岛年金换成按 `discount_rate` 算的，返回新表，不改动传入的表。
+
+    `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_hb_capex_usd_per_kg`、加上新年金，该列随之改写。
+    表里那一份是构建输入时算的（2026-09-23 前的输入按 8%、20 年），模型自己折现与折年金的地方则都用情景贴现率。
+    由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。没有这一列的表
+    （toy 测试的输入）不拆分成本，原样使用并记一条告警日志。
+
+    Args:
+        ammonia: 读入的 `ammonia_supply_curve.csv`。
+        discount_rate: 情景贴现率。
+
+    Returns:
+        换过年金的副本；缺这一列时是原表的副本。
+
+    Raises:
+        ValueError: 年金列或成本列有缺失值或非数值时，列出涉及的节点，免得 NaN 价格进入目标函数。
+    """
+    repriced = ammonia.copy()
+    if "nh3_hb_capex_usd_per_kg" not in repriced.columns:
+        logger.warning(
+            "ammonia supply curve has no nh3_hb_capex_usd_per_kg column; "
+            "using nh3_cost_lb_usd_per_kg as is (no re-annuitisation at the scenario discount rate)"
+        )
+        return repriced
+    cost = pd.to_numeric(repriced["nh3_cost_lb_usd_per_kg"], errors="coerce")
+    old_annuity = pd.to_numeric(repriced["nh3_hb_capex_usd_per_kg"], errors="coerce")
+    bad = cost.isna() | old_annuity.isna()
+    if bad.any():
+        nodes = repriced.loc[bad, "ammonia_node_id"] if "ammonia_node_id" in repriced.columns else repriced.index[bad]
+        raise ValueError(
+            "ammonia supply curve has missing or non-numeric nh3_cost_lb_usd_per_kg / nh3_hb_capex_usd_per_kg "
+            f"in {int(bad.sum())} rows; ammonia_node_id: {sorted({str(node) for node in nodes})[:10]}"
+        )
+    annuity = hb_capex_annuity_usd_per_kg(discount_rate)
+    repriced["nh3_cost_lb_usd_per_kg"] = cost - old_annuity + annuity
+    repriced["nh3_hb_capex_usd_per_kg"] = annuity
+    return repriced
 
 
 def _haversine_distances_km(
@@ -106,8 +155,8 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
         row_areas = latlon_row_areas(src.transform, src.height)
         pixel_area = np.broadcast_to(row_areas[:, None], biomass.shape)
         zone_grid, _ = rasterize_provinces_to_match(provinces, biomass_tif)
-        # Raster unit is GJ/km²  (Wang et al. 2023, Sci Data);
-        # pixel_area is in m².  Convert: GJ = (GJ/km²) × (m² / 1e6).
+        # 栅格单位为 GJ/km²（Wang et al. 2023, Sci Data）；
+        # pixel_area 的单位是 m²。换算：GJ = (GJ/km²) × (m² / 1e6)。
         total_gj_grid = np.nan_to_num(biomass, nan=0.0, posinf=0.0, neginf=0.0) * pixel_area / 1e6
         valid_mask = (total_gj_grid > 0.0) & (zone_grid > 0)
         rows, cols = np.where(valid_mask)
@@ -302,17 +351,17 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             if not np.any(valid):
                 continue
             rows, cols = np.where(valid)
-            # Raster unit is kg H₂/yr/km² (Albers 1km projection);
-            # pixel_area_m2 = 1e6 m² = 1 km².  No area multiplication needed
-            # since each pixel already represents 1 km².
-            h2_supply = prod[rows, cols]  # kg/yr per pixel (= per km²)
+            # 栅格单位为 kg H₂/yr/km²（Albers 1km 投影）；
+            # pixel_area_m2 = 1e6 m² = 1 km²。无需再乘面积，
+            # 因为每个像元本身就代表 1 km²。
+            h2_supply = prod[rows, cols]  # 每像元 kg/yr（= 每 km²）
             if h2_supply.size == 0:
                 continue
             with rasterio.open(lcoh_path) as lcoh_src:
                 lcoh = np.nan_to_num(lcoh_src.read(1), nan=0.0, posinf=0.0, neginf=0.0)
                 lcoh_values = lcoh[rows, cols].astype(np.float64)
-            # Electricity for the Haber-Bosch loop and the ASU is bought at the same site's
-            # LCOE (USD/MWh) rather than assumed free, as the previous cost lower bound did.
+            # Haber-Bosch 合成回路与 ASU 的用电按同一地点的 LCOE（USD/MWh）购入，
+            # 而不是像之前的成本下界那样假定免费。
             if lcoe_path.exists():
                 with rasterio.open(lcoe_path) as lcoe_src:
                     lcoe = np.nan_to_num(lcoe_src.read(1), nan=0.0, posinf=0.0, neginf=0.0)
@@ -377,15 +426,15 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             grouped["nh3_supply_kg_per_year"] = grouped["h2_supply_kg_per_year"] / NH3_H2_RATIO
             grouped["nh3_h2_cost_component_usd_per_kg"] = grouped["weighted_lcoh_usd_per_kg_h2"] * NH3_H2_RATIO
             grouped["hb_power_need_kwh_per_kg_nh3"] = NH3_HB_POWER_KWH_PER_KG
-            # Haber-Bosch electricity, priced at the co-located renewable LCOE.
+            # Haber-Bosch 用电，按同址可再生能源的 LCOE 计价。
             grouped["nh3_hb_power_cost_usd_per_kg"] = (
                 NH3_HB_POWER_KWH_PER_KG * grouped["weighted_lcoe_usd_per_mwh"].fillna(0.0) / 1000.0
             )
-            grouped["nh3_hb_capex_usd_per_kg"] = _hb_capex_annuity_usd_per_kg()
+            grouped["nh3_hb_capex_usd_per_kg"] = hb_capex_annuity_usd_per_kg(DEFAULT_DISCOUNT_RATE)
             grouped["nh3_storage_adder_usd_per_kg"] = NH3_STORAGE_ADDER_USD_PER_KG
             grouped["nh3_transport_adder_usd_per_kg"] = NH3_TRANSPORT_ADDER_USD_PER_KG
-            # Full landed cost: H2 feedstock + HB/ASU electricity + HB/ASU capital + storage.
-            # (Column name kept for downstream compatibility; it is no longer a lower bound.)
+            # 完整到岸成本：H2 原料 + HB/ASU 电力 + HB/ASU 资本 + 储存。
+            # （为兼容下游而保留该列名；它已不再是下界。）
             grouped["nh3_cost_lb_usd_per_kg"] = (
                 grouped["nh3_h2_cost_component_usd_per_kg"]
                 + grouped["nh3_hb_power_cost_usd_per_kg"]

@@ -105,7 +105,7 @@ def add_year_block(
     )
     _add_co2_industry_pipe_balance(
         model, prepared, idx, co2_node_outflow, co2_flow_fwd, co2_flow_bwd,
-        industry_payload["captured_by_hub"], edge_flow_mtpa, year_suffix,
+        industry_payload.captured_by_hub, edge_flow_mtpa, year_suffix,
     )
 
     # --- 生物质 / 氨 / 水：链路平衡与节点上限；流域取水指标 ---
@@ -114,10 +114,10 @@ def add_year_block(
         biomass_flow_gj=biomass_flow_gj, ammonia_flow_kg=ammonia_flow_kg, water_flow_m3=water_flow_m3,
         biomass_use_gj=biomass_use_gj, ammonia_use_kg=ammonia_use_kg, water_use_m3=water_use_m3,
         biomass_slack_gj=biomass_slack_gj, ammonia_slack_kg=ammonia_slack_kg, water_slack_m3=water_slack_m3,
-        industry_h2_flow_kg=industry_payload["h2_flow_kg"], year_suffix=year_suffix,
+        industry_h2_flow_kg=industry_payload.h2_flow_kg, year_suffix=year_suffix,
     )
     water_basin_slack_m3, water_basin_use_m3 = add_basin_withdrawal_cap(
-        model, year_data, share, air_share, industry_payload["withdrawal_by_hub_scaled"],
+        model, year_data, share, air_share, industry_payload.withdrawal_by_hub_scaled,
         plant_count, year_suffix,
     )
 
@@ -125,7 +125,7 @@ def add_year_block(
     _add_injectivity_limit(model, year_data, storage_use_mtpa, injectivity_slack_mtpa, storage_count, year_suffix)
     target_shortfall_by_group = _add_sector_targets(
         model, year_data, scenario, idx, year, total_reduction_mt,
-        industry_payload["residual_by_group"], target_shortfall_mt, year_suffix,
+        industry_payload.residual_by_group, target_shortfall_mt, year_suffix,
     )
     _add_pathway_switches(model, share, scenario, year_data, idx, year, plant_count, year_suffix)
 
@@ -175,25 +175,20 @@ def add_year_block(
 
 
 def _add_retrofit_stock(model, share: GrbMVar, plant_count: int, year_suffix: str) -> GrbMVar:
-    """改造存量（一次性 capex 的计费基数），两列：
+    """改造存量（一次性 capex 的计费基数），一列：捕集岛 >= share_ccs + share_beccs，按 CCS capex 计价。
 
-      j=0 捕集岛 >= share_ccs + share_beccs，按 CCS capex 计价
-      j=1 BECCS 增量 >= share_beccs，按 (BECCS - CCS) capex 计价
-
-    CCS↔BECCS 切换只为捕集岛付一次钱。存量只设下界（跨期单调在 `model_linking`），capex 计在存量增量上，
-    份额暂时下降不会重复触发。两列的 capex 系数在 `YearData.retrofit_stock_capex`。
+    BECCS 的捕集岛就是 CCS 捕集岛，CCS↔BECCS 切换只为捕集岛付一次钱；BECCS 的生物质改造走掺烧档位
+    capex（2026-09-23 前另有一列 BECCS 增量按 (BECCS - CCS) capex 计价，与档位 capex 重复，已删除）。
+    存量只设下界（跨期单调在 `model_linking`），capex 计在存量增量上，份额暂时下降不会重复触发。
+    capex 系数在 `YearData.retrofit_stock_capex`。
     """
     ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     retrofit_installed = model.addMVar(
-        (plant_count, 2), lb=0.0, name=f"retrofit_installed_{year_suffix}"
+        (plant_count, 1), lb=0.0, name=f"retrofit_installed_{year_suffix}"
     )
     model.addConstrs(
         (retrofit_installed[p, 0] >= share[p, ccs_k] + share[p, beccs_k] for p in range(plant_count)),
         name=f"retrofit_installed_lb_capture_{year_suffix}",
-    )
-    model.addConstrs(
-        (retrofit_installed[p, 1] >= share[p, beccs_k] for p in range(plant_count)),
-        name=f"retrofit_installed_lb_beccs_{year_suffix}",
     )
     return retrofit_installed
 

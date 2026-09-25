@@ -18,7 +18,7 @@ TOY_TARGET_YEARS = (2030, 2040, 2050, 2060)
 
 
 def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
-    """Minimal but complete inputs/: 1 plant - 1 edge - 1 storage, resources far away."""
+    """最小但完整的 inputs/：1 座电厂 - 1 条边 - 1 个封存汇，资源放在远处。"""
     inputs = root / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
 
@@ -73,10 +73,9 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
         }
     ).to_csv(inputs / "pipeline_candidate_edges.csv", index=False)
 
-    # Biomass/ammonia placed >2000 km away so no fuel links are generated.
-    # The water node sits next to the plant: the plant-level water balance
-    # (supply flow == use) is enforced even in no_water mode, so any operating
-    # plant needs at least one water link.
+    # 生物质 / 氨放在 >2000 km 之外，因此不会生成燃料链路。
+    # 水节点紧挨电厂：厂级水平衡（供水流量 == 用水量）即使在 no_water 模式下
+    # 也会施加，所以任何运行中的电厂都至少需要一条水链路。
     pd.DataFrame(
         {
             "biomass_node_id": ["B1"],
@@ -146,21 +145,24 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
     return paths
 
 
-def _write_targets(paths: ProjectPaths, power_caps: dict[int, float]) -> None:
-    """写 sector_targets_toy.csv：power 组按给定上限，水泥组恒为 1.0（不约束）。"""
+def _write_targets(
+    paths: ProjectPaths, power_caps: dict[int, float], cement_caps: dict[int, float] | None = None
+) -> None:
+    """写 sector_targets_toy.csv：power 组按给定上限，水泥组按 `cement_caps`（缺省恒为 1.0，不约束）。"""
+    cement = cement_caps or {}
     pd.DataFrame(
         [
             {"sector_group": group, "planning_year": year, "cap_fraction_of_2030": cap}
             for year, power_cap in power_caps.items()
-            for group, cap in (("power", power_cap), ("cement", 1.0))
+            for group, cap in (("power", power_cap), ("cement", cement.get(year, 1.0)))
         ]
     ).to_csv(paths.inputs_dir / "sector_targets_toy.csv", index=False)
 
 
 def _toy_assumptions() -> OptimizationAssumptions:
-    """Defaults, minus the storage deployment ramp: the toy sink must offer its full 10 Mtpa
-    in every year, or the 2030 target is met through the shortfall slack instead of capture
-    (the ramp would leave 1.7 Mtpa in 2030, below the ~2.6 Mt/yr the target needs)."""
+    """默认假设，但去掉封存部署爬坡：toy 汇每年都必须提供满额 10 Mtpa，
+    否则 2030 年目标会靠缺口松弛而不是捕集来满足
+    （有爬坡时 2030 年只剩 1.7 Mtpa，低于目标所需的 ~2.6 Mt/yr）。"""
     return OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
 
 
@@ -181,19 +183,18 @@ def _expected_ccs(
     target_fraction: float,
     year: int = 2030,
 ) -> tuple[float, float]:
-    """Closed-form CCS share and captured Mt for the single-plant toy model.
+    """单厂 toy 模型的闭式解：CCS 份额与捕集量（Mt）。
 
-    Per unit CCS share, reduction vs baseline = (1 - boost*(1-eta)) * E minus the
-    energy-penalty fuel emissions (extra coal burned for the capture efficiency loss,
-    counted in the residual since the penalty-emissions fix). The toy plant is never
-    expired, so heat_rate_eff equals the baseline heat rate.
+    每单位 CCS 份额相对基线的减排量 = (1 - boost*(1-eta)) * E，再减去能耗惩罚燃料排放
+    （为弥补捕集造成的效率损失而多烧的煤，自能耗惩罚排放修正起计入残余排放）。
+    toy 电厂从不到期，所以 heat_rate_eff 等于基线热耗。
     """
     gen = 1000.0 * assumptions.province_cf("Shanxi") * 8760.0
     e_mt = gen * assumptions.coal_emission_factor_t_per_mwh / 1e6
     boost = scenario.retrofit_cf_boost
     eta = scenario.capture_rate
     ef_t_per_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
-    # Penalty fuel burns in the same boiler, so only the uncaptured share is vented.
+    # 惩罚燃料在同一台锅炉里燃烧，所以只有未被捕集的部分排入大气。
     penalty_emissions_mt = (
         gen
         * boost
@@ -205,17 +206,16 @@ def _expected_ccs(
     )
     red_per_share = (1.0 - boost * (1.0 - eta)) * e_mt - penalty_emissions_mt
     share = target_fraction * e_mt / red_per_share
-    # The captured share of the penalty fuel is a real tonne on the pipeline (2026-09-10).
+    # 惩罚燃料中被捕集的部分是管道上真实输送的吨数（2026-09-10）。
     penalty_captured_mt = penalty_emissions_mt / (1.0 - eta) * eta
     captured_mt = (boost * eta * e_mt + penalty_captured_mt) * share
     return share, captured_mt
 
 
 def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> None:
-    """Capacity comes in whole pipes of the diameter tiers (2 / 5 / 20 Mtpa): a ~2.3 Mt/yr
-    flow gets the cheapest tier combination that covers it (one 5-Mtpa pipe: 3.5e6 CNY/km
-    beats two 2-Mtpa pipes at 4.0e6), not a 20-Mtpa trunk. And an edge built in period 1
-    must NOT be forced to add capacity again in period 2 (the old min-build latch bug)."""
+    """容量按管径档位（2 / 5 / 20 Mtpa）整根计：~2.3 Mt/yr 的流量取能覆盖它的最便宜档位组合
+    （一根 5-Mtpa 管 3.5e6 CNY/km，比两根 2-Mtpa 管的 4.0e6 便宜），而不是一根 20-Mtpa 干线。
+    并且第 1 期建成的边在第 2 期不得被迫再次新增容量（旧的最小建设量锁存 bug）。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2050: 0.5, 2060: 0.5})
     scenario = OptimizationScenario(
@@ -234,30 +234,29 @@ def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> No
     y1 = solution["year_solutions"][2050]
     y2 = solution["year_solutions"][2060]
 
-    # With the retrofit CF boost wired in, a retrofitted share generates (and emits)
-    # boost x baseline, capturing eta of that; the energy-penalty fuel emissions
-    # further reduce the net reduction per share. See _expected_ccs for the algebra.
+    # 接入改造 CF 提升后，改造份额的发电量（及排放）为 boost x 基线，
+    # 其中 eta 被捕集；能耗惩罚燃料排放进一步压低每单位份额的净减排。
+    # 代数推导见 _expected_ccs。
     assumptions = _toy_assumptions()
     s_ccs_expected, captured_expected = _expected_ccs(scenario, assumptions, 0.5, 2050)
     ccs_idx = 2  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
     assert y1["share"][0, ccs_idx] == pytest.approx(s_ccs_expected, rel=1e-3)
     assert y1["edge_flow_mtpa"][0] == pytest.approx(captured_expected, rel=1e-3)
 
-    # Captured CO2 (~2.3 Mt/yr) needs more than the 2-Mtpa tier; one 5-Mtpa pipe is the
-    # cheapest cover, so exactly 5 Mtpa of new capacity in period 1 -- not a 20-Mtpa trunk.
+    # 捕集的 CO2（~2.3 Mt/yr）超出 2-Mtpa 档；一根 5-Mtpa 管是最便宜的覆盖方案，
+    # 所以第 1 期新增容量恰为 5 Mtpa——而不是一根 20-Mtpa 干线。
     assert captured_expected > 2.0
     assert y1["new_cap_mtpa"][0] == pytest.approx(5.0, rel=1e-3)
     assert y1["pipe_count"][0].tolist() == pytest.approx([0.0, 1.0, 0.0], abs=1e-6)
     assert y1["build_edge"][0] == pytest.approx(1.0)
 
-    # Period 2 reuses the capacity stock built in period 1: no new capacity, but the
-    # latched build flag must stay 1 (irreversibility) and flow keeps using the edge.
+    # 第 2 期沿用第 1 期建成的容量存量：不新增容量，但锁存的建设标志必须保持为 1
+    # （不可逆），流量继续使用这条边。
     assert y2["new_cap_mtpa"][0] == pytest.approx(0.0, abs=1e-6)
     assert y2["build_edge"][0] == pytest.approx(1.0)
-    # The energy-penalty ratio is lower in 2060, so a smaller share would meet the same 50%
-    # target -- but the capture-share lock (2026-09-10) keeps the 2050 share running: a capture
-    # island is not switched off. Captured tonnes in 2060 are therefore the LOCKED share times
-    # the 2060 per-share capture (whose penalty component is the smaller 2060 one).
+    # 2060 年能耗惩罚比例更低，更小的份额就能满足同样 50% 的目标——但捕集份额锁定
+    # （2026-09-10）让 2050 年的份额继续运行：捕集岛不会被关停。因此 2060 年的捕集吨数
+    # 是被锁定的份额乘以 2060 年每单位份额的捕集量（其中的惩罚部分取 2060 年较小的那个值）。
     s_2060_unlocked, captured_2060_unlocked = _expected_ccs(scenario, assumptions, 0.5, 2060)
     assert s_2060_unlocked < s_ccs_expected
     assert y2["share"][0, ccs_idx] == pytest.approx(s_ccs_expected, rel=1e-3)
@@ -267,9 +266,8 @@ def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> No
 
 
 def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
-    """A plant past its design life that chooses site rebuild pays the one-time rebuild
-    CAPEX only in the activation period. Regression test for the repeated-charging bug:
-    previously the full CAPEX was re-charged in every period with rebuild == 1."""
+    """超过设计寿命、选择原址重建的电厂，只在激活期支付一次性重建 CAPEX。
+    针对重复计费 bug 的回归测试：以前在 rebuild == 1 的每一期都会重新计入全额 CAPEX。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=2040)
     scenario = OptimizationScenario(
         experiment_id="TEST-REBUILD",
@@ -286,21 +284,21 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
     y1 = solution["year_solutions"][2050]
     y2 = solution["year_solutions"][2060]
 
-    # Operating is profitable (electricity price > coal + O&M), so the expired plant
-    # rebuilds in period 1 and stays rebuilt (latched) in period 2.
+    # 运行有利可图（电价 > 煤 + 运维），所以到期电厂在第 1 期原址重建，
+    # 并在第 2 期保持重建状态（锁存）。
     assert y1["rebuild"][0] == pytest.approx(1.0)
     assert y2["rebuild"][0] == pytest.approx(1.0)
     retire_idx = 1  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
     assert y1["share"][0, retire_idx] == pytest.approx(0.0, abs=1e-6)
 
-    # One-time CAPEX in period 1: 1000 MW x 3500 CNY/kW x 0.70 x 1000, discounted.
+    # 第 1 期的一次性 CAPEX：1000 MW x 3500 CNY/kW x 0.70 x 1000，再折现。
     expected_capex_t1 = 1000.0 * 3500.0 * 0.70 * 1000.0 / (1.0 + 0.06) ** (2050 - 2025)
     assert y1["cost_breakdown_cny"]["rebuild_capex"] == pytest.approx(expected_capex_t1, rel=1e-3)
-    # No rebuild CAPEX in period 2 even though the plant is still rebuilt and operating.
+    # 第 2 期没有重建 CAPEX，尽管电厂仍处于重建状态并在运行。
     assert y2["cost_breakdown_cny"]["rebuild_capex"] == pytest.approx(0.0, abs=1.0)
 
-    # The rebuilt plant operates at rebuild_efficiency (USC): its heat rate improves to
-    # hr x 0.42/0.45, which must show up in the baseline net operating cost.
+    # 重建后的电厂按 rebuild_efficiency（超超临界，USC）运行：热耗改善为
+    # hr x 0.42/0.45，这必须体现在基线净运行成本里。
     assumptions = _toy_assumptions()
     hr_eff = assumptions.heat_rate_gj_per_mwh * assumptions.coal_plant_base_efficiency / scenario.rebuild_efficiency
     net_pm = (
@@ -317,13 +315,12 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
 
 
 def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path) -> None:
-    """A capture island once built is paid for once and keeps running.
+    """捕集岛一旦建成，只付一次钱，并持续运行。
 
-    Targets 0.5 -> 0.3 -> 0.5 with retirement disabled. Before the capture-share lock
-    (2026-09-10) the CCS share dipped in period 2 and rebounded in period 3, and this test
-    guarded the stock-increment charging (no second capex on the rebound). With the lock the
-    share cannot dip at all -- the 2030 share is held through 2040 and 2050, the lower 2040
-    target is over-met, and CAPEX is still due only once, in period 1."""
+    目标 0.5 -> 0.3 -> 0.5，禁用退役。在捕集份额锁定（2026-09-10）之前，
+    CCS 份额会在第 2 期下降、第 3 期回升，本测试守护的是按存量增量计价（回升时
+    不再计第二笔 capex）。有了锁定，份额根本不能下降——2030 年的份额一直保持到
+    2040 与 2050 年，较低的 2040 年目标被超额完成，而 CAPEX 仍只在第 1 期计一次。"""
     years3 = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.7, 2050: 0.5})
@@ -351,21 +348,20 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     y2 = solution["year_solutions"][2040]
     y3 = solution["year_solutions"][2050]
 
-    # CCS share follows the target exactly (all pathway costs increase with share).
+    # CCS 份额严格跟随目标（所有路径的成本都随份额增加）。
     ccs_idx = 2  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
-    # The energy-penalty ratio declines over time, so the share meeting a given target
-    # differs by year even when the target is unchanged.
+    # 能耗惩罚比例随时间下降，所以即使目标不变，满足给定目标的份额也逐年不同。
     s1_y2030, _ = _expected_ccs(scenario, assumptions, 0.5, 2030)
     s1_y2050, _ = _expected_ccs(scenario, assumptions, 0.5, 2050)
     s2_y2040, _ = _expected_ccs(scenario, assumptions, 0.3, 2040)
     assert s2_y2040 < s1_y2050 < s1_y2030
     assert y1["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
-    # Locked: no dip in 2040, and 2050 needs no more than what is already running.
+    # 已锁定：2040 年不下降，2050 年所需也不超过已在运行的份额。
     assert y2["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
     assert y3["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
 
-    # CAPEX only in period 1, on the full installed stock; periods 2 and 3 add nothing
-    # (period 3's rebound stays within the already-installed stock).
+    # CAPEX 只在第 1 期按全部已装存量计；第 2、3 期不再增加
+    # （第 3 期的回升不超出已装存量）。
     rate = scenario.discount_rate
     df1 = 1.0 / (1.0 + rate) ** (2030 - scenario.discount_base_year)
     capex_rate = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * assumptions.ccs_learning_factor(2030)
@@ -374,8 +370,7 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     assert y2["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(0.0, abs=1.0)
     assert y3["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(0.0, abs=1.0)
 
-    # The per-plant cost report must mirror the model: installed-stock CAPEX in
-    # period 1 only, nothing in periods 2 and 3.
+    # 逐厂成本报表必须与模型一致：已装存量 CAPEX 只在第 1 期计，第 2、3 期为零。
     capex_indices = solution["capex_pathway_indices"]
     plant_cost_y1 = _build_plant_cost_table(
         prepared, scenario, assumptions, 2030, y1["year_data"], y1["share"],
@@ -399,9 +394,8 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
 
 
 def test_unit_cf_boost_recovers_unboosted_accounting(tmp_path) -> None:
-    """Guard: with retrofit_cf_boost = 1.0 the wired-in per-pathway accounting must
-    reduce exactly to the classic formulation (reduction = eta x share x baseline E,
-    minus the energy-penalty fuel emissions that are counted in the residual)."""
+    """守护测试：retrofit_cf_boost = 1.0 时，已接入的逐路径核算必须精确退化为
+    经典形式（减排 = eta x 份额 x 基线 E，再减去计入残余排放的能耗惩罚燃料排放）。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2050: 0.5, 2060: 0.5})
     scenario = OptimizationScenario(

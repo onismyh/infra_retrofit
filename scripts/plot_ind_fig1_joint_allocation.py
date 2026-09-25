@@ -303,7 +303,7 @@ def panel_d(ax, meta: dict, detail: pd.DataFrame) -> None:
             continue
         colour = SECTOR_COLOR[sector]
         # CCS 的成本口径是"每吨被捕集的 CO2"（capex 年金 + 固定运维 + 蒸汽/电/耗材，
-        # 全国均价煤、当年电价），CCS 通路的净减排量 = 捕集量 − 再生蒸汽排放，
+        # 缺省煤价 `coal_fuel_cost_cny_per_gj`、当年电价），CCS 通路的净减排量 = 捕集量 − 再生蒸汽排放，
         # 所以按每吨净减排折算要除以 (1 − 蒸汽排放系数)。
         ccs = [
             levelised_capture_cost_cny_per_t(

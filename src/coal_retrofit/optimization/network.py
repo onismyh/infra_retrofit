@@ -12,18 +12,17 @@ from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
 
-# Shortest branch the model will price. Three industrial hubs sit on top of a corridor node
-# (geodesic distance 0.000 km) and their zero-length branches were built "for free" at
-# 20 Mtpa in 2030. One kilometre of on-site piping is the floor.
+# 模型计价的最短支线。有三个工业 hub 正压在走廊节点上（大地线距离 0.000 km），
+# 它们的零长度支线在 2030 年被"免费"按 20 Mtpa 建成。
+# 以一公里的厂内管道为下限。
 MIN_BRANCH_LENGTH_KM = 1.0
 
 
 def _routed_branch_km(straight_km: float) -> float:
-    """Straight-line branch length -> routed length: detour factor, then the floor.
+    """支线直线长度 -> 路由长度：先乘绕行系数，再套下限。
 
-    CLAUDE.md 1.3: every straight-line candidate is `haversine x 1.136`. The runtime branches
-    (plant, storage, industry) used the raw geodesic distance; the triangulation and direct
-    edges built by `builders/network.py` already carry the factor.
+    CLAUDE.md 1.3：每条直线候选都是 `haversine x 1.136`。运行期支线（电厂、封存、工业）
+    原先用的是原始大地线距离；`builders/network.py` 建的三角化边与直连边已带该系数。
     """
     return max(float(straight_km) * NETWORK_DETOUR_FACTOR, MIN_BRANCH_LENGTH_KM)
 
@@ -31,26 +30,26 @@ def _routed_branch_km(straight_km: float) -> float:
 @dataclass(frozen=True)
 class RuntimeNetwork:
     nodes: pd.DataFrame
-    # columns include: node_id, lon, lat, node_type, plant_id, storage_hub_id, ...
+    # 列包括：node_id, lon, lat, node_type, plant_id, storage_hub_id, ...
 
     edges: pd.DataFrame
-    # columns include: edge_id, from_node_id, to_node_id, length_km,
-    #                  existing_corridor_flag, edge_class, source, year_basis, capex_multiplier
+    # 列包括：edge_id, from_node_id, to_node_id, length_km,
+    #         existing_corridor_flag, edge_class, source, year_basis, capex_multiplier
 
     incidence: np.ndarray
-    # shape: (n_nodes, n_edges)
-    # incidence[n, e] = +1.0  if edge e departs from node n (from_node_id == node)
-    # incidence[n, e] = -1.0  if edge e arrives at node n  (to_node_id  == node)
-    # incidence[n, e] =  0.0  otherwise
+    # 形状：(n_nodes, n_edges)
+    # incidence[n, e] = +1.0  若边 e 从节点 n 出发（from_node_id == node）
+    # incidence[n, e] = -1.0  若边 e 到达节点 n（to_node_id  == node）
+    # incidence[n, e] =  0.0  其他情况
 
     plant_node_ids: dict[str, str]
-    # maps plant_id  -> node_id  for every plant that will be solved
+    # 映射 plant_id -> node_id，覆盖每个将参与求解的电厂
 
     storage_node_ids: dict[str, str]
-    # maps storage_hub_id -> node_id  for every storage hub that will be solved
+    # 映射 storage_hub_id -> node_id，覆盖每个将参与求解的封存 hub
 
     industry_node_ids: dict[str, str]
-    # maps industry hub_id -> node_id for every industrial hub that will be solved
+    # 映射工业 hub_id -> node_id，覆盖每个将参与求解的工业 hub
 
 
 def _build_base_graph(
@@ -250,15 +249,13 @@ def build_runtime_network(
         )
         existing_storage_nodes[str(row.storage_hub_id)] = runtime_node_id
 
-    # Industrial hubs join the SAME graph as the coal hubs: their captured CO2 competes for
-    # the same edge capacity and the same sinks. Identical branch rule, so neither source group
-    # gets a connection advantage the other does not have.
+    # 工业 hub 与煤电 hub 进入同一张图：其捕集的 CO2 争用同样的边容量和同样的汇。
+    # 支线规则完全相同，因此两类源谁都不会得到对方没有的接入优势。
     #
-    # The nearest node can be a coal-plant or storage node, because `nodes` grows as branches
-    # are added. That is not a defect: a node's balance fixes its NET outflow to its own
-    # capture (or, at a sink, to its own injection), so a transiting industrial flow raises the
-    # outflow by exactly what it brought in. Mass is conserved, and sharing a collection point
-    # is precisely what "shared infrastructure" means here.
+    # 最近节点可能是煤电厂节点或封存节点，因为 `nodes` 随支线的加入而增长。这不是缺陷：
+    # 节点平衡固定的是节点的净流出，令其等于自身捕集量（在汇处则为自身注入量），所以过境的
+    # 工业流量使流出恰好增加它带进来的量。质量守恒，而共享一个汇集点正是这里"共享基础设施"
+    # 的含义。
     existing_industry_nodes: dict[str, str] = {}
     if "industry_hub_id" in base_nodes.columns:
         existing_industry_nodes = {
@@ -318,7 +315,7 @@ def build_runtime_network(
 
     edges = edges.drop_duplicates(subset=["edge_id"]).reset_index(drop=True)
 
-    # Build plant_node_ids and storage_node_ids from the existing maps
+    # 由现有映射构造 plant_node_ids 与 storage_node_ids
     plant_node_ids = {
         str(plant_id): str(node_id)
         for plant_id, node_id in existing_plant_nodes.items()
@@ -332,9 +329,9 @@ def build_runtime_network(
         for hub_id, node_id in existing_industry_nodes.items()
     }
 
-    # Build directed incidence matrix: shape (n_nodes, n_edges)
-    # incidence[n, e] = +1 if edge e departs from node n
-    # incidence[n, e] = -1 if edge e arrives at node n
+    # 构造有向关联矩阵：形状 (n_nodes, n_edges)
+    # incidence[n, e] = +1 若边 e 从节点 n 出发
+    # incidence[n, e] = -1 若边 e 到达节点 n
     final_edges = edges.reset_index(drop=True)
     final_nodes = nodes.reset_index(drop=True)
     node_idx_map = {str(row.node_id): i for i, row in enumerate(final_nodes.itertuples(index=False))}

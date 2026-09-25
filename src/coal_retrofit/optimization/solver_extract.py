@@ -46,6 +46,7 @@ def empty_year_solutions(
             "retrofit_installed": np.zeros((plant_count, len(idx.capex_pathway_indices))),
             "pipe_count": np.zeros((edge_count, len(p.year_data.pipe_tiers_mtpa))),
             "industry_share": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
+            "industry_capacity_mt": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
             "industry_h2_flow_kg": np.zeros(0),
             "plant_reduction_mt": np.zeros(plant_count),
             "total_reduction_mt": 0.0,
@@ -114,8 +115,9 @@ def extract_year_solutions(
             "blend_level_a": _var_value(payload.blend_level_a, plant_count),
             "retrofit_installed": _var_value(payload.retrofit_installed, (plant_count, len(idx.capex_pathway_indices))),
             "pipe_count": _var_value(payload.pipe_count, (edge_count, len(year_data.pipe_tiers_mtpa))),
-            "industry_share": _var_value(industry["share"], (hub_count, len(INDUSTRY_ROUTES))),
-            "industry_h2_flow_kg": _var_value(industry["h2_flow_kg"], int(industry["h2_flow_kg"].shape[0])) * _amm_s,
+            "industry_share": _var_value(industry.share, (hub_count, len(INDUSTRY_ROUTES))),
+            "industry_capacity_mt": _var_value(industry.capacity_mt, (hub_count, len(INDUSTRY_ROUTES))),
+            "industry_h2_flow_kg": _var_value(industry.h2_flow_kg, int(industry.h2_flow_kg.shape[0])) * _amm_s,
             # 逐厂减排量直接取约束自身的表达式，报告不必从 share 反推。
             "plant_reduction_mt": np.array(
                 [_expr_value(expr) for expr in payload.plant_reduction_exprs], dtype=np.float64

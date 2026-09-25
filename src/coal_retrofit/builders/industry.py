@@ -1,18 +1,18 @@
-"""Build the industrial point-source inventory from the plant-level source library.
+"""从厂级点源库构建工业点源清单。
 
-Source: `D:\\6. Transfer\\PhD_tht\\point_source\\` — six workbooks covering seven sectors,
-each with WGS84 coordinates, capacity, output, CO2 and (except EAF) a hydrogen-demand column.
+来源：`D:\\6. Transfer\\PhD_tht\\point_source\\`——六个工作簿，覆盖七个部门，各自都带
+WGS84 坐标、产能、产量、CO2，以及（EAF 除外）一列氢需求。
 
-THE UNITS IN THAT LIBRARY ARE NOT UNIFORM, and getting them wrong silently rescales the
-whole industrial sector. Verified against national totals before writing this module:
+该库中的单位并不统一，一旦弄错，整个工业部门会被悄无声息地按比例放缩。编写本模块前
+已对照全国总量核验：
 
-    steel     production in kt      CO2 in Mt   H2_DMD in kt    (939 Mt crude steel)
-    others    production in 万吨    CO2 in Mt   H2_DMD in 万吨  (52 Mt NH3, 678 Mt crude,
-                                                                 1 269 Mt clinker)
-    cement    capacity in t/d (not 万吨) — 9 000 t/d x 300 d = 2.7 Mt/yr matches its own
-              production column, which is the check that pinned this down.
+    钢铁      产量以 kt 计      CO2 以 Mt 计   H2_DMD 以 kt 计   （939 Mt 粗钢）
+    其他      产量以万吨计      CO2 以 Mt 计   H2_DMD 以万吨计   （52 Mt NH3，678 Mt 原油，
+                                                                   1 269 Mt 熟料）
+    水泥      产能以 t/d 计（不是万吨）——9 000 t/d x 300 d = 2.7 Mt/yr，与它自己的
+              产量列吻合，单位正是靠这项核对确定下来的。
 
-Everything is normalised to kt/yr for capacity and output, Mt/yr for CO2, kt/yr for hydrogen.
+全部统一为：产能与产量用 kt/yr，CO2 用 Mt/yr，氢用 kt/yr。
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ from ..constants_industry import (
     water_quota,
 )
 from ..paths import ProjectPaths
-# Reuse the coal fleet's distance matrix rather than writing a second one: the two hub
-# families must be clustered on identical geometry or their hub sizes are not comparable.
+# 复用煤电机组那套距离矩阵，而不是再写一套：两类 hub 必须在完全相同的几何上聚类，
+# 否则它们的 hub 规模不可比。
 from .plants import _haversine_distance_matrix
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 POINT_SOURCE_DIR = Path(r"D:\6. Transfer\PhD_tht\point_source")
 
 WAN_TO_KT = 10.0        # 万吨 -> kt
-CEMENT_KILN_DAYS = 300  # t/d -> kt/yr, the operating-day convention implied by the source
+CEMENT_KILN_DAYS = 300  # t/d -> kt/yr，数据源隐含的年运行天数惯例
 
 CANONICAL_COLUMNS = [
     "source_id", "sector", "sector_zh", "plant_name", "province",
@@ -64,17 +64,17 @@ CANONICAL_COLUMNS = [
 
 
 def _num(frame: pd.DataFrame, column: str) -> pd.Series:
-    """Numeric view of a column, or zeros if the column is absent."""
+    """取某列的数值视图；该列不存在时返回全零。"""
     if column not in frame.columns:
         return pd.Series(0.0, index=frame.index, dtype=float)
     return pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
 
 
 def _text(frame: pd.DataFrame, column: str, default: str) -> pd.Series:
-    """String view of a column, or a constant series if the column is absent.
+    """取某列的字符串视图；该列不存在时返回常数序列。
 
-    `DataFrame.get(col, default)` returns the bare default, not a Series, so it cannot be
-    used here — that mismatch is silent until `.astype` is called on it.
+    `DataFrame.get(col, default)` 返回的是裸的默认值而不是 Series，所以这里不能用它——
+    这种不匹配不会报错，直到对它调用 `.astype` 时才暴露。
     """
     if column not in frame.columns:
         return pd.Series(default, index=frame.index, dtype=object)
@@ -82,7 +82,7 @@ def _text(frame: pd.DataFrame, column: str, default: str) -> pd.Series:
 
 
 def _year(frame: pd.DataFrame, column: str) -> pd.Series:
-    """Commissioning year as a nullable int; 'unknown' and blanks become NA."""
+    """投运年份，转为可空整数；'unknown' 与空白变为 NA。"""
     if column not in frame.columns:
         return pd.Series(pd.NA, index=frame.index, dtype="Int64")
     raw = pd.to_numeric(frame[column], errors="coerce")
@@ -98,21 +98,19 @@ def _read(sheet_file: str, sheet: str) -> pd.DataFrame:
 
 
 def _load_steel() -> pd.DataFrame:
-    """Blast-furnace/BOF and EAF units. Two sheets, deliberately kept as two sectors.
+    """高炉-转炉（BOF）与电炉（EAF）装置。两张表，有意保留为两个部门。
 
-    They are different technologies with different water quotas, different emission factors
-    (1.8 vs 0.4 tCO2/t crude steel) and only one hydrogen route between them, so merging them
-    into a single "steel" sector would make every downstream per-tonne number a blend of two
-    incomparable things.
+    二者是不同的工艺：取水定额不同，排放因子不同（1.8 vs 0.4 tCO2/t 粗钢），两者之间
+    也只有一条氢路线；把它们并成一个"钢铁"部门，会让下游每一个吨产品指标都变成两种
+    不可比事物的混合。
     """
     frames = []
     bof = _read("steel_all.xlsx", "China_ope_cons_BOF")
     frames.append(pd.DataFrame({
         "source_id": "BOF_" + bof["ID"].astype(str),
         "sector": SECTOR_STEEL_BF,
-        # `Name` carries only 60 distinct values across 705 furnace rows and 237 distinct
-        # coordinates, so it cannot identify a site; `GEM Plant ID` can, and matches the key
-        # the EAF sheet uses.
+        # `Name` 在 705 行炉子、237 个不同坐标上只有 60 个不同取值，因此无法标识厂址；
+        # `GEM Plant ID` 可以，并且与 EAF 表所用的键一致。
         "plant_name": _text(bof, "GEM Plant ID", "unknown"),
         "province": bof["Province"].astype(str),
         "longitude": _num(bof, "lon"), "latitude": _num(bof, "lat"),
@@ -136,8 +134,8 @@ def _load_steel() -> pd.DataFrame:
         "production_kt_per_year": _num(eaf, "EAF steel production"),
         "co2_mt_per_year": _num(eaf, "CO2_Emi"),
         "process_co2_mt_per_year": 0.0,
-        # EAF has no H2_DMD column in the source, which matches SECTOR_HAS_H2_ROUTE: an
-        # electric arc furnace running on scrap has no fossil reductant to displace.
+        # 源数据中 EAF 没有 H2_DMD 列，这与 SECTOR_HAS_H2_ROUTE 一致：以废钢为原料的
+        # 电弧炉没有可被替代的化石还原剂。
         "h2_demand_kt_per_year": 0.0,
         "feedstock": "default",
         "commission_year": _year(eaf, "Start Date"),
@@ -154,14 +152,14 @@ def _load_cement() -> pd.DataFrame:
         "plant_name": df["Name"].astype(str),
         "province": df["Province"].astype(str),
         "longitude": _num(df, "lon"), "latitude": _num(df, "lat"),
-        # t/d -> kt/yr. The only sector whose capacity is a daily rate.
+        # t/d -> kt/yr。唯一一个产能按日计的部门。
         "capacity_kt_per_year": _num(df, "Clinker Capacity") * CEMENT_KILN_DAYS / 1000.0,
         "production_kt_per_year": _num(df, "Clinker Production") * WAN_TO_KT,
         "co2_mt_per_year": _num(df, "CO2 Emission"),
-        # Calcination share of the 0.839 tCO2/t clinker factor. Kept explicit because it is
-        # the part no fuel switch can touch (see constants_industry.SECTOR_HAS_H2_ROUTE).
+        # 0.839 tCO2/t 熟料排放因子中煅烧（calcination）所占的份额。单独列出，因为这部分
+        # 是任何燃料替代都动不了的（见 constants_industry.SECTOR_HAS_H2_ROUTE）。
         "process_co2_mt_per_year": _num(df, "CO2 Emission") * 0.63,
-        "h2_demand_kt_per_year": 0.0,   # no hydrogen route; source column is fuel-heat only
+        "h2_demand_kt_per_year": 0.0,   # 无氢路线；源数据中该列只涉及燃料供热
         "feedstock": "default",
         "commission_year": _year(df, "Time"),
         "status": "operating",
@@ -211,11 +209,10 @@ def _load_refinery() -> pd.DataFrame:
 
 
 def _load_coal_chemical() -> pd.DataFrame:
-    """Modern coal chemicals. Read the four process sheets, not the `All` summary.
+    """现代煤化工。读四张分工艺表，而不是 `All` 汇总表。
 
-    `All` drops capacity and output, which the water calculation needs; the process sheets
-    also split process from fuel CO2, which matters because only the fuel part is displaced
-    by a hydrogen blend.
+    `All` 丢掉了产能与产量，而用水计算需要它们；分工艺表还把过程 CO2 与燃料 CO2 分开，
+    这一点很重要，因为掺氢只能替代燃料那部分。
     """
     frames = []
     for sheet in ("煤制天然气", "煤制烯烃", "煤制油", "煤制乙二醇"):
@@ -239,17 +236,16 @@ def _load_coal_chemical() -> pd.DataFrame:
 
 
 def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
-    """Fill missing commissioning years, by a regime that depends on what the sector knows.
+    """补齐缺失的投运年份，补法取决于该部门掌握了多少信息。
 
-    Partially observed sectors (cement, steel) draw their gaps from their OWN observed year
-    distribution: the fill reproduces the observed empirical quantiles, so the sector's age
-    profile is preserved rather than flattened. Sectors with no observed year at all
-    (`SECTORS_WITH_UNIFORM_RETIREMENT`) get ages spread evenly over [0, life].
+    部分有观测的部门（水泥、钢铁）从它们自己的已观测年份分布中取值补缺：补出的值复现
+    观测到的经验分位数，因此该部门的年龄结构得以保留，而不是被抹平。完全没有观测年份的
+    部门（`SECTORS_WITH_UNIFORM_RETIREMENT`）把年龄均匀铺在 [0, life] 上。
 
-    Both fills are deterministic quantile ladders ordered by `source_id` — not sampled — so
-    two runs are bit-identical (`.claude/rules/experiment-reproducibility.md`).
-    `commission_year_observed` stays False for every filled row, so any figure that reads
-    plant age can exclude them instead of treating a synthetic year as data.
+    两种补法都是按 `source_id` 排序的确定性分位数阶梯——不是抽样——所以两次运行结果
+    逐位相同（`.claude/rules/experiment-reproducibility.md`）。
+    所有被补的行 `commission_year_observed` 都保持 False，因此任何读取厂龄的图都能把
+    它们排除，而不是把合成的年份当成数据。
     """
     frame = frame.copy()
     frame["commission_year_observed"] = frame["commission_year"].notna()
@@ -266,7 +262,7 @@ def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
             years = base_year - np.rint(fractions * life)
             how = "uniform over %d-year life" % life
         else:
-            # Empirical-quantile fill: reproduce the observed distribution of this sector.
+            # 经验分位数补法：复现该部门的观测分布。
             years = np.rint(np.quantile(observed.astype(float).to_numpy(), fractions))
             how = "empirical quantiles of %d observed years" % len(observed)
         frame.loc[ordered, "commission_year"] = years.astype("int64")
@@ -278,7 +274,7 @@ def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
 
 
 def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
-    """Attach the GB/T 18916 unit-product water intake and the resulting annual volume."""
+    """附上 GB/T 18916 的单位产品取水量，以及由此得到的年取水量。"""
     frame = frame.copy()
     intensities = []
     for sector, feedstock in zip(frame["sector"], frame["feedstock"], strict=True):
@@ -287,7 +283,7 @@ def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
         except ValueError:
             intensities.append(np.nan)
     frame["water_intensity_m3_per_t"] = intensities
-    # production is kt/yr; kt -> t is x1000.
+    # 产量单位为 kt/yr；kt -> t 要 x1000。
     frame["water_m3_per_year"] = (
         frame["water_intensity_m3_per_t"] * frame["production_kt_per_year"] * 1000.0
         * INDUSTRY_CONSUMPTION_SHARE
@@ -303,7 +299,7 @@ def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFrame:
-    """Normalised plant-level industrial point sources across all seven sectors."""
+    """全部七个部门的厂级工业点源，单位已统一。"""
     frame = pd.concat(
         [_load_steel(), _load_cement(), _load_ammonia_methanol(),
          _load_refinery(), _load_coal_chemical()],
@@ -329,12 +325,11 @@ def cluster_sector_hubs(
     sources: pd.DataFrame,
     hub_counts: dict[str, int] | None = None,
 ) -> pd.DataFrame:
-    """Cluster point sources into hubs SEPARATELY WITHIN EACH SECTOR.
+    """把点源聚类为 hub，且只在每个部门内部分别聚类。
 
-    Same algorithm as the coal fleet (`builders/plants._cluster_plants_to_hubs`):
-    agglomerative, average linkage, precomputed haversine distances. Clustering per sector
-    keeps a hub technologically homogeneous — a hub that mixed a cement kiln with an ammonia
-    plant would have no meaningful water intensity, hydrogen basis or capture cost.
+    算法与煤电机组相同（`builders/plants._cluster_plants_to_hubs`）：凝聚层次聚类、
+    平均链接（average linkage）、预先算好的 haversine 距离。按部门聚类使每个 hub 在技术上
+    同质——一个把水泥窑和合成氨厂混在一起的 hub，其用水强度、氢基准与捕集成本都没有意义。
     """
     counts = dict(DEFAULT_SECTOR_HUB_COUNTS if hub_counts is None else hub_counts)
     labelled = []
@@ -356,7 +351,7 @@ def cluster_sector_hubs(
 
 
 def aggregate_hubs(labelled: pd.DataFrame) -> pd.DataFrame:
-    """Collapse labelled point sources to hub rows, output-weighting the intensities."""
+    """把已打标签的点源合并为 hub 行，强度按产量加权。"""
     rows = []
     for hub_id, group in labelled.groupby("hub_id", sort=True):
         output = float(group["production_kt_per_year"].sum())
@@ -393,7 +388,7 @@ def aggregate_hubs(labelled: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_industry_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Write `industry_sources.csv` and `industry_hubs.csv` into `inputs/`."""
+    """把 `industry_sources.csv` 与 `industry_hubs.csv` 写入 `inputs/`。"""
     paths.ensure_inputs_dir()
     sources = build_industry_sources()
     labelled = cluster_sector_hubs(sources)

@@ -1,7 +1,8 @@
 """逐年容器：`YearData` 是一个规划年的全部系数，`YearPayload` 是这一年的变量与表达式。
 
 两者此前都是 `dict[str, object]`：键名拼错要到运行到那一行才报错，读者也看不出有哪些键。
-字段名与原字典键一一对应。工业侧（两者的 `industry` 字段）仍是字典，由 `industry.py` 定义。
+字段名与原字典键一一对应。工业侧（两者的 `industry` 字段）同样是 dataclass：
+`industry_matrices.IndustryYearData` 与 `model_industry.IndustryPayload`。
 """
 from __future__ import annotations
 
@@ -14,6 +15,9 @@ import pandas as pd
 if TYPE_CHECKING:
     import gurobipy as gp
     from scipy import sparse
+
+    from .industry_matrices import IndustryYearData
+    from .model_industry import IndustryPayload
 
 # gurobipy 13 的存根把 MVar 的标量下标 `x[i, j]` 与 `x.sum()` 标成 MVar / MLinExpr，而 `quicksum`、
 # `LinExpr.__iadd__` 的存根只收 `float | Var | LinExpr`；运行时它们是 0 维对象，照常参与求和。
@@ -48,7 +52,7 @@ class YearData:
     ccs_om_matrix: np.ndarray
     baseline_net_matrix: np.ndarray
     stranded_per_plant: np.ndarray
-    # 改造存量的 capex 系数 (plant_count, 2)：列 0 捕集岛，列 1 BECCS 增量（见 `model_year`）。
+    # 改造存量的 capex 系数 (plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
     retrofit_stock_capex: np.ndarray
 
     # --- 价格、封存部署、部门上限 ---
@@ -99,8 +103,8 @@ class YearData:
     water_basin_available_m3: np.ndarray | None
     water_basin_codes: list[str]
 
-    # --- 工业（`industry.industry_year_data` 的字典）与其流域成员矩阵 (n_basins, n_industry_hubs) ---
-    industry: dict[str, Any]
+    # --- 工业（`industry_matrices.industry_year_data` 的输出）与其流域成员矩阵 (n_basins, n_industry_hubs) ---
+    industry: IndustryYearData
     industry_basin_membership: np.ndarray | None
 
     # --- 湿冷→空冷改造（`plant_matrices._air_cooling_matrices`）---
@@ -175,8 +179,8 @@ class YearPayload:
     plant_reduction_exprs: list[GrbExpr]
     total_reduction_mt: GrbExpr
     total_bio_penalty: GrbExpr
-    # `industry.add_industry_year` 的字典。
-    industry: dict[str, Any]
+    # `model_industry.add_industry_year` 的输出。
+    industry: IndustryPayload
     # 成本类别 -> 折现并缩放后的表达式（碳价为零时碳成本是 0.0）。
     cost_exprs: dict[str, GrbExpr] = field(default_factory=dict)
     # (名称, 未折现 capex 表达式, 经济寿命年)，供期末残值。

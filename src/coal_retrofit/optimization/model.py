@@ -10,11 +10,12 @@ from ..experiments.scenario import ScenarioRunContext
 from ..paths import ProjectPaths
 from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
 
-# Re-export shared types so external code importing from .model still works
+# 重新导出共享类型，让从 .model 导入的外部代码继续可用
 from ._shared import PreparedInputs, SolveState, PATHWAY_INDEX, GUROBI_STATUS_NAMES  # noqa: F401
 from .data_prep import prepare_inputs, _paths_df_from_assumptions  # noqa: F401
 from .solver import _solve_joint_multi_period
 from .results import (
+    _alive_edge_added_stock,
     _build_cost_breakdown,
     _build_pathway_table,
     _build_province_table,
@@ -35,8 +36,8 @@ from .results import (
 
 _SCENARIO_FIELD_NAMES = {f.name for f in fields(OptimizationScenario)}
 _TUPLE_FIELD_NAMES = {f.name for f in fields(OptimizationScenario) if isinstance(f.default, tuple)}
-# Fields owned by the run context or by explicit alias handling below; passing them
-# directly in scenario parameters is rejected (use the aliases instead).
+# 由运行上下文或下方显式别名处理负责的字段；在情景参数里直接传入
+# 会被拒绝（请改用别名）。
 _MANAGED_FIELD_NAMES = {
     "experiment_id", "description", "notes",
     "planning_years", "forced_pathways", "min_forced_path_share",
@@ -52,7 +53,7 @@ def _map_context_to_scenario(context: ScenarioRunContext) -> OptimizationScenari
     forced_pathways: tuple[str, ...] = ()
     if force_all_pathways:
         forced_pathways = tuple(PATHWAYS)
-        params.pop("forced_pathways", None)  # force_all takes precedence
+        params.pop("forced_pathways", None)  # force_all 优先
     elif "forced_pathways" in params:
         forced_pathways = tuple(
             str(item).strip().lower()
@@ -83,9 +84,9 @@ def _map_context_to_scenario(context: ScenarioRunContext) -> OptimizationScenari
     )
 
 
-def _update_state(state: SolveState, new_cap_mtpa: np.ndarray, storage_use_mtpa: np.ndarray, interval_years: int) -> SolveState:
+def _update_state(state: SolveState, storage_use_mtpa: np.ndarray, interval_years: int) -> SolveState:
+    """推进封存剩余容量；管道在役存量按建成年由 `_alive_edge_added_stock` 逐年重算。"""
     next_state = state.clone()
-    next_state.edge_added_stock_mtpa = next_state.edge_added_stock_mtpa + new_cap_mtpa
     next_state.remaining_storage_mt = np.maximum(0.0, next_state.remaining_storage_mt - storage_use_mtpa * interval_years)
     return next_state
 
@@ -120,9 +121,14 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
     overview_rows: list[dict[str, object]] = []
     prev_share_values: np.ndarray | None = None
     prev_retrofit_installed: np.ndarray | None = None
+    prev_industry_capacity: np.ndarray | None = None
 
+    new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
         interval_years = scenario.interval_years(years, year_index, assumptions)
+        state.edge_added_stock_mtpa = _alive_edge_added_stock(
+            new_cap_by_year, year, assumptions.pipeline_lifetime_years, len(prepared.network.edges)
+        )
         state_before = state.clone()
         year_solution = joint_solution["year_solutions"][year]
         year_data = year_solution["year_data"]
@@ -158,9 +164,13 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
             year_solution["blend_level_b"], year_solution["blend_level_a"],
             year_solution.get("air_share"),
         ))
+        # 与 scripts/run_single.py 同样传能力存量与上一年存量：capital 列按存量增量计，不再每年按整个存量重复计入。
         industry_detail_tables.append(_build_industry_detail_table(
-            prepared, year, year_data.industry, year_solution.get("industry_share")
+            prepared, year, year_data.industry, year_solution.get("industry_share"),
+            h2_flow_kg=year_solution.get("industry_h2_flow_kg"), year_data=year_data,
+            capacity_mt=year_solution.get("industry_capacity_mt"), prev_capacity_mt=prev_industry_capacity,
         ))
+        prev_industry_capacity = year_solution.get("industry_capacity_mt")
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, year_solution["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, year_solution["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, year_solution["water_flow_m3"], prepared.plants))
@@ -191,7 +201,8 @@ def run_context_model(paths: ProjectPaths, context: ScenarioRunContext) -> dict[
         overview_rows.append(overview_row)
 
         if scenario.carry_state_between_years:
-            state = _update_state(state_before, year_solution["new_cap_mtpa"], year_solution["storage_use_mtpa"], interval_years)
+            new_cap_by_year[year] = year_solution["new_cap_mtpa"]
+            state = _update_state(state_before, year_solution["storage_use_mtpa"], interval_years)
         else:
             state = SolveState(edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64), remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy())
         prev_share_values = year_solution["share"]

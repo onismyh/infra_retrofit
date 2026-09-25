@@ -107,7 +107,7 @@ def _build_year_matrices(
     from .industry import industry_year_data
 
     industry_basin_membership = None
-    industry_payload = industry_year_data(prepared.industry, scenario, assumptions, year)
+    industry_data = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
     industry_h2_data = _industry_h2_access_data(prepared, year, assumptions, ammonia_data["nodes"])
     water_data = _water_access_data(prepared, scenario, assumptions, year)
@@ -144,13 +144,9 @@ def _build_year_matrices(
     sector_cap_fraction: dict[str, float] = {
         str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
     }
-    # 改造存量的 capex 系数：列 0 捕集岛按 CCS capex，列 1 BECCS 增量按 (BECCS - CCS) capex（见 `model_year`）。
+    # 改造存量的 capex 系数，(plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
     capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
-    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
-    retrofit_stock_capex = np.column_stack([
-        capex_matrix[:, ccs_k],
-        np.maximum(0.0, capex_matrix[:, beccs_k] - capex_matrix[:, ccs_k]),
-    ])
+    retrofit_stock_capex = capex_matrix[:, [PATHWAY_INDEX["ccs"]]]
 
     return YearData(
         **{k: v for k, v in plant.items() if k not in ("generation_cost_basis", "coal_price_per_plant")},
@@ -192,7 +188,7 @@ def _build_year_matrices(
         water_basin_membership=basin_membership,
         water_basin_available_m3=basin_residual,
         water_basin_codes=basin_codes,
-        industry=industry_payload,
+        industry=industry_data,
         # (n_basins, n_industry_hubs)，与 `water_basin_membership` 分开：求解器用 flatnonzero 把后者转成厂索引，
         # 共用索引空间会让 hub 索引被当成厂索引而不报错。
         industry_basin_membership=industry_basin_membership,

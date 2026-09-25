@@ -28,7 +28,8 @@ class ModelIndex:
     pipeline_indices: list[int]
     incidence: object
     sector_base_2030: dict[str, float]
-    # 一次性 capex 计在存量上的路径：[ccs, beccs]，结果里 `retrofit_installed` 的列顺序。
+    # `retrofit_installed` 每一列按哪条路径的 capex 计价，即结果里的列顺序。只有捕集岛一列
+    # （ccs + beccs 份额），按 CCS 计价；2026-09-23 前另有 BECCS 增量一列。
     capex_pathway_indices: tuple[int, ...]
 
 
@@ -87,10 +88,10 @@ def build_model_index(
         prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
     )
     base_2030 = industry_year_data(prepared.industry, scenario, assumptions, 2030)
-    groups = base_2030["target_groups"]
+    groups = base_2030.target_groups
     for group in sorted(set(str(g) for g in groups)):
         sector_base_2030[str(group)] = float(
-            base_2030["baseline_emissions_mt"][groups == group].sum()
+            base_2030.baseline_emissions_mt[groups == group].sum()
         )
     logger.info("sector targets from %s; 2030 baselines (Mt): %s",
                 scenario.sector_target_source,
@@ -110,5 +111,5 @@ def build_model_index(
         pipeline_indices=pipeline_indices,
         incidence=prepared.network.incidence,
         sector_base_2030=sector_base_2030,
-        capex_pathway_indices=(PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]),
+        capex_pathway_indices=(PATHWAY_INDEX["ccs"],),
     )

@@ -34,8 +34,8 @@ def _build_supply_table(
     ammonia_links["used"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
     ammonia_grouped = ammonia_links.groupby("ammonia_node_id", as_index=False)["used"].sum()
     ammonia_table = year_data.ammonia_nodes.copy()
-    # `used` comes back from the solver in physical units but the availability vector is still
-    # in the solver's scaled units, so it has to be un-scaled or utilisation reads 1e6.
+    # 求解器返回的 `used` 是物理单位，而可用量向量仍是求解器的缩放单位，
+    # 所以必须还原缩放，否则利用率会读成 1e6。
     ammonia_table["available"] = np.asarray(year_data.ammonia_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE
     ammonia_table = ammonia_table.merge(ammonia_grouped, on="ammonia_node_id", how="left").fillna({"used": 0.0})
     ammonia_table["year"] = year
@@ -56,10 +56,9 @@ def _build_supply_table(
     water_table["competition_scope"] = "shared_water_node"
     water_table["unit"] = "m3/yr"
 
-    # Official-quota basin cap: the institutional half, on the WITHDRAWAL basis. Empty
-    # unless water_budget='official_quota'. Kept as its own resource_type so nothing
-    # aggregates it together with the consumption-basis `water` rows above -- the two are
-    # different meters and summing them is meaningless.
+    # 官方指标流域上限：制度半边，口径是取水。除非 water_budget='official_quota'，
+    # 否则为空。单列为一种 resource_type，免得有任何汇总把它与上面按耗水口径的
+    # `water` 行合到一起——两者是不同的计量，相加毫无意义。
     frames = [
         biomass_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
         ammonia_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
@@ -93,18 +92,18 @@ def _build_biomass_flow_table(
     year: int,
     biomass_flow_gj: np.ndarray,
 ) -> pd.DataFrame:
-    """Per-link biomass flow: which node supplies which plant, how much."""
+    """逐链路生物质流量：哪个节点给哪个厂供应多少。"""
     links = prepared.biomass_links.copy()
     links["year"] = year
     links["flow_gj"] = np.asarray(biomass_flow_gj, dtype=np.float64)
-    # Only keep active links
+    # 只保留活跃链路
     active = links[links["flow_gj"] > 1e-3].copy()
-    # Add plant location for mapping
+    # 附上电厂位置，供绘制地图
     plant_loc = prepared.plants[["plant_id", "centroid_longitude", "centroid_latitude", "province_name"]].copy()
     plant_loc["plant_id"] = plant_loc["plant_id"].astype(str)
     active["plant_id"] = active["plant_id"].astype(str)
     active = active.merge(plant_loc, on="plant_id", how="left", suffixes=("", "_plant"))
-    # Add node location
+    # 附上节点位置
     node_loc = prepared.biomass[["biomass_node_id", "longitude", "latitude", "province_name"]].copy()
     node_loc.columns = ["biomass_node_id", "node_longitude", "node_latitude", "node_province"]
     node_loc["biomass_node_id"] = node_loc["biomass_node_id"].astype(str)
@@ -119,7 +118,7 @@ def _build_ammonia_flow_table(
     ammonia_flow_kg: np.ndarray,
     plants: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Per-link ammonia flow: which node supplies which plant, how much."""
+    """逐链路氨流量：哪个节点给哪个厂供应多少。"""
     links = year_data.ammonia_links.copy()
     links["year"] = year
     links["flow_kg"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
@@ -139,7 +138,7 @@ def _build_water_flow_table(
     water_flow_m3: np.ndarray,
     plants: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Per-link water flow: which water node supplies which plant, how much."""
+    """逐链路水流量：哪个水节点给哪个厂供应多少。"""
     links = year_data.water_links.copy()
     links["year"] = year
     links["flow_m3"] = np.asarray(water_flow_m3, dtype=np.float64)

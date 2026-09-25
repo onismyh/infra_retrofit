@@ -278,10 +278,9 @@ def build_attachment_tables(
                 "part_index": 1,
                 "from_node_id": corridor_node_id if from_corridor_to_attachment else node_id,
                 "to_node_id": node_id if from_corridor_to_attachment else corridor_node_id,
-                # Branches are straight-line attachments, so they carry the same detour factor
-                # as the other straight-line candidates. Leaving them at the raw geodesic made a
-                # corridor tie-in look cheaper than it is relative to the corridor itself, whose
-                # length_km is a real routed polyline.
+                # 支线是直线接入，所以和其他直线候选边带同样的绕行系数。把它们留在原始
+                # 大地线长度上，曾使接入走廊的支线相对于走廊本身显得比实际便宜——走廊的
+                # length_km 是真实路由的折线长度。
                 "length_km": round(distance_km * NETWORK_DETOUR_FACTOR, 3),
                 "direct_length_km": round(distance_km, 3),
                 "tortuosity": NETWORK_DETOUR_FACTOR,
