@@ -5,7 +5,8 @@
 (c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
 (d) 成本乘子两侧都只乘 capex 与随 capex 的固定运维，不乘能耗、耗材与 BECCS 的掺烧运维。
 
-不求解的几条（(c) 的在役存量、(d) 的工业乘子、工业明细表的 capital 列）在 `test_capex_stock_no_solver.py`。
+不求解的几条（(b) 的 BECCS 固定运维、(c) 的在役存量、(d) 的两侧成本乘子、工业明细表的 capital 列）
+在 `test_capex_stock_no_solver.py`。
 """
 from __future__ import annotations
 
@@ -30,14 +31,13 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_capex_expr,
     industry_year_data,
 )
+from coal_retrofit.optimization.results_industry import _build_industry_detail_table  # noqa: E402
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
-from coal_retrofit.optimization.year_matrices import _build_year_matrices  # noqa: E402
-from coal_retrofit.optimization.year_types import YearData  # noqa: E402
 from test_capex_stock_no_solver import _cement_hub  # noqa: E402
 from test_h2_route_multiplier import _steel_hub  # noqa: E402
-from test_multiperiod_investment_logic import _write_targets, _write_toy_inputs  # noqa: E402
+from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
 # ---------------------------------------------------------- (a) 工业 capex 按能力存量计 ---
@@ -146,6 +146,76 @@ def test_industry_capex_expr_charges_each_route_on_its_own_capacity_increment() 
     assert industry_capex_expr(current, None, routes=(H2,)).getConstant() == pytest.approx(unit[0, H2] * 0.3, rel=1e-12)
 
 
+def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
+    """在 toy 输入上加一个长流程钢 hub（100 万 t/a，需氢 0.081 t/t，有氢路线）和紧挨它的氢节点，
+    钢铁组按 `steel_caps` 设上限；煤电组与水泥组仍是 `_write_toy_inputs` 写的 1.0。"""
+    inputs = paths.inputs_dir
+    hubs = pd.read_csv(inputs / "industry_hubs.csv")
+    steel = hubs.iloc[[0]].assign(
+        hub_id="ST1", sector="steel_bf_bof", sector_zh="长流程钢", longitude=112.3,
+        co2_mt_per_year=2.0, process_co2_mt_per_year=0.2, h2_demand_kt_per_year=81.0,
+        has_h2_route=True, water_m3_per_year=3.0e6,
+    )
+    pd.concat([hubs, steel], ignore_index=True).to_csv(inputs / "industry_hubs.csv", index=False)
+    index = pd.read_csv(inputs / "industry_output_index_toy.csv")
+    pd.concat([index, index.assign(sector="steel_bf_bof")], ignore_index=True).to_csv(
+        inputs / "industry_output_index_toy.csv", index=False
+    )
+    nodes = pd.read_csv(inputs / "ammonia_supply_curve.csv")
+    near = nodes.iloc[[0]].assign(ammonia_node_id="A2", longitude=112.4, latitude=37.0, province_name="Shanxi")
+    pd.concat([nodes, near], ignore_index=True).to_csv(inputs / "ammonia_supply_curve.csv", index=False)
+    targets = pd.read_csv(inputs / "sector_targets_toy.csv")
+    steel_rows = pd.DataFrame([
+        {"sector_group": "steel", "planning_year": year, "cap_fraction_of_2030": cap}
+        for year, cap in steel_caps.items()
+    ])
+    pd.concat([targets, steel_rows], ignore_index=True).to_csv(inputs / "sector_targets_toy.csv", index=False)
+
+
+def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
+    """全模型求解：钢铁组 2040、2050 年要比 2030 年减 70%。长流程钢的 CCS 最多减约 63%（捕集 90% x
+    (1 - 再生蒸汽放空约 0.30)），氢路线减 95%，所以必须新建氢路线产能。目标函数里的 `industry_capex`
+    逐年等于折现后的明细表 `cost_capital_cny` 之和。目标函数漏掉氢路线 capex、残值台账里仍有时，能力存量
+    没有上界，期末残值抵扣使目标无下界，求解返回 unbounded，在 status 断言处失败；台账里也一起漏掉时，
+    2040 年两者差出氢路线那一份。"""
+    years = (2030, 2040, 2050)
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _add_steel_hub_near_h2_node(paths, {2030: 1.0, 2040: 0.3, 2050: 0.3})
+    # 煤电不约束、碳价为零；关掉退役与掺氨，煤电侧不动，也不与钢铁 hub 争同一个氢节点。
+    scenario = OptimizationScenario(
+        experiment_id="TEST-H2CAPEX", description="toy", planning_years=years,
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0, 0.0),
+        electricity_price_cny_per_mwh_by_year=(400.0, 440.0, 490.0),
+        pathway_disable=("retire", "ammonia"),
+        solver_time_limit=300,
+    )
+    assumptions = _toy_assumptions()
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
+    )
+    solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
+    assert solution["status"] == "optimal"
+    ys = solution["year_solutions"]
+    previous = None
+    for year in years:
+        capacity = ys[year]["industry_capacity_mt"]
+        table = _build_industry_detail_table(
+            prepared, year, ys[year]["year_data"].industry, ys[year]["industry_share"],
+            capacity_mt=capacity, prev_capacity_mt=previous,
+        )
+        df = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate)
+        booked = float(ys[year]["cost_breakdown_cny"]["industry_capex"])
+        assert booked == pytest.approx(df * float(table["cost_capital_cny"].sum()), rel=1e-6, abs=1.0), year
+        assert float(ys[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
+        previous = capacity
+    steel = list(prepared.industry.hubs["hub_id"]).index("ST1")
+    new_h2_mt = float(ys[2040]["industry_capacity_mt"][steel, H2] - ys[2030]["industry_capacity_mt"][steel, H2])
+    assert new_h2_mt > 0.1
+
+
 # ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---
 def _solve_toy(paths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> dict:
     prepared = prepare_inputs(paths, scenario, assumptions)
@@ -246,48 +316,3 @@ def test_warm_start_reseeds_an_expired_pipe(tmp_path) -> None:
     assert sum(start[2050]) == 0.0
     assert start[2060][five] == 1.0 and sum(start[2060]) == 1.0
     assert model.getVarByName("add_cap_2060[0]").Start == 1.0
-
-
-# ------------------------------------- (d) 成本乘子只乘 capex 与随 capex 的固定运维 ---
-def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
-    """toy 输入上 `year` 年的煤电系数矩阵。"""
-    paths = _write_toy_inputs(root, retirement_year=9999)
-    _write_targets(paths, {2030: 1.0, 2040: 1.0, 2050: 1.0, 2060: 1.0})
-    scenario = OptimizationScenario(
-        experiment_id="TEST-MULT", description="toy", planning_years=(2050, 2060),
-        sector_target_source="toy", **scenario_overrides,
-    )
-    assumptions = OptimizationAssumptions()
-    prepared = prepare_inputs(paths, scenario, assumptions)
-    state = SolveState(
-        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
-        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
-    )
-    return _build_year_matrices(prepared, scenario, assumptions, year, state)
-
-
-def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> None:
-    """煤电：乘子 2 使捕集岛 capex 与其固定运维翻倍；能耗惩罚与 BECCS 每 MWh 的掺烧运维
-    （与纯掺烧同为 30 元/MWh）不变。2026-09-23 前固定运维不翻倍，掺烧运维却翻倍。"""
-    base = _toy_year_matrices(tmp_path / "m1", 2050)
-    doubled = _toy_year_matrices(tmp_path / "m2", 2050, ccs_cost_multiplier=2.0)
-    for k in (PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]):
-        assert base.ccs_retrofit_capex_matrix[0, k] > 0.0 and base.ccs_om_matrix[0, k] > 0.0
-        assert base.energy_penalty_matrix[0, k] > 0.0
-        assert doubled.ccs_retrofit_capex_matrix[0, k] == pytest.approx(2.0 * base.ccs_retrofit_capex_matrix[0, k], rel=1e-12)
-        assert doubled.ccs_om_matrix[0, k] == pytest.approx(2.0 * base.ccs_om_matrix[0, k], rel=1e-12)
-        assert doubled.energy_penalty_matrix[0, k] == pytest.approx(base.energy_penalty_matrix[0, k], rel=1e-12)
-    assert base.fixed_cost_matrix[0, PATHWAY_INDEX["beccs"]] > 0.0
-    np.testing.assert_array_equal(doubled.fixed_cost_matrix, base.fixed_cost_matrix)
-
-
-def test_beccs_fixed_om_equals_the_capture_island_om_of_ccs(tmp_path) -> None:
-    """(b) 的另一半，放在本节是为了借用 `_toy_year_matrices`：BECCS 的捕集岛就是 CCS 捕集岛，固定运维一列
-    与 CCS 相同，都等于学习后 capex x `ccs_om_fraction`。2026-09-23 前按 BECCS 的 4 500 元/kW 计，比 CCS 高 29%。
-    不求解。"""
-    matrices = _toy_year_matrices(tmp_path / "m", 2050)
-    ccs, beccs = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
-    assert matrices.ccs_om_matrix[0, ccs] > 0.0
-    assert matrices.ccs_om_matrix[0, beccs] == pytest.approx(matrices.ccs_om_matrix[0, ccs], rel=1e-12)
-    fraction = OptimizationAssumptions().ccs_om_fraction
-    assert matrices.ccs_om_matrix[0, ccs] == pytest.approx(matrices.ccs_retrofit_capex_matrix[0, ccs] * fraction, rel=1e-12)

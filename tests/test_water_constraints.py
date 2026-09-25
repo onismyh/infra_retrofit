@@ -18,7 +18,7 @@ from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.paths import ProjectPaths
-from test_multiperiod_investment_logic import YEARS, _write_targets, _write_toy_inputs
+from toy_inputs import YEARS, _write_targets, _write_toy_inputs
 
 WATER_SCENARIO_ID = "toy|gcm|ssp126"
 # 枯水期径流 2e7 x 可提取比例后节点只剩 4e6 m3/yr，低于 toy 电厂的最小耗水；
