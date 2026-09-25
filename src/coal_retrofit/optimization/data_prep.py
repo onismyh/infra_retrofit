@@ -30,7 +30,8 @@ def _paths_df_from_assumptions(assumptions: OptimizationAssumptions, scenario: O
 
 def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
     plants = pd.read_csv(paths.inputs_dir / "plants.csv").copy()
-    plants["province_name"] = plants["province_mode"].astype(str)
+    # 省名换成分省煤价表的写法；仍查不到的告警，按缺省煤价与缺省利用小时计。
+    plants["province_name"] = assumptions.canonical_provinces(plants["province_mode"], "plants")
     # 发电量按分省利用小时数计算
     plants["province_cf"] = plants["province_name"].map(
         lambda prov: assumptions.province_cf(prov)

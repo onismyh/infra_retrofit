@@ -23,7 +23,7 @@ class IndustryInputs:
     """为优化准备好的工业 hub，以及氢价路径。"""
 
     hubs: pd.DataFrame
-    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，并加上 `basin_code`。
+    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，省名已换成分省煤价表的写法，并加上 `basin_code`。
     h2_price_cny_per_kg: dict[int, float]
     # 每个规划年的全国供给加权 LCOH，自 2026-09-10 起只作报告：
     # 模型按链路、以各节点自己的价格买氢。
@@ -68,7 +68,8 @@ def prepare_industry(
 
     Args:
         paths: 项目路径。
-        assumptions: `OptimizationAssumptions`；读取其中的 `usd_to_cny` 与 `water_budget`。
+        assumptions: `OptimizationAssumptions`；读取其中的 `usd_to_cny` 与 `water_budget`，
+            并用 `canonical_provinces` 把省名换成分省煤价表的写法。
         output_index: {(sector, year): index}；为 None 或为空时产量保持不变。
 
     Returns:
@@ -103,6 +104,8 @@ def prepare_industry(
     hubs["target_group"] = hubs["sector"].astype(str).map(SECTOR_TARGET_GROUP)
     if hubs["target_group"].isna().any():
         raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")
+    # 省名换成分省煤价表的写法；仍查不到的告警，其捕集蒸汽按缺省煤价计。
+    hubs["province"] = assumptions.canonical_provinces(hubs["province"], "industry hubs")
 
     # 按 hub 自身所在位置归流域，与 `_prepare_plants` 对煤电 hub 的归属方式一致：
     # 取水许可跟着厂址走，而不是跟着取水口走。只有流域上限需要它。
