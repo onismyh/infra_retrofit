@@ -76,9 +76,11 @@
 9.92 $/GJ 是气价；京津两行的气价、生物质价与潜力完全相同，取天津的 5.51 $/GJ。煤电没有北京机组；仓库根
 `inputs/industry_hubs.csv` 里只有 1 个北京 hub（水泥 cement_039），它的捕集蒸汽变便宜（`_indtree/inputs/` 的 hub 表不在 git 里，未核）。
 查不到省名时用的缺省煤价 38.2 元/GJ（`coal_fuel_cost_cny_per_gj`）原是 30 省的简单平均，含北京误取的 69.4；更正后简单平均
-为 37.2，缺省值没有跟改，改标 ⚠ 假设（设定值）。仓库根 hub 表里用到它的是写作 "Neimenggu" 的 28 个 hub（煤价表里是
-"Inner Mongolia"，其中 14 个水泥 hub 的捕集蒸汽因此按 38.2 而不是 17.9 计价；这是本 PR 之前就有的问题，没有改）与 4 个
-西藏 hub（优化侧已剔除）。
+为 37.2，缺省值没有跟改，改标 ⚠ 假设（设定值）。仓库根 hub 表里用到它的原是写作 "Neimenggu" 的 28 个 hub（煤价表里是
+"Inner Mongolia"，其中 14 个水泥 hub 的捕集蒸汽因此按 38.2 而不是 17.9 计价）与 4 个西藏 hub（优化侧已剔除）。
+2026-09-25 起读入时按 `optimization/scenario.py` 的 `PROVINCE_NAME_ALIASES` 把 "Neimenggu" 换成 "Inner Mongolia"，
+仍查不到煤价的省名会告警；仓库根输入里已没有 hub 或机组用到缺省煤价（`_indtree/inputs/` 不在 git 里，未核，
+看建模时有无这条告警）。
 
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
@@ -245,7 +247,7 @@ docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中
 英文单词"逐行筛过一遍，终审又按"连续 2 个以上"筛了一遍：剩下的是文献作者、刊名与机构名、题名、原文引文、标识符列表、公式与单位，
 以及英文术语与缩写（括注的如"（steam cycle）""（firm yield）"，未括注的如 CCS、capex、vs），保留。
 
-| `src/coal_retrofit/` | 本轮前（0f8d999） | 现在 |
+| `src/coal_retrofit/` | 本轮前（0f8d999） | PR #2 合入时（b5cd28c） |
 |---|---|---|
 | 文件数 | 55 | 58（工业侧拆出 3 个） |
 | 中文行 / 英文行 | 449 / 1 610（22%） | 1 924 / 80（96%） |
@@ -271,7 +273,7 @@ docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中
 - 结果按表拆为 `results_plant` / `results_network` / `results_resources` / `results_industry`。
 - 批 1 前后，toy 上 15 个变体的模型与解逐字节一致。
 
-| 指标 | 09-22 拆分前（ba967c1） | 上一轮重构前（a5cb31a） | 本轮前（0f8d999） | 现在 |
+| 指标 | 09-22 拆分前（ba967c1） | 上一轮重构前（a5cb31a） | 本轮前（0f8d999） | PR #2 合入时（b5cd28c） |
 |---|---|---|---|---|
 | 超 800 行的文件 | 4 | 2 | 0 | 0 |
 | 超 400 行的文件 | 13 | 11 | 10 | 7 |
@@ -280,7 +282,7 @@ docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中
 | mypy 错误（`--ignore-missing-imports`） | 397 | 406 | 175 | 173 |
 | ruff 0.15.8（默认规则 E4/E7/E9/F，`src/`） | — | — | 7 | 0 |
 
-还不清楚的地方（只报告，未改）：
+PR #2 合入时还不清楚的地方（只报告，未改）：
 
 1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 609、`optimization/scenario.py` 602、
    `builders/supply.py` 600、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。

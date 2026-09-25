@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ..constants import DEFAULT_DISCOUNT_RATE, PLANNING_YEARS
 
+logger = logging.getLogger(__name__)
 
 PATHWAYS = ("unabated", "retire", "ccs", "biomass", "beccs", "ammonia")
+
+# 输入表里与分省煤价表（`OptimizationAssumptions.province_coal_cost_cny_per_gj`）写法不同的省名，
+# 读入时（`prepare_industry`、`_prepare_plants`）由 `OptimizationAssumptions.canonical_provinces`
+# 换成煤价表的写法。只收有证据的：仓库根 `inputs/industry_hubs.csv` 的 28 个合成氨、水泥、甲醇 hub
+# 把内蒙古写作拼音 "Neimenggu"，2026-09-25 前查不到煤价，退回 `coal_fuel_cost_cny_per_gj`。
+PROVINCE_NAME_ALIASES: dict[str, str] = {"Neimenggu": "Inner Mongolia"}
 
 
 @dataclass(frozen=True)
@@ -80,8 +89,27 @@ class OptimizationAssumptions:
     })
 
     def province_coal_cost(self, province_name: str) -> float:
-        """取某省的燃煤成本（CNY/GJ）。查不到时退回 `coal_fuel_cost_cny_per_gj`。"""
+        """取某省的燃煤成本（CNY/GJ）。
+
+        省名用本表的写法（读入时已由 `canonical_provinces` 换过）；查不到时退回
+        `coal_fuel_cost_cny_per_gj`，读入时已告警。
+        """
         return self.province_coal_cost_cny_per_gj.get(province_name, self.coal_fuel_cost_cny_per_gj)
+
+    def canonical_provinces(self, province_names: Iterable[object], source: str) -> list[str]:
+        """把输入表的省名逐个换成分省煤价表的写法（`PROVINCE_NAME_ALIASES`），按原顺序返回。
+
+        换过之后仍不在煤价表里的省名告警一次：这些行由 `province_coal_cost` 按
+        `coal_fuel_cost_cny_per_gj` 计价。`source` 只进告警文字，指明是哪张表。
+        """
+        names = [PROVINCE_NAME_ALIASES.get(str(name), str(name)) for name in province_names]
+        missing = sorted(set(names) - set(self.province_coal_cost_cny_per_gj))
+        if missing:
+            logger.warning(
+                "%s: %d row(s) in province(s) %s have no coal price; priced at the default %.1f CNY/GJ",
+                source, sum(name in missing for name in names), missing, float(self.coal_fuel_cost_cny_per_gj),
+            )
+        return names
     # 技术学习曲线（外生 Wright 定律）。
     # LR=15%，按累计捕集容量每翻一番计（文献中的捕集岛学习率：中国 IGCC+CC 为 9.6-20.2%，
     # Li et al. 2012 Appl. Energy；全链条 ~10%，DNV/Gassnova 2020），每 5.6 年翻一番——
