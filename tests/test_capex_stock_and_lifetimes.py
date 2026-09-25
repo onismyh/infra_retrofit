@@ -31,12 +31,13 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_capex_expr,
     industry_year_data,
 )
+from coal_retrofit.optimization.results_industry import _build_industry_detail_table  # noqa: E402
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
 from test_capex_stock_no_solver import _cement_hub  # noqa: E402
 from test_h2_route_multiplier import _steel_hub  # noqa: E402
-from toy_inputs import _write_targets, _write_toy_inputs  # noqa: E402
+from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
 # ---------------------------------------------------------- (a) 工业 capex 按能力存量计 ---
@@ -143,6 +144,75 @@ def test_industry_capex_expr_charges_each_route_on_its_own_capacity_increment() 
     assert h2.getConstant() == pytest.approx(unit[0, H2] * 0.2, rel=1e-12)
     assert ccs.getConstant() == pytest.approx(unit[0, CCS] * 0.2, rel=1e-12)
     assert industry_capex_expr(current, None, routes=(H2,)).getConstant() == pytest.approx(unit[0, H2] * 0.3, rel=1e-12)
+
+
+def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
+    """在 toy 输入上加一个长流程钢 hub（100 万 t/a，需氢 0.081 t/t，有氢路线）和紧挨它的氢节点，
+    钢铁组按 `steel_caps` 设上限；煤电组与水泥组仍是 `_write_toy_inputs` 写的 1.0。"""
+    inputs = paths.inputs_dir
+    hubs = pd.read_csv(inputs / "industry_hubs.csv")
+    steel = hubs.iloc[[0]].assign(
+        hub_id="ST1", sector="steel_bf_bof", sector_zh="长流程钢", longitude=112.3,
+        co2_mt_per_year=2.0, process_co2_mt_per_year=0.2, h2_demand_kt_per_year=81.0,
+        has_h2_route=True, water_m3_per_year=3.0e6,
+    )
+    pd.concat([hubs, steel], ignore_index=True).to_csv(inputs / "industry_hubs.csv", index=False)
+    index = pd.read_csv(inputs / "industry_output_index_toy.csv")
+    pd.concat([index, index.assign(sector="steel_bf_bof")], ignore_index=True).to_csv(
+        inputs / "industry_output_index_toy.csv", index=False
+    )
+    nodes = pd.read_csv(inputs / "ammonia_supply_curve.csv")
+    near = nodes.iloc[[0]].assign(ammonia_node_id="A2", longitude=112.4, latitude=37.0, province_name="Shanxi")
+    pd.concat([nodes, near], ignore_index=True).to_csv(inputs / "ammonia_supply_curve.csv", index=False)
+    targets = pd.read_csv(inputs / "sector_targets_toy.csv")
+    steel_rows = pd.DataFrame([
+        {"sector_group": "steel", "planning_year": year, "cap_fraction_of_2030": cap}
+        for year, cap in steel_caps.items()
+    ])
+    pd.concat([targets, steel_rows], ignore_index=True).to_csv(inputs / "sector_targets_toy.csv", index=False)
+
+
+def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
+    """全模型求解：钢铁组 2040、2050 年要比 2030 年减 70%。长流程钢的 CCS 最多减约 63%（捕集 90% x
+    (1 - 再生蒸汽放空约 0.30)），氢路线减 95%，所以必须新建氢路线产能。目标函数里的 `industry_capex`
+    逐年等于折现后的明细表 `cost_capital_cny` 之和；目标函数漏掉氢路线 capex 时（残值台账里仍有），
+    2040 年两者差出氢路线那一份。"""
+    years = (2030, 2040, 2050)
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _add_steel_hub_near_h2_node(paths, {2030: 1.0, 2040: 0.3, 2050: 0.3})
+    # 煤电不约束、碳价为零；关掉退役与掺氨，煤电侧不动，也不与钢铁 hub 争同一个氢节点。
+    scenario = OptimizationScenario(
+        experiment_id="TEST-H2CAPEX", description="toy", planning_years=years,
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0, 0.0),
+        electricity_price_cny_per_mwh_by_year=(400.0, 440.0, 490.0),
+        pathway_disable=("retire", "ammonia"),
+        solver_time_limit=300,
+    )
+    assumptions = _toy_assumptions()
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
+    )
+    solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
+    assert solution["status"] == "optimal"
+    ys = solution["year_solutions"]
+    previous = None
+    for year in years:
+        capacity = ys[year]["industry_capacity_mt"]
+        table = _build_industry_detail_table(
+            prepared, year, ys[year]["year_data"].industry, ys[year]["industry_share"],
+            capacity_mt=capacity, prev_capacity_mt=previous,
+        )
+        df = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate)
+        booked = float(ys[year]["cost_breakdown_cny"]["industry_capex"])
+        assert booked == pytest.approx(df * float(table["cost_capital_cny"].sum()), rel=1e-6, abs=1.0), year
+        assert float(ys[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
+        previous = capacity
+    steel = list(prepared.industry.hubs["hub_id"]).index("ST1")
+    new_h2_mt = float(ys[2040]["industry_capacity_mt"][steel, H2] - ys[2030]["industry_capacity_mt"][steel, H2])
+    assert new_h2_mt > 0.1
 
 
 # ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---

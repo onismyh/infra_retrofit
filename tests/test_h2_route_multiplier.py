@@ -1,5 +1,5 @@
 """工业氢路线的成本乘子（2026-09-23，与 (d) 对齐）：只乘路线 capex 与随之的固定运维，
-由锚点反推的非氢运行差额固定在乘子为 1 时的值。
+由锚点反推的非氢运行差额固定在乘子为 1 时的值。另有一条锁住氢路线 capex 不乘学习因子。
 
 这些测试不求解，单独成文件以免被 Gurobi 门控（见 `test_discount_rate.py` 的说明）。
 """
@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from coal_retrofit import constants_industry as ci
-from coal_retrofit.optimization.industry import H2, IndustryInputs, industry_year_data
+from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industry_year_data
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 
 
@@ -48,6 +48,22 @@ def test_industry_h2_multiplier_scales_route_capex_and_its_fixed_om_only() -> No
     assert doubled.opex_cny[0, H2] == pytest.approx(
         production_t * (2.0 * capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
+
+
+def test_h2_route_capex_has_no_learning_curve() -> None:
+    """氢路线 capex 不乘学习因子（README §0.1"仍不一样的地方"第 3 条）：2040 年与 2030 年相同，
+    同一 hub 的 CCS capex 则按 `ccs_learning_factor` 下降。锁住的是现状：以后给氢路线加学习曲线，
+    改这条测试并同步 README。"""
+    industry = _steel_hub()
+    scenario = OptimizationScenario(experiment_id="T", description="toy")
+    assumptions = OptimizationAssumptions()
+    y30 = industry_year_data(industry, scenario, assumptions, 2030)
+    y40 = industry_year_data(industry, scenario, assumptions, 2040)
+    learning = assumptions.ccs_learning_factor(2040) / assumptions.ccs_learning_factor(2030)
+    assert learning < 0.8
+    assert y40.capex_cny_per_mt[0, CCS] == pytest.approx(learning * y30.capex_cny_per_mt[0, CCS], rel=1e-12)
+    assert y40.capex_cny_per_mt[0, H2] == pytest.approx(y30.capex_cny_per_mt[0, H2], rel=1e-12)
+    assert y40.capex_cny_per_mt[0, H2] == pytest.approx(ci.h2_route_capex_cny_per_t_yr("steel_bf_bof") * 1e6, rel=1e-12)
 
 
 @pytest.mark.parametrize(("sector", "increase"), [("steel_bf_bof", 0.2516), ("ammonia", 0.1415), ("methanol", 0.0189)])

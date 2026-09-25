@@ -102,7 +102,8 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert 0.2 < steam < 0.4
     assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
     assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
-    # 未知省份不崩溃。合成氨捕集不用蒸汽，煤价不进这一项，所以这里测不出回退到哪个煤价。
+    # 未知省份不崩溃。合成氨捕集不用蒸汽，煤价不进这一项，所以这里测不出回退到哪个煤价；
+    # 回退煤价由 `test_province_names.py` 用水泥 hub 测。
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
     assert data.opex_cny[2, CCS] == pytest.approx(
