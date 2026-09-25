@@ -88,7 +88,7 @@
 2. **工业没有退役和搁浅资产。** 煤电有退役份额、搁浅资产（3 500 元/kW × 剩余寿命 / 20 年）和原址重建
    （3 500 × 70% 元/kW）；工业产量完全外生，没有厂址级退役决策（`optimization/industry.py` 模块说明的"已知偏差"）。
 3. **工业 H2 路线的 capex 没有学习曲线**（两侧 CCS 都有）。H2 路线的非氢运行差额由文献溢价锚点反推，目标计入
-   max(0, 年度成本（含购氢）)，用上图约束实现（`optimization/model_industry.py:113` 起）。
+   max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:113` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep.py:333`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep.py:81-90`），再加情景加价
    `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access.py:189-206`、`optimization/model_costs.py:163-167`）。

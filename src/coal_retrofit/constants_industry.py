@@ -265,7 +265,7 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 #            延长石油榆林煤化 30 万 t/a（2022）报告捕集全成本 105 元/t；扣除 ~110 kWh/t
 #            压缩电耗（按 ~0.45 元/kWh 计）后，剩 ~55 元/t 用于资本 + 固定运维，在
 #            CRF(6%, 20 a) + 5%/a 下折得 capex 约 405 元/(t·a)（要 4% 才约 450）。⚠ 假设：取 450，
-#            比按上列输入推得的值高 11%；没有项目公告给出投资额本身（齐鲁石化 100 万 t/a 未公布投资额）。
+#            比按上列输入推得的值高 11%；未找到只含捕集岛的投资额（齐鲁石化 100 万 t/a 未公布投资额）。
 INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 1000.0,
     SECTOR_STEEL_EAF: 1150.0,
@@ -431,7 +431,7 @@ INDUSTRY_H2_LIFETIME_YEARS: Final[int] = 25
 # 因此 `opex_delta_nonH2`——相对现有化石路线的非氢运行差额（EAF/压缩机用电、省下的
 # 焦炭或煤、省下的化石路线运维）——就是锚点扣除其中的氢和资本后所隐含的值。
 # 钢铁的这一项为负（省下的焦炭与 BF opex 超过 EAF 电费），这是锚点自身算术所迫；
-# 求解器计入目标的仍是 max(0, 固定运维 + opex_delta + H2 采购)，capex 年金始终支付。
+# 求解器计入目标的仍是 max(0, 固定运维 + opex_delta_nonH2 + H2 采购)；capex 按能力存量增量一次计入，在 max 之外。
 
 # 走氢路线的 hub 的厂内用水：取该部门的先进值，而不是通用值。这不是猜——先进值按定义
 # 就是适用于新建与改建工厂的定额，而氢路线就是一次改建。GB/T 18916 没有 H2-DRI 行，
@@ -540,8 +540,8 @@ def h2_route_capex_cny_per_t_yr(sector: str) -> float:
 def h2_route_annual_capital_cny_per_t(sector: str, discount_rate: float) -> float:
     """氢路线的 capex 年金加固定运维，单位为每吨产品每年的 CNY。
 
-    即锚点分解时作为资本从 `premium_ref` 中扣除的部分。注意：求解器的下限只把年金放在
-    `max` 之外（固定运维属于年度项）；见 `h2_premium_cny_per_t`。
+    即锚点分解时作为资本从 `premium_ref` 中扣除的部分。注意：求解器里 capex 按能力存量增量
+    一次计入、在 `max` 之外，固定运维属于年度项、在 `max` 之内；见 `h2_premium_cny_per_t`。
     """
     capex = h2_route_capex_cny_per_t_yr(sector)
     crf = capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)

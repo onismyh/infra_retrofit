@@ -30,8 +30,8 @@ def test_h2_premium_reproduces_its_anchor_and_floors_at_capital(sector: str) -> 
     k = {"steel_bf_bof": 0.081, "ammonia": 0.18, "methanol": 0.19}[sector]
     # 在锚点自身的氢价下，分解是精确的。
     assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06) == pytest.approx(premium_ref, rel=1e-9)
-    # 氢免费也不能把溢价压到 capex 年金以下（求解器的下限把固定运维放在年度项之内，
-    # 把年金放在其外）。
+    # 氢免费也不能把溢价压到 capex 年金以下（求解器把固定运维放在带地板的年度项之内，
+    # capex 一次计入、在其外）。
     floor = ci.h2_route_capex_cny_per_t_yr(sector) * ci.capital_recovery_factor(0.06, ci.INDUSTRY_H2_LIFETIME_YEARS)
     assert ci.h2_premium_cny_per_t(sector, 0.0, k, 0.06) == pytest.approx(floor, rel=1e-9)
     assert floor > 0.0
