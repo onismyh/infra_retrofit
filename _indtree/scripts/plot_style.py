@@ -760,8 +760,20 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     pen_ccs_mt_per_mwh = pen_ratio * hr_eff * ef_t_per_gj * (1.0 - eta) / 1e6
     pen_bio_coeff = (assumptions.biomass_efficiency_penalty_per_ratio / eta_coal) * hr_eff * ef_t_per_gj / 1e6
 
-    beta_b = np.array([blend_level_to_ratio(v, scenario.biomass_blend_levels) for v in d["biomass_blend_level"]])
-    beta_a = np.array([blend_level_to_ratio(v, scenario.ammonia_blend_levels) for v in d["ammonia_blend_level"]])
+    # Blend ratios. Runs with the `*_blend_ratio` columns carry the effective ratio per pathway
+    # (sum_l beta_l * z_l / share, the quantity the constraints use; biomass and BECCS differ).
+    # Older runs only have the level index sum_l l * select, which maps to a ratio only for one-hot
+    # levels (v9); under continuous hubs it is a weighted index and `blend_level_to_ratio` raises
+    # on non-integer values rather than reading 2.5 as 250%.
+    _ratio_cols = ("biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio")
+    if all(c in d.columns for c in _ratio_cols):
+        beta_bio = d["biomass_blend_ratio"].to_numpy(dtype=float)
+        beta_beccs = d["beccs_blend_ratio"].to_numpy(dtype=float)
+        beta_a = d["ammonia_blend_ratio"].to_numpy(dtype=float)
+    else:
+        beta_bio = np.array([blend_level_to_ratio(v, scenario.biomass_blend_levels) for v in d["biomass_blend_level"]])
+        beta_beccs = beta_bio
+        beta_a = np.array([blend_level_to_ratio(v, scenario.ammonia_blend_levels) for v in d["ammonia_blend_level"]])
 
     s_un = d["share_unabated"].to_numpy(dtype=float)
     s_ccs = d["share_ccs"].to_numpy(dtype=float)
@@ -814,11 +826,11 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     residual = (
         e_op * s_un
         + e_rt * (1.0 - eta) * s_ccs
-        + e_rt * (1.0 - beta_b) * s_bio
-        + e_rt * (1.0 - eta - beta_b) * s_beccs
+        + e_rt * (1.0 - beta_bio) * s_bio
+        + e_rt * (1.0 - eta - beta_beccs) * s_beccs
         + e_rt * (1.0 - beta_a) * s_amm
         + pen_ccs_mt_per_mwh * gen * boost * (s_ccs + s_beccs)
-        + pen_bio_coeff * beta_b * gen * boost * (s_bio + (1.0 - eta) * s_beccs)
+        + pen_bio_coeff * gen * boost * (beta_bio * s_bio + (1.0 - eta) * beta_beccs * s_beccs)
         + air_penalty_mt
     )
     return float(residual.sum())

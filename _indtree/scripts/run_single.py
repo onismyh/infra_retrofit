@@ -203,8 +203,8 @@ def run(name: str, threads: int = DEFAULT_THREADS, time_limit: int = 36000,
 
         # High-resolution tables
         pw_table = _build_pathway_table(
-            prepared, scenario, year, share,
-            ys["captured_mt_by_plant"], ys["blend_level_b"], ys["blend_level_a"],
+            prepared, scenario, year, share, ys["captured_mt_by_plant"],
+            ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             year_data=year_data, plant_reduction_mt=ys["plant_reduction_mt"],
         )
         prov_table = _build_province_table(pw_table)
@@ -226,6 +226,8 @@ def run(name: str, threads: int = DEFAULT_THREADS, time_limit: int = 36000,
             ys["captured_mt_by_plant"], ys["biomass_use_gj"], ys["ammonia_use_kg"],
             ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"],
             ys["air_share"], year_data=year_data, plant_reduction_mt=ys["plant_reduction_mt"],
+            biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
+            ammonia_blend_x_share=ys["ammonia_blend_x_share"],
         ))
         industry_detail_tables.append(_build_industry_detail_table(
             prepared, year, year_data.industry, ys["industry_share"],
@@ -241,8 +243,8 @@ def run(name: str, threads: int = DEFAULT_THREADS, time_limit: int = 36000,
         plant_cost_tables.append(_build_plant_cost_table(
             prepared, scenario, assumptions, year, year_data, share,
             ys["captured_mt_by_plant"], ys["biomass_use_gj"], ys["water_use_m3"],
-            ys["blend_level_b"], ys["blend_level_a"],
             prev_share_values=prev_share_values,
+            plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_installed=ys["retrofit_installed"],
             prev_retrofit_installed=prev_retrofit_installed,
             capex_pathway_indices=solution["capex_pathway_indices"],

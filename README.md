@@ -38,6 +38,11 @@
 > 2026-09-26 起 `src/` 删去了旧实验链（`experiments/`、`optimization/model.py`、`optimization/bundle.py`、`reporting/`）
 > 与 runoff 水口径：§1–§11 与 §0.3、§0.4 里指向这些模块的命令和链接都已失效，v9 / v9.1 结果按 CLAUDE.md §1.5
 > 在 `892c877^` 里复现。
+> 同日起结果表的掺烧比例按约束里的 Σβ·z ÷ 路径份额换算（`plant_detail.csv` 新增 `biomass_blend_ratio`、`beccs_blend_ratio`、
+> `ammonia_blend_ratio`），`plant_cost.csv` 的碳成本改与目标函数同式。此前连续 hub 下的档位下标（`*_blend_level`，档位的加权和）
+> 被当作掺烧比例换算，`pathway_shares.csv`、`province_pathways.csv` 的逐路径减排拆分失真；`ST_CP_BASE`（唯一有碳价的 `ST_` 情景）
+> 的 `plant_cost.csv` 碳成本与合计也不对：原先是近似式，不含惩罚燃料，掺烧比例同样按档位换算。模型、目标值与厂合计减排不变；
+> 要用这几列，这一改动合入之前落盘的 `ST_` 结果需重解（实现说明 §9.8）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

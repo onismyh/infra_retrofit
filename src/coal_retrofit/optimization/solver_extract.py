@@ -49,6 +49,9 @@ def empty_year_solutions(
             "industry_capacity_mt": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
             "industry_h2_flow_kg": np.zeros(0),
             "plant_reduction_mt": np.zeros(plant_count),
+            "biomass_blend_x_share": np.zeros(plant_count),
+            "beccs_blend_x_share": np.zeros(plant_count),
+            "ammonia_blend_x_share": np.zeros(plant_count),
             "total_reduction_mt": 0.0,
             "co2_flow_fwd": np.zeros(edge_count),
             "co2_flow_bwd": np.zeros(edge_count),
@@ -122,6 +125,10 @@ def extract_year_solutions(
             "plant_reduction_mt": np.array(
                 [_expr_value(expr) for expr in payload.plant_reduction_exprs], dtype=np.float64
             ),
+            # 逐厂 Σβ·z，结果表除以路径份额得有效掺烧比例（连续 hub 下 blend_level 换算不出比例）。
+            "biomass_blend_x_share": np.array([_expr_value(e) for e in payload.biomass_blend_x_share], dtype=np.float64),
+            "beccs_blend_x_share": np.array([_expr_value(e) for e in payload.beccs_blend_x_share], dtype=np.float64),
+            "ammonia_blend_x_share": np.array([_expr_value(e) for e in payload.ammonia_blend_x_share], dtype=np.float64),
             "total_reduction_mt": _expr_value(payload.total_reduction_mt),
             "cost_breakdown_cny": {category: _expr_value(expr) * _COST_SCALE for category, expr in payload.cost_exprs.items()},
             "slacks": {

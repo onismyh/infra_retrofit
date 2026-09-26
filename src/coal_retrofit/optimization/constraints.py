@@ -122,6 +122,12 @@ def _add_blend_level_constraints(
     amm_red_exprs   : list[LinExpr]  — E_retrofit · Σ β_a[l] · zeta_amm[p,l]，每厂一项
     bio_penalty_exprs : list[LinExpr] — 每个厂随掺烧档位变化的能耗惩罚成本
     bio_penalty_emissions_exprs : list[LinExpr] — 惩罚燃料额外排放的 CO2（Mt）
+    beccs_penalty_captured_exprs : list[LinExpr] — BECCS 惩罚燃料中被捕集的 CO2（Mt）
+    bio_blend_x_share   : list[LinExpr] — Σ β_b[l] · zeta_bio[p,l]，每厂一项（生物质路径的掺烧比例 × 份额）
+    beccs_blend_x_share : list[LinExpr] — Σ β_b[l] · zeta_beccs[p,l]，每厂一项
+    amm_blend_x_share   : list[LinExpr] — Σ β_a[l] · zeta_amm[p,l]，每厂一项
+        （后三项只供结果表换算有效掺烧比例：不加约束，不进目标。连续 hub 下 `blend_level` 是
+        档位下标的加权和，换算不出比例）
     """
     blend_b = np.asarray(scenario.biomass_blend_levels, dtype=np.float64)
     blend_a = np.asarray(scenario.ammonia_blend_levels, dtype=np.float64)
@@ -154,6 +160,9 @@ def _add_blend_level_constraints(
     beccs_pen_em_coeff_data = year_data.beccs_penalty_emissions_coeff_per_level
     beccs_pen_cap_coeff_data = year_data.beccs_penalty_captured_coeff_per_level
     beccs_penalty_captured_exprs: list[object] = []
+    bio_blend_x_share: list[object] = []
+    beccs_blend_x_share: list[object] = []
+    amm_blend_x_share: list[object] = []
 
     for p in range(plant_count):
         # 改造后的运行带有效率比（重建电厂）和改造后的
@@ -197,6 +206,9 @@ def _add_blend_level_constraints(
         bio_penalty = gp.LinExpr()  # 随掺烧档位变化的能耗惩罚（成本）
         bio_penalty_emissions = gp.LinExpr()  # 同一份惩罚燃料，折为排放的 CO2（Mt）
         beccs_penalty_captured = gp.LinExpr()  # BECCS 惩罚燃料中被捕集的份额（Mt）
+        # Σ β·z（blend × share）：只供结果表换算有效掺烧比例，不加约束，不进目标。
+        bio_bxs = gp.LinExpr()
+        beccs_bxs = gp.LinExpr()
 
         z_bio_all: list[object] = []
         z_beccs_all: list[object] = []
@@ -212,6 +224,8 @@ def _add_blend_level_constraints(
             bio_use_expr += hr_p * beta_b * (G_bio * z_bio + G_beccs * z_beccs) / BIOMASS_FLOW_SCALE
             bio_red  += E_rt * beta_b * z_bio
             beccs_blend_red += E_rt * beta_b * z_beccs
+            bio_bxs += beta_b * z_bio
+            beccs_bxs += beta_b * z_beccs
             # 能耗惩罚：β_b × coeff × (G_bio·z_bio + G_beccs·z_beccs)
             bio_penalty += beta_b * bio_pen_coeff * (G_bio * z_bio + G_beccs * z_beccs)
             bio_penalty_emissions += beta_b * (
@@ -227,6 +241,7 @@ def _add_blend_level_constraints(
 
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()
+        amm_bxs = gp.LinExpr()
         z_amm_all: list[object] = []
         for level, beta_a in enumerate(blend_a):
             bin_a = select_a[p, level + 1]
@@ -235,6 +250,7 @@ def _add_blend_level_constraints(
 
             amm_use_expr += G_amm * hr_p / lhv * beta_a * z_amm / AMMONIA_FLOW_SCALE
             amm_red  += E_rt * beta_a * z_amm
+            amm_bxs += beta_a * z_amm
 
         model.addConstr(gp.quicksum(z_amm_all) <= s_amm, name=f"zsum_amm_{p}{sfx}")
         model.addConstr(ammonia_use_kg[p] == amm_use_expr, name=f"au_{p}{sfx}")
@@ -245,6 +261,9 @@ def _add_blend_level_constraints(
         bio_penalty_exprs.append(bio_penalty)
         bio_penalty_emissions_exprs.append(bio_penalty_emissions)
         beccs_penalty_captured_exprs.append(beccs_penalty_captured)
+        bio_blend_x_share.append(bio_bxs)
+        beccs_blend_x_share.append(beccs_bxs)
+        amm_blend_x_share.append(amm_bxs)
 
     return (
         select_b, select_a,
@@ -253,6 +272,7 @@ def _add_blend_level_constraints(
         bio_red_exprs, beccs_blend_red_exprs, amm_red_exprs,
         bio_penalty_exprs, bio_penalty_emissions_exprs,
         beccs_penalty_captured_exprs,
+        bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
     )
 
 
@@ -303,6 +323,7 @@ def _add_plant_path_constraints(
         bio_red_exprs, beccs_blend_red_exprs, amm_red_exprs,
         bio_penalty_exprs, bio_penalty_emissions_exprs,
         beccs_penalty_captured_exprs,
+        bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
     ) = _add_blend_level_constraints(model, share, plant_count, scenario, assumptions, year_data, sfx)
 
     eta = float(scenario.capture_rate)
@@ -406,4 +427,5 @@ def _add_plant_path_constraints(
         captured_mt_by_plant, biomass_use_gj, ammonia_use_kg, water_use_m3, total_reduction_mt,
         select_b, select_a, blend_level_b, blend_level_a,
         total_bio_penalty, plant_reduction_exprs, air_share, air_installed,
+        bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
     )
