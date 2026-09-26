@@ -265,10 +265,10 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 #   ammonia / methanol   高浓度（>95%）气化尾气：无需吸收，只需脱水 + 压缩/液化。
 #            延长石油榆林煤化 30 万 t/a（2022）报告捕集全成本 105 元/t；扣除 ~110 kWh/t
 #            压缩电耗（按 ~0.45 元/kWh 计）与 5 元/t 耗材（下文 `INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2`）
-#            后，剩 ~50 元/t 用于资本 + 固定运维，在 CRF(6%, 20 a) + 5%/a 下折得 capex 约 368 元/(t·a)
-#            （4% 时约 409）。⚠ 假设：取 450，比按上列输入推得的值高 22%（105 元/t 是否含耗材原文未核；
-#            不扣耗材约 405，高 11%）。按 2030 年情景电价 0.40 元/kWh，450 的平准化成本约 111 元/t，
-#            比 105 高约 5%。未找到只含捕集岛的投资额（也未找到齐鲁石化 100 万 t/a 的投资额）。
+#            后，剩 50.5 元/t 用于资本 + 固定运维，在 CRF(6%, 20 a) + 5%/a 下折得 capex 约 368 元/(t·a)
+#            （贴现率 4% 时约 409）。⚠ 假设：取 450，比按上列输入推得的值高 22%（105 元/t 是否含耗材原文
+#            未核；不扣耗材约 405，高 11%）。按 2030 年情景电价 0.40 元/kWh（低于反推所用的 0.45），450 的
+#            平准化成本约 111 元/t，比 105 高约 5%。未找到只含捕集岛的投资额（包括齐鲁石化 100 万 t/a）。
 INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 1000.0,
     SECTOR_STEEL_EAF: 1150.0,
@@ -286,7 +286,7 @@ INDUSTRY_CCS_FIXED_OM_FRACTION: Final[float] = 0.05
 #   胺法燃烧后捕集（钢铁高炉煤气 / 热风炉烟气、水泥窑烟气、EAF 尾气）：
 #     再沸器蒸汽 2.8 GJ/t：IEAGHG 2013/04 MDEA/Pz 2.3 GJ/t（CSIRO 综述：2.5-2.7
 #     可达），国能锦界第 2 代吸收剂 2.35 GJ/t（中国 CCUS 进展报告 2025 p.18），
-#     MEA 3.0-3.5 GJ/t；对 2030 年的改造而言，2.8 是这一分布的中心。
+#     MEA 3.0-3.5 GJ/t；对 2030 年的改造取 2.8（取法未记录；所列值区间 2.3-3.5 的中点 2.9，中位数约 2.4-2.5）。
 #     电耗 130 kWh/t，含压缩：PKU/Baowu 总出力损失 142 kWh/t
 #     （蒸汽 + 电力，Table 9）；Gardarsdottir et al. 2019 水泥 MEA ~130 kWh/t。
 #   高浓度流股（合成氨、甲醇）：无再沸器；只有压缩 + 脱水，~110 kWh/t（0.1 -> 11 MPa 密相）。
@@ -406,13 +406,13 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
 #                 ×1.08 t DRI/t 粗钢 = 2 040；EAF 184 EUR/(t·a)（Vogl, Åhman & Nilsson
 #                 2018, J Clean Prod 203:736，文中的成本假设）~ 1 430 元/(t·a)，按
 #                 7.8 元/EUR 折算（约为 2018 年、2024 年的年均汇率 7.81、7.79，美联储 H.10
-#                 交叉汇率，`fred_h10`）——未找到中国 EAF 的每吨投资数据（"80 t 电炉 5 000 万元"
-#                 这类数字只含炉体）。合计 ~3 470；取 3 500。
+#                 交叉汇率，`fred_h10`）——未找到中国 EAF 含辅助系统的全套每吨投资数据
+#                 （"80 t 电炉 5 000 万元"这类数字只含炉体）。合计 ~3 470；取 3 500。
 #   ammonia       现有煤制合成氨厂改用外购绿氢：Haber-Bosch 回路与空分装置保留，
 #                 气化炉、变换和净化工段停用。新增：H2 接收/压缩、N2 接入、控制系统。
 #                 ⚠ 假设（无出处）：500 元/(t·a) ~ 绿地合成岛的 8%（875 USD/(t·a)，
-#                 `constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR`）。未找到中国改造项目的
-#                 投资额；Yara Pilbara（2022-24）只公布了电解槽一侧。
+#                 `constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR`）。未找到中国改造项目只含
+#                 接入部分的投资额；Yara Pilbara（2022-24）只公布了电解槽一侧。
 #   methanol      绿氢耦合煤制甲醇：氢替代变换段来调节 H/C 比，合成回路保留。接入范围
 #                 与合成氨相同；⚠ 假设（无出处）：500 元/(t·a)。
 INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR: Final[dict[str, float]] = {
