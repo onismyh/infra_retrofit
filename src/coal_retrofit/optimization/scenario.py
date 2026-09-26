@@ -166,9 +166,9 @@ class OptimizationAssumptions:
     max_parallel_pipes: int = 2
     pipeline_lifetime_years: int = 30
     # 管径分档。2026-09-10 之前每条边只有一种规格，即 20-Mtpa 干线，1-Mt/yr 的支线也要按
-    # 20 Mtpa 付费：IND_BASE_t95 建成的 344 条边里有 222 条正好是 20；任何小到不值得建干线
-    # 的流量，走 big-M "容量松弛"都比铺管便宜——于是有 11 条边在建成容量为零的情况下
-    # 输送了 CO2。带规模经济的三档管径补上了这个缺口。各档每 km capex 由 20-Mtpa 干线费率
+    # 20 Mtpa 付费：旧情景 `IND_BASE_t95`（已不在登记表）建成的 344 条边里有 222 条正好是 20；
+    # 任何小到不值得建干线的流量，走 big-M "容量松弛"都比铺管便宜——于是有 11 条边在建成容量
+    # 为零的情况下输送了 CO2。带规模经济的三档管径补上了这个缺口。各档每 km capex 由 20-Mtpa 干线费率
     # （0.4e6 CNY/(Mtpa·km) x 20 = 8.0e6 CNY/km，出处见下）乘 (cap/20)^0.6 缩放，
     # 这是 CO2 管道常用的管径-成本指数（Knoope et al. 2013, IJGGC 16:241, Table 4 拟合为
     # 0.5-0.7）。交叉核对：2-Mtpa 档的 2.0e6 CNY/km 低于 1.7-Mtpa 齐鲁-胜利管线的
@@ -186,7 +186,7 @@ class OptimizationAssumptions:
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
     # 封存部署爬坡。`injectivity_mtpa` 是 2060 年规模的可建速率（按 ACCA21 的 2060 年区间
-    # 标定，见 storage_site_project_rate_mtpa）。2030 年就全部开放时，IND_BASE_t95 仅凭碳价
+    # 标定，见 storage_site_project_rate_mtpa）。2030 年就全部开放时，旧情景 `IND_BASE_t95` 仅凭碳价
     # 就在 2040 年注入了 1 265 Mt/yr，而目前全国注入量为 ~4 Mt/yr。各规划年的可用比例取
     # ACCA21 (2021) CCUS 路线图的区间中点：2030 年 0.2-4.08 亿 t（中点 2.1），2050 年 6-14.5
     # （10.2），2060 年 10-18.2（14.1）；2040 年在 2035 年与 2050 年的区间之间插值（~7.5）。
@@ -269,8 +269,8 @@ class OptimizationAssumptions:
     #
     # 已知简化，且会让空冷显得偏便宜。这里的惩罚是常数。Qin et al. 发现惩罚的恶化快于环境
     # 温度的上升，而在中国北方枯水季与高温季重合——所以本处低估惩罚的时段恰恰是水最紧缺的
-    # 时段。在把惩罚做成随温度变化之前，`SA_air_penalty_high`（2.8 pp）是对此的粗略替代；
-    # 做成随温度变化属于模型改动，而不是参数改动。
+    # 时段。在把惩罚做成随温度变化之前，把 `air_retrofit_efficiency_penalty_pp` 设为 0.028
+    # （v9 的 `SA_air_penalty_high`）是对此的粗略替代；做成随温度变化属于模型改动，而不是参数改动。
     allow_air_cooling_retrofit: bool = True
     air_retrofit_capex_cny_per_kw: float = 300.0
     air_retrofit_efficiency_penalty_pp: float = 0.020
@@ -494,13 +494,14 @@ class OptimizationScenario:
     # 驱动可用水量的气候成员，例如 "cwatm|gfdl-esm4|ssp370"。
     # 为空时选 water_mode 所隐含的那一族中的第一个成员。
     water_scenario_id: str = ""
-    # 不再有口径开关：可用水量约束总是作用于耗水，水价总是按中国取水定额计，取水只报告、
-    # 从不约束。为什么拿取水去对照生态流量允许量是范畴错误，见 `data_prep._prepare_plants`。
+    # 没有口径开关：节点可用水量（生态流量）约束作用于耗水，水价按中国取水定额计，取水只进
+    # 流域用水总量指标约束（`OptimizationAssumptions.apply_basin_cap`）。为什么拿取水去对照生态流量
+    # 允许量是范畴错误，见 `data_prep._prepare_plants`。
     # "annual" 用十年均值；"dry" 用最低的连续三个月，火电厂恰恰在这段时间真正被限发。
     water_season: str = "annual"
     water_multiplier: float = 1.0
-    # 对输送到电厂的每 m3 水附加的参数化收费，叠加在 water_supply_links.csv 中已有的取水与
-    # 输水成本之上。扫描它就能描出水-碳前沿：由于模型是 MIP，Gurobi 无法为可用水量约束
+    # 对输送到电厂的每 m3 水附加的参数化收费，叠加在 `data_prep._prepare_water` 运行时按距离
+    # 算出的取水与输水成本之上。扫描它就能描出水-碳前沿：由于模型是 MIP，Gurobi 无法为可用水量约束
     # 返回可靠的对偶值，所以改用参数化定价来还原水的影子价格——每一点上的附加费就是该点的
     # 影子价格。
     water_price_adder_cny_per_m3: float = 0.0

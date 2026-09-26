@@ -79,9 +79,10 @@ def run(name: str, threads: int = 0, time_limit: int = 36000,
     *mip_gap* overrides the registry entry for this invocation only. It exists so a campaign can
     trade tolerance for wall-clock without editing -- and thereby permanently changing -- the
     scenario definitions. WHAT IT COSTS: the certified interval on any contrast involving the run
-    widens roughly in proportion, and for the `*_seed*` replicates it destroys the measurement
-    outright, because a seed family stops being a probe of solver DEGENERACY once the runs are
-    allowed to stop that far apart on tolerance alone. Keep seeds at the tight gap.
+    widens roughly in proportion, and for seed replicates (the same scenario re-solved under
+    different `COAL_RETROFIT_GUROBI_SEED` values) it destroys the measurement outright, because a
+    seed family stops being a probe of solver DEGENERACY once the runs are allowed to stop that far
+    apart on tolerance alone. Keep seed replicates at the registry gap.
     """
     scenario_kw, assumption_kw = EXPERIMENTS[name]
     if mip_gap is not None:
@@ -285,7 +286,7 @@ def main():
     parser.add_argument("--time-limit", type=int, default=36000, help="Solver time limit in seconds")
     parser.add_argument("--mip-gap", type=float, default=None,
                         help="Override the scenario's MIPGap for this run only "
-                             "(do NOT use on *_seed* replicates; see run())")
+                             "(do NOT use on COAL_RETROFIT_GUROBI_SEED replicates; see run())")
     args = parser.parse_args()
 
     name = args.name

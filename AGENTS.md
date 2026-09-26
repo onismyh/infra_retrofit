@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Python 3.11+ `src`-layout project. Reusable code lives in `src/coal_retrofit/`: `builders/` prepares model inputs, `optimization/` contains the Gurobi model, `experiments/` defines and runs scenarios, and `reporting/` summarizes results. Keep `scripts/` as thin command-line orchestration. Tests belong in `tests/`. Treat `data/` as raw source material, `inputs/` as normalized model inputs, and `results/` or `outputs/` as generated artifacts. Research notes and reference material live in `plan/`, root-level Markdown files, and `reference/`.
+This is a Python 3.11+ `src`-layout project. Reusable code lives in `src/coal_retrofit/`: `builders/` prepares model inputs, and `optimization/` contains the Gurobi model and its result tables. Scenarios are registered in `scripts/run_single.py`; the copy in `_indtree/scripts/` reads `_indtree/inputs/` and writes `_indtree/results/`. Keep `scripts/` as thin command-line orchestration. Tests belong in `tests/`. Treat `data/` as raw source material, `inputs/` as normalized model inputs, and `results/` or `outputs/` as generated artifacts. Research notes and reference material live in `plan/`, root-level Markdown files, and `reference/`.
 
 ## Build, Test, and Development Commands
 
@@ -11,13 +11,11 @@ Run commands from the repository root in PowerShell:
 ```powershell
 python -m pip install -e . pytest
 python -m pytest
-python scripts/validate_inputs.py
-python scripts/run_phase_a.py
-python scripts/run_experiment.py --experiment-id EXP-B1 --output-dir results/baseline
-python scripts/summarize_results.py results/baseline/EXP-B1/<run_id> -o results/reviews/summary.md
+cd _indtree
+python scripts/run_single.py --list
 ```
 
-The first command installs the package in editable mode with the test runner. Phase A regenerates standardized inputs from raw data. Experiment runs require a working Gurobi installation and license.
+The first command installs the package in editable mode with the test runner. The `scripts/build_*.py` scripts regenerate standardized inputs from raw data. Solves require a working Gurobi installation and license; `ST_` scenarios are solved in `_indtree/` with 8 threads and the LP-relaxation warm start described in `_indtree/README.md` (see `.claude/CLAUDE.md` §二).
 
 ## Coding Style & Naming Conventions
 
@@ -29,7 +27,7 @@ Use pytest. Name files `test_<topic>.py` and tests `test_<behavior>()`. Add focu
 
 ## Commit & Pull Request Guidelines
 
-Root Git history is unavailable in this checkout; use Conventional Commits consistently, for example `fix(optimization): correct BECCS residual emissions`. Keep commits focused. Pull requests should explain the research or engineering motivation, changed assumptions or datasets, validation commands, and any result-schema impact. Link relevant issues and include before/after figures for visualization changes.
+Use Conventional Commits consistently, for example `fix(optimization): correct BECCS residual emissions`. Keep commits focused. Pull requests should explain the research or engineering motivation, changed assumptions or datasets, validation commands, and any result-schema impact. Link relevant issues and include before/after figures for visualization changes.
 
 ## Security & Data Hygiene
 

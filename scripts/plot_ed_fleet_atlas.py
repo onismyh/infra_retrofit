@@ -5,7 +5,7 @@ design retirement year (`plot_extended.ed_fig5_fleet_age_map`). That figure had 
 one structural problem.
 
   * It FABRICATED DATA. Provinces with no coal fleet were filled with a literal 2040
-    (`plot_extended.py:861`, `.fillna(2040)`) and then drawn on the same 2035-2060 colour scale
+    (`plot_extended.ed_fig5_fleet_age_map`, `.fillna(2040)`) and then drawn on the same 2035-2060 colour scale
     as measured provinces. 2040 renders orange, so Tibet and Taiwan -- which hold no capacity in
     this model at all; only 28 provinces do -- carried the most conspicuous colour on the map.
   * A choropleth encodes by AREA, and area is close to inversely related to where Chinese coal

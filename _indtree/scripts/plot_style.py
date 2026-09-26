@@ -778,7 +778,8 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     # reserved 5336.8 Mt -- a 42 Mt "saving" from converting 411 GW to dry cooling. Restoring
     # the term gives 5392.19 Mt for ALL THREE runs, against a baseline of 5392.20. Emissions
     # do not fall at all. What actually happens is that the non-negative-reduction constraint
-    # (`solver.py:326`, target 0.0 at 2030) binds: dry cooling pushes emissions above baseline,
+    # (the v9 model's emission target, 0.0 at 2030; since replaced by `model_year._add_sector_targets`)
+    # binds: dry cooling pushes emissions above baseline,
     # and the model buys just enough biomass co-firing to push them back -- 0.27% of generation
     # at 89.5 GW converted, 1.15% at 411.1 GW. The omitted term was counting that compensating
     # biomass as a saving while hiding the emissions it compensates for.

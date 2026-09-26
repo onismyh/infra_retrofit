@@ -82,8 +82,8 @@ than assumed:
    the solver's own `available` column from the dry-season column matches to 5.6e-16
    relative; the annual column is 4.3x too high.
 2. The stored availability is raw physical runoff; the budget the solver sees is
-   `dry_season x WATER_EXTRACTABLE_FRACTION` (data_prep.py, under `water_budget="official
-   _quota"`). One factor now, not two.
+   `dry_season x WATER_EXTRACTABLE_FRACTION` (`water_access._water_available_by_node`, the
+   official-quota budget). One factor now, not two.
 
 Panel (b) does not re-derive its numbers: it calls Fig 1's `site_table`/`basin_summary`, so
 the two main figures cannot quote different stresses for the same basin.
@@ -140,13 +140,13 @@ YEARS = [2030, 2040, 2050, 2060]
 # so this is the tightest the constraint gets and the year the 765 GW refers to.
 CEILING_YEAR = 2030
 
-# The solved pair. Both carry existing_withdrawal_share=0.85, which is what makes the
-# availability constraint bind at all (run_single.py:99-100).
+# The solved pair: v9.1 official-quota solves (`_v91tree/scripts/run_single.py:383,385`), so
+# there is no reservation share (see below).
 SOLVED = {"ssp126": "WA_cwatm_126_dry_oq", "ssp370": "WA_cwatm_370_dry_oq"}
 # Adaptation frozen. Not plotted -- it is a counterfactual, not part of the claim -- but its
 # unserved volume is printed, because it is the cleanest evidence that the ceiling is real.
 FROZEN = "WA_cwatm_126_dry_oq_noair"
-# Member the solves pin (run_single.py:99). It is a drying GCM, so it is marked in panel (a)
+# Member the solves pin (`_v91tree/scripts/run_single.py:383`). It is a drying GCM, so it is marked in panel (a)
 # rather than left to look like the ensemble centre.
 SOLVED_MEMBER = "cwatm|gfdl-esm4|ssp126"
 
@@ -181,8 +181,6 @@ def solver_params() -> tuple[float, float]:
     """Extractable fraction and retrofit CF boost -- taken from the package, not retyped.
 
     Hardcoding these would let a figure drift away from the model it claims to describe.
-    `existing_withdrawal_share` defaults to 0.0 on the assumptions object, so the 0.85
-    override the plotted runs carry is pinned above as a module constant instead.
     """
     from coal_retrofit.constants import WATER_EXTRACTABLE_FRACTION
     from coal_retrofit.optimization.scenario import OptimizationScenario
@@ -275,7 +273,8 @@ def basin_demand(scenario: str, year: int) -> pd.DataFrame:
     what attaching capture does before any adaptation. `realised` is the solver's own
     `water_use_m3`, which already contains the dry-cooling conversion it chose.
 
-    Intensities and the CF boost follow data_prep.py:742-748: capture pathways take the plant
+    Intensities and the CF boost follow `plant_matrices._water_intensity_matrices` and
+    `_plant_operating_matrices`: capture pathways take the plant
     table's own with-capture intensity rather than a global multiplier, and retrofit pathways
     get the generation boost. `realised` is read straight from `water_use_m3`, so it validates the
     basin ALLOCATION but not the intensity reconstruction -- the two counterfactual columns
@@ -293,13 +292,14 @@ def basin_demand(scenario: str, year: int) -> pd.DataFrame:
 
     # `consumption_intensity_m3_per_mwh` is ALREADY the as-built blend: builders/plants.py:
     # 207-217 averages every (combustion, cooling) group in the hub, air-cooled units
-    # included, and data_prep.py:745 hands that column straight to the unabated pathway with
-    # no further weighting (data_prep.py:778-780 says so explicitly). Blending it a second
-    # time by `already_air_share` double-counts the dry fraction and understates as-built
+    # included, and `plant_matrices._water_intensity_matrices` hands that column straight to
+    # the unabated pathway with no further weighting (the `_air_cooling_matrices` docstring
+    # says so explicitly). Blending it a second time by `already_air_share` double-counts the
+    # dry fraction and understates as-built
     # demand -- nationally by 7.5% in 2030, and by 32.6% in the Yellow, 10.6% in the
     # Northwest Interior and 10.3% in the Hai, which are three of the four basins the
     # ceiling test flags. `already_air_share` is therefore NOT used here; it belongs to the
-    # capex and backpressure terms (data_prep.py:783-786), not to the intensity.
+    # capex and backpressure terms (`plant_matrices._air_cooling_matrices`), not to the intensity.
     unabated = generation * wet_base
     full_capture = generation * CF_BOOST * wet_capture
     realised = _aligned(detail, "water_use_m3", index, f"{scenario} plant_detail")

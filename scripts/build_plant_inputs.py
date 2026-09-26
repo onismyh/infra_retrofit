@@ -3,7 +3,7 @@
 `--hubs` re-runs the site clustering and rewrites `inputs/plants.csv`. It is off by default
 because that file is an input to every solved scenario: regenerating it changes the
 `digest_plants` provenance field even when the numbers are identical, and two runs that differ
-in it are not comparable (see `solver._input_digest`). Pass it only when a column has actually
+in it are not comparable (see `solver_provenance._input_digest`). Pass it only when a column has actually
 been added or a value corrected, and re-solve everything downstream.
 """
 from __future__ import annotations

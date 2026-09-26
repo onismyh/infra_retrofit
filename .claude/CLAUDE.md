@@ -80,6 +80,10 @@
 - **2026-09-10 起的 `ST_` 系**：部门碳目标（China TIMES CN60 四类轨迹）+ 煤电利用小时轨迹 + 工业产量指数，
   注册在 `scripts/run_single.py`，求解树在 `_indtree/`。
 
+> **现状（2026-09-26 起）**：`src/` 只剩官方指标口径，`water_budget` 开关、runoff 口径与
+> `existing_withdrawal_share` 已删除；流域上限的开关是 `OptimizationAssumptions.apply_basin_cap`
+> （关掉即 `_oq_envonly`）。`wd085` 系结果按 §1.5 在 `892c877^` 的工作副本里、`_v9tree` 下复现。
+
 ### 1.5 情景命名
 
 ```

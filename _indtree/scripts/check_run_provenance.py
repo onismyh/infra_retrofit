@@ -10,11 +10,11 @@ carried 632 442 and 0xbe7b31c2 -- four water-supply-link variables that existed 
 and not the other. The 0.249% reported as this model's solver degeneracy was that difference.
 
 A second, independent failure rode along: Gurobi is deterministic only for a fixed
-(model, parameters, THREAD COUNT), and `solver_threads` defaults to 0 = auto
-(`scenario.py:322`), so no run before this campaign pinned it. Observed thread counts across
+(model, parameters, THREAD COUNT), and `OptimizationScenario.solver_threads` defaults to 0 = auto,
+so no run before this campaign pinned it. Observed thread counts across
 runs that were differenced against each other: 32, 14, 12, 9, 8.
 
-WHAT THIS CHECKS. `solver._run_provenance` now stamps every result JSON with the model
+WHAT THIS CHECKS. `solver_provenance._run_provenance` now stamps every result JSON with the model
 fingerprint, its dimensions, the thread parameter and the seed. This script reads them back
 and answers two questions no figure could previously ask:
 
@@ -98,7 +98,7 @@ def describe(name, row):
     if row is None:
         return f"    {name:44s} NOT SOLVED"
     if row["fingerprint"] is None:
-        return (f"    {name:44s} NO PROVENANCE -- solved before solver._run_provenance "
+        return (f"    {name:44s} NO PROVENANCE -- solved before solver_provenance._run_provenance "
                 f"existed; re-solve to make it checkable")
     return (f"    {name:44s} fp {row['fingerprint']}  vars {row['num_vars']}  "
             f"nz {row['num_nonzeros']}  threads {row['threads_param']}  seed {row['seed']}")

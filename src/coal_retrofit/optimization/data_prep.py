@@ -42,20 +42,21 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         if scenario.forced_cooling_technology
         else plants["dominant_cooling_technology"].astype(str)
     )
-    # 必须来自淡水系统的水量，口径由情景选定。
+    # 必须来自淡水系统的水量。
     # `builders/plants.py` 依据 Wang (2023) 表为每个厂址写出四个按装机容量加权的强度：
     # 逐机组按蒸汽参数（steam cycle）与冷却方式查表，沿海的海水凝汽器已置零。没有这些列
     # 的旧输入退回到按冷却方式取的统一耗水值。
     # 三种口径，三种用途。它们不可互换，模型三种都用：
     #
-    #   consumption  流域实际损失的水量               -> 可用水量约束
+    #   consumption  流域实际损失的水量               -> 节点可用水量（生态流量）约束
     #   quota        中国计量并收费的水量             -> 水价
-    #   withdrawal   全部引水量，含回流到下游的部分   -> 只作报告
+    #   withdrawal   全部引水量，含回流到下游的部分   -> 流域用水总量指标约束（开流域上限时）
     #
-    # 曾尝试按取水量设约束，后来放弃：生态流量预留是关于耗减（depletion）的规则，把它用到
-    # 直流冷却的凝汽器水量上——这些水在下游几公里处就回到河里——仅因长江流域 45.6% 的
+    # 曾尝试按取水量设生态流量约束，后来放弃：生态流量预留是关于耗减（depletion）的规则，把它
+    # 用到直流冷却的凝汽器水量上——这些水在下游几公里处就回到河里——仅因长江流域 45.6% 的
     # 煤电是直流冷却，就让该流域超出限额 155%。真正限制直流冷却取水的是取水口处的瞬时
-    # 河道流量，这需要河段尺度的河道演算流量（`dis`）；在此之前，取水量只作诊断，绝不作约束。
+    # 河道流量，这需要河段尺度的河道演算流量（`dis`），模型里没有。取水只进流域尺度的用水总量
+    # 指标约束：那条分配规则本身按取水计量（`water_access._withdrawal_matrices`）。
     base_column = "consumption_intensity_m3_per_mwh"
     ccs_column = "consumption_ccs_intensity_m3_per_mwh"
     has_table = base_column in plants.columns and ccs_column in plants.columns
@@ -78,7 +79,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     else:
         logger.warning("plants.csv lacks quota_intensity_m3_per_mwh; charging water at the consumption volume")
         plants["water_charge_ratio"] = 1.0
-    # 只作报告，从不设约束。
+    # 取水强度只在有水约束且开流域上限时读（`builders.water_quota.calibrated_withdrawal_intensities`）。
     for column in ("withdrawal_intensity_m3_per_mwh", "withdrawal_ccs_intensity_m3_per_mwh"):
         if column not in plants.columns:
             plants[column] = 0.0
@@ -157,7 +158,7 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
     # （见 OptimizationAssumptions.storage_site_block_pixels）。
     # 由 5 km 栅格组成的每个 50x50 km 区块算一个项目，按真实项目规模计。栅格加总值仍作为
     # 地质上限施加，使 hub 永远不会超过地层能接受的量。以上全部在乘 injectivity_multiplier
-    # 之前定下，这样 SA_injectivity_half 依然起作用。
+    # 之前定下，这样对它的敏感性（v9 的 `SA_injectivity_half`）依然起作用。
     geological_ceiling = (
         storages["injectivity_dsa_avg_mtpa"].astype(float) + storages["injectivity_eor_avg_mtpa"].astype(float)
     ).clip(lower=0.0)

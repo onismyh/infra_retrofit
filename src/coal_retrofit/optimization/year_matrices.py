@@ -107,7 +107,7 @@ def _build_year_matrices(
 
     plant = _plant_operating_matrices(prepared, scenario, assumptions, year)
     water_intensity, air_water_intensity = _water_intensity_matrices(prepared, scenario, assumptions)
-    # 取水孪生矩阵与流域指标：只在 official_quota 下建（流域指标是唯一按取水计的约束）。
+    # 取水孪生矩阵与流域指标：只在有水约束且开流域上限时建（流域指标是唯一按取水计的约束）。
     withdrawal_intensity, air_withdrawal_intensity = _withdrawal_matrices(
         prepared, scenario, assumptions, water_intensity, air_water_intensity, year
     )

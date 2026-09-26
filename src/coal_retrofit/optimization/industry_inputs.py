@@ -44,7 +44,7 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found; industry's H2 route is priced from it. Build it with "
-            "scripts/build_ammonia_supply.py, or disable industry."
+            "scripts/build_supply_inputs.py."
         )
     curve = pd.read_csv(path, usecols=["year", "h2_supply_kg_per_year", "weighted_lcoh_usd_per_kg_h2"])
     missing = {"year", "h2_supply_kg_per_year", "weighted_lcoh_usd_per_kg_h2"} - set(curve.columns)
