@@ -5,7 +5,7 @@ import numpy as np
 
 from ..constants_industry import POWER_TARGET_GROUP
 from ._shared import GRB, PATHWAY_INDEX, PreparedInputs, SolveState, gp
-from .constraints import _add_forced_pathway_activation_constraints, _add_plant_path_constraints
+from .constraints import _add_plant_path_constraints
 from .model_index import ModelIndex
 from .model_resources import add_basin_withdrawal_cap, add_resource_balances
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
@@ -127,7 +127,7 @@ def add_year_block(
         model, year_data, scenario, idx, year, total_reduction_mt,
         industry_payload.residual_by_group, target_shortfall_mt, year_suffix,
     )
-    _add_pathway_switches(model, share, scenario, year_data, idx, year, plant_count, year_suffix)
+    _add_pathway_switches(model, share, scenario, plant_count, year_suffix)
 
     return YearPayload(
         year=year,
@@ -345,21 +345,13 @@ def _add_pathway_switches(
     model,
     share: GrbMVar,
     scenario: OptimizationScenario,
-    year_data: YearData,
-    idx: ModelIndex,
-    year: int,
     plant_count: int,
     year_suffix: str,
 ) -> None:
-    """情景关掉的路径份额为零；强制激活的路径按 `_add_forced_pathway_activation_constraints`。"""
+    """情景关掉的路径（`pathway_disable`）份额为零。"""
     for pathway, pathway_idx in PATHWAY_INDEX.items():
         if not scenario.path_enabled(pathway):
             model.addConstrs(
                 (share[plant_idx, pathway_idx] == 0.0 for plant_idx in range(plant_count)),
                 name=f"disable_{pathway}_{year_suffix}",
             )
-    _add_forced_pathway_activation_constraints(
-        model, share, scenario, year_data, plant_count,
-        name_suffix=f"_{year_suffix}",
-        retired_mask=np.array([year >= idx.retirement_years[p] for p in range(plant_count)]),
-    )

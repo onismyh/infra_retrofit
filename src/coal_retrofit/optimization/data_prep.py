@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import fields
 
 import numpy as np
 import pandas as pd
@@ -17,15 +16,6 @@ from .resource_access import _coarsen_resource_nodes, _haversine_distances_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
 
 logger = logging.getLogger(__name__)
-
-
-def _paths_df_from_assumptions(assumptions: OptimizationAssumptions, scenario: OptimizationScenario) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
-    for field_info in fields(assumptions):
-        rows.append({"scope": "assumption", "key": field_info.name, "value": getattr(assumptions, field_info.name)})
-    for field_info in fields(scenario):
-        rows.append({"scope": "scenario", "key": field_info.name, "value": getattr(scenario, field_info.name)})
-    return pd.DataFrame(rows)
 
 
 def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:

@@ -550,8 +550,6 @@ class OptimizationScenario:
     dense_time_grid: bool = False
     carry_state_between_years: bool = True
     pathway_disable: tuple[str, ...] = ()
-    forced_pathways: tuple[str, ...] = ()
-    min_forced_path_share: float = 0.0
     corridor_prior_strength: float = 0.70
     solve_mode: str = "joint"           # 只实现了 "joint"；其他取值会报错
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
@@ -582,7 +580,6 @@ class OptimizationScenario:
     # 重建电厂取超超临界效率（基线为 0.42）：Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs"
     # 一行为 270 gce/kWh，按低位热值折 0.455，取值低 1.1%。该行名原文如此、含义有歧义；NDRC 原文未核。
     rebuild_efficiency: float = 0.45
-    notes: str = ""
 
     def _interpolate_year_tuple(self, values: tuple[float, ...], year: int) -> float:
         mapping = dict(zip(self.planning_years, values, strict=False))
