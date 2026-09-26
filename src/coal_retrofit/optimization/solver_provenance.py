@@ -87,11 +87,18 @@ def _run_provenance(model, inputs_dir: Path) -> dict[str, float | int | str | No
     Gurobi 只在 (模型, 参数, 线程数) 三者不变时确定性可复现：`fingerprint` 是模型哈希，
     只换种子的两次求解必须一致；`threads_param` 为 0 表示自动，不算固定；`mip_focus`
     属于参数元组，要相减的两次求解必须相同；输入数值的改动指纹看不到，由 `_input_digest` 补。
+
+    `mip_focus` 与 `threads_param` 一样读回模型上实际生效的值：`_new_gurobi_model` 缺省设 1，
+    `COAL_RETROFIT_MIPFOCUS` 可覆盖。较早的记录读的是环境变量，未设时记 0，而实际生效的是 1。
     """
     try:
         threads_out = int(model.Params.Threads)
     except Exception:
         threads_out = None
+    try:
+        mip_focus_out = int(model.Params.MIPFocus)
+    except Exception:
+        mip_focus_out = None
     fingerprint = _optional_model_attr(model, "Fingerprint")
     try:
         fingerprint_out = hex(int(fingerprint) & 0xFFFFFFFF) if fingerprint is not None else None
@@ -106,7 +113,7 @@ def _run_provenance(model, inputs_dir: Path) -> dict[str, float | int | str | No
         "threads_param": threads_out,
         "threads_pinned": bool(threads_out),
         "seed": int(seed_env) if seed_env else 0,
-        "mip_focus": int(os.environ.get("COAL_RETROFIT_MIPFOCUS") or 0),
+        "mip_focus": mip_focus_out,
         **_input_digest(inputs_dir),
         "host_cpu_count": os.cpu_count(),
     }

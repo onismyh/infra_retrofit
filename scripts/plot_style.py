@@ -988,10 +988,14 @@ def same_model_runs(names, quiet: bool = False) -> list:
         # AN ABSENT FIELD IS NOT A DIFFERENCE WHEN THE DEFAULT IS KNOWN. `mip_focus` was added
         # to the provenance stamp mid-campaign, so a run solved before that carries None while
         # an otherwise identical run solved after carries 0 -- and 0 is exactly what None
-        # means, because the stamp reads an environment variable that was unset. Comparing the
-        # raw values rejected three true replicates of the same model (identical fingerprint
+        # means, because the stamp then read an environment variable that was unset. Comparing
+        # the raw values rejected three true replicates of the same model (identical fingerprint
         # 0xbf2f6de, identical 632,442 columns and 240,918 rows, threads pinned at 8) and left
         # a family of one, which silently disabled the degeneracy floor entirely.
+        # The stamp now reads MIPFocus back from the model (`_run_provenance`), so a run with the
+        # variable unset records 1, the `_new_gurobi_model` default -- which is also what the
+        # None/0 runs actually used. A None/0 stamp and a 1 stamp still compare as different on
+        # purpose: they come from two stamp versions, and a seed family must not straddle them.
         return (q.get("fingerprint"), q.get("num_vars"), q.get("num_constrs"),
                 q.get("threads_param"), int(q.get("mip_focus") or 0))
     present = [n for n in names if (RESULTS_DIR / f"{n}.json").exists()]

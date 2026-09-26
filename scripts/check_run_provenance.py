@@ -156,6 +156,10 @@ def check_contrasts(failures, warnings, strict):
         if a["fingerprint"] is None or b["fingerprint"] is None:
             warnings.append(f"{label}: at least one side has no provenance, so comparability "
                             f"cannot be checked")
+        # Older stamps read MIPFocus from an environment variable and wrote 0 when it was unset,
+        # although the model ran at the `_new_gurobi_model` default of 1; current stamps read it
+        # back from the model and write 1. A 0-vs-1 failure across the two stamp versions is
+        # intended: re-solve the older side rather than difference across them.
         fa, fb = a.get("mip_focus"), b.get("mip_focus")
         if fa is not None and fb is not None and fa != fb:
             failures.append(

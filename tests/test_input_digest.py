@@ -1,7 +1,9 @@
 """输入摘要按本次实际读取的目录计算（此前按源码位置推仓库根，求解树的运行会记错）。"""
 from __future__ import annotations
 
-from coal_retrofit.optimization.solver_provenance import _DIGEST_FILES, _input_digest
+import pytest
+
+from coal_retrofit.optimization.solver_provenance import _DIGEST_FILES, _input_digest, _run_provenance
 
 
 def _write_inputs(root, pipeline_nodes: str):
@@ -22,3 +24,18 @@ def test_digest_follows_the_inputs_that_were_read(tmp_path) -> None:
     assert a["digest_storage_hubs"] is None
     assert a["input_dir"].endswith("tree_a/inputs")
     assert {f"digest_{key}" for key, _ in _DIGEST_FILES} <= set(a)
+
+
+def test_mip_focus_is_read_back_from_the_model(tmp_path, monkeypatch) -> None:
+    """溯源记模型上实际生效的 MIPFocus：未设环境变量时是 `_new_gurobi_model` 的缺省 1，不是 0。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    from coal_retrofit.optimization._shared import _new_gurobi_model
+
+    monkeypatch.delenv("COAL_RETROFIT_MIPFOCUS", raising=False)
+    model = _new_gurobi_model("provenance")
+    try:
+        assert _run_provenance(model, tmp_path)["mip_focus"] == 1
+        model.Params.MIPFocus = 2
+        assert _run_provenance(model, tmp_path)["mip_focus"] == 2
+    finally:
+        model.dispose()
