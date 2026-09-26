@@ -1005,9 +1005,10 @@ def same_model_runs(names, quiet: bool = False) -> list:
         # 0xbf2f6de, identical 632,442 columns and 240,918 rows, threads pinned at 8) and left
         # a family of one, which silently disabled the degeneracy floor entirely.
         # The stamp now reads MIPFocus back from the model (`_run_provenance`), so a run with the
-        # variable unset records 1, the `_new_gurobi_model` default -- which is also what the
-        # None/0 runs actually used. A None/0 stamp and a 1 stamp still compare as different on
-        # purpose: they come from two stamp versions, and a seed family must not straddle them.
+        # variable unset records 1, the `_new_gurobi_model` default. An old None/0 stamp records
+        # the environment variable (unset, or set to 0), not the value the model ran at, so a
+        # None/0 stamp and a 1 stamp still compare as different on purpose: they come from two
+        # stamp versions, and a seed family must not straddle them.
         return (q.get("fingerprint"), q.get("num_vars"), q.get("num_constrs"),
                 q.get("threads_param"), int(q.get("mip_focus") or 0))
     present = [n for n in names if (RESULTS_DIR / f"{n}.json").exists()]

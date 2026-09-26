@@ -171,7 +171,8 @@ class YearPayload:
     air_installed: GrbMVar
     select_b: GrbMVar
     select_a: GrbMVar
-    # Σ l·select：独热档位下是所选档位；连续 hub 下只是档位下标的加权和，对应不到任何一档。
+    # Σ l·select：独热档位下是所选档位；连续 hub 下是档位下标的加权和，非整数时对应不到任何一档，
+    # 恰为整数时也可能是几档的混合。
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
     plant_reduction_exprs: list[GrbExpr]

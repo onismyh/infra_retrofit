@@ -53,8 +53,8 @@ def _input_digest(inputs_dir: Path, input_files: Mapping[str, Path]) -> dict[str
     列名与形状已由指纹覆盖，这里补数值的变化。清单是 `PreparedInputs.input_files`
     （`data_prep._input_files`），条件与读取处一致：没读的文件不记（无水约束时没有
     `digest_water_basin_caps`），读了的都记，包括 `data/` 下的流域多边形。仓库根 `inputs/`
-    （v7 管网）与求解树 `_indtree/inputs/`（2026-09-12 重建的管网）恰在管网节点、候选边、机组、
-    封存汇与工业 hub 这几张表上不同。
+    （v7 管网）与求解树 `_indtree/inputs/`（2026-09-12 重建的 v9.2 管网）至少在管网节点、候选边
+    与封存汇这几张表上不同（CLAUDE.md §二.6）。
     路径来自 `prepare_inputs` 真正读的目录；此前按源码位置推仓库根，求解树里的运行会记下
     仓库根文件的摘要。`input_dir` 在仓库内时记相对路径（如 `_indtree/inputs`）。
     """
