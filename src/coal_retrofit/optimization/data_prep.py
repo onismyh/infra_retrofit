@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -297,6 +298,35 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     return water_nodes, water_links, water_availability
 
 
+def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[str, Path]:
+    """本情景 `prepare_inputs` 实际读取的文件，{逻辑名: 路径}，供溯源摘要用（`solver_provenance._input_digest`）。
+
+    条件与各读取处一致；增删读取处时同步改这里，`tests/test_input_digest.py` 在 toy 上核对两者。
+    逻辑名固定，不随情景变（部门目标与产量指数的文件名带来源名，键不带）。
+    """
+    inputs = paths.inputs_dir
+    files = {
+        "plants": inputs / "plants.csv",
+        "storage_hubs": inputs / "storage_hubs.csv",
+        "biomass_supply_curve": inputs / "biomass_supply_curve.csv",
+        "ammonia_supply_curve": inputs / "ammonia_supply_curve.csv",  # 煤电掺氨与工业氢价共用
+        "water_nodes": inputs / "water_nodes.csv",
+        "water_availability": inputs / "water_availability.csv",
+        "sector_targets": inputs / f"sector_targets_{scenario.sector_target_source}.csv",
+        "industry_hubs": inputs / "industry_hubs.csv",
+        "pipeline_nodes": inputs / "pipeline_nodes.csv",
+        "pipeline_edges": inputs / "pipeline_candidate_edges.csv",
+    }
+    source = scenario.effective_output_index_source
+    if source:
+        files["industry_output_index"] = inputs / f"industry_output_index_{source}.csv"
+    if scenario.water_mode != "no_water":
+        files["water_basin_caps"] = inputs / "water_basin_caps.csv"
+        # 电厂与工业 hub 按厂址归一级流域（`builders.water.load_basins`），读的是 data/ 而不是 inputs/。
+        files["basin_polygons"] = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
+    return files
+
+
 def prepare_inputs(
     paths: ProjectPaths,
     scenario: OptimizationScenario,
@@ -339,5 +369,6 @@ def prepare_inputs(
         sector_targets=sector_targets,
         industry_h2_links=industry_h2_links,
         inputs_dir=paths.inputs_dir,
+        input_files=_input_files(paths, scenario),
     )
 

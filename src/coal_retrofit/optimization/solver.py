@@ -102,7 +102,7 @@ def _solve_joint_multi_period(
         logger.warning("solution written to %s", write_sol)
 
     status = _extract_solver_status(model)
-    solver_quality = _solver_quality(model, status, prepared.inputs_dir)
+    solver_quality = _solver_quality(model, status, prepared.inputs_dir, prepared.input_files)
     has_solution = bool(solver_quality.get("solution_count") or 0)
     acceptable_status = status in ("optimal", "suboptimal", "solution_limit") or (status == "time_limit" and has_solution)
     if not acceptable_status:
