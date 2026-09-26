@@ -124,7 +124,6 @@ def add_capacity_constraints(
     payload: YearPayload,
     year_payloads: list[YearPayload],
     year_position: int,
-    scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
     state: SolveState,
     edge_base_stock: np.ndarray,
@@ -140,9 +139,7 @@ def add_capacity_constraints(
     new_cap_mtpa = payload.new_cap_mtpa
     edge_flow_mtpa = payload.edge_flow_mtpa
     edge_slack_mtpa = payload.edge_slack_mtpa
-    storage_use_mtpa = payload.storage_use_mtpa
     storage_slack_mt = payload.storage_slack_mt
-    interval_years = int(payload.interval_years)
     n_tiers = int(pipe_count.shape[1])
     edge_buildable = (edge_max_new_total > 1e-9).astype(float)
 
@@ -175,56 +172,38 @@ def add_capacity_constraints(
 
     current_year = int(payload.year)
     lifetime = assumptions.pipeline_lifetime_years
-    if scenario.carry_state_between_years:
-        # 只累计仍在寿命内的往期新增容量：流量上限与累计新增上限都只数在役的管，到寿命的管可在
-        # 原址重建。2026-09-23 前累计新增上限把已到寿命的管也算进去，边一旦铺满就再也不能重建。
-        alive_indices = [
-            past_idx for past_idx in range(year_position + 1)
-            if current_year - int(year_payloads[past_idx].year) < lifetime
-        ]
-        model.addConstrs(
-            (
-                gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
-                <= edge_max_new_total[edge_idx]
-                for edge_idx in range(edge_count)
-            ),
-            name=f"edge_total_new_cap_limit_{year_suffix}",
-        )
-        model.addConstrs(
-            (
-                edge_flow_mtpa[edge_idx]
-                <= edge_base_stock[edge_idx]
-                + gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
-                + edge_slack_mtpa[edge_idx]
-                for edge_idx in range(edge_count)
-            ),
-            name=f"edge_capacity_limit_{year_suffix}",
-        )
-        model.addConstrs(
-            (
-                gp.quicksum(
-                    year_payloads[past_idx].storage_use_mtpa[storage_idx] * int(year_payloads[past_idx].interval_years)
-                    for past_idx in range(year_position + 1)
-                )
-                <= float(state.remaining_storage_mt[storage_idx]) + storage_slack_mt[storage_idx]
-                for storage_idx in range(storage_count)
-            ),
-            name=f"storage_capacity_limit_{year_suffix}",
-        )
-    else:
-        model.addConstrs(
-            (
-                edge_flow_mtpa[edge_idx]
-                <= edge_base_stock[edge_idx] + new_cap_mtpa[edge_idx] + edge_slack_mtpa[edge_idx]
-                for edge_idx in range(edge_count)
-            ),
-            name=f"edge_capacity_limit_{year_suffix}",
-        )
-        model.addConstrs(
-            (
-                storage_use_mtpa[storage_idx] * interval_years
-                <= float(state.remaining_storage_mt[storage_idx]) + storage_slack_mt[storage_idx]
-                for storage_idx in range(storage_count)
-            ),
-            name=f"storage_capacity_limit_{year_suffix}",
-        )
+    # 只累计仍在寿命内的往期新增容量：流量上限与累计新增上限都只数在役的管，到寿命的管可在
+    # 原址重建。2026-09-23 前累计新增上限把已到寿命的管也算进去，边一旦铺满就再也不能重建。
+    alive_indices = [
+        past_idx for past_idx in range(year_position + 1)
+        if current_year - int(year_payloads[past_idx].year) < lifetime
+    ]
+    model.addConstrs(
+        (
+            gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
+            <= edge_max_new_total[edge_idx]
+            for edge_idx in range(edge_count)
+        ),
+        name=f"edge_total_new_cap_limit_{year_suffix}",
+    )
+    model.addConstrs(
+        (
+            edge_flow_mtpa[edge_idx]
+            <= edge_base_stock[edge_idx]
+            + gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
+            + edge_slack_mtpa[edge_idx]
+            for edge_idx in range(edge_count)
+        ),
+        name=f"edge_capacity_limit_{year_suffix}",
+    )
+    model.addConstrs(
+        (
+            gp.quicksum(
+                year_payloads[past_idx].storage_use_mtpa[storage_idx] * int(year_payloads[past_idx].interval_years)
+                for past_idx in range(year_position + 1)
+            )
+            <= float(state.remaining_storage_mt[storage_idx]) + storage_slack_mt[storage_idx]
+            for storage_idx in range(storage_count)
+        ),
+        name=f"storage_capacity_limit_{year_suffix}",
+    )

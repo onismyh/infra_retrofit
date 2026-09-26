@@ -154,15 +154,6 @@ class OptimizationAssumptions:
     # 海上盆地（东海、珠江口、渤海、北部湾）要承担海底管道与平台成本：凡与海上封存 hub
     # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。⚠ 假设（无出处）。
     offshore_transport_multiplier: float = 1.5
-    pipe_capex_cny_per_mtpa_km: float = 400_000.0  # 干线规模（>=20 Mtpa）的系数法估算：
-    # MIT Smith et al. 2021 (IJGGC) $52,892/(in·mi) → 20-in 干线 ≈4.6M CNY/km ≈0.23e6 CNY/(Mtpa·km)；
-    # ADB 中国系数 57,124 USD/(km·in) → ≈0.4e6；小规模实际项目（齐鲁-胜利，1.7 Mtpa，含站场）
-    # 3.1e6。基准费率对应标准的 20-Mtpa 管道；更小的管道另带支线 / 直连乘数。
-    # （原值 18,000 是单位错误，约低了 100 倍。）
-    # ⚠ 假设（出处不具体）：取的是 ADB 系数，但没能定位它出自哪份 ADB 报告，同处的 Smith 系数也没核到原文。
-    # 对照：按 Fan et al. 2023 SI 式 (S26)-(S28) 的材料法自算，20 Mt/a 时 0.12e6-0.16e6 CNY/(Mtpa·km)（式中 r 按
-    # 半径读；原文称其为直径，按直径读是 0.47e6-0.65e6，原式待核；壁厚与保温层为自设）；吉林石化—吉林油田 CO2
-    # 管道一期（13.67 亿元、282 km、3.3 Mt/a；只见环评公示的检索摘要）按 0.6 规模指数放大到 20 Mt/a 是 0.71e6。
     # 沿既有油气干线的 62 条候选边（`existing_corridor_flag`）所记的免费 CO2 容量。
     # 2026-09-10 之前为 20 Mtpa（无出处）；文献综述（docs/工业联合减排实现说明.md §9.6）
     # 的结论相反：复用的输气管只能在降压下输送小流量（IEAGHG 2013/18：Longannet
@@ -178,11 +169,20 @@ class OptimizationAssumptions:
     # 20 Mtpa 付费：IND_BASE_t95 建成的 344 条边里有 222 条正好是 20；任何小到不值得建干线
     # 的流量，走 big-M "容量松弛"都比铺管便宜——于是有 11 条边在建成容量为零的情况下
     # 输送了 CO2。带规模经济的三档管径补上了这个缺口。各档每 km capex 由 20-Mtpa 干线费率
-    # （400 000 x 20 = 8.0e6 CNY/km，见 pipe_capex_cny_per_mtpa_km）乘 (cap/20)^0.6 缩放，
+    # （0.4e6 CNY/(Mtpa·km) x 20 = 8.0e6 CNY/km，出处见下）乘 (cap/20)^0.6 缩放，
     # 这是 CO2 管道常用的管径-成本指数（Knoope et al. 2013, IJGGC 16:241, Table 4 拟合为
     # 0.5-0.7）。交叉核对：2-Mtpa 档的 2.0e6 CNY/km 低于 1.7-Mtpa 齐鲁-胜利管线的
     # 3.1e6 CNY/km，而后者含压缩站，所以小档若有偏差也是偏便宜。类别乘数（支线 1.35、
     # 直连 2.8、走廊 0.97）照旧叠加在上面。
+    # 干线费率 0.4e6 CNY/(Mtpa·km) 是干线规模（>=20 Mtpa）的系数法估算：
+    # MIT Smith et al. 2021 (IJGGC) $52,892/(in·mi) → 20-in 干线 ≈4.6M CNY/km ≈0.23e6 CNY/(Mtpa·km)；
+    # ADB 中国系数 57,124 USD/(km·in) → ≈0.4e6；小规模实际项目（齐鲁-胜利，1.7 Mtpa，含站场）
+    # 3.1e6。（原值 18,000 是单位错误，约低了 100 倍。）
+    # ⚠ 假设（出处不具体）：取的是 ADB 系数，但没能定位它出自哪份 ADB 报告，同处的 Smith 系数也没核到原文。
+    # 对照：按 Fan et al. 2023 SI 式 (S26)-(S28) 的材料法自算，20 Mt/a 时 0.12e6-0.16e6 CNY/(Mtpa·km)（式中 r 按
+    # 半径读；原文称其为直径，按直径读是 0.47e6-0.65e6，原式待核；壁厚与保温层为自设）；吉林石化—吉林油田 CO2
+    # 管道一期（13.67 亿元、282 km、3.3 Mt/a；只见环评公示的检索摘要）按 0.6 规模指数放大到 20 Mt/a 是 0.71e6。
+    # 这一费率原先是字段 `pipe_capex_cny_per_mtpa_km`；分档之后它只流向一个没人读的报告系数，已删除。
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
     # 封存部署爬坡。`injectivity_mtpa` 是 2060 年规模的可建速率（按 ACCA21 的 2060 年区间
@@ -207,7 +207,6 @@ class OptimizationAssumptions:
     cooling_air_water_intensity_m3_per_mwh: float = 0.37
     ccs_water_multiplier: float = 1.82
     biomass_water_multiplier: float = 1.00
-    beccs_water_multiplier: float = 1.82
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
     # 水预算：`OptimizationScenario.water_mode` 不为 "no_water" 时生效，只有 v9.1 起的官方指标口径一种。
     # 两条规则是两个口径不同的独立约束，各自约束其条文实际所针对的量：
@@ -303,7 +302,6 @@ class OptimizationAssumptions:
     # 0.97 = 去掉这部分 ROW 份额。原为 0.4（无出处）；据称一篇德国拓扑论文用了 10% 的
     # 走廊折扣，但未能打开（ScienceDirect S2772656826001004）——须经作者核实后才可用 0.9。
     corridor_capex_multiplier: float = 0.97
-    top_k_storage_pairs: int = 5
     slack_penalty_cny_per_unit: float = 5_000_000_000.0
     sparse_interval_years: int = 10
     # 动态资源调配参数
@@ -356,10 +354,6 @@ class OptimizationAssumptions:
     # 氨运输成本（卡车，Hydrogen Council & McKinsey 2022；IEA GHR 2023）
     # 0.12 USD/(t·km) = 0.00012 USD/(kg·km) × 7.0 = 0.00084 CNY/(kg·km)
     ammonia_transport_cost_cny_per_kg_km: float = 0.00084
-    # 运行时网格粗化（单位：度；0 = 不粗化，磁盘上的数据已粗化）
-    biomass_coarse_grid_degrees: float = 0.0
-    ammonia_coarse_grid_degrees: float = 0.0
-    water_coarse_grid_degrees: float = 0.0
 
     # 分省年运行小时数（计算发电量时替代统一的 capacity_factor）
     # 来源：中国电力企业联合会（China Electricity Council）统计，分省煤电平均利用小时数
@@ -513,11 +507,8 @@ class OptimizationScenario:
     forced_cooling_technology: str = ""
     ccs_water_multiplier_adjustment: float = 1.0
     beccs_water_multiplier_adjustment: float = 1.0
-    dense_time_grid: bool = False
-    carry_state_between_years: bool = True
     pathway_disable: tuple[str, ...] = ()
     corridor_prior_strength: float = 0.70
-    solve_mode: str = "joint"           # 只实现了 "joint"；其他取值会报错
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）
@@ -575,12 +566,6 @@ class OptimizationScenario:
 
     def electricity_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.electricity_price_cny_per_mwh_by_year, year)
-
-    def effective_years(self, available_years: list[int] | tuple[int, ...]) -> tuple[int, ...]:
-        if not self.dense_time_grid:
-            return tuple(self.planning_years)
-        filtered = [year for year in sorted(set(available_years)) if year <= max(self.planning_years)]
-        return tuple(filtered or self.planning_years)
 
     def interval_years(self, years: tuple[int, ...], index: int, assumptions: OptimizationAssumptions) -> int:
         if len(years) <= 1:

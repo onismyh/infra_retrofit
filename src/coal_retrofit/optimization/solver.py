@@ -43,8 +43,6 @@ def _solve_joint_multi_period(
     years: tuple[int, ...],
     state: SolveState,
 ) -> dict[str, object]:
-    if scenario.solve_mode != "joint":
-        raise ValueError(f"Unsupported solve_mode {scenario.solve_mode!r}: only 'joint' is implemented.")
     model = _new_gurobi_model(
         "joint_multi_period",
         threads=scenario.solver_threads,
@@ -73,7 +71,7 @@ def _solve_joint_multi_period(
     edge_max_new_total = np.asarray(first_year_data.edge_max_new_mtpa, dtype=np.float64)
     for year_position, payload in enumerate(year_payloads):
         add_capacity_constraints(
-            model, payload, year_payloads, year_position, scenario, assumptions, state,
+            model, payload, year_payloads, year_position, assumptions, state,
             edge_base_stock, edge_max_new_total, idx.edge_count, idx.storage_count,
         )
         add_year_costs(

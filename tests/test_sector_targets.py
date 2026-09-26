@@ -19,7 +19,7 @@ YEARS = (2030, 2040)
 def _solve(paths, scenario: OptimizationScenario) -> dict[str, object]:
     assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
@@ -125,7 +125,7 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
             biomass_national_cap_gj_per_year=cap_gj,
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
-        years = scenario.effective_years(list(prepared.available_ammonia_years))
+        years = scenario.planning_years
         state = SolveState(
             edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
             remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
@@ -183,7 +183,7 @@ def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
             green_h2_national_cap_mt_by_year=(),
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
-        years = scenario.effective_years(list(prepared.available_ammonia_years))
+        years = scenario.planning_years
         state = SolveState(
             edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
             remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),

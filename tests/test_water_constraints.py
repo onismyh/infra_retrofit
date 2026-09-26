@@ -70,7 +70,7 @@ def _solve(paths: ProjectPaths, experiment_id: str, **assumption_overrides) -> d
         storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), **assumption_overrides
     )
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),

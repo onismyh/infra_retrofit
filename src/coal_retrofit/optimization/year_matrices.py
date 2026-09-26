@@ -66,10 +66,6 @@ def _edge_matrices(
         lambda row: _edge_capex_multiplier(str(row["edge_class"]), int(row["existing_corridor_flag"]), assumptions),
         axis=1,
     ).astype(float).to_numpy()
-    # 每 Mtpa 系数只用于报告；求解器按下面的管径档整根建。
-    edge_capex_coeff = (
-        edge_length_km * assumptions.pipe_capex_cny_per_mtpa_km * edge_class_multiplier * offshore_factor
-    )
     tiers = tuple(float(t) for t in assumptions.pipe_capacity_tiers_mtpa)
     tier_capex_per_km = tuple(float(c) for c in assumptions.pipe_capex_cny_per_km_by_tier)
     if len(tiers) != len(tier_capex_per_km) or not tiers:
@@ -86,12 +82,9 @@ def _edge_matrices(
     return {
         "edge_base_stock_mtpa": edge_base_stock,
         "edge_max_new_mtpa": edge_max_new,
-        "edge_min_build_mtpa": np.minimum(edge_max_new, float(min(tiers))),
-        "edge_capex_coeff": edge_capex_coeff,
         "pipe_tiers_mtpa": tiers,
         "edge_tier_capex": edge_tier_capex,
         "edge_route_opex_coeff": edge_route_opex_coeff,
-        "edge_offshore_mask": offshore_edges,
     }
 
 
@@ -115,7 +108,7 @@ def _build_year_matrices(
     plant = _plant_operating_matrices(prepared, scenario, assumptions, year)
     water_intensity, air_water_intensity = _water_intensity_matrices(prepared, scenario, assumptions)
     # 取水孪生矩阵与流域指标：只在 official_quota 下建（流域指标是唯一按取水计的约束）。
-    withdrawal_intensity, air_withdrawal_intensity, once_through_factor = _withdrawal_matrices(
+    withdrawal_intensity, air_withdrawal_intensity = _withdrawal_matrices(
         prepared, scenario, assumptions, water_intensity, air_water_intensity, year
     )
     basin_membership, basin_residual, basin_codes = _basin_cap_data(
@@ -166,8 +159,6 @@ def _build_year_matrices(
         biomass_available=biomass_available,
         biomass_link_cost_cny_per_gj=biomass_link_costs,
         biomass_flow_scale=biomass_flow_scale,
-        biomass_nodes=prepared.biomass[["biomass_node_id", "province_name"]].copy(),
-        ammonia_year=int(ammonia_data["year"]),
         ammonia_nodes=ammonia_data["nodes"][["ammonia_node_id", "province_name"]].copy() if not ammonia_data["nodes"].empty else pd.DataFrame(columns=["ammonia_node_id", "province_name"]),
         ammonia_links=ammonia_data["links"],
         ammonia_link_hub_membership=ammonia_data["hub_membership"],
@@ -184,7 +175,6 @@ def _build_year_matrices(
         air_water_intensity=air_water_intensity,
         withdrawal_intensity=withdrawal_intensity,
         air_withdrawal_intensity=air_withdrawal_intensity,
-        once_through_calibration=once_through_factor,
         water_basin_membership=basin_membership,
         water_basin_available_m3=basin_residual,
         water_basin_codes=basin_codes,

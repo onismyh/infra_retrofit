@@ -12,7 +12,7 @@ import pandas as pd
 from ..paths import ProjectPaths
 from ._shared import PreparedInputs
 from .network import build_runtime_network
-from .resource_access import _coarsen_resource_nodes, _haversine_distances_km
+from .resource_access import _haversine_distances_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,6 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         flat = plants["effective_cooling_technology"].map(assumptions.cooling_baseline_water_intensity)
         plants["baseline_water_intensity_m3_per_mwh"] = flat
         plants["capture_water_intensity_m3_per_mwh"] = flat * assumptions.ccs_water_multiplier
-    plants["water_basis"] = "consumption"
     # 计费比：水价按计量的定额水量征收，但求解器跟踪的变量是耗水量，所以到厂水价要逐厂
     # 乘以 quota/consumption。捕集带来的增量按基准比计费——这是对一个占系统成本 ~5% 的项
     # 所做的 <=25% 的近似。凡没有定额列之处，退回 1.0。
@@ -83,10 +82,6 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     for column in ("withdrawal_intensity_m3_per_mwh", "withdrawal_ccs_intensity_m3_per_mwh"):
         if column not in plants.columns:
             plants[column] = 0.0
-    plants["all_source_water_intensity_m3_per_mwh"] = plants["effective_cooling_technology"].map(
-        assumptions.cooling_baseline_water_intensity
-    )
-    plants["source_dataset"] = "inputs/plants.csv"
     # hub 自身所在位置的一级流域，用于官方指标上限（有水约束时）。按所在位置归属，而不是按 hub 取水
     # 节点所在的流域归属，因为取水许可就是这样核发的。只在这里算一次：它是一次空间连接
     # （spatial join），若按每个规划年、每个情景重做，耗时会超过其余全部准备工作之和。
@@ -199,14 +194,6 @@ def _prepare_biomass(paths: ProjectPaths, scenario: OptimizationScenario, assump
     biomass["available_gj"] = biomass["available_gj"].astype(float) * scenario.biomass_supply_multiplier
     biomass["cost_cny_per_gj"] = biomass["base_cost_cny_per_gj"].astype(float) * scenario.biomass_cost_multiplier
 
-    # 若已配置，则粗化网格
-    if assumptions.biomass_coarse_grid_degrees > 0:
-        biomass = _coarsen_resource_nodes(
-            biomass, assumptions.biomass_coarse_grid_degrees,
-            supply_col="available_gj", cost_col="cost_cny_per_gj",
-            id_col="biomass_node_id", id_prefix="BC",
-        )
-
     node_lons = biomass["longitude"].astype(float).to_numpy()
     node_lats = biomass["latitude"].astype(float).to_numpy()
     link_rows = []
@@ -250,22 +237,6 @@ def _prepare_ammonia_supply(
         * scenario.ammonia_cost_multiplier
     )
 
-    # 若已配置，则按年份分组粗化
-    coarse_deg = assumptions.ammonia_coarse_grid_degrees
-    if coarse_deg > 0:
-        coarsened_parts = []
-        for year, year_grp in ammonia.groupby("year", sort=True):
-            coarsened = _coarsen_resource_nodes(
-                year_grp.reset_index(drop=True), coarse_deg,
-                supply_col="nh3_supply_kg_per_year", cost_col="cost_cny_per_kg",
-                id_col="ammonia_node_id", id_prefix="AC",
-            )
-            coarsened["year"] = int(year)
-            # 为兼容下游，继续带上 nh3_cost_lb_usd_per_kg
-            coarsened["nh3_cost_lb_usd_per_kg"] = coarsened["cost_cny_per_kg"] / (assumptions.usd_to_cny * scenario.ammonia_cost_multiplier) if scenario.ammonia_cost_multiplier != 0 else 0.0
-            coarsened_parts.append(coarsened)
-        ammonia = pd.concat(coarsened_parts, ignore_index=True)
-
     link_rows = []
     for year, year_nodes in ammonia.groupby("year", sort=True):
         year_nodes = year_nodes.reset_index(drop=True)
@@ -296,17 +267,6 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     from ..constants import WATER_MATCH_BUFFER_KM
     water_nodes = pd.read_csv(paths.inputs_dir / "water_nodes.csv").copy()
     water_availability = pd.read_csv(paths.inputs_dir / "water_availability.csv").copy()
-
-    # 粗化只在构建输入时做一次（`builders.water.coarsen_water_inputs`），按（流域，经度分箱，
-    # 纬度分箱）分组，因此流域预算不受影响。原先放在这里的运行时版本只按分箱分组，更糟的是
-    # 按 (node, year, scenario_family) 汇总可用水量——把一个情景族里所有气候成员加成一个数。
-    # 它从未启用过（该参数默认为 0，也没有任何情景设置它），所以删掉它不改变任何结果；
-    # 留着它则是一把上了膛的枪。
-    if assumptions.water_coarse_grid_degrees > 0:
-        raise ValueError(
-            "water_coarse_grid_degrees is no longer honoured at solve time; set "
-            "constants.WATER_COARSE_GRID_DEGREES and rebuild inputs instead."
-        )
 
     node_lons = water_nodes["longitude"].astype(float).to_numpy()
     node_lats = water_nodes["latitude"].astype(float).to_numpy()
@@ -359,7 +319,7 @@ def prepare_inputs(
         industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
     )
     network = build_runtime_network(
-        paths, plants, storages, scenario, assumptions, industry_hubs=industry.hubs,
+        paths, plants, storages, scenario, industry_hubs=industry.hubs,
     )
     return PreparedInputs(
         plants=plants,

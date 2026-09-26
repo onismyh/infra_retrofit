@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.optimization.network import build_runtime_network
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.paths import ProjectPaths
 
 
@@ -48,7 +48,7 @@ def _build(paths: ProjectPaths, hub_lon: float, hub_lat: float):
     storages = pd.DataFrame({"storage_hub_id": ["S1"], "longitude": [112.5], "latitude": [37.0]})
     hubs = pd.DataFrame({"hub_id": ["H1"], "longitude": [hub_lon], "latitude": [hub_lat]})
     scenario = OptimizationScenario(experiment_id="T-NET", description="toy")
-    return build_runtime_network(paths, plants, storages, scenario, OptimizationAssumptions(), industry_hubs=hubs)
+    return build_runtime_network(paths, plants, storages, scenario, industry_hubs=hubs)
 
 
 def test_runtime_hub_next_to_a_connected_node_is_accepted(tmp_path) -> None:

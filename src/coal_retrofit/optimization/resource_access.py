@@ -1,7 +1,6 @@
-"""资源侧（生物质、氨、工业氢）的链路关联矩阵与到厂成本；空间距离与节点粗化工具。"""
+"""资源侧（生物质、氨、工业氢）的链路关联矩阵与到厂成本；空间距离工具。"""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import numpy as np
@@ -9,8 +8,6 @@ import pandas as pd
 
 from ._shared import PreparedInputs, _nearest_year
 from .scenario import OptimizationAssumptions
-
-logger = logging.getLogger(__name__)
 
 
 def _haversine_distances_km(origin_lon: float, origin_lat: float, target_lons: np.ndarray, target_lats: np.ndarray) -> np.ndarray:
@@ -22,63 +19,6 @@ def _haversine_distances_km(origin_lon: float, origin_lat: float, target_lons: n
     delta_lat = target_lats_rad - origin_lat_rad
     a = np.sin(delta_lat / 2.0) ** 2 + np.cos(origin_lat_rad) * np.cos(target_lats_rad) * np.sin(delta_lon / 2.0) ** 2
     return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
-
-
-def _coarsen_resource_nodes(
-    nodes: pd.DataFrame,
-    cell_degrees: float,
-    supply_col: str,
-    cost_col: str,
-    id_col: str,
-    id_prefix: str,
-    extra_sum_cols: tuple[str, ...] = (),
-    lon_col: str = "longitude",
-    lat_col: str = "latitude",
-) -> pd.DataFrame:
-    """把细网格资源节点聚合到 `cell_degrees` 度的粗格：供给求和、成本按供给加权、坐标按供给加权。
-
-    `cell_degrees <= 0` 时原样返回。省份取格内供给最大的节点。
-    """
-    if cell_degrees <= 0 or nodes.empty:
-        return nodes
-
-    df = nodes.copy()
-    lons = df[lon_col].astype(float)
-    lats = df[lat_col].astype(float)
-    df["_ci"] = np.floor(lons / cell_degrees).astype(int)
-    df["_cj"] = np.floor(lats / cell_degrees).astype(int)
-
-    rows: list[dict[str, object]] = []
-    for (ci, cj), grp in df.groupby(["_ci", "_cj"]):
-        w = grp[supply_col].astype(float).clip(lower=0.0)
-        total_supply = float(w.sum())
-        if total_supply > 0:
-            avg_cost = float((w * grp[cost_col].astype(float)).sum() / total_supply)
-            avg_lon = float((w * grp[lon_col].astype(float)).sum() / total_supply)
-            avg_lat = float((w * grp[lat_col].astype(float)).sum() / total_supply)
-        else:
-            avg_cost = float(grp[cost_col].astype(float).mean())
-            avg_lon = float(grp[lon_col].astype(float).mean())
-            avg_lat = float(grp[lat_col].astype(float).mean())
-        new_id = f"{id_prefix}_{ci:04d}_{cj:04d}"
-        row: dict[str, object] = {
-            id_col: new_id,
-            lon_col: avg_lon,
-            lat_col: avg_lat,
-            supply_col: total_supply,
-            cost_col: avg_cost,
-        }
-        if "province_name" in grp.columns:
-            max_idx = w.idxmax() if total_supply > 0 else grp.index[0]
-            row["province_name"] = str(grp.loc[max_idx, "province_name"])
-        for col in extra_sum_cols:
-            if col in grp.columns:
-                row[col] = float(grp[col].astype(float).sum())
-        rows.append(row)
-
-    result = pd.DataFrame(rows)
-    logger.info("Coarsened %s: %d -> %d nodes (cell=%.1f deg)", id_prefix, len(nodes), len(result), cell_degrees)
-    return result
 
 
 def _sparse_membership(rows: list[int], link_count: int, row_count: int):
@@ -204,7 +144,6 @@ def _ammonia_access_data(
         if not nodes.empty else np.zeros(0, dtype=np.float64)
     )
     return {
-        "year": source_year,
         "nodes": nodes,
         "links": links,
         "hub_membership": hub_membership,

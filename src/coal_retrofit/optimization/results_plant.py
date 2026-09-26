@@ -15,41 +15,28 @@ def _build_pathway_table(
     scenario: OptimizationScenario,
     year: int,
     share_values: np.ndarray,
-    captured_mt_by_plant: np.ndarray | None = None,
-    blend_level_b: np.ndarray | None = None,
-    blend_level_a: np.ndarray | None = None,
-    year_data: YearData | None = None,
-    plant_reduction_mt: np.ndarray | None = None,
+    captured_mt_by_plant: np.ndarray,
+    blend_level_b: np.ndarray,
+    blend_level_a: np.ndarray,
+    year_data: YearData,
+    plant_reduction_mt: np.ndarray,
 ) -> pd.DataFrame:
     """单年的逐厂 x 路径份额、发电量、排放与减排量。
 
-    给定 `year_data` 时，发电量与基线排放取的是该年的值（已套用利用小时轨迹）。给定
-    `plant_reduction_mt` 时，`abatement_mt` 锚定到求解器自己的逐厂减排量：经典的逐路径
-    减排比例只决定一个厂在各路径之间怎么拆分，厂合计则重新缩放到约束中的值，该值含 CF
-    提升与全部惩罚燃料。2026-09-10 之前这一列是未锚定的经典公式，曾出现合计达到基线
-    111.7% 的情况。
+    发电量与基线排放取 `year_data` 里该年的值（已套用利用小时轨迹）。`abatement_mt` 锚定到
+    求解器自己的逐厂减排量 `plant_reduction_mt`：经典的逐路径减排比例只决定一个厂在各路径之间
+    怎么拆分，厂合计则重新缩放到约束中的值，该值含 CF 提升与全部惩罚燃料。2026-09-10 之前
+    这一列是未锚定的经典公式，曾出现合计达到基线 111.7% 的情况。
     """
     rows: list[dict[str, object]] = []
-    gen_year = (
-        np.asarray(year_data.generation, dtype=np.float64) if year_data is not None
-        else prepared.plants["annual_generation_mwh"].astype(float).to_numpy()
-    )
-    em_year = (
-        np.asarray(year_data.emissions_mt, dtype=np.float64) if year_data is not None
-        else prepared.plants["baseline_emissions_mt"].astype(float).to_numpy()
-    )
+    gen_year = np.asarray(year_data.generation, dtype=np.float64)
+    em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
         baseline_emissions_mt = float(em_year[plant_idx])
-        # 有求解器给出的实际捕集量时，用该值
-        actual_captured = float(captured_mt_by_plant[plant_idx]) if captured_mt_by_plant is not None else None
-        bio_blend = blend_level_to_ratio(
-            blend_level_b[plant_idx] if blend_level_b is not None else 0.0,
-            scenario.biomass_blend_levels,
-        )
-        amm_blend = blend_level_to_ratio(
-            blend_level_a[plant_idx] if blend_level_a is not None else 0.0,
-            scenario.ammonia_blend_levels,
-        )
+        # 求解器给出的实际捕集量
+        actual_captured = float(captured_mt_by_plant[plant_idx])
+        bio_blend = blend_level_to_ratio(blend_level_b[plant_idx], scenario.biomass_blend_levels)
+        amm_blend = blend_level_to_ratio(blend_level_a[plant_idx], scenario.ammonia_blend_levels)
         classic = np.array([
             baseline_emissions_mt
             * reduction_fraction(pathway, scenario.capture_rate, bio_blend, amm_blend)
@@ -57,19 +44,17 @@ def _build_pathway_table(
             for path_idx, pathway in enumerate(PATHWAYS)
         ], dtype=np.float64)
         classic_total = float(classic.sum())
-        if plant_reduction_mt is not None and abs(classic_total) > 1e-9:
+        if abs(classic_total) > 1e-9:
             abatement = classic * (float(plant_reduction_mt[plant_idx]) / classic_total)
-        elif plant_reduction_mt is not None:
+        else:
             # 按经典口径没有任何减排（全部未改造）：把求解器的值（此时是惩罚燃料修正量）
             # 记到 unabated 列上，使合计正确。
             abatement = np.zeros(len(PATHWAYS))
             abatement[PATHWAY_INDEX["unabated"]] = float(plant_reduction_mt[plant_idx])
-        else:
-            abatement = classic
         for path_idx, pathway in enumerate(PATHWAYS):
             share = float(share_values[plant_idx, path_idx])
             # 实际捕集量按份额比例分摊到 CCS/BECCS 路径
-            if actual_captured is not None and pathway in ("ccs", "beccs"):
+            if pathway in ("ccs", "beccs"):
                 ccs_share = float(share_values[plant_idx, PATHWAY_INDEX["ccs"]])
                 beccs_share = float(share_values[plant_idx, PATHWAY_INDEX["beccs"]])
                 total_capture_share = ccs_share + beccs_share
@@ -120,20 +105,14 @@ def _build_plant_detail_table(
     water_use_m3: np.ndarray,
     blend_level_b: np.ndarray,
     blend_level_a: np.ndarray,
-    air_share: np.ndarray | None = None,
-    year_data: YearData | None = None,
-    plant_reduction_mt: np.ndarray | None = None,
+    air_share: np.ndarray,
+    year_data: YearData,
+    plant_reduction_mt: np.ndarray,
 ) -> pd.DataFrame:
     """逐厂高分辨率明细：路径份额、资源用量、掺烧档位、与封存汇的邻近程度。"""
     plants = prepared.plants
-    gen_year = (
-        np.asarray(year_data.generation, dtype=np.float64) if year_data is not None
-        else plants["annual_generation_mwh"].astype(float).to_numpy()
-    )
-    em_year = (
-        np.asarray(year_data.emissions_mt, dtype=np.float64) if year_data is not None
-        else plants["baseline_emissions_mt"].astype(float).to_numpy()
-    )
+    gen_year = np.asarray(year_data.generation, dtype=np.float64)
+    em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
 
     # 预先计算各厂经管网边到封存汇的最小距离
     plant_to_min_storage_km: dict[str, float] = {}
@@ -165,7 +144,7 @@ def _build_plant_detail_table(
             "dominant_cooling": str(plant.get("dominant_cooling_technology", "")),
             "annual_generation_mwh": float(gen_year[p]),
             "baseline_emissions_mt": float(em_year[p]),
-            "reduction_mt": float(plant_reduction_mt[p]) if plant_reduction_mt is not None else float("nan"),
+            "reduction_mt": float(plant_reduction_mt[p]),
             # 路径份额
             "share_unabated": float(share_values[p, PATHWAY_INDEX["unabated"]]),
             "share_retire": float(share_values[p, PATHWAY_INDEX["retire"]]),
@@ -181,7 +160,7 @@ def _build_plant_detail_table(
             "water_use_m3": float(water_use_m3[p]),
             # 本 hub 发电量中，转换后以空冷运行的比例。
             # 该改造未启用或不值其 capex 时，各处都为零。
-            "air_cooled_share": float(air_share[p, :].sum()) if air_share is not None else 0.0,
+            "air_cooled_share": float(air_share[p, :].sum()),
             "already_air_share": float(plant.get("already_air_share", 0.0)),
             # 掺烧档位
             "biomass_blend_level": float(blend_level_b[p]),
@@ -202,12 +181,13 @@ def _build_plant_cost_table(
     captured_mt: np.ndarray,
     biomass_use_gj: np.ndarray,
     water_use_m3: np.ndarray,
-    blend_level_b: np.ndarray | None = None,
-    blend_level_a: np.ndarray | None = None,
+    blend_level_b: np.ndarray,
+    blend_level_a: np.ndarray,
     prev_share_values: np.ndarray | None = None,
-    retrofit_installed: np.ndarray | None = None,
+    *,
+    retrofit_installed: np.ndarray,
     prev_retrofit_installed: np.ndarray | None = None,
-    capex_pathway_indices: tuple[int, ...] = (),
+    capex_pathway_indices: tuple[int, ...],
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
@@ -224,21 +204,14 @@ def _build_plant_cost_table(
     retire_idx = PATHWAY_INDEX["retire"]
     # 改造存量的系数（只有捕集岛一列，见 `model_year._add_retrofit_stock`）。
     stock_coeff = year_data.retrofit_stock_capex
-    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
 
     rows: list[dict[str, object]] = []
     for p in range(n):
         share = share_values[p]
         e = float(emissions[p])
         cap = float(capacity_mw[p])
-        bio_blend = blend_level_to_ratio(
-            blend_level_b[p] if blend_level_b is not None else 0.0,
-            scenario.biomass_blend_levels,
-        )
-        amm_blend = blend_level_to_ratio(
-            blend_level_a[p] if blend_level_a is not None else 0.0,
-            scenario.ammonia_blend_levels,
-        )
+        bio_blend = blend_level_to_ratio(blend_level_b[p], scenario.biomass_blend_levels)
+        amm_blend = blend_level_to_ratio(blend_level_a[p], scenario.ammonia_blend_levels)
 
         # 基线净成本：逐路径（燃料 + 运维 - 电）矩阵行 × 份额
         # （改造列含 CF 提升，退役列为零）
@@ -276,21 +249,14 @@ def _build_plant_cost_table(
         prev_retire = float(prev_share_values[p, retire_idx]) if prev_share_values is not None else 0.0
         stranded = float(year_data.stranded_per_plant[p]) * max(0.0, float(share[retire_idx]) - prev_retire)
         # CCS 改造 CAPEX（与模型一致：计在已装捕集岛存量的增量上，即 ccs + beccs 的历史最高份额；
-        # coeff 已含学习系数）。未传入存量时按本年与上年的捕集份额近似。
+        # coeff 已含学习系数）。
         ccs_capex = 0.0
         for j, _k in enumerate(capex_pathway_indices):
             coeff = float(stock_coeff[p, j])
             if coeff <= 0:
                 continue
-            if retrofit_installed is not None:
-                inst = float(retrofit_installed[p, j])
-                prev_inst = float(prev_retrofit_installed[p, j]) if prev_retrofit_installed is not None else 0.0
-            else:
-                inst = float(share[ccs_k] + share[beccs_k])
-                prev_inst = (
-                    float(prev_share_values[p, ccs_k] + prev_share_values[p, beccs_k])
-                    if prev_share_values is not None else 0.0
-                )
+            inst = float(retrofit_installed[p, j])
+            prev_inst = float(prev_retrofit_installed[p, j]) if prev_retrofit_installed is not None else 0.0
             ccs_capex += coeff * max(0.0, inst - prev_inst)
 
         rows.append({

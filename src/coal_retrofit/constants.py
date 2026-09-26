@@ -21,8 +21,6 @@ NETWORK_DETOUR_FACTOR = 1.136
 # 每个厂都有通往其最近 k 个汇的直连候选弧，因此候选网络永远不会
 # 留下到不了封存的源。SimCCS 保证的是同一个不变量：即使成本面经过
 # 加权以抑制穿越，每个源和汇也必须至少由一条可行走廊连通。
-# 与 OptimizationAssumptions.top_k_storage_pairs 对应——后者声明了这条规则，
-# 却从未被读取。
 NETWORK_DIRECT_SINK_TOP_K = 5
 
 BIOMASS_GJ_PER_TONNE = 15.0

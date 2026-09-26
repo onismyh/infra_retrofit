@@ -82,8 +82,8 @@ def _withdrawal_matrices(
     water_intensity: np.ndarray,
     air_water_intensity: np.ndarray,
     year: int,
-) -> tuple[np.ndarray | None, np.ndarray | None, float]:
-    """逐路径取水强度（m3/MWh）及其空冷对应矩阵，供流域指标用；无水约束或关掉流域上限时 (None, None, 1.0)。
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """逐路径取水强度（m3/MWh）及其空冷对应矩阵，供流域指标用；无水约束或关掉流域上限时 (None, None)。
 
     与耗水矩阵逐路径对应：捕集路径取表内带捕集取水值；掺烧路径保留原冷却系统，
     继承基线取水并乘与耗水相同的掺烧倍率；退役为零。
@@ -91,9 +91,9 @@ def _withdrawal_matrices(
     from ..builders.water_quota import calibrated_withdrawal_intensities
 
     if scenario.water_mode == "no_water":
-        return None, None, 1.0
+        return None, None
     if not bool(assumptions.apply_basin_cap):
-        return None, None, 1.0
+        return None, None
 
     plants = prepared.plants
     # 与 `province_cf` 同样按换过写法的省名查（`_prepare_plants`）。
@@ -132,7 +132,7 @@ def _withdrawal_matrices(
         float(withdrawal[:, PATHWAY_INDEX["unabated"]].sum()
               / max(water_intensity[:, PATHWAY_INDEX["unabated"]].sum(), 1e-9)),
     )
-    return withdrawal, air_withdrawal, factor
+    return withdrawal, air_withdrawal
 
 
 def _basin_cap_data(

@@ -16,7 +16,7 @@ def _build_supply_table(
     biomass_flow_gj: np.ndarray,
     ammonia_flow_kg: np.ndarray,
     water_flow_m3: np.ndarray,
-    basin_use_m3: np.ndarray | None = None,
+    basin_use_m3: np.ndarray,
 ) -> pd.DataFrame:
     biomass_links = prepared.biomass_links[["biomass_node_id"]].copy()
     biomass_links["used"] = np.asarray(biomass_flow_gj, dtype=np.float64)
@@ -65,7 +65,7 @@ def _build_supply_table(
         water_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
     ]
     basin_codes = list(year_data.water_basin_codes or [])
-    if basin_use_m3 is not None and len(basin_codes):
+    if len(basin_codes):
         used = np.asarray(basin_use_m3, dtype=np.float64)
         available = np.asarray(year_data.water_basin_available_m3, dtype=np.float64)
         frames.append(pd.DataFrame({

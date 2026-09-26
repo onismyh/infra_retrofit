@@ -31,8 +31,8 @@ def _build_edge_table(
     new_cap_mtpa: np.ndarray,
     state_before: SolveState,
     assumptions: OptimizationAssumptions,
-    pipe_count: np.ndarray | None = None,
-    pipe_tiers: tuple[float, ...] = (),
+    pipe_count: np.ndarray,
+    pipe_tiers: tuple[float, ...],
 ) -> pd.DataFrame:
     edges = prepared.network.edges.copy()
     edges["year"] = year
@@ -48,14 +48,11 @@ def _build_edge_table(
     edges["num_pipe_new"] = edges["new_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
     edges["num_pipe_stock"] = edges["total_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
     # 本年按管径档铺设的整根管数，例如 "2x2|1x20"——即实际建成的内容。
-    if pipe_count is not None and len(pipe_tiers):
-        counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
-        edges["pipes_new_by_tier"] = [
-            "|".join(f"{int(counts[e, k])}x{pipe_tiers[k]:g}" for k in range(len(pipe_tiers)) if counts[e, k] > 0)
-            for e in range(len(edges))
-        ]
-    else:
-        edges["pipes_new_by_tier"] = ""
+    counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
+    edges["pipes_new_by_tier"] = [
+        "|".join(f"{int(counts[e, k])}x{pipe_tiers[k]:g}" for k in range(len(pipe_tiers)) if counts[e, k] > 0)
+        for e in range(len(edges))
+    ]
     return edges[
         [
             "year",
@@ -87,13 +84,12 @@ def _build_storage_table(
     storage_use_mtpa: np.ndarray,
     state_before: SolveState,
     interval_years: int,
-    injectivity_mtpa: np.ndarray | None = None,
+    injectivity_mtpa: np.ndarray,
 ) -> pd.DataFrame:
     table = prepared.storages.copy()
     table["year"] = year
-    if injectivity_mtpa is not None:
-        # 本年已部署的速率（可建速率 x 爬坡），即约束所用的值。
-        table["injectivity_mtpa"] = np.asarray(injectivity_mtpa, dtype=np.float64)
+    # 本年已部署的速率（可建速率 x 爬坡），即约束所用的值。
+    table["injectivity_mtpa"] = np.asarray(injectivity_mtpa, dtype=np.float64)
     table["storage_use_mtpa"] = storage_use_mtpa
     table["remaining_capacity_before_mt"] = state_before.remaining_storage_mt
     table["remaining_capacity_after_mt"] = np.maximum(0.0, state_before.remaining_storage_mt - storage_use_mtpa * interval_years)

@@ -76,10 +76,8 @@ class YearData:
     biomass_available: np.ndarray
     biomass_link_cost_cny_per_gj: np.ndarray
     biomass_flow_scale: float
-    biomass_nodes: pd.DataFrame
 
     # --- 氨 ---
-    ammonia_year: int
     ammonia_nodes: pd.DataFrame
     ammonia_links: pd.DataFrame
     ammonia_link_hub_membership: sparse.csr_matrix
@@ -98,7 +96,6 @@ class YearData:
     air_water_intensity: np.ndarray
     withdrawal_intensity: np.ndarray | None
     air_withdrawal_intensity: np.ndarray | None
-    once_through_calibration: float
     water_basin_membership: np.ndarray | None
     water_basin_available_m3: np.ndarray | None
     water_basin_codes: list[str]
@@ -108,7 +105,6 @@ class YearData:
     industry_basin_membership: np.ndarray | None
 
     # --- 湿冷→空冷改造（`plant_matrices._air_cooling_matrices`）---
-    already_air_share: np.ndarray
     air_retrofit_capex_per_plant: np.ndarray
     air_penalty_emissions_matrix: np.ndarray
     air_penalty_captured_matrix: np.ndarray
@@ -122,12 +118,9 @@ class YearData:
     # --- 管网边（`year_matrices._edge_matrices`）---
     edge_base_stock_mtpa: np.ndarray
     edge_max_new_mtpa: np.ndarray
-    edge_min_build_mtpa: np.ndarray
-    edge_capex_coeff: np.ndarray
     pipe_tiers_mtpa: tuple[float, ...]
     edge_tier_capex: np.ndarray
     edge_route_opex_coeff: np.ndarray
-    edge_offshore_mask: np.ndarray
 
 
 @dataclass

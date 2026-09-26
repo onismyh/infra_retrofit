@@ -17,7 +17,7 @@ from toy_inputs import YEARS, _toy_assumptions, _write_targets, _write_toy_input
 def _solve_toy(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[str, object]:
     assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
@@ -184,7 +184,7 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     )
     assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
