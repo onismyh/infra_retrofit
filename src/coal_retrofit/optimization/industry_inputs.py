@@ -62,15 +62,19 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
 
 
 def prepare_industry(
-    paths: ProjectPaths, assumptions, output_index: dict[tuple[str, int], float] | None = None
+    paths: ProjectPaths,
+    assumptions,
+    output_index: dict[tuple[str, int], float] | None = None,
+    assign_basins: bool = False,
 ) -> IndustryInputs:
     """读取并准备工业 hub。
 
     Args:
         paths: 项目路径。
-        assumptions: `OptimizationAssumptions`；读取其中的 `usd_to_cny` 与 `water_budget`，
+        assumptions: `OptimizationAssumptions`；读取其中的 `usd_to_cny`，
             并用 `canonical_provinces` 把省名换成分省煤价表的写法。
         output_index: {(sector, year): index}；为 None 或为空时产量保持不变。
+        assign_basins: 为真时按厂址归一级流域（加 `basin_code` 列），有水约束时流域取水上限要用。
 
     Returns:
         准备好的工业输入。
@@ -109,7 +113,7 @@ def prepare_industry(
 
     # 按 hub 自身所在位置归流域，与 `_prepare_plants` 对煤电 hub 的归属方式一致：
     # 取水许可跟着厂址走，而不是跟着取水口走。只有流域上限需要它。
-    if str(assumptions.water_budget) == "official_quota":
+    if assign_basins:
         from ..builders.water import _assign_basin_codes
 
         # industry_hubs.csv 的列名本来就是 `latitude`/`longitude`，正是 `_assign_basin_codes`

@@ -209,60 +209,26 @@ class OptimizationAssumptions:
     biomass_water_multiplier: float = 1.00
     beccs_water_multiplier: float = 1.82
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
-    # 供水成本（grid_supply 模式用）
-    # 一个省的可再生水资源中已被农业、生活和其他工业占用的份额，在向电厂提供任何水量之前
-    # 先扣除。0 保留原始的物理可用量；取水数据载入后按水资源公报设定。
-    # 一个省的可再生水资源中已被农业、生活和其他工业占用的份额，在向电厂提供任何水量之前
-    # 先扣除。
-    #
-    # 这种余量结构是 Richter et al. (2012) River Res. Applic. 28(8):1312-1321 本身的规定，
-    # 而不是类比：天然月均流量的 20% "can be allocated for consumptive use"（可分配给
-    # 消耗性用水），且按 "when added to already-existing water uses"（叠加在既有用水之上）
-    # 评估（他的 Table II 标题为 "Cumulative allowable depletion"，即累计允许耗减量）。
-    # 用 Smakhtin et al. (2004) Eq.(1) 的术语，这个参数就是水压力指标（water stress
-    # indicator），`utilizable x (1 - WSI)` 就是他的余量。
-    #
-    # 0.85 有实测支持。黄河 1987 年"八七分水"方案是按耗水计的指标（各行标题为年耗水量，
-    # 只含地表水），所以与本约束作用的耗水口径同口径可比。对照这 370x10^8 m3 的指标，
-    # YRCC 2024 年公报（地表耗水 307.09）给出的非电份额实测值为 0.807-0.830（扣除电力后
-    # 为 0.776-0.786）。0.85 略高于该区间，即略偏保守。
-    #
-    # 须在方法部分披露：近似之处在于锚定方式，而不在数值。上述实测份额是相对于中国自己
-    # 允许的径流 52.6% 而言的，代码却把它乘在 Richter 的 20% 上——而 Richter 的严格程度是
-    # 中国水法的 2.63 倍。结果是有意在两套各自自洽的口径之间取的中间值，这也是北方四个
-    # 流域突破上限的原因：一个完全依法合规的北方流域仍达 Richter 限值的 ~2 倍。
+    # 水预算：`OptimizationScenario.water_mode` 不为 "no_water" 时生效，只有 v9.1 起的官方指标口径一种。
+    # 两条规则是两个口径不同的独立约束，各自约束其条文实际所针对的量：
+    #    node  <= qtot x 0.20                       生态流量，作用于耗水（耗减规则）
+    #    basin <= 用水总量控制指标 - 非电既有取水    分配规则，作用于取水（公报计量的正是它）
+    # 分配规则直接从国办发〔2013〕2号读取，而不是靠假设；流域上限来自 `inputs/water_basin_caps.csv`
+    # （`scripts/build_water_basin_caps.py`）。v9 及更早的 runoff 口径（available = qtot x 0.20 x
+    # (1 - existing_withdrawal_share)，两个因子被别名化，无从区分生态流量标准与分配规则）已删除，
+    # v9 结果按 CLAUDE.md §1.5 在 `892c877^` 里复现。
     #
     # 在优化模型中约束电力部门流域用水、且完全不设生态流量份额的先例：Zhang, He,
     # Johnston & Zhong (2021) J. Clean. Prod. 329:129765 (SWITCH-China)。电力占中国取水的
     # ~8%，却只占其耗水的 ~1%（Zhang et al. 2017, JCLP 161:1171-1179）。
-    existing_withdrawal_share: float = 0.0
-    # 可用水量约束按哪一种水预算构建。
     #
-    #   "runoff"          v9 及更早。available = qtot x 0.20 x (1 - existing_withdrawal_
-    #                     share)。两个因子被别名化（见 `_water_available_by_node`），因此
-    #                     无从区分生态流量标准与分配规则；而且对华北各流域，分母——当地
-    #                     天然径流——比实际用水还小，实际用水靠跨流域调水和地下水支撑。
-    #   "official_quota"  v9.1 起。两条规则变成两个口径不同的独立约束，各自约束其条文
-    #                     实际所针对的量：
-    #                        node  <= qtot x 0.20          生态流量，作用于耗水
-    #                                                      （耗减规则）
-    #                        basin <= 用水总量控制指标 - 非电既有取水
-    #                                                      分配规则，作用于取水
-    #                                                      （公报计量的正是它）
-    #                     此时 `existing_withdrawal_share` 不再使用：分配规则直接从
-    #                     国办发〔2013〕2号 读取，而不是靠假设。
-    #                     流域上限来自 `inputs/water_basin_caps.csv`
-    #                     （`scripts/build_water_basin_caps.py`）。
-    water_budget: str = "runoff"
-    # 流域上限开关，只在 water_budget='official_quota' 下生效。关闭时只剩生态流量的节点
-    # 上限，这正是 v9.1 设计中的对照组：
+    # 流域上限开关。关闭时只剩生态流量的节点上限，这正是 v9.1 设计中的对照组：
     #
     #   BASE                 完全没有水约束
     #   *_oq_envonly         只有生态流量          （本开关为 False）
     #   *_oq                 生态流量 + 分配规则   （本开关为 True）
     #
-    # 这一阶梯正是去别名化换来的。在 'runoff' 下两条规则是同一个乘积，任何实验都无法把
-    # 它们分开；这里 BASE->envonly 给生态流量标准定价，envonly->oq 给分配规则定价，
+    # 这一阶梯正是去别名化换来的：BASE->envonly 给生态流量标准定价，envonly->oq 给分配规则定价，
     # 各自独立。
     apply_basin_cap: bool = True
     # 向求解器提供水量时施加流域偏差校正因子。这些因子（builders/water.py 中的

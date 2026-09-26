@@ -119,7 +119,7 @@ def _build_slack_detail_table(
         if water_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "water_supply", "node_id": str(water_nodes.iloc[i]["water_node_id"]), "province": str(water_nodes.iloc[i].get("province_name", "")), "slack_value": float(water_slack[i]), "unit": "m3"})
 
-    # 官方指标流域上限。除非 water_budget='official_quota'，否则不存在（长度为零）。
+    # 官方指标流域上限。无水约束或关掉流域上限时不存在（长度为零）。
     # 与 `water_supply` 分开报告，因为它是另一口径上的另一条规则：它是取水口径上的
     # 指标分配，而非耗水口径上的环境流量限值。
     basin_slack = np.asarray(slacks.get("water_basin_slack_m3", np.zeros(0)), dtype=np.float64)

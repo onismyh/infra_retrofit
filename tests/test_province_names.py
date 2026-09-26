@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -132,7 +131,7 @@ def test_withdrawal_calibration_reads_hours_by_the_canonical_province_name(monke
         "province_mode": ["Neimenggu"], "province_name": ["Inner Mongolia"], "total_capacity_mw": [1000.0],
     })
     scenario = OptimizationScenario(experiment_id="T", description="toy", water_mode="grid_supply")
-    assumptions = replace(OptimizationAssumptions(), water_budget="official_quota")
+    assumptions = OptimizationAssumptions()
     intensity = np.ones((1, len(PATHWAYS)))
     _withdrawal_matrices(SimpleNamespace(plants=plants), scenario, assumptions, intensity, intensity, 2030)
     hours = assumptions.province_operating_hours["Inner Mongolia"]

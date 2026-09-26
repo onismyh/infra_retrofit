@@ -65,10 +65,7 @@ EXPERIMENTS: dict[str, tuple[dict, dict]] = {
     # 无水约束基准。
     "ST_BASE": ({**_ST_COMMON, **_ZERO_CARBON_PRICE}, {}),
     # 官方用水总量指标（流域上限）+ CWatM/GFDL SSP1-2.6 枯水期供水。
-    "ST_WA_cwatm_126_dry_oq": (
-        {**_ST_COMMON, **_ZERO_CARBON_PRICE, **_CWATM_126_DRY},
-        {"water_budget": "official_quota"},
-    ),
+    "ST_WA_cwatm_126_dry_oq": ({**_ST_COMMON, **_ZERO_CARBON_PRICE, **_CWATM_126_DRY}, {}),
     # 碳价对照：默认碳价路径，煤电与工业同价；部门上限不收紧（sector_targets_none.csv 全为 1.0，
     # 即各组不高于自身 2030 水平），其余与 ST_BASE 相同。
     "ST_CP_BASE": (

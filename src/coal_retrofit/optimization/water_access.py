@@ -26,13 +26,13 @@ def _water_available_by_node(
     year: int,
     nodes: pd.DataFrame,
 ) -> np.ndarray:
-    """`year` 各节点煤电可用水量（m3/yr）= 可再生径流 x 可提取比例 [x (1 - 存量取水占比)]。
+    """`year` 各节点煤电可用水量（m3/yr）= 可再生径流 x 可提取比例（环境流量规则）。
 
     输入表每行一个 (节点, 年, 气候成员)，成员 = 水文模型 x GCM x SSP。`water_scenario_id`
     选一个成员；留空则取该 family 按 id 排序的第一个成员，保证可复现。
 
-    可提取比例与存量取水占比在求解器里只以乘积出现，二者无法分别识别（0.85 x 0.20 与
-    0 x 0.03 是同一个模型）；官方指标口径下分配规则移到流域指标约束，这里只剩环境流量规则。
+    分配规则不在这里：它是流域取水指标约束（`_basin_cap_data`）。v9 的 runoff 口径曾在这里再乘
+    (1 - 存量取水占比)，与可提取比例只以乘积出现、无法分别识别，已删除。
     """
     from ..constants import WATER_EXTRACTABLE_FRACTION
 
@@ -68,12 +68,8 @@ def _water_available_by_node(
             for node_id, val in lookup.items()
             if float(bias.get(str(node_id), 1.0)) > 0
         }
-    if str(assumptions.water_budget) == "official_quota":
-        usable = WATER_EXTRACTABLE_FRACTION
-    else:
-        usable = WATER_EXTRACTABLE_FRACTION * (1.0 - float(assumptions.existing_withdrawal_share))
     return np.array(
-        [float(lookup.get(str(node_id), 0.0)) * usable * scenario.water_multiplier
+        [float(lookup.get(str(node_id), 0.0)) * WATER_EXTRACTABLE_FRACTION * scenario.water_multiplier
          for node_id in nodes["water_node_id"].astype(str)],
         dtype=np.float64,
     )
@@ -87,15 +83,13 @@ def _withdrawal_matrices(
     air_water_intensity: np.ndarray,
     year: int,
 ) -> tuple[np.ndarray | None, np.ndarray | None, float]:
-    """逐路径取水强度（m3/MWh）及其空冷对应矩阵，供流域指标用；未激活时 (None, None, 1.0)。
+    """逐路径取水强度（m3/MWh）及其空冷对应矩阵，供流域指标用；无水约束或关掉流域上限时 (None, None, 1.0)。
 
     与耗水矩阵逐路径对应：捕集路径取表内带捕集取水值；掺烧路径保留原冷却系统，
     继承基线取水并乘与耗水相同的掺烧倍率；退役为零。
     """
     from ..builders.water_quota import calibrated_withdrawal_intensities
 
-    if str(assumptions.water_budget) != "official_quota":
-        return None, None, 1.0
     if scenario.water_mode == "no_water":
         return None, None, 1.0
     if not bool(assumptions.apply_basin_cap):
@@ -147,12 +141,10 @@ def _basin_cap_data(
     scenario: OptimizationScenario,
     year: int,
 ) -> tuple[np.ndarray | None, np.ndarray | None, list[str]]:
-    """流域取水指标的 (成员矩阵, 余量 m3, 流域码)；未激活时 (None, None, [])。
+    """流域取水指标的 (成员矩阵, 余量 m3, 流域码)；无水约束或关掉流域上限时 (None, None, [])。
 
     机组按所在地 `plants.basin_code` 归流域（取水许可按此发放），不按取水节点所在流域。
     """
-    if str(assumptions.water_budget) != "official_quota":
-        return None, None, []
     if scenario.water_mode == "no_water":
         return None, None, []
     if not bool(assumptions.apply_basin_cap):

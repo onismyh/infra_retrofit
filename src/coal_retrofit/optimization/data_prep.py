@@ -87,10 +87,10 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         assumptions.cooling_baseline_water_intensity
     )
     plants["source_dataset"] = "inputs/plants.csv"
-    # hub 自身所在位置的一级流域，用于官方指标上限。按所在位置归属，而不是按 hub 取水
+    # hub 自身所在位置的一级流域，用于官方指标上限（有水约束时）。按所在位置归属，而不是按 hub 取水
     # 节点所在的流域归属，因为取水许可就是这样核发的。只在这里算一次：它是一次空间连接
     # （spatial join），若按每个规划年、每个情景重做，耗时会超过其余全部准备工作之和。
-    if str(assumptions.water_budget) == "official_quota":
+    if scenario.water_mode != "no_water":
         from ..builders.water import _assign_basin_codes
 
         located = plants.rename(columns={"centroid_latitude": "latitude",
@@ -99,14 +99,14 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     return plants
 
 
-def _prepare_basin_caps(paths: ProjectPaths, assumptions: OptimizationAssumptions) -> pd.DataFrame:
-    """读入按流域、按规划年的官方用水总量控制指标余量（`water_basin_caps.csv`）；未启用 `official_quota` 口径时返回空表。"""
-    if str(assumptions.water_budget) != "official_quota":
+def _prepare_basin_caps(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
+    """读入按流域、按规划年的官方用水总量控制指标余量（`water_basin_caps.csv`）；无水约束时返回空表。"""
+    if scenario.water_mode == "no_water":
         return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
     path = paths.inputs_dir / "water_basin_caps.csv"
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found. water_budget='official_quota' needs it; run "
+            f"{path} not found. The water constraint (water_mode != 'no_water') needs it; run "
             "scripts/build_water_basin_caps.py."
         )
     caps = pd.read_csv(path)
@@ -346,12 +346,15 @@ def prepare_inputs(
     biomass, biomass_links = _prepare_biomass(paths, scenario, assumptions, plants)
     ammonia_supply, ammonia_links = _prepare_ammonia_supply(paths, scenario, assumptions, plants)
     water_nodes, water_links, water_availability = _prepare_water(paths, plants, assumptions)
-    water_basin_caps = _prepare_basin_caps(paths, assumptions)
+    water_basin_caps = _prepare_basin_caps(paths, scenario)
     sector_targets = _prepare_sector_targets(paths, scenario)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
     from .industry import prepare_industry, prepare_industry_h2_links
 
-    industry = prepare_industry(paths, assumptions, output_index=_prepare_output_index(paths, scenario))
+    industry = prepare_industry(
+        paths, assumptions, output_index=_prepare_output_index(paths, scenario),
+        assign_basins=scenario.water_mode != "no_water",
+    )
     industry_h2_links = prepare_industry_h2_links(
         industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
     )

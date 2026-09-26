@@ -252,7 +252,7 @@ def basin_membership(industry: IndustryInputs, basin_codes: list[str]) -> np.nda
         ValueError: 有 hub 不在上限表的任何一个流域里。
     """
     if "basin_code" not in industry.hubs.columns:
-        raise ValueError("industry hubs carry no basin_code; prepare_industry ran without the official-quota budget")
+        raise ValueError("industry hubs carry no basin_code; prepare_industry ran with assign_basins=False")
     hub_basins = industry.hubs["basin_code"].astype(str).to_numpy()
     membership = np.zeros((len(basin_codes), len(hub_basins)), dtype=np.float64)
     for row, code in enumerate(basin_codes):

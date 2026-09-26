@@ -56,8 +56,8 @@ def _build_supply_table(
     water_table["competition_scope"] = "shared_water_node"
     water_table["unit"] = "m3/yr"
 
-    # 官方指标流域上限：制度半边，口径是取水。除非 water_budget='official_quota'，
-    # 否则为空。单列为一种 resource_type，免得有任何汇总把它与上面按耗水口径的
+    # 官方指标流域上限：制度半边，口径是取水。无水约束或关掉流域上限时
+    # 为空。单列为一种 resource_type，免得有任何汇总把它与上面按耗水口径的
     # `water` 行合到一起——两者是不同的计量，相加毫无意义。
     frames = [
         biomass_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],

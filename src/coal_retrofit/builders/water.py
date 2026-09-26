@@ -429,9 +429,9 @@ def build_water_availability_dataframe(
     落在 0.34x 到 4.00x 之间，其中大部分是用省界切割 0.5 deg 网格造成的假象；按流域时
     离散范围为 0.74x-2.43x，而 `basin_bias_factors` 连这一点也消除了。
 
-    环境流量与存量取水不在这里施加——它们是求解时才施加的政策假设（见
-    `WATER_EXTRACTABLE_FRACTION` 与 `OptimizationAssumptions.existing_withdrawal_share`），
-    因此不必重建输入就能跑它们的敏感性分析。
+    环境流量与存量取水不在这里施加：环境流量是求解时乘的可提取比例（`WATER_EXTRACTABLE_FRACTION`），
+    存量取水在流域取水上限里扣除（`water_basin_caps.csv`，由 `scripts/build_water_basin_caps.py` 生成），
+    因此改这两项不必重建本表。
 
     同时生成年均列和枯水期列（最低的连续三个月，年化）：火电受限发生在低流量时段，
     而不是在年均水平上，且源数据是逐月的。

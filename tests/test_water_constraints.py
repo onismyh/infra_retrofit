@@ -1,4 +1,4 @@
-"""水约束在单厂 toy 上的两种口径：节点上限（环境流量规则，作用于耗水）与流域取水指标（official_quota）。
+"""水约束在单厂 toy 上的两条规则：节点上限（环境流量规则，作用于耗水）与流域取水指标（分配规则，作用于取水）。
 
 toy 没有流域面图层，也没有 plants.csv 的取水定额表；两处都在调用函数内部导入，
 所以直接替换模块属性即可（`monkeypatch` 在测试结束时还原）。
@@ -85,11 +85,12 @@ def _toy_paths(tmp_path, basin_caps: bool) -> ProjectPaths:
     return paths
 
 
-def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path) -> None:
-    """默认水口径：节点可用量低于电厂最小耗水，超出部分只能记在节点松弛上，
+def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path, monkeypatch) -> None:
+    """只开生态流量（关掉流域上限）：节点可用量低于电厂最小耗水，超出部分只能记在节点松弛上，
     所以流经节点的水 = 可用量 + 松弛（缩放单位换回 m3 后仍成立）；厂用水另按耗水强度与解出的份额重算核对。
     流域指标不激活。"""
-    solution = _solve(_toy_paths(tmp_path, basin_caps=False), "TEST-WATER-NODE")
+    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-NODE", apply_basin_cap=False)
     assert solution["status"] == "optimal"
     for year in YEARS:
         ys = solution["year_solutions"][year]
@@ -114,14 +115,14 @@ def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path) -> None:
 
 
 def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch) -> None:
-    """official_quota：流域取水等于余量、流域松弛为零，即上限靠改变路径满足而非松弛；
+    """流域上限打开：流域取水等于余量、流域松弛为零，即上限靠改变路径满足而非松弛；
     流域取水另按取水强度、工业取水与解出的份额重算核对。
     同一输入关掉流域上限（只剩环境流量规则）时流域字段全为空，目标值更低。"""
     monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
     paths = _toy_paths(tmp_path, basin_caps=True)
 
-    capped = _solve(paths, "TEST-WATER-QUOTA", water_budget="official_quota")
+    capped = _solve(paths, "TEST-WATER-QUOTA")
     assert capped["status"] == "optimal"
     for year in YEARS:
         ys = capped["year_solutions"][year]
@@ -144,7 +145,7 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
         assert industry > 0.0
         assert float(ys["slacks"]["water_basin_use_m3"][0]) == pytest.approx(coal + industry, rel=1e-6)
 
-    env_only = _solve(paths, "TEST-WATER-ENVONLY", water_budget="official_quota", apply_basin_cap=False)
+    env_only = _solve(paths, "TEST-WATER-ENVONLY", apply_basin_cap=False)
     assert env_only["status"] == "optimal"
     for year in YEARS:
         year_data = env_only["year_solutions"][year]["year_data"]
