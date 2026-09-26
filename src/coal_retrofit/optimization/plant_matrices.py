@@ -264,7 +264,6 @@ def _air_cooling_matrices(
     )
     air_penalty_cost_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
     return {
-        "already_air_share": already_air_share,
         "air_retrofit_capex_per_plant": air_retrofit_capex_per_plant,
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,
         "air_penalty_captured_matrix": air_penalty_captured_matrix,

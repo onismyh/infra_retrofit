@@ -4,6 +4,7 @@ import os
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,9 @@ except ImportError:  # pragma: no cover
 
 from .network import RuntimeNetwork
 from .scenario import PATHWAYS
+
+if TYPE_CHECKING:
+    from .industry_inputs import IndustryInputs
 
 
 PATHWAY_INDEX = {name: index for index, name in enumerate(PATHWAYS)}
@@ -52,12 +56,12 @@ class PreparedInputs:
     water_links: pd.DataFrame
     water_availability: pd.DataFrame
     # 各流域、各规划年的官方用水总量控制指标；文件尚未构建时为空。
-    # 只在 `assumptions.water_budget == 'official_quota'` 时读取。
+    # 只在有水约束（`scenario.water_mode` 不为 no_water）时读取。
     water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
-    # 工业点源（`industry.IndustryInputs`），与煤电同在一个目标函数里决策。
-    industry: object
+    # 工业点源，与煤电同在一个目标函数里决策。
+    industry: IndustryInputs
     # 部门残余排放上限：sector_group, planning_year, cap_fraction_of_2030。
     sector_targets: pd.DataFrame
     # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。
@@ -102,7 +106,7 @@ def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000):
     # 仅用于诊断，并且有意不作为模型参数：改变 seed 会改变搜索路径，同时模型、参数与可行集
     # 保持逐位相同。这是度量本模型简并度的唯一办法。Gurobi 在（模型、参数、线程数）固定时
     # 是确定性的，所以不换 seed 重解什么也测不到；而扰动任何物理输入，测到的是物理而不是
-    # 求解器的随意性——这正是 `*_nobias` 那个"地板"犯的错（Hai 的偏差因子为 0.412，意味着
+    # 求解器的随意性——这正是 v9 的 `*_nobias` 那个"地板"犯的错（Hai 的偏差因子为 0.412，意味着
     # 在这个起约束作用的流域里，关掉偏差校正会把其可用量乘以 2.43x）。默认不设置，
     # 因此默认行为不变。
     seed = os.environ.get("COAL_RETROFIT_GUROBI_SEED")

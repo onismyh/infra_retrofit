@@ -56,7 +56,7 @@ def series(scenario: str) -> pd.DataFrame:
     d["cap_gw"] = d["capacity_mw"] / 1e3
     d["alive"] = 1.0 - d["share_retire"].fillna(0.0)
     # `air_cooled_share` is the dry-operating fraction OF THE STILL-WET capacity, not of the
-    # whole site: `data_prep.py:796` sets still_wet = 1 - already_air_share and applies the
+    # whole site: `plant_matrices._air_cooling_matrices` sets still_wet = 1 - already_air_share and applies the
     # air share to it. The decisive test is the water arithmetic, not a row count: on the
     # 26 plant-years where the two readings differ, the multiplicative form reproduces the
     # solver's own `water_use_m3` to 1e-16 while the subtractive form is wrong by 24-97%.

@@ -81,7 +81,7 @@ def _input_digest(inputs_dir: Path) -> dict:
     return out
 
 
-def _run_provenance(model, inputs_dir: Path) -> dict[str, object]:
+def _run_provenance(model, inputs_dir: Path) -> dict[str, float | int | str | None]:
     """标识模型与求解，使两个结果可判断是否可比。
 
     Gurobi 只在 (模型, 参数, 线程数) 三者不变时确定性可复现：`fingerprint` 是模型哈希，

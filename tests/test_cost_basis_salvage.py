@@ -170,7 +170,7 @@ def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1
         end_of_horizon_salvage=salvage,
     )
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),

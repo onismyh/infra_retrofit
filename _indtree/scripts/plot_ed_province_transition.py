@@ -75,7 +75,7 @@ def provincial(scenario: str) -> pd.DataFrame:
         raise RuntimeError("capacity-mode province label missing for some plant_id")
     d["province_name"] = remapped
     d["cap_gw"] = d["capacity_mw"] / 1e3
-    # `air_cooled_share` is the dry-operating fraction of the STILL-WET capacity (data_prep.py:796)
+    # `air_cooled_share` is the dry-operating fraction of the STILL-WET capacity (plant_matrices._air_cooling_matrices)
     d["conv_gw"] = (d["air_cooled_share"].fillna(0.0)
                     * (1.0 - d["already_air_share"].fillna(0.0)) * d["cap_gw"])
     for col, _, _ in STACK:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    from coal_retrofit.optimization.year_types import SolveResult
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
@@ -14,10 +19,10 @@ from coal_retrofit.paths import ProjectPaths
 from toy_inputs import YEARS, _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
-def _solve_toy(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[str, object]:
+def _solve_toy(paths: ProjectPaths, scenario: OptimizationScenario) -> SolveResult:
     assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
@@ -184,7 +189,7 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     )
     assumptions = _toy_assumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
-    years = scenario.effective_years(list(prepared.available_ammonia_years))
+    years = scenario.planning_years
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),

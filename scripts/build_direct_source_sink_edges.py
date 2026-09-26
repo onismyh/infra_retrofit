@@ -1,5 +1,11 @@
 """Add the source-to-sink candidate arcs the model was designed to have and never got.
 
+STATUS (2026-09-26). Superseded in the builder: `builders.network.build_direct_sink_edges` now
+emits crossing-free `runtime_direct_fallback` arcs to the `NETWORK_DIRECT_SINK_TOP_K` nearest
+sinks, `top_k_storage_pairs` has been deleted, and the 2.8x premium is applied in
+`year_matrices._edge_capex_multiplier`. The rest of this docstring describes the network as it
+was when this script was written.
+
 WHAT IS MISSING. `OptimizationAssumptions` declares `top_k_storage_pairs = 5` and
 `direct_fallback_capex_multiplier = 2.8`, and `data_prep._edge_capex_multiplier` prices an edge
 class called `runtime_direct_fallback`. Nothing in the repository ever emits that class, and

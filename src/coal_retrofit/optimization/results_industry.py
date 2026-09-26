@@ -14,11 +14,12 @@ from .year_types import YearData
 def _build_industry_detail_table(
     prepared: PreparedInputs,
     year: int,
-    industry_year_data: IndustryYearData | None,
-    share_values: np.ndarray | None,
+    industry_year_data: IndustryYearData,
+    share_values: np.ndarray,
     h2_flow_kg: np.ndarray | None = None,
     year_data: YearData | None = None,
-    capacity_mt: np.ndarray | None = None,
+    *,
+    capacity_mt: np.ndarray,
     prev_capacity_mt: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """每个工业 hub 每年一行：所选路线、减排、捕集、用水、成本。
@@ -31,16 +32,15 @@ def _build_industry_detail_table(
     Args:
         prepared: 准备好的输入；`prepared.industry` 带 hub 表。
         year: 规划年。
-        industry_year_data: 本年的工业系数块；工业关闭时为 None。
+        industry_year_data: 本年的工业系数块。
         share_values: 求解得到的路线份额，形状 (hub_count, len(INDUSTRY_ROUTES))。
         h2_flow_kg: 求解得到的每条链路氢流量，kg。
         year_data: 本年的矩阵，用于取氢链路成本与关联矩阵。
-        capacity_mt: 求解得到的路线能力存量，Mt/yr，形状同 `share_values`；None 时按
-            `capacity_mt_per_share` x 份额近似。
+        capacity_mt: 求解得到的路线能力存量，Mt/yr，形状同 `share_values`。
         prev_capacity_mt: 上一年的能力存量（第一年为 None）。
 
     Returns:
-        工业关闭时返回列齐全的空表，这样下游读取方无论哪种情况都能拿到一张表。
+        每个 hub 一行，列序固定；没有工业 hub 时是列齐全的空表。
     """
     columns = [
         "year", "hub_id", "sector", "target_group", "province", "longitude", "latitude", "basin_code",
@@ -51,8 +51,6 @@ def _build_industry_detail_table(
         "cost_cny", "cost_capital_cny", "cost_annual_cny", "cost_h2_purchase_cny",
         "h2_price_paid_cny_per_kg", "h2_price_national_mean_cny_per_kg",
     ]
-    if industry_year_data is None or share_values is None:
-        return pd.DataFrame(columns=columns)
     hubs = prepared.industry.hubs
     reduction = industry_year_data.reduction_mt
     baseline = industry_year_data.baseline_emissions_mt
@@ -60,8 +58,6 @@ def _build_industry_detail_table(
     water = industry_year_data.water_m3
     opex = industry_year_data.opex_cny
     unit_capex = industry_year_data.capex_cny_per_mt
-    if capacity_mt is None:
-        capacity_mt = industry_year_data.capacity_mt_per_share * share_values
     output_scale = industry_year_data.output_scale
     h2_price_mean = float(industry_year_data.h2_price_cny_per_kg)
     n_hubs = len(hubs)

@@ -1,4 +1,4 @@
-"""逐年结果表。成本分项、诊断（合理性检查 `_build_sanity_checks`、逐节点松弛）与情景摘要在本模块；
+"""逐年结果表。成本分项与诊断（合理性检查 `_build_sanity_checks`、逐节点松弛）在本模块；
 煤电厂侧、管网封存、资源、工业四类表在 `results_*` 模块，这里统一转出，调用方照旧从 `results` 导入。
 """
 from __future__ import annotations
@@ -6,7 +6,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..experiments.scenario import ScenarioRunContext
 from ._shared import PreparedInputs
 from .results_industry import _build_industry_detail_table
 from .results_network import (
@@ -27,8 +26,7 @@ from .results_resources import (
     _build_supply_table,
     _build_water_flow_table,
 )
-from .scenario import OptimizationScenario
-from .year_types import YearData
+from .year_types import SolveSlacks, YearData
 
 __all__ = [
     "_alive_edge_added_stock",
@@ -47,7 +45,6 @@ __all__ = [
     "_build_storage_table",
     "_build_supply_table",
     "_build_water_flow_table",
-    "_render_summary_markdown",
 ]
 
 
@@ -57,7 +54,7 @@ def _build_cost_breakdown(year: int, breakdown: dict[str, float]) -> pd.DataFram
 
 def _build_sanity_checks(
     year: int,
-    slacks: dict[str, object],
+    slacks: SolveSlacks,
     pathways: pd.DataFrame,
     province_table: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -96,47 +93,11 @@ def _build_sanity_checks(
     return pd.DataFrame(rows)
 
 
-def _render_summary_markdown(
-    context: ScenarioRunContext,
-    scenario: OptimizationScenario,
-    costs: pd.DataFrame,
-    pathways: pd.DataFrame,
-    sanity: pd.DataFrame,
-) -> str:
-    lines = [
-        "# Scenario Summary",
-        "",
-        f"- Experiment: `{context.experiment.experiment_id}`",
-        f"- Scenario: `{context.scenario.scenario_id}`",
-        f"- Label: {context.scenario.label}",
-        f"- Solve mode: `{scenario.solve_mode}`",
-        f"- Planning years: `{', '.join(str(year) for year in scenario.planning_years)}`",
-        "",
-        "## Total Cost by Year",
-        "",
-    ]
-    cost_totals = costs.groupby("year", as_index=False)["cost_cny"].sum()
-    for row in cost_totals.itertuples(index=False):
-        lines.append(f"- {row.year}: `{row.cost_cny:,.0f}` CNY")
-    lines.extend(["", "## Pathway Share by Year", ""])
-    pathway_share = pathways.groupby(["year", "pathway"], as_index=False)["annual_generation_mwh"].sum()
-    year_totals = pathway_share.groupby("year", as_index=False)["annual_generation_mwh"].sum().rename(columns={"annual_generation_mwh": "total"})
-    pathway_share = pathway_share.merge(year_totals, on="year", how="left")
-    pathway_share["share"] = np.where(pathway_share["total"] > 0, pathway_share["annual_generation_mwh"] / pathway_share["total"], 0.0)
-    for row in pathway_share.itertuples(index=False):
-        lines.append(f"- {row.year} / {row.pathway}: `{row.share:.3f}`")
-    lines.extend(["", "## Sanity Checks", ""])
-    for row in sanity.itertuples(index=False):
-        lines.append(f"- {row.year} / {row.check_name}: `{row.status}` ({row.value:.6g})")
-    lines.append("")
-    return "\n".join(lines)
-
-
 def _build_slack_detail_table(
     prepared: PreparedInputs,
     year: int,
     year_data: YearData,
-    slacks: dict[str, object],
+    slacks: SolveSlacks,
 ) -> pd.DataFrame:
     """所有资源 / 基础设施约束的逐节点松弛值。"""
     rows: list[dict[str, object]] = []
@@ -158,7 +119,7 @@ def _build_slack_detail_table(
         if water_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "water_supply", "node_id": str(water_nodes.iloc[i]["water_node_id"]), "province": str(water_nodes.iloc[i].get("province_name", "")), "slack_value": float(water_slack[i]), "unit": "m3"})
 
-    # 官方指标流域上限。除非 water_budget='official_quota'，否则不存在（长度为零）。
+    # 官方指标流域上限。无水约束或关掉流域上限时不存在（长度为零）。
     # 与 `water_supply` 分开报告，因为它是另一口径上的另一条规则：它是取水口径上的
     # 指标分配，而非耗水口径上的环境流量限值。
     basin_slack = np.asarray(slacks.get("water_basin_slack_m3", np.zeros(0)), dtype=np.float64)

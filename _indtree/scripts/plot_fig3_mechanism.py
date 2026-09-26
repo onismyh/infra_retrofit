@@ -40,7 +40,7 @@ Two admissions the figure has to make in public, because both would otherwise be
      its own channel in (b), and per basin in (c). Under v9.1 there are TWO slack channels,
      the node (environmental flow) and the basin (用水总量控制指标), penalised at the same
      rate so the solver cannot rank one institution above the other for a numerical reason.
-  2. Because that penalty is a big-M (1 000 CNY/m3 in `solver.py:618`, ~125x the delivered
+  2. Because that penalty is a big-M (1 000 CNY/m3 in `model_costs._slack_penalty`, ~125x the delivered
      water cost the model actually pays), the +5.71% headline splits into +2.06% of real
      spending and +3.65% of penalty. Both readings are drawn. The conclusion survives
      either way: even the economic-only increment clears the MIP gap by 2.3x, against a
@@ -406,7 +406,7 @@ def panel_a_cost(ax, table: pd.DataFrame) -> None:
         # measures, on a small opaque patch so it stays legible against the hatch above it.
         label_y, label_va = (econ, "bottom") if econ >= 0 else (econ, "top")
         # HEADLINE IS REAL SPENDING, NOT THE OBJECTIVE. Unserved water is charged a big-M
-        # penalty (1000 CNY/m3, solver.py:614-618) to keep the model feasible; that is scarcity
+        # penalty (1000 CNY/m3, model_costs._slack_penalty) to keep the model feasible; that is scarcity
         # priced, not money spent, and it is 64% of this contrast's objective increment. Leading
         # with the objective inflates the paper's headline 2.8x (+5.71% vs +2.06%) and the
         # storyline forbids it outright (nature_water_storyline_and_figures.md, 成本口径更正).
@@ -589,8 +589,8 @@ def basin_table() -> pd.DataFrame:
     the plant table's own with-capture consumption, identical to Fig 1(c) so the two main
     figures cannot quote different stress values for the same basin.
 
-    The denominator is the budget the solver enforces (data_prep.py:437-439):
-    dry-season flow x extractable fraction x (1 - non-power reservation).
+    The denominator is the node budget the solver enforces (`water_access._water_available_by_node`):
+    dry-season flow x extractable fraction, with no non-power reservation since v9.1 (see `USABLE`).
     """
     assumptions = OptimizationAssumptions()
     plants = pd.read_csv(INPUTS / "plants.csv").reset_index(drop=True)
@@ -1055,7 +1055,7 @@ def claim_audit(values: dict[str, dict[str, float]], contrasts: pd.DataFrame,
           f"{inst.cost_penalty_pct:+.2f}% ({100 * inst.cost_penalty_pct / inst.cost_pct:.0f}% of "
           f"the objective increment).")
     print(f"    The penalty is 1 000 CNY/m3 on water the solver could not serve "
-          f"(solver.py:617), i.e. scarcity\n    priced, not money spent. The split is worth "
+          f"(model_costs._slack_penalty), i.e. scarcity\n    priced, not money spent. The split is worth "
           f"showing because it says HOW the objective moved, but\n    the MIP gap does not "
           f"bound it and no figure may quote it as a resolved effect. Its stability across\n"
           f"    seed replicates is the only evidence available for it, and that is reported "

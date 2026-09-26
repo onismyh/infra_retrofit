@@ -154,15 +154,6 @@ class OptimizationAssumptions:
     # 海上盆地（东海、珠江口、渤海、北部湾）要承担海底管道与平台成本：凡与海上封存 hub
     # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。⚠ 假设（无出处）。
     offshore_transport_multiplier: float = 1.5
-    pipe_capex_cny_per_mtpa_km: float = 400_000.0  # 干线规模（>=20 Mtpa）的系数法估算：
-    # MIT Smith et al. 2021 (IJGGC) $52,892/(in·mi) → 20-in 干线 ≈4.6M CNY/km ≈0.23e6 CNY/(Mtpa·km)；
-    # ADB 中国系数 57,124 USD/(km·in) → ≈0.4e6；小规模实际项目（齐鲁-胜利，1.7 Mtpa，含站场）
-    # 3.1e6。基准费率对应标准的 20-Mtpa 管道；更小的管道另带支线 / 直连乘数。
-    # （原值 18,000 是单位错误，约低了 100 倍。）
-    # ⚠ 假设（出处不具体）：取的是 ADB 系数，但没能定位它出自哪份 ADB 报告，同处的 Smith 系数也没核到原文。
-    # 对照：按 Fan et al. 2023 SI 式 (S26)-(S28) 的材料法自算，20 Mt/a 时 0.12e6-0.16e6 CNY/(Mtpa·km)（式中 r 按
-    # 半径读；原文称其为直径，按直径读是 0.47e6-0.65e6，原式待核；壁厚与保温层为自设）；吉林石化—吉林油田 CO2
-    # 管道一期（13.67 亿元、282 km、3.3 Mt/a；只见环评公示的检索摘要）按 0.6 规模指数放大到 20 Mt/a 是 0.71e6。
     # 沿既有油气干线的 62 条候选边（`existing_corridor_flag`）所记的免费 CO2 容量。
     # 2026-09-10 之前为 20 Mtpa（无出处）；文献综述（docs/工业联合减排实现说明.md §9.6）
     # 的结论相反：复用的输气管只能在降压下输送小流量（IEAGHG 2013/18：Longannet
@@ -175,18 +166,27 @@ class OptimizationAssumptions:
     max_parallel_pipes: int = 2
     pipeline_lifetime_years: int = 30
     # 管径分档。2026-09-10 之前每条边只有一种规格，即 20-Mtpa 干线，1-Mt/yr 的支线也要按
-    # 20 Mtpa 付费：IND_BASE_t95 建成的 344 条边里有 222 条正好是 20；任何小到不值得建干线
-    # 的流量，走 big-M "容量松弛"都比铺管便宜——于是有 11 条边在建成容量为零的情况下
-    # 输送了 CO2。带规模经济的三档管径补上了这个缺口。各档每 km capex 由 20-Mtpa 干线费率
-    # （400 000 x 20 = 8.0e6 CNY/km，见 pipe_capex_cny_per_mtpa_km）乘 (cap/20)^0.6 缩放，
+    # 20 Mtpa 付费：旧情景 `IND_BASE_t95`（已不在登记表）建成的 344 条边里有 222 条正好是 20；
+    # 任何小到不值得建干线的流量，走 big-M "容量松弛"都比铺管便宜——于是有 11 条边在建成容量
+    # 为零的情况下输送了 CO2。带规模经济的三档管径补上了这个缺口。各档每 km capex 由 20-Mtpa 干线费率
+    # （0.4e6 CNY/(Mtpa·km) x 20 = 8.0e6 CNY/km，出处见下）乘 (cap/20)^0.6 缩放，
     # 这是 CO2 管道常用的管径-成本指数（Knoope et al. 2013, IJGGC 16:241, Table 4 拟合为
     # 0.5-0.7）。交叉核对：2-Mtpa 档的 2.0e6 CNY/km 低于 1.7-Mtpa 齐鲁-胜利管线的
     # 3.1e6 CNY/km，而后者含压缩站，所以小档若有偏差也是偏便宜。类别乘数（支线 1.35、
     # 直连 2.8、走廊 0.97）照旧叠加在上面。
+    # 干线费率 0.4e6 CNY/(Mtpa·km) 是干线规模（>=20 Mtpa）的系数法估算：
+    # MIT Smith et al. 2021 (IJGGC) $52,892/(in·mi) → 20-in 干线 ≈4.6M CNY/km ≈0.23e6 CNY/(Mtpa·km)；
+    # ADB 中国系数 57,124 USD/(km·in) → ≈0.4e6；小规模实际项目（齐鲁-胜利，1.7 Mtpa，含站场）
+    # 3.1e6。（原值 18,000 是单位错误，约低了 100 倍。）
+    # ⚠ 假设（出处不具体）：取的是 ADB 系数，但没能定位它出自哪份 ADB 报告，同处的 Smith 系数也没核到原文。
+    # 对照：按 Fan et al. 2023 SI 式 (S26)-(S28) 的材料法自算，20 Mt/a 时 0.12e6-0.16e6 CNY/(Mtpa·km)（式中 r 按
+    # 半径读；原文称其为直径，按直径读是 0.47e6-0.65e6，原式待核；壁厚与保温层为自设）；吉林石化—吉林油田 CO2
+    # 管道一期（13.67 亿元、282 km、3.3 Mt/a；只见环评公示的检索摘要）按 0.6 规模指数放大到 20 Mt/a 是 0.71e6。
+    # 这一费率原先是字段 `pipe_capex_cny_per_mtpa_km`；分档之后它只流向一个没人读的报告系数，已删除。
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
     # 封存部署爬坡。`injectivity_mtpa` 是 2060 年规模的可建速率（按 ACCA21 的 2060 年区间
-    # 标定，见 storage_site_project_rate_mtpa）。2030 年就全部开放时，IND_BASE_t95 仅凭碳价
+    # 标定，见 storage_site_project_rate_mtpa）。2030 年就全部开放时，旧情景 `IND_BASE_t95` 仅凭碳价
     # 就在 2040 年注入了 1 265 Mt/yr，而目前全国注入量为 ~4 Mt/yr。各规划年的可用比例取
     # ACCA21 (2021) CCUS 路线图的区间中点：2030 年 0.2-4.08 亿 t（中点 2.1），2050 年 6-14.5
     # （10.2），2060 年 10-18.2（14.1）；2040 年在 2035 年与 2050 年的区间之间插值（~7.5）。
@@ -207,62 +207,27 @@ class OptimizationAssumptions:
     cooling_air_water_intensity_m3_per_mwh: float = 0.37
     ccs_water_multiplier: float = 1.82
     biomass_water_multiplier: float = 1.00
-    beccs_water_multiplier: float = 1.82
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
-    # 供水成本（grid_supply 模式用）
-    # 一个省的可再生水资源中已被农业、生活和其他工业占用的份额，在向电厂提供任何水量之前
-    # 先扣除。0 保留原始的物理可用量；取水数据载入后按水资源公报设定。
-    # 一个省的可再生水资源中已被农业、生活和其他工业占用的份额，在向电厂提供任何水量之前
-    # 先扣除。
-    #
-    # 这种余量结构是 Richter et al. (2012) River Res. Applic. 28(8):1312-1321 本身的规定，
-    # 而不是类比：天然月均流量的 20% "can be allocated for consumptive use"（可分配给
-    # 消耗性用水），且按 "when added to already-existing water uses"（叠加在既有用水之上）
-    # 评估（他的 Table II 标题为 "Cumulative allowable depletion"，即累计允许耗减量）。
-    # 用 Smakhtin et al. (2004) Eq.(1) 的术语，这个参数就是水压力指标（water stress
-    # indicator），`utilizable x (1 - WSI)` 就是他的余量。
-    #
-    # 0.85 有实测支持。黄河 1987 年"八七分水"方案是按耗水计的指标（各行标题为年耗水量，
-    # 只含地表水），所以与本约束作用的耗水口径同口径可比。对照这 370x10^8 m3 的指标，
-    # YRCC 2024 年公报（地表耗水 307.09）给出的非电份额实测值为 0.807-0.830（扣除电力后
-    # 为 0.776-0.786）。0.85 略高于该区间，即略偏保守。
-    #
-    # 须在方法部分披露：近似之处在于锚定方式，而不在数值。上述实测份额是相对于中国自己
-    # 允许的径流 52.6% 而言的，代码却把它乘在 Richter 的 20% 上——而 Richter 的严格程度是
-    # 中国水法的 2.63 倍。结果是有意在两套各自自洽的口径之间取的中间值，这也是北方四个
-    # 流域突破上限的原因：一个完全依法合规的北方流域仍达 Richter 限值的 ~2 倍。
+    # 水预算：`OptimizationScenario.water_mode` 不为 "no_water" 时生效，只有 v9.1 起的官方指标口径一种。
+    # 两条规则是两个口径不同的独立约束，各自约束其条文实际所针对的量：
+    #    node  <= qtot x 0.20                       生态流量，作用于耗水（耗减规则）
+    #    basin <= 用水总量控制指标 - 非电既有取水    分配规则，作用于取水（公报计量的正是它）
+    # 分配规则直接从国办发〔2013〕2号读取，而不是靠假设；流域上限来自 `inputs/water_basin_caps.csv`
+    # （`scripts/build_water_basin_caps.py`）。v9 及更早的 runoff 口径（available = qtot x 0.20 x
+    # (1 - existing_withdrawal_share)，两个因子被别名化，无从区分生态流量标准与分配规则）已删除，
+    # v9 结果按 CLAUDE.md §1.5 在 `892c877^` 里复现。
     #
     # 在优化模型中约束电力部门流域用水、且完全不设生态流量份额的先例：Zhang, He,
     # Johnston & Zhong (2021) J. Clean. Prod. 329:129765 (SWITCH-China)。电力占中国取水的
     # ~8%，却只占其耗水的 ~1%（Zhang et al. 2017, JCLP 161:1171-1179）。
-    existing_withdrawal_share: float = 0.0
-    # 可用水量约束按哪一种水预算构建。
     #
-    #   "runoff"          v9 及更早。available = qtot x 0.20 x (1 - existing_withdrawal_
-    #                     share)。两个因子被别名化（见 `_water_available_by_node`），因此
-    #                     无从区分生态流量标准与分配规则；而且对华北各流域，分母——当地
-    #                     天然径流——比实际用水还小，实际用水靠跨流域调水和地下水支撑。
-    #   "official_quota"  v9.1 起。两条规则变成两个口径不同的独立约束，各自约束其条文
-    #                     实际所针对的量：
-    #                        node  <= qtot x 0.20          生态流量，作用于耗水
-    #                                                      （耗减规则）
-    #                        basin <= 用水总量控制指标 - 非电既有取水
-    #                                                      分配规则，作用于取水
-    #                                                      （公报计量的正是它）
-    #                     此时 `existing_withdrawal_share` 不再使用：分配规则直接从
-    #                     国办发〔2013〕2号 读取，而不是靠假设。
-    #                     流域上限来自 `inputs/water_basin_caps.csv`
-    #                     （`scripts/build_water_basin_caps.py`）。
-    water_budget: str = "runoff"
-    # 流域上限开关，只在 water_budget='official_quota' 下生效。关闭时只剩生态流量的节点
-    # 上限，这正是 v9.1 设计中的对照组：
+    # 流域上限开关。关闭时只剩生态流量的节点上限，这正是 v9.1 设计中的对照组：
     #
     #   BASE                 完全没有水约束
     #   *_oq_envonly         只有生态流量          （本开关为 False）
     #   *_oq                 生态流量 + 分配规则   （本开关为 True）
     #
-    # 这一阶梯正是去别名化换来的。在 'runoff' 下两条规则是同一个乘积，任何实验都无法把
-    # 它们分开；这里 BASE->envonly 给生态流量标准定价，envonly->oq 给分配规则定价，
+    # 这一阶梯正是去别名化换来的：BASE->envonly 给生态流量标准定价，envonly->oq 给分配规则定价，
     # 各自独立。
     apply_basin_cap: bool = True
     # 向求解器提供水量时施加流域偏差校正因子。这些因子（builders/water.py 中的
@@ -304,8 +269,8 @@ class OptimizationAssumptions:
     #
     # 已知简化，且会让空冷显得偏便宜。这里的惩罚是常数。Qin et al. 发现惩罚的恶化快于环境
     # 温度的上升，而在中国北方枯水季与高温季重合——所以本处低估惩罚的时段恰恰是水最紧缺的
-    # 时段。在把惩罚做成随温度变化之前，`SA_air_penalty_high`（2.8 pp）是对此的粗略替代；
-    # 做成随温度变化属于模型改动，而不是参数改动。
+    # 时段。在把惩罚做成随温度变化之前，把 `air_retrofit_efficiency_penalty_pp` 设为 0.028
+    # （v9 的 `SA_air_penalty_high`）是对此的粗略替代；做成随温度变化属于模型改动，而不是参数改动。
     allow_air_cooling_retrofit: bool = True
     air_retrofit_capex_cny_per_kw: float = 300.0
     air_retrofit_efficiency_penalty_pp: float = 0.020
@@ -337,7 +302,6 @@ class OptimizationAssumptions:
     # 0.97 = 去掉这部分 ROW 份额。原为 0.4（无出处）；据称一篇德国拓扑论文用了 10% 的
     # 走廊折扣，但未能打开（ScienceDirect S2772656826001004）——须经作者核实后才可用 0.9。
     corridor_capex_multiplier: float = 0.97
-    top_k_storage_pairs: int = 5
     slack_penalty_cny_per_unit: float = 5_000_000_000.0
     sparse_interval_years: int = 10
     # 动态资源调配参数
@@ -390,10 +354,6 @@ class OptimizationAssumptions:
     # 氨运输成本（卡车，Hydrogen Council & McKinsey 2022；IEA GHR 2023）
     # 0.12 USD/(t·km) = 0.00012 USD/(kg·km) × 7.0 = 0.00084 CNY/(kg·km)
     ammonia_transport_cost_cny_per_kg_km: float = 0.00084
-    # 运行时网格粗化（单位：度；0 = 不粗化，磁盘上的数据已粗化）
-    biomass_coarse_grid_degrees: float = 0.0
-    ammonia_coarse_grid_degrees: float = 0.0
-    water_coarse_grid_degrees: float = 0.0
 
     # 分省年运行小时数（计算发电量时替代统一的 capacity_factor）
     # 来源：中国电力企业联合会（China Electricity Council）统计，分省煤电平均利用小时数
@@ -534,26 +494,22 @@ class OptimizationScenario:
     # 驱动可用水量的气候成员，例如 "cwatm|gfdl-esm4|ssp370"。
     # 为空时选 water_mode 所隐含的那一族中的第一个成员。
     water_scenario_id: str = ""
-    # 不再有口径开关：可用水量约束总是作用于耗水，水价总是按中国取水定额计，取水只报告、
-    # 从不约束。为什么拿取水去对照生态流量允许量是范畴错误，见 `data_prep._prepare_plants`。
+    # 没有口径开关：节点可用水量（生态流量）约束作用于耗水，水价按中国取水定额计，取水只进
+    # 流域用水总量指标约束（`OptimizationAssumptions.apply_basin_cap`）。为什么拿取水去对照生态流量
+    # 允许量是范畴错误，见 `data_prep._prepare_plants`。
     # "annual" 用十年均值；"dry" 用最低的连续三个月，火电厂恰恰在这段时间真正被限发。
     water_season: str = "annual"
     water_multiplier: float = 1.0
-    # 对输送到电厂的每 m3 水附加的参数化收费，叠加在 water_supply_links.csv 中已有的取水与
-    # 输水成本之上。扫描它就能描出水-碳前沿：由于模型是 MIP，Gurobi 无法为可用水量约束
+    # 对输送到电厂的每 m3 水附加的参数化收费，叠加在 `data_prep._prepare_water` 运行时按距离
+    # 算出的取水与输水成本之上。扫描它就能描出水-碳前沿：由于模型是 MIP，Gurobi 无法为可用水量约束
     # 返回可靠的对偶值，所以改用参数化定价来还原水的影子价格——每一点上的附加费就是该点的
     # 影子价格。
     water_price_adder_cny_per_m3: float = 0.0
     forced_cooling_technology: str = ""
     ccs_water_multiplier_adjustment: float = 1.0
     beccs_water_multiplier_adjustment: float = 1.0
-    dense_time_grid: bool = False
-    carry_state_between_years: bool = True
     pathway_disable: tuple[str, ...] = ()
-    forced_pathways: tuple[str, ...] = ()
-    min_forced_path_share: float = 0.0
     corridor_prior_strength: float = 0.70
-    solve_mode: str = "joint"           # 只实现了 "joint"；其他取值会报错
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）
@@ -582,7 +538,6 @@ class OptimizationScenario:
     # 重建电厂取超超临界效率（基线为 0.42）：Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs"
     # 一行为 270 gce/kWh，按低位热值折 0.455，取值低 1.1%。该行名原文如此、含义有歧义；NDRC 原文未核。
     rebuild_efficiency: float = 0.45
-    notes: str = ""
 
     def _interpolate_year_tuple(self, values: tuple[float, ...], year: int) -> float:
         mapping = dict(zip(self.planning_years, values, strict=False))
@@ -612,12 +567,6 @@ class OptimizationScenario:
 
     def electricity_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.electricity_price_cny_per_mwh_by_year, year)
-
-    def effective_years(self, available_years: list[int] | tuple[int, ...]) -> tuple[int, ...]:
-        if not self.dense_time_grid:
-            return tuple(self.planning_years)
-        filtered = [year for year in sorted(set(available_years)) if year <= max(self.planning_years)]
-        return tuple(filtered or self.planning_years)
 
     def interval_years(self, years: tuple[int, ...], index: int, assumptions: OptimizationAssumptions) -> int:
         if len(years) <= 1:

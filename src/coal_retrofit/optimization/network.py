@@ -10,7 +10,7 @@ import pandas as pd
 from ..constants import NETWORK_DETOUR_FACTOR
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .scenario import OptimizationScenario
 
 # 模型计价的最短支线。有三个工业 hub 正压在走廊节点上（大地线距离 0.000 km），
 # 它们的零长度支线在 2030 年被"免费"按 20 Mtpa 建成。
@@ -34,7 +34,7 @@ class RuntimeNetwork:
 
     edges: pd.DataFrame
     # 列包括：edge_id, from_node_id, to_node_id, length_km,
-    #         existing_corridor_flag, edge_class, source, year_basis, capex_multiplier
+    #         existing_corridor_flag, edge_class, source, year_basis
 
     incidence: np.ndarray
     # 形状：(n_nodes, n_edges)
@@ -56,7 +56,6 @@ def _build_base_graph(
     nodes: pd.DataFrame,
     edges: pd.DataFrame,
     scenario: OptimizationScenario,
-    assumptions: OptimizationAssumptions,
 ) -> nx.Graph:
     graph = nx.Graph()
     for row in nodes.itertuples(index=False):
@@ -84,13 +83,6 @@ def _build_base_graph(
     return graph
 
 
-def _haversine_km(lon: float, lat: float, lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-    lon0, lat0 = np.radians(lon), np.radians(lat)
-    lons_r, lats_r = np.radians(lons), np.radians(lats)
-    a = np.sin((lats_r - lat0) / 2.0) ** 2 + np.cos(lat0) * np.cos(lats_r) * np.sin((lons_r - lon0) / 2.0) ** 2
-    return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
-
-
 def _nearest_corridor_node(nodes: pd.DataFrame, lon: float, lat: float) -> tuple[str, float]:
     best_id = ""
     best_distance = float("inf")
@@ -114,7 +106,6 @@ def _append_runtime_edge(
     edge_class: str,
     source: str,
     year_basis: str,
-    capex_multiplier: float,
 ) -> None:
     edge_rows.append(
         {
@@ -127,7 +118,6 @@ def _append_runtime_edge(
             "edge_class": edge_class,
             "source": source,
             "year_basis": year_basis,
-            "capex_multiplier": capex_multiplier,
         }
     )
     graph.add_edge(
@@ -177,12 +167,11 @@ def build_runtime_network(
     plants: pd.DataFrame,
     storages: pd.DataFrame,
     scenario: OptimizationScenario,
-    assumptions: OptimizationAssumptions,
     industry_hubs: pd.DataFrame | None = None,
 ) -> RuntimeNetwork:
     base_nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
     base_edges = pd.read_csv(paths.inputs_dir / "pipeline_candidate_edges.csv")
-    graph = _build_base_graph(base_nodes, base_edges, scenario, assumptions)
+    graph = _build_base_graph(base_nodes, base_edges, scenario)
     nodes = base_nodes.copy()
     runtime_edge_rows: list[dict[str, object]] = []
     existing_plant_nodes = {}
@@ -215,7 +204,6 @@ def build_runtime_network(
             edge_class="runtime_plant_branch",
             source="runtime_short_link_rule",
             year_basis="runtime",
-            capex_multiplier=assumptions.branch_capex_multiplier,
         )
         nodes = pd.concat(
             [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.centroid_longitude), "lat": float(row.centroid_latitude), "node_type": "plant", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
@@ -241,7 +229,6 @@ def build_runtime_network(
             edge_class="runtime_storage_branch",
             source="runtime_short_link_rule",
             year_basis="runtime",
-            capex_multiplier=assumptions.branch_capex_multiplier,
         )
         nodes = pd.concat(
             [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "storage_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
@@ -283,7 +270,6 @@ def build_runtime_network(
                 edge_class="runtime_industry_branch",
                 source="runtime_short_link_rule",
                 year_basis="runtime",
-                capex_multiplier=assumptions.branch_capex_multiplier,
             )
             nodes = pd.concat(
                 [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "industry_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
@@ -304,12 +290,6 @@ def build_runtime_network(
     )
 
     edges = base_edges.copy()
-    if "capex_multiplier" not in edges.columns:
-        edges["capex_multiplier"] = np.where(
-            edges["edge_class"].eq("existing_main_corridor"),
-            1.0,
-            assumptions.branch_capex_multiplier,
-        )
     if runtime_edge_rows:
         edges = pd.concat([edges, pd.DataFrame(runtime_edge_rows)], ignore_index=True, sort=False)
 

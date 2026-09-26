@@ -165,7 +165,7 @@ def cooling_intensities() -> pd.DataFrame:
         )
         # The quota has no published with-capture value. The capture increment is a real
         # abstraction and is metered, so it is added at the consumption increment -- the same
-        # approximation `data_prep.py:156-163` makes when it prices the tariff.
+        # approximation `data_prep._prepare_plants` makes when it prices the tariff.
         entry["quota_ccs"] = entry["quota"] + max(0.0, entry["consumption_ccs"] - entry["consumption"])
         rows.append(entry)
     return pd.DataFrame(rows).set_index("cooling")
@@ -200,7 +200,7 @@ def abatement_t_per_mwh(assumptions, scenario) -> dict[str, float]:
 def hero_table(intensities: pd.DataFrame, assumptions, scenario) -> pd.DataFrame:
     """Incremental and total m3 per tonne abated, per (cooling system, pathway).
 
-    Pathway water intensity follows `data_prep.py:742-749` exactly: capture pathways take
+    Pathway water intensity follows `plant_matrices._water_intensity_matrices` exactly: capture pathways take
     the table's own with-capture consumption, biomass scales the base by
     `biomass_water_multiplier`, ammonia by `ammonia_water_multiplier`.
     """
@@ -311,7 +311,7 @@ def panel_b(ax, hero: pd.DataFrame) -> None:
                 ax.plot([xpos], [value], marker="o", ms=3.0, color=colour, zorder=5)
             else:
                 # Exact zero -- AND THAT IS A MODEL BOUNDARY, NOT A PROPERTY OF BIOMASS.
-                # `biomass_water_multiplier = 1.00` (scenario.py:127) makes co-firing draw
+                # `biomass_water_multiplier = 1.00` (`OptimizationAssumptions`) makes co-firing draw
                 # exactly the host plant's cooling water and nothing else: no feedstock
                 # cultivation, no harvest, no processing. That is defensible for the CONDENSER
                 # accounting this figure is about, and indefensible to leave unlabelled once
