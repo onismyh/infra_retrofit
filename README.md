@@ -49,7 +49,7 @@
 |---|---|---|---|
 | capex 何时收 | 计在改造存量的增量上：捕集岛存量 `retrofit_installed`（CCS 与 BECCS 共用）单调不减，CCS↔BECCS 切换不重复付钱；掺烧升级、空冷、原址重建同样按增量 | 计在能力存量的增量上：每条路线一个能力存量 K（Mt/yr；CCS 为捕集能力，H2 为产能），K ≥ 份额 × 当年所需能力，跨期单调；capex = 单位 capex × (K_t − K_{t−1}) | `optimization/model_costs.py:189`（`_one_off_capex`）、`optimization/model_year.py:177`、`optimization/model_industry.py:150-159`、`:208`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；固定运维按改造 MW 收、与利用小时无关，装了就一直付，直到退役 | 路线份额与能力存量都跨期单调（工业没有退役）；固定运维按当年运行量收，产量下降时随之下降（见下文"仍不一样"第 5 条） | `optimization/model_linking.py:52-73`、`optimization/model_industry.py:178` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44`、`optimization/_shared.py:166` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44`、`optimization/_shared._discount_factor` |
 | 固定运维 | 捕集岛：学习后 capex × 5%/年，按改造 MW × 份额计 | CCS：capex × 5%/年；H2 路线：capex × 3.5%/年；都按当年运行量（捕集量或产量 × 份额）计，不按能力存量 K 计 | `optimization/plant_matrices.py:124`、`optimization/industry_matrices.py:176`、`:209` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:138-143` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:133` |

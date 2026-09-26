@@ -97,9 +97,10 @@ def add_basin_withdrawal_cap(
     plant_count: int,
     year_suffix: str,
 ) -> tuple[GrbMVar | None, GrbMVar | None]:
-    """流域取水指标（制度半边：用水总量控制指标，作用于取水，按流域）。仅 official_quota 下激活。
+    """流域取水指标（制度半边：用水总量控制指标，作用于取水，按流域）。
 
-    返回 (流域松弛, 流域取水量)，未激活时 (None, None)。
+    有水约束（`water_mode` 不为 no_water）且 `apply_basin_cap` 为真时激活，条件见
+    `water_access._basin_cap_data`。返回 (流域松弛, 流域取水量)，未激活时 (None, None)。
     """
     basin_membership = year_data.water_basin_membership
     water_basin_slack_m3 = None
