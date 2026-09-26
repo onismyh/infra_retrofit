@@ -3,11 +3,15 @@
 两者此前都是 `dict[str, object]`：键名拼错要到运行到那一行才报错，读者也看不出有哪些键。
 字段名与原字典键一一对应。工业侧（两者的 `industry` 字段）同样是 dataclass：
 `industry_matrices.IndustryYearData` 与 `model_industry.IndustryPayload`。
+
+求解后的结果仍是字典（`ys["share"]` 的读法不变），键由文件末的 TypedDict 声明：
+`SolveResult` 是 `_solve_joint_multi_period` 的返回值，`YearSolution` 是其中每年一项，
+`SolveSlacks` 是每年的松弛量。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -180,3 +184,68 @@ class YearPayload:
     salvage_ledger: list[tuple[str, GrbExpr, int]] = field(default_factory=list)
     # `add_year_costs` 之前为 None。
     objective_expr: GrbExpr = None
+
+
+class SolveSlacks(TypedDict):
+    """每年的松弛量，已乘回物理单位；流域指标未激活时流域三项为空。"""
+
+    target_shortfall_mt: float
+    target_shortfall_by_group: dict[str, float]
+    biomass_slack_gj: np.ndarray
+    ammonia_slack_kg: np.ndarray
+    water_slack_m3: np.ndarray
+    water_basin_slack_m3: np.ndarray
+    water_basin_use_m3: np.ndarray
+    water_basin_codes: list[str]
+    injectivity_slack_mtpa: np.ndarray
+    storage_slack_mt: np.ndarray
+    edge_slack_mtpa: np.ndarray
+
+
+class YearSolution(TypedDict):
+    """`solver_extract.extract_year_solutions` 的每年一项（求解失败时由 `empty_year_solutions` 零填充）。
+
+    资源流量已乘回 GJ、kg、m3；`cost_breakdown_cny` 与 `objective_cny` 已乘回元。
+    """
+
+    status: str
+    objective_cny: float
+    share: np.ndarray
+    build_edge: np.ndarray
+    rebuild: np.ndarray
+    new_cap_mtpa: np.ndarray
+    edge_flow_mtpa: np.ndarray
+    co2_flow_fwd: np.ndarray
+    co2_flow_bwd: np.ndarray
+    storage_use_mtpa: np.ndarray
+    water_use_m3: np.ndarray
+    water_flow_m3: np.ndarray
+    biomass_use_gj: np.ndarray
+    biomass_flow_gj: np.ndarray
+    ammonia_use_kg: np.ndarray
+    ammonia_flow_kg: np.ndarray
+    captured_mt_by_plant: np.ndarray
+    air_share: np.ndarray
+    air_installed: np.ndarray
+    blend_level_b: np.ndarray
+    blend_level_a: np.ndarray
+    retrofit_installed: np.ndarray
+    pipe_count: np.ndarray
+    industry_share: np.ndarray
+    industry_capacity_mt: np.ndarray
+    industry_h2_flow_kg: np.ndarray
+    plant_reduction_mt: np.ndarray
+    total_reduction_mt: float
+    cost_breakdown_cny: dict[str, float]
+    slacks: SolveSlacks
+    year_data: YearData
+
+
+class SolveResult(TypedDict):
+    """`solver._solve_joint_multi_period` 的返回值。"""
+
+    status: str
+    objective_cny: float
+    solver_quality: dict[str, float | int | str | None]
+    capex_pathway_indices: tuple[int, ...]
+    year_solutions: dict[int, YearSolution]

@@ -26,7 +26,7 @@ from .results_resources import (
     _build_supply_table,
     _build_water_flow_table,
 )
-from .year_types import YearData
+from .year_types import SolveSlacks, YearData
 
 __all__ = [
     "_alive_edge_added_stock",
@@ -54,7 +54,7 @@ def _build_cost_breakdown(year: int, breakdown: dict[str, float]) -> pd.DataFram
 
 def _build_sanity_checks(
     year: int,
-    slacks: dict[str, object],
+    slacks: SolveSlacks,
     pathways: pd.DataFrame,
     province_table: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -97,7 +97,7 @@ def _build_slack_detail_table(
     prepared: PreparedInputs,
     year: int,
     year_data: YearData,
-    slacks: dict[str, object],
+    slacks: SolveSlacks,
 ) -> pd.DataFrame:
     """所有资源 / 基础设施约束的逐节点松弛值。"""
     rows: list[dict[str, object]] = []

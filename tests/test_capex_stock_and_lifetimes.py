@@ -12,11 +12,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import pytest
 from scipy import sparse
+
+if TYPE_CHECKING:
+    from coal_retrofit.optimization.year_types import SolveResult
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
@@ -217,7 +221,7 @@ def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
 
 
 # ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---
-def _solve_toy(paths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> dict:
+def _solve_toy(paths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> SolveResult:
     prepared = prepare_inputs(paths, scenario, assumptions)
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),

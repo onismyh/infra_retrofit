@@ -13,12 +13,12 @@ from ._shared import (
 )
 from .model_index import ModelIndex
 from .scenario import PATHWAYS
-from .year_types import YearPayload
+from .year_types import YearPayload, YearSolution
 
 
 def empty_year_solutions(
     prepared: PreparedInputs, idx: ModelIndex, year_payloads: list[YearPayload], status: str
-) -> dict[int, dict[str, object]]:
+) -> dict[int, YearSolution]:
     """与 `extract_year_solutions` 同键的零填充结果，供调用方识别失败。"""
     plant_count, storage_count, edge_count = idx.plant_count, idx.storage_count, idx.edge_count
     hub_count = len(prepared.industry.hubs)
@@ -76,11 +76,11 @@ def empty_year_solutions(
 
 def extract_year_solutions(
     prepared: PreparedInputs, idx: ModelIndex, year_payloads: list[YearPayload], status: str
-) -> dict[int, dict[str, object]]:
+) -> dict[int, YearSolution]:
     """读出每年的变量值。资源流量按缩放因子乘回原单位（GJ、kg、m3）。"""
     plant_count, storage_count, edge_count = idx.plant_count, idx.storage_count, idx.edge_count
     hub_count = len(prepared.industry.hubs)
-    year_solutions: dict[int, dict[str, object]] = {}
+    year_solutions: dict[int, YearSolution] = {}
     for payload in year_payloads:
         year = int(payload.year)
         year_data = payload.year_data

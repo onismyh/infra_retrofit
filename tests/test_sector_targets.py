@@ -1,9 +1,14 @@
 """单厂 toy 模型上的部门碳目标上限与利用小时轨迹。"""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 import pytest
+
+if TYPE_CHECKING:
+    from coal_retrofit.optimization.year_types import SolveResult
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
@@ -16,7 +21,7 @@ from toy_inputs import _write_targets, _write_toy_inputs
 YEARS = (2030, 2040)
 
 
-def _solve(paths, scenario: OptimizationScenario) -> dict[str, object]:
+def _solve(paths, scenario: OptimizationScenario) -> SolveResult:
     assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.planning_years

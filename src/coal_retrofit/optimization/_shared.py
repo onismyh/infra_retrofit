@@ -4,6 +4,7 @@ import os
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,9 @@ except ImportError:  # pragma: no cover
 
 from .network import RuntimeNetwork
 from .scenario import PATHWAYS
+
+if TYPE_CHECKING:
+    from .industry_inputs import IndustryInputs
 
 
 PATHWAY_INDEX = {name: index for index, name in enumerate(PATHWAYS)}
@@ -56,8 +60,8 @@ class PreparedInputs:
     water_basin_caps: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
-    # 工业点源（`industry.IndustryInputs`），与煤电同在一个目标函数里决策。
-    industry: object
+    # 工业点源，与煤电同在一个目标函数里决策。
+    industry: IndustryInputs
     # 部门残余排放上限：sector_group, planning_year, cap_fraction_of_2030。
     sector_targets: pd.DataFrame
     # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。

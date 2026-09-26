@@ -5,9 +5,14 @@ toy 没有流域面图层，也没有 plants.csv 的取水定额表；两处都�
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 import pytest
+
+if TYPE_CHECKING:
+    from coal_retrofit.optimization.year_types import SolveResult
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
@@ -53,7 +58,7 @@ def _write_water_inputs(paths: ProjectPaths, basin_caps: bool) -> None:
         ).to_csv(paths.inputs_dir / "water_basin_caps.csv", index=False)
 
 
-def _solve(paths: ProjectPaths, experiment_id: str, **assumption_overrides) -> dict[str, object]:
+def _solve(paths: ProjectPaths, experiment_id: str, **assumption_overrides) -> SolveResult:
     scenario = OptimizationScenario(
         experiment_id=experiment_id,
         description="toy",
