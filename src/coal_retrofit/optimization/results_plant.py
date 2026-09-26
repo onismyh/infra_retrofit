@@ -5,9 +5,40 @@ import numpy as np
 import pandas as pd
 
 from ._shared import PATHWAY_INDEX, PreparedInputs
-from .emissions import blend_level_to_ratio, reduction_fraction
+from .emissions import reduction_fraction
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from .year_types import YearData
+
+# 路径份额不超过它时，有效掺烧比例记 0：份额在求解器可行性容差（1e-6）量级时，Σβ·z / 份额只是噪声。
+_SHARE_EPS = 1e-6
+
+
+def _blend_ratios(
+    share_values: np.ndarray,
+    biomass_blend_x_share: np.ndarray,
+    beccs_blend_x_share: np.ndarray,
+    ammonia_blend_x_share: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """逐厂有效掺烧比例 = Σβ_l·z_l / 路径份额，键 biomass、beccs、ammonia。
+
+    连续 hub 下 `select_*` 是份额，一个 hub 可以把不同份额改造到不同档位；`blend_level = Σ l·select`
+    只是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是几档的混合（一半第 1 档、
+    一半第 3 档记作 2）。模型的减排、燃料用量与惩罚都按 Σβ_l·z_l 计（`constraints._add_blend_level_constraints`），
+    这里除以同一条路径的份额。生物质与 BECCS 共用档位容量，但各自的 z 不同，比例分开算。
+    """
+    shares = np.asarray(share_values, dtype=np.float64)
+    out: dict[str, np.ndarray] = {}
+    for pathway, blend_x_share in (
+        ("biomass", biomass_blend_x_share),
+        ("beccs", beccs_blend_x_share),
+        ("ammonia", ammonia_blend_x_share),
+    ):
+        share = shares[:, PATHWAY_INDEX[pathway]]
+        out[pathway] = np.divide(
+            np.asarray(blend_x_share, dtype=np.float64), share,
+            out=np.zeros(len(share)), where=share > _SHARE_EPS,
+        )
+    return out
 
 
 def _build_pathway_table(
@@ -16,8 +47,9 @@ def _build_pathway_table(
     year: int,
     share_values: np.ndarray,
     captured_mt_by_plant: np.ndarray,
-    blend_level_b: np.ndarray,
-    blend_level_a: np.ndarray,
+    biomass_blend_x_share: np.ndarray,
+    beccs_blend_x_share: np.ndarray,
+    ammonia_blend_x_share: np.ndarray,
     year_data: YearData,
     plant_reduction_mt: np.ndarray,
 ) -> pd.DataFrame:
@@ -27,19 +59,25 @@ def _build_pathway_table(
     求解器自己的逐厂减排量 `plant_reduction_mt`：经典的逐路径减排比例只决定一个厂在各路径之间
     怎么拆分，厂合计则重新缩放到约束中的值，该值含 CF 提升与全部惩罚燃料。2026-09-10 之前
     这一列是未锚定的经典公式，曾出现合计达到基线 111.7% 的情况。
+    拆分用的掺烧比例是各路径自己的有效比例（`_blend_ratios`）。此前按 `blend_level` 换算：连续 hub 下
+    非整数档位被原样当作比例（2.5 → 250%），几档的混合恰为整数时又被读成其中一档，拆分失真。
     """
     rows: list[dict[str, object]] = []
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
+    ratios = _blend_ratios(share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share)
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
         baseline_emissions_mt = float(em_year[plant_idx])
         # 求解器给出的实际捕集量
         actual_captured = float(captured_mt_by_plant[plant_idx])
-        bio_blend = blend_level_to_ratio(blend_level_b[plant_idx], scenario.biomass_blend_levels)
-        amm_blend = blend_level_to_ratio(blend_level_a[plant_idx], scenario.ammonia_blend_levels)
+        bio_blend = float(ratios["biomass"][plant_idx])
+        beccs_blend = float(ratios["beccs"][plant_idx])
+        amm_blend = float(ratios["ammonia"][plant_idx])
         classic = np.array([
             baseline_emissions_mt
-            * reduction_fraction(pathway, scenario.capture_rate, bio_blend, amm_blend)
+            * reduction_fraction(
+                pathway, scenario.capture_rate, beccs_blend if pathway == "beccs" else bio_blend, amm_blend,
+            )
             * float(share_values[plant_idx, path_idx])
             for path_idx, pathway in enumerate(PATHWAYS)
         ], dtype=np.float64)
@@ -108,11 +146,16 @@ def _build_plant_detail_table(
     air_share: np.ndarray,
     year_data: YearData,
     plant_reduction_mt: np.ndarray,
+    *,
+    biomass_blend_x_share: np.ndarray,
+    beccs_blend_x_share: np.ndarray,
+    ammonia_blend_x_share: np.ndarray,
 ) -> pd.DataFrame:
-    """逐厂高分辨率明细：路径份额、资源用量、掺烧档位、与封存汇的邻近程度。"""
+    """逐厂高分辨率明细：路径份额、资源用量、掺烧档位与有效掺烧比例、与封存汇的邻近程度。"""
     plants = prepared.plants
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
+    ratios = _blend_ratios(share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share)
 
     # 预先计算各厂经管网边到封存汇的最小距离
     plant_to_min_storage_km: dict[str, float] = {}
@@ -162,9 +205,13 @@ def _build_plant_detail_table(
             # 该改造未启用或不值其 capex 时，各处都为零。
             "air_cooled_share": float(air_share[p, :].sum()),
             "already_air_share": float(plant.get("already_air_share", 0.0)),
-            # 掺烧档位
+            # 掺烧档位：Σ l·select。独热档位下是所选档位；连续 hub 下只是加权下标，不能换算成比例。
             "biomass_blend_level": float(blend_level_b[p]),
             "ammonia_blend_level": float(blend_level_a[p]),
+            # 有效掺烧比例：Σβ_l·z_l / 该路径份额（`_blend_ratios`），份额为零时记 0。
+            "biomass_blend_ratio": float(ratios["biomass"][p]),
+            "beccs_blend_ratio": float(ratios["beccs"][p]),
+            "ammonia_blend_ratio": float(ratios["ammonia"][p]),
             # 空间信息
             "min_distance_to_storage_km": plant_to_min_storage_km.get(pid, float("nan")),
         })
@@ -181,10 +228,9 @@ def _build_plant_cost_table(
     captured_mt: np.ndarray,
     biomass_use_gj: np.ndarray,
     water_use_m3: np.ndarray,
-    blend_level_b: np.ndarray,
-    blend_level_a: np.ndarray,
     prev_share_values: np.ndarray | None = None,
     *,
+    plant_reduction_mt: np.ndarray,
     retrofit_installed: np.ndarray,
     prev_retrofit_installed: np.ndarray | None = None,
     capex_pathway_indices: tuple[int, ...],
@@ -194,7 +240,7 @@ def _build_plant_cost_table(
     未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产计在新增退役份额上，
     CCS 改造 CAPEX 计在已装存量（历史最高份额）的增量上，并含学习曲线成本系数——
     上一年的份额 / 已装值须经 prev_share_values / prev_retrofit_installed 传入
-    （首年为 None）。
+    （首年为 None）。碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。
     """
     plants = prepared.plants
     n = len(plants)
@@ -210,8 +256,6 @@ def _build_plant_cost_table(
         share = share_values[p]
         e = float(emissions[p])
         cap = float(capacity_mw[p])
-        bio_blend = blend_level_to_ratio(blend_level_b[p], scenario.biomass_blend_levels)
-        amm_blend = blend_level_to_ratio(blend_level_a[p], scenario.ammonia_blend_levels)
 
         # 基线净成本：逐路径（燃料 + 运维 - 电）矩阵行 × 份额
         # （改造列含 CF 提升，退役列为零）
@@ -219,21 +263,10 @@ def _build_plant_cost_table(
             float(year_data.baseline_net_matrix[p, k]) * float(share[k])
             for k in range(len(PATHWAYS))
         )
-        # 碳成本：碳价 × 残余排放（近似的报告口径：改造路径用效率 × CF 提升的排放基数，
-        # 退役避免的是基线排放）
-        e_rt = float(year_data.emissions_retrofit_mt[p])
-        reduction_mt = (
-            e * float(share[retire_idx])
-            + sum(
-                e_rt
-                * reduction_fraction(pathway, scenario.capture_rate, bio_blend, amm_blend)
-                * float(share[k])
-                for k, pathway in enumerate(PATHWAYS)
-                if k != retire_idx
-            )
-        )
-        residual_mt = e - reduction_mt
-        carbon_cost = carbon_price * 1e6 * residual_mt if carbon_price > 0 else 0.0
+        # 碳成本：碳价 × (基线排放 − 求解器逐厂减排量)，与目标函数同式（`model_costs._operating_costs`）；
+        # 减排量取约束本身的表达式，含效率比、CF 提升、全部惩罚燃料与连续 hub 下的掺烧份额。
+        # 此前是近似式：未减排部分按基线排放计、不含惩罚燃料，掺烧比例按档位换算（连续 hub 下换算错）。
+        carbon_cost = carbon_price * 1e6 * (e - float(plant_reduction_mt[p])) if carbon_price > 0 else 0.0
         # 节煤（coal_savings_per_gj 已缩放为 CNY/TJ；biomass_use_gj 是未缩放的 GJ）
         _bio_scale = float(year_data.biomass_flow_scale)
         _cspg = year_data.coal_savings_per_gj

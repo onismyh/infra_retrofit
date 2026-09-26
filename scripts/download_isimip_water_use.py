@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Download the ISIMIP3b sectoral water-USE files needed to subtract domestic and irrigation.
 
-Why this exists: `data/water/` holds only `qtot` (runoff). The basin budget currently deducts
-other users through a single lumped knob, `WATER_EXTRACTABLE_FRACTION x (1 - existing_
-withdrawal_share)` = 0.20 x 0.15, and `optimization/data_prep.py` states outright that those
-two factors are ALIASED — the solver sees only their product, so the study cannot say whether
-the environmental-flow standard or the allocation rule is what binds. Subtracting domestic and
-irrigation explicitly de-aliases that.
+Why this exists: `data/water/` holds only `qtot` (runoff). When this script was written
+(2026-09-06) the water budget deducted other users through a single lumped knob,
+`WATER_EXTRACTABLE_FRACTION x (1 - existing_withdrawal_share)` = 0.20 x 0.15, whose two factors
+are ALIASED — the solver sees only their product, so the study cannot say whether the
+environmental-flow standard or the allocation rule is what binds. Subtracting domestic and
+irrigation explicitly was meant to de-alias that. The knob was deleted on 2026-09-26: since v9.1
+the node limit is `qtot x 0.20` (environmental flow, on consumption) and the allocation rule is
+the official basin total-withdrawal quota (on withdrawal); see the water-budget comment in
+`optimization/scenario.py`. The subtraction itself is not wired into the solve yet
+(docs/工业部门参数溯源.md §六 item 1, §七); today only `ptotuse` from this script is used,
+as the province-to-basin split weight when building the official basin quotas
+(`builders/water_quota.py`).
 
-WHICH VARIABLES, AND WHY THESE ONES. The basin constraint acts on CONSUMPTION, so what must be
-deducted is other users' consumption, not their withdrawal (irrigation returns a large share of
-what it diverts). The two hydrology models do not publish the same set:
+WHICH VARIABLES, AND WHY THESE ONES. The subtraction targets the node limit, which acts on
+CONSUMPTION, so what must be deducted is other users' consumption, not their withdrawal
+(irrigation returns a large share of what it diverts). The two hydrology models do not publish
+the same set:
 
     CWatM         has pdomuse, pinduse, pliveuse, ptotuse   but NO pirruse
     WaterGAP2-2e  has pdomuse, pirruse                      but NO adomww

@@ -86,6 +86,7 @@ def add_year_block(
         captured_mt_by_plant, biomass_use_gj, ammonia_use_kg, water_use_m3, total_reduction_mt,
         select_b, select_a, blend_level_b, blend_level_a,
         total_bio_penalty, plant_reduction_exprs, air_share, air_installed,
+        bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
     ) = _add_plant_path_constraints(
         model, share, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
     )
@@ -168,6 +169,9 @@ def add_year_block(
         blend_level_b=blend_level_b,
         blend_level_a=blend_level_a,
         plant_reduction_exprs=plant_reduction_exprs,
+        biomass_blend_x_share=bio_blend_x_share,
+        beccs_blend_x_share=beccs_blend_x_share,
+        ammonia_blend_x_share=amm_blend_x_share,
         total_reduction_mt=total_reduction_mt,
         total_bio_penalty=total_bio_penalty,
         industry=industry_payload,

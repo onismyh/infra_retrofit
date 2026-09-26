@@ -66,8 +66,10 @@ class PreparedInputs:
     sector_targets: pd.DataFrame
     # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。
     industry_h2_links: pd.DataFrame
-    # 本次实际读取的输入目录（`ProjectPaths.inputs_dir`），供溯源摘要按真实文件计算。
+    # 本次实际读取的输入目录（`ProjectPaths.inputs_dir`），溯源里记作 `input_dir`。
     inputs_dir: Path
+    # 本次实际读取的文件 {逻辑名: 路径}（`data_prep._input_files`），溯源摘要逐个计算。
+    input_files: dict[str, Path]
 
 
 @dataclass

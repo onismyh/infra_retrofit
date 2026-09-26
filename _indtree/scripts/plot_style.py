@@ -760,8 +760,20 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     pen_ccs_mt_per_mwh = pen_ratio * hr_eff * ef_t_per_gj * (1.0 - eta) / 1e6
     pen_bio_coeff = (assumptions.biomass_efficiency_penalty_per_ratio / eta_coal) * hr_eff * ef_t_per_gj / 1e6
 
-    beta_b = np.array([blend_level_to_ratio(v, scenario.biomass_blend_levels) for v in d["biomass_blend_level"]])
-    beta_a = np.array([blend_level_to_ratio(v, scenario.ammonia_blend_levels) for v in d["ammonia_blend_level"]])
+    # Blend ratios. Runs with the `*_blend_ratio` columns carry the effective ratio per pathway
+    # (sum_l beta_l * z_l / share, the quantity the constraints use; biomass and BECCS differ).
+    # Older runs only have the level index sum_l l * select, which maps to a ratio only for one-hot
+    # levels (v9); under continuous hubs it is a weighted index and `blend_level_to_ratio` raises
+    # on non-integer values rather than reading 2.5 as 250%.
+    _ratio_cols = ("biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio")
+    if all(c in d.columns for c in _ratio_cols):
+        beta_bio = d["biomass_blend_ratio"].to_numpy(dtype=float)
+        beta_beccs = d["beccs_blend_ratio"].to_numpy(dtype=float)
+        beta_a = d["ammonia_blend_ratio"].to_numpy(dtype=float)
+    else:
+        beta_bio = np.array([blend_level_to_ratio(v, scenario.biomass_blend_levels) for v in d["biomass_blend_level"]])
+        beta_beccs = beta_bio
+        beta_a = np.array([blend_level_to_ratio(v, scenario.ammonia_blend_levels) for v in d["ammonia_blend_level"]])
 
     s_un = d["share_unabated"].to_numpy(dtype=float)
     s_ccs = d["share_ccs"].to_numpy(dtype=float)
@@ -814,11 +826,11 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     residual = (
         e_op * s_un
         + e_rt * (1.0 - eta) * s_ccs
-        + e_rt * (1.0 - beta_b) * s_bio
-        + e_rt * (1.0 - eta - beta_b) * s_beccs
+        + e_rt * (1.0 - beta_bio) * s_bio
+        + e_rt * (1.0 - eta - beta_beccs) * s_beccs
         + e_rt * (1.0 - beta_a) * s_amm
         + pen_ccs_mt_per_mwh * gen * boost * (s_ccs + s_beccs)
-        + pen_bio_coeff * beta_b * gen * boost * (s_bio + (1.0 - eta) * s_beccs)
+        + pen_bio_coeff * gen * boost * (beta_bio * s_bio + (1.0 - eta) * beta_beccs * s_beccs)
         + air_penalty_mt
     )
     return float(residual.sum())
@@ -988,10 +1000,15 @@ def same_model_runs(names, quiet: bool = False) -> list:
         # AN ABSENT FIELD IS NOT A DIFFERENCE WHEN THE DEFAULT IS KNOWN. `mip_focus` was added
         # to the provenance stamp mid-campaign, so a run solved before that carries None while
         # an otherwise identical run solved after carries 0 -- and 0 is exactly what None
-        # means, because the stamp reads an environment variable that was unset. Comparing the
-        # raw values rejected three true replicates of the same model (identical fingerprint
+        # means, because the stamp then read an environment variable that was unset. Comparing
+        # the raw values rejected three true replicates of the same model (identical fingerprint
         # 0xbf2f6de, identical 632,442 columns and 240,918 rows, threads pinned at 8) and left
         # a family of one, which silently disabled the degeneracy floor entirely.
+        # The stamp now reads MIPFocus back from the model (`_run_provenance`), so a run with the
+        # variable unset records 1, the `_new_gurobi_model` default. An old None/0 stamp records
+        # the environment variable (unset, or set to 0), not the value the model ran at, so a
+        # None/0 stamp and a 1 stamp still compare as different on purpose: they come from two
+        # stamp versions, and a seed family must not straddle them.
         return (q.get("fingerprint"), q.get("num_vars"), q.get("num_constrs"),
                 q.get("threads_param"), int(q.get("mip_focus") or 0))
     present = [n for n in names if (RESULTS_DIR / f"{n}.json").exists()]

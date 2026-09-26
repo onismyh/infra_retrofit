@@ -171,9 +171,15 @@ class YearPayload:
     air_installed: GrbMVar
     select_b: GrbMVar
     select_a: GrbMVar
+    # Σ l·select：独热档位下是所选档位；连续 hub 下是档位下标的加权和，非整数时对应不到任何一档，
+    # 恰为整数时也可能是几档的混合。
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
     plant_reduction_exprs: list[GrbExpr]
+    # 逐厂 Σβ_l·z_l（掺烧比例 × 路径份额），生物质、BECCS、氨各一份；只供结果表换算有效掺烧比例。
+    biomass_blend_x_share: list[GrbExpr]
+    beccs_blend_x_share: list[GrbExpr]
+    ammonia_blend_x_share: list[GrbExpr]
     total_reduction_mt: GrbExpr
     total_bio_penalty: GrbExpr
     # `model_industry.add_industry_year` 的输出。
@@ -235,6 +241,10 @@ class YearSolution(TypedDict):
     industry_capacity_mt: np.ndarray
     industry_h2_flow_kg: np.ndarray
     plant_reduction_mt: np.ndarray
+    # `YearPayload` 同名字段的值：逐厂 Σβ_l·z_l。
+    biomass_blend_x_share: np.ndarray
+    beccs_blend_x_share: np.ndarray
+    ammonia_blend_x_share: np.ndarray
     total_reduction_mt: float
     cost_breakdown_cny: dict[str, float]
     slacks: SolveSlacks

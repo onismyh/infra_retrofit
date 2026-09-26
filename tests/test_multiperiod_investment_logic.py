@@ -228,14 +228,14 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     plant_cost_y1 = _build_plant_cost_table(
         prepared, scenario, assumptions, 2030, y1["year_data"], y1["share"],
         y1["captured_mt_by_plant"], y1["biomass_use_gj"], y1["water_use_m3"],
-        y1["blend_level_b"], y1["blend_level_a"],
+        plant_reduction_mt=y1["plant_reduction_mt"],
         retrofit_installed=y1["retrofit_installed"], capex_pathway_indices=capex_indices,
     )
     plant_cost_y3 = _build_plant_cost_table(
         prepared, scenario, assumptions, 2050, y3["year_data"], y3["share"],
         y3["captured_mt_by_plant"], y3["biomass_use_gj"], y3["water_use_m3"],
-        y3["blend_level_b"], y3["blend_level_a"],
         prev_share_values=y2["share"],
+        plant_reduction_mt=y3["plant_reduction_mt"],
         retrofit_installed=y3["retrofit_installed"],
         prev_retrofit_installed=y2["retrofit_installed"],
         capex_pathway_indices=capex_indices,
