@@ -1,5 +1,6 @@
 """逐流域核算：径流 x 0.20  vs  生活耗水 + 灌溉耗水。诊断脚本，不写入 inputs/。
 
+末列是旧 runoff 口径 `径流 x 0.20 x (1-0.85)`（v9 wd085），2026-09-26 已从 src/ 删除，只作对照。
 流域索引用 enumerate(codes, start=1)，与 builders/water._basin_runoff_from_file 一致；
 zones==0 是流域外（含海洋），必须排除。
 """
@@ -72,7 +73,7 @@ def main() -> None:
 
         print(f"===== {hydro} =====")
         print(f"{'流域':<12}{'官方':>7}{'订正径流':>9}{'x0.20':>7}{'生活':>6}{'灌溉':>7}"
-              f"{'可用':>8}{'占可提取':>9}  {'现行0.03口径':>12}")
+              f"{'可用':>8}{'占可提取':>9}  {'旧0.03口径':>12}")
         print("-" * 96)
         s_avail = s_ext = s_old = 0.0
         for c in sorted(codes):
