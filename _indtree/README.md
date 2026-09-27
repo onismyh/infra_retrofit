@@ -196,7 +196,7 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 >
 > ⚠ **结果表换算改正（2026-09-26，PR #7）**：模型、目标值与厂合计减排不变。hub 决策连续时，掺烧比例改按 Σβ·z ÷ 路径份额换算
 > （`plant_detail.csv` 新增 `*_blend_ratio` 三列），`pathway_shares.csv`、`province_pathways.csv` 的逐路径减排拆分随之改正；
-> `ST_CP_BASE` 的 `plant_cost.csv` 碳成本改与目标函数同式。下表三个 hub 决策连续的情景都在此之前落盘，这几张表重解后再用。
+> `ST_CP_BASE` 的 `plant_cost.csv` 碳成本改与目标函数同式。下表三个 hub 决策连续的情景（`ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`）都在此之前落盘，这几张表重解后再用。
 > 详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、

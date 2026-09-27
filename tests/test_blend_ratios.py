@@ -3,8 +3,8 @@
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
 路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；成本表的碳成本
-与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条（独热档位对照、`plot_style` 的残余排放、
-成本表碳成本与目标函数对拍、掺氨用量）需要 Gurobi，其余不依赖。
+与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条（只开 BECCS 的生物质用量、独热档位对照、
+`plot_style` 的残余排放、成本表碳成本与目标函数对拍、掺氨用量）需要 Gurobi，其余不依赖。
 """
 from __future__ import annotations
 
@@ -272,6 +272,9 @@ def test_one_hot_levels_give_the_ratio_blend_level_to_ratio_reads(tmp_path, path
         )
         by_level = blend_level_to_ratio(float(ys[level_key][0]), levels)
         assert float(ratios[pathway][0]) == pytest.approx(by_level, abs=1e-6)
+        # 截断会盖住偏大的 Σβ·z（toy 的掺氨解正好在最高档）：未截断的商也要等于按档位读出的比例。
+        raw = float(ys[f"{pathway}_blend_x_share"][0]) / float(ys["share"][0, PATHWAY_INDEX[pathway]])
+        assert raw == pytest.approx(by_level, abs=1e-6)
 
 
 def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeypatch) -> None:
@@ -292,6 +295,9 @@ def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeyp
             biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
             ammonia_blend_x_share=ys["ammonia_blend_x_share"],
         )
+        # 解正好在氨的最高档：比例列要等于未截断的商，不能靠截断碰巧对上。
+        raw = float(ys["ammonia_blend_x_share"][0]) / float(ys["share"][0, AMM])
+        assert float(detail["ammonia_blend_ratio"].iloc[0]) == pytest.approx(raw, abs=1e-6)
         model_residual = float(np.sum(ys["year_data"].emissions_mt - ys["plant_reduction_mt"]))
         assert plot_style.residual_emissions_mt(detail, year) == pytest.approx(model_residual, rel=1e-9)
         without_ratios = detail.drop(columns=["biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio"])
@@ -301,7 +307,7 @@ def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeyp
 
 def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(tmp_path) -> None:
     """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）。
-    全部改造路径开放、连续 hub。"""
+    除退役外全部路径开放、连续 hub。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     scenario, assumptions, prepared, solution = _solve_blend_toy(
         tmp_path, ("retire",), {2050: 0.45, 2060: 0.2}, carbon=(300.0, 600.0),

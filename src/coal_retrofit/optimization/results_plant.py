@@ -219,7 +219,8 @@ def _build_plant_detail_table(
             # 掺烧档位：Σ l·select。独热档位下是所选档位；连续 hub 下只是加权下标，不能换算成比例。
             "biomass_blend_level": float(blend_level_b[p]),
             "ammonia_blend_level": float(blend_level_a[p]),
-            # 有效掺烧比例：Σβ_l·z_l / 该路径份额（`_blend_ratios`），份额为零时记 0。
+            # 有效掺烧比例：Σβ_l·z_l / 该路径份额（`_blend_ratios`），份额不超过 `_SHARE_EPS` 时记 0，
+            # 其余截到 [0, 该路径最高档]。
             "biomass_blend_ratio": float(ratios["biomass"][p]),
             "beccs_blend_ratio": float(ratios["beccs"][p]),
             "ammonia_blend_ratio": float(ratios["ammonia"][p]),
