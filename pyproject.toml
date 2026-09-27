@@ -30,3 +30,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# 固定为 ruff 0.15 的缺省规则集。0.16 起缺省规则换了一套：多了 I001、RUF100、UP 等，
+# 也不再含 E402、E741、F403 等。不写明时两个版本报的条目不同。
+select = ["E4", "E7", "E9", "F"]

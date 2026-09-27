@@ -21,8 +21,8 @@ MIN_BRANCH_LENGTH_KM = 1.0
 def _routed_branch_km(straight_km: float) -> float:
     """支线直线长度 -> 路由长度：先乘绕行系数，再套下限。
 
-    CLAUDE.md 1.3：每条直线候选都是 `haversine x 1.136`。运行期支线（电厂、封存、工业）
-    原先用的是原始大地线距离；`builders/network.py` 建的三角化边与直连边已带该系数。
+    CLAUDE.md §1.3：每条直线候选都乘 1.136；直线距离多数是大地线，直连弧与缝合边是 haversine（见该节现状注）。
+    运行期支线（电厂、封存、工业）原先用的是原始大地线距离；`builders/network.py` 建的三角化边与直连边已带该系数。
     """
     return max(float(straight_km) * NETWORK_DETOUR_FACTOR, MIN_BRANCH_LENGTH_KM)
 

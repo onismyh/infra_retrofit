@@ -1,6 +1,7 @@
 """从厂级点源库构建工业点源清单。
 
-来源：`D:\\6. Transfer\\PhD_tht\\point_source\\`——六个工作簿，覆盖七个部门，各自都带
+来源：点源库目录 `POINT_SOURCE_DIR`（环境变量 `COAL_RETROFIT_POINT_SOURCE_DIR`，缺省为作者本机的
+`D:\\6. Transfer\\PhD_tht\\point_source\\`）——六个工作簿，覆盖七个部门，各自都带
 WGS84 坐标、产能、产量、CO2，以及（EAF 除外）一列氢需求。
 
 该库中的单位并不统一，一旦弄错，整个工业部门会被悄无声息地按比例放缩。编写本模块前
@@ -17,6 +18,7 @@ WGS84 坐标、产能、产量、CO2，以及（EAF 除外）一列氢需求。
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -49,7 +51,8 @@ from .plants import _haversine_distance_matrix
 
 logger = logging.getLogger(__name__)
 
-POINT_SOURCE_DIR = Path(r"D:\6. Transfer\PhD_tht\point_source")
+# 点源库不入库；缺省是作者本机的路径，别的机器用环境变量指过去。
+POINT_SOURCE_DIR = Path(os.environ.get("COAL_RETROFIT_POINT_SOURCE_DIR", r"D:\6. Transfer\PhD_tht\point_source"))
 
 WAN_TO_KT = 10.0        # 万吨 -> kt
 CEMENT_KILN_DAYS = 300  # t/d -> kt/yr，数据源隐含的年运行天数惯例

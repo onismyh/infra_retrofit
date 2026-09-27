@@ -226,14 +226,12 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     # 逐厂成本报表必须与模型一致：已装存量 CAPEX 只在第 1 期计，第 2、3 期为零。
     capex_indices = solution["capex_pathway_indices"]
     plant_cost_y1 = _build_plant_cost_table(
-        prepared, scenario, assumptions, 2030, y1["year_data"], y1["share"],
-        y1["captured_mt_by_plant"], y1["biomass_use_gj"], y1["water_use_m3"],
+        prepared, 2030, y1["year_data"], y1["share"], y1["biomass_use_gj"],
         plant_reduction_mt=y1["plant_reduction_mt"],
         retrofit_installed=y1["retrofit_installed"], capex_pathway_indices=capex_indices,
     )
     plant_cost_y3 = _build_plant_cost_table(
-        prepared, scenario, assumptions, 2050, y3["year_data"], y3["share"],
-        y3["captured_mt_by_plant"], y3["biomass_use_gj"], y3["water_use_m3"],
+        prepared, 2050, y3["year_data"], y3["share"], y3["biomass_use_gj"],
         prev_share_values=y2["share"],
         plant_reduction_mt=y3["plant_reduction_mt"],
         retrofit_installed=y3["retrofit_installed"],

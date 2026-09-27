@@ -417,22 +417,6 @@ def ed_fig1_biomass_feasibility() -> None:
 
 BASE_YEAR = 2025
 EMISSION_YEARS = [BASE_YEAR, *YEARS]
-CAPTURE_RATE = 0.90
-BIOMASS_BLEND_LEVELS = (0.10, 0.25, 0.50, 0.75, 1.00)
-AMMONIA_BLEND_LEVELS = (0.10, 0.20, 0.30, 0.40, 0.50)
-
-
-def _blend_level_to_ratio(level: object, levels: tuple[float, ...]) -> float:
-    """Convert solver blend-level index to its physical blend ratio."""
-    if pd.isna(level):
-        return 0.0
-    value = float(level)
-    if value <= 0.0:
-        return 0.0
-    level_idx = int(round(value))
-    if abs(value - level_idx) <= 1e-6 and 1 <= level_idx <= len(levels):
-        return float(levels[level_idx - 1])
-    return value
 
 
 def _scenario_plant_detail(scenario_key: str) -> pd.DataFrame | None:

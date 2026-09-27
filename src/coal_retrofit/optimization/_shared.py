@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -66,10 +65,9 @@ class PreparedInputs:
     sector_targets: pd.DataFrame
     # 工业氢路线到共享绿氨节点的候选链路：year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg。
     industry_h2_links: pd.DataFrame
-    # 本次实际读取的输入目录（`ProjectPaths.inputs_dir`），溯源里记作 `input_dir`。
-    inputs_dir: Path
-    # 本次实际读取的文件 {逻辑名: 路径}（`data_prep._input_files`），溯源摘要逐个计算。
-    input_files: dict[str, Path]
+    # 本次实际读取的输入目录与各文件的摘要（`solver_provenance._input_digest`）。`prepare_inputs` 读完文件时
+    # 就算好，溯源照抄：求解动辄几小时，其间改写的输入不会记到这次求解上。
+    input_digest: dict[str, str | None]
 
 
 @dataclass

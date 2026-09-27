@@ -241,8 +241,7 @@ def run(name: str, threads: int = DEFAULT_THREADS, time_limit: int = 36000,
         slack_detail_tables.append(_build_slack_detail_table(prepared, year, year_data, ys["slacks"]))
         co2_direction_tables.append(_build_co2_flow_direction_table(prepared, year, ys["co2_flow_fwd"], ys["co2_flow_bwd"]))
         plant_cost_tables.append(_build_plant_cost_table(
-            prepared, scenario, assumptions, year, year_data, share,
-            ys["captured_mt_by_plant"], ys["biomass_use_gj"], ys["water_use_m3"],
+            prepared, year, year_data, share, ys["biomass_use_gj"],
             prev_share_values=prev_share_values,
             plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_installed=ys["retrofit_installed"],

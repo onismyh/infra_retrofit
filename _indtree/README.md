@@ -193,6 +193,11 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > ⚠ **再次变更（2026-09-23，PR #2）**：目标函数与约束又改了七处——工业 capex 改计在能力存量增量上、删掉 BECCS 重复计费、管道到寿命可在原址重铺、氨价里的合成岛年金按情景贴现率重算、北京煤价 69.4 → 38.6 元/GJ（README §0.1）、长流程钢氢路线减排比例 0.85 → 0.95、合成岛年金寿命 20 → 30 年（README §0.2）。
 > 所以 09-22 之后、PR #2 合入 `feature/industrial-sectors` 之前落盘的结果，同样**不得与合入之后的求解相减**。
 > 结果目录不记提交号，按落盘时间与合并提交的时间判断。
+>
+> ⚠ **结果表换算改正（2026-09-26，PR #7）**：模型、目标值与厂合计减排不变。hub 决策连续时，掺烧比例改按 Σβ·z ÷ 路径份额换算
+> （`plant_detail.csv` 新增 `*_blend_ratio` 三列），`pathway_shares.csv`、`province_pathways.csv` 的逐路径减排拆分随之改正；
+> `ST_CP_BASE` 的 `plant_cost.csv` 碳成本改与目标函数同式。下表三个 hub 决策连续的情景（`ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`）都在此之前落盘，这几张表重解后再用。
+> 详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
