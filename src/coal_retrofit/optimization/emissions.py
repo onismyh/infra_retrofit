@@ -69,6 +69,9 @@ def blend_level_to_ratio(level: object, levels: tuple[float, ...]) -> float:
     `blend_level = Σ l·select` 是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是
     几档的混合，都换算不出比例；有效比例看 `plant_detail` 的 `*_blend_ratio` 列。
     下标不是整数或越界时报错。此前把它原样当比例返回（2.5 → 250%）。
+    `src/`、`scripts/` 与 `_indtree/scripts/` 里已不调用（`plot_style.residual_emissions_mt` 只认
+    `*_blend_ratio` 列）。还在用它的有两处：`tests/test_blend_ratios.py` 拿它核独热档位；冻结树
+    `_v9tree`、`_v91tree` 的 `plot_style` 导入它画独热结果。不要当死代码删。
     """
     if level is None:
         return 0.0

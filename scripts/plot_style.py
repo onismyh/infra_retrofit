@@ -730,15 +730,28 @@ def _plot_accounting_params():
 def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float:
     """Model-consistent residual emissions (Mt) for one scenario-year.
 
-    plant_detail_year: rows of results/<scenario>/plant_detail.csv for `year`.
+    plant_detail_year: rows of results/<scenario>/plant_detail.csv for `year`. The table must
+    carry the `*_blend_ratio` columns (written since PR #7, 2026-09-26); without them this raises
+    ValueError instead of guessing the blend ratios from the level index. An empty table still
+    returns NaN.
     Mirrors the residual expression in optimization/constraints.py.
     """
     import pandas as pd  # local import to keep module import light
-    from coal_retrofit.optimization.emissions import blend_level_to_ratio
 
     d = plant_detail_year
     if d.empty:
         return float("nan")
+    _ratio_cols = ("biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio")
+    missing = [c for c in _ratio_cols if c not in d.columns]
+    if missing:
+        raise ValueError(
+            f"plant_detail 缺少 {', '.join(missing)}：残余排放只按有效掺烧比例（*_blend_ratio）算，"
+            "档位下标分不出独热档位与连续 hub（下标恰为整数也可能是几档的混合）。"
+            "PR #7（2026-09-26）之前落盘的 ST_ 结果重解后再画（README §0）；"
+            "v9 / v9.1 的独热结果用冻结树 _v9tree/scripts、_v91tree/scripts 里的同名脚本画。"
+            "IND_ 系旧结果也没有这几列，残余排放不要去 cf073be 算：那里的同名函数把非整数下标原样当比例"
+            "（CLAUDE.md §1.5 说的在 cf073be 的副本里重画，只指 IND_ 的图；见 README §0）。"
+        )
     assumptions, scenario = _plot_accounting_params()
 
     eta = float(scenario.capture_rate)
@@ -760,20 +773,14 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     pen_ccs_mt_per_mwh = pen_ratio * hr_eff * ef_t_per_gj * (1.0 - eta) / 1e6
     pen_bio_coeff = (assumptions.biomass_efficiency_penalty_per_ratio / eta_coal) * hr_eff * ef_t_per_gj / 1e6
 
-    # Blend ratios. Runs with the `*_blend_ratio` columns carry the effective ratio per pathway
-    # (sum_l beta_l * z_l / share, the quantity the constraints use; biomass and BECCS differ).
-    # Older runs only have the level index sum_l l * select, which maps to a ratio only for one-hot
-    # levels (v9); under continuous hubs it is a weighted index and `blend_level_to_ratio` raises
-    # on non-integer values rather than reading 2.5 as 250%.
-    _ratio_cols = ("biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio")
-    if all(c in d.columns for c in _ratio_cols):
-        beta_bio = d["biomass_blend_ratio"].to_numpy(dtype=float)
-        beta_beccs = d["beccs_blend_ratio"].to_numpy(dtype=float)
-        beta_a = d["ammonia_blend_ratio"].to_numpy(dtype=float)
-    else:
-        beta_bio = np.array([blend_level_to_ratio(v, scenario.biomass_blend_levels) for v in d["biomass_blend_level"]])
-        beta_beccs = beta_bio
-        beta_a = np.array([blend_level_to_ratio(v, scenario.ammonia_blend_levels) for v in d["ammonia_blend_level"]])
+    # Blend ratios: the effective ratio per pathway, sum_l beta_l * z_l / share -- the quantity the
+    # constraints use (biomass and BECCS differ). The level index sum_l l * select is no substitute:
+    # under continuous hubs it is a weighted index, and even an integer value may be a mix of levels
+    # (half level 1, half level 3 reads as level 2) that no column tells apart from a one-hot run.
+    # Tables without the ratio columns were refused above.
+    beta_bio = d["biomass_blend_ratio"].to_numpy(dtype=float)
+    beta_beccs = d["beccs_blend_ratio"].to_numpy(dtype=float)
+    beta_a = d["ammonia_blend_ratio"].to_numpy(dtype=float)
 
     s_un = d["share_unabated"].to_numpy(dtype=float)
     s_ccs = d["share_ccs"].to_numpy(dtype=float)
