@@ -47,6 +47,11 @@
 > 要用这几列，这一改动合入之前落盘的 `ST_` 结果需重解（实现说明 §9.8）。
 > 2026-09-27 起 `network_edges.csv` 删去 `num_pipe_new`、`num_pipe_stock` 两列：它们是容量 ÷ `standard_pipe_capacity_mtpa`（20 Mtpa），
 > 不是管道根数；本年实际铺设的根数见 `pipes_new_by_tier`（如 `1x2|1x20`）。
+> 2026-09-27 起 `plot_style.residual_emissions_mt`（`scripts/` 与 `_indtree/scripts/` 两份）只按 `*_blend_ratio` 列算残余排放，
+> 没有这几列就报错。此前没有这几列时按档位下标换算，而下标分不出独热档位与连续 hub：连续 hub 的下标恰为整数时
+> 也可能是几档的混合，会被静默读错。
+> PR #7 之前落盘的 `ST_` 结果重解后再画；v9 / v9.1 的独热结果用冻结树 `_v9tree/scripts`、`_v91tree/scripts` 里的同名脚本画，
+> `IND_` 系旧结果按 CLAUDE.md §1.5 在 `cf073be` 的副本里重画。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

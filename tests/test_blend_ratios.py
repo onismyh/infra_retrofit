@@ -2,9 +2,10 @@
 
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
-路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；成本表的碳成本
-与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条（只开 BECCS 的生物质用量、独热档位对照、
-`plot_style` 的残余排放、成本表碳成本与目标函数对拍、掺氨用量）需要 Gurobi，其余不依赖。
+路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；`plot_style` 的
+残余排放只认比例列，没有就报错；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
+（只开 BECCS 的生物质用量、独热档位对照、`plot_style` 的残余排放、成本表碳成本与目标函数对拍、掺氨用量）
+需要 Gurobi，其余不依赖。
 """
 from __future__ import annotations
 
@@ -278,8 +279,8 @@ def test_one_hot_levels_give_the_ratio_blend_level_to_ratio_reads(tmp_path, path
 
 
 def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeypatch) -> None:
-    """`plot_style.residual_emissions_mt` 有 `*_blend_ratio` 列时按它们算，与求解器的残余排放一致。
-    连续 hub 下档位下标不是整数，没有这几列的旧结果表在 `blend_level_to_ratio` 处报错，不会把 2.9 读成 290%。"""
+    """`plot_style.residual_emissions_mt` 按 `*_blend_ratio` 列算，与求解器的残余排放一致；删去这几列就报错。
+    解取连续 hub，档位下标不是整数，按档位换算不出比例。"""
     pytest.importorskip("matplotlib", reason="plot_style imports matplotlib")
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     import plot_style
@@ -303,6 +304,27 @@ def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeyp
         without_ratios = detail.drop(columns=["biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio"])
         with pytest.raises(ValueError, match="blend_ratio"):
             plot_style.residual_emissions_mt(without_ratios, year)
+
+
+def test_plot_style_residual_refuses_tables_without_ratio_columns(monkeypatch) -> None:
+    """没有 `*_blend_ratio` 列就报错，哪怕档位下标是整数：整数下标可能是独热档位，也可能是连续 hub 下
+    几档的混合（`_three_hubs` 的 hub 0：一半第 1 档、一半第 3 档记作 2，实际比例 0.30），表里分不出来。
+    此前的回退分支把它按第 2 档读成 0.25，静默出数。"""
+    pytest.importorskip("matplotlib", reason="plot_style imports matplotlib")
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    import plot_style
+
+    hub0 = pd.DataFrame([{
+        "retirement_year": 2060, "baseline_emissions_mt": 10.0, "annual_generation_mwh": 5.0e6,
+        "share_unabated": 0.0, "share_ccs": 0.0, "share_biomass": 1.0, "share_beccs": 0.0,
+        "share_ammonia": 0.0, "share_retire": 0.0,
+        "biomass_blend_level": float(_three_hubs()["level_b"][0]), "ammonia_blend_level": 0.0,
+    }])
+    with pytest.raises(ValueError, match="blend_ratio"):
+        plot_style.residual_emissions_mt(hub0, 2040)
+    # 补上比例列就按比例算，档位下标不再参与。
+    ratios = {"biomass_blend_ratio": 0.30, "beccs_blend_ratio": 0.0, "ammonia_blend_ratio": 0.0}
+    assert np.isfinite(plot_style.residual_emissions_mt(hub0.assign(**ratios), 2040))
 
 
 def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(tmp_path) -> None:
