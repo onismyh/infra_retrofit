@@ -3,10 +3,12 @@
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
 路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；成本表的碳成本
-与目标函数同式，用求解器的逐厂减排量。末一条求解 toy，需要 Gurobi，其余不依赖。
+与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条（独热档位对照、`plot_style` 的残余排放、
+成本表碳成本与目标函数对拍、掺氨用量）需要 Gurobi，其余不依赖。
 """
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -14,7 +16,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from coal_retrofit.optimization._shared import PATHWAY_INDEX, PreparedInputs
+from coal_retrofit.optimization._shared import (
+    PATHWAY_INDEX,
+    PreparedInputs,
+    _discount_factor,
+    _year_objective_weight,
+)
+from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.emissions import blend_level_to_ratio
 from coal_retrofit.optimization.results_plant import (
     _blend_ratios,
@@ -198,3 +206,144 @@ def test_solved_blend_x_share_is_the_quantity_the_constraints_use(tmp_path) -> N
         biomass_levels=LEVELS_B, ammonia_levels=LEVELS_A,
     )
     assert float(ratios["beccs"][0]) == pytest.approx(raw, abs=1e-6)
+
+
+# 只开放一类掺烧，其余改造路径关掉：BECCS 用生物质的档位表，掺氨用氨的档位表。
+_ONLY = {
+    "beccs": ("retire", "ccs", "biomass", "ammonia"),
+    "ammonia": ("retire", "ccs", "biomass", "beccs"),
+}
+
+
+def _solve_blend_toy(root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0)):
+    """求解 2050、2060 两年的 toy，生物质与氨的供给挪到电厂旁边且充足。
+
+    返回 (scenario, assumptions, prepared, solution)；`prepared` 供结果表函数用。
+    """
+    from test_capex_stock_and_lifetimes import _solve_toy
+    from toy_inputs import _write_targets, _write_toy_inputs
+
+    paths = _write_toy_inputs(root, retirement_year=9999)
+    bio = pd.read_csv(paths.inputs_dir / "biomass_supply_curve.csv")
+    bio["longitude"], bio["latitude"], bio["province_name"], bio["available_gj"] = 112.05, 37.0, "Shanxi", 1.0e9
+    bio.to_csv(paths.inputs_dir / "biomass_supply_curve.csv", index=False)
+    # toy 的氨只有 2050 年一行、离电厂远：两年各放一行，挪到电厂旁边，量足价低。
+    amm = pd.read_csv(paths.inputs_dir / "ammonia_supply_curve.csv")
+    amm = pd.concat([amm.assign(year=2050), amm.assign(year=2060)], ignore_index=True)
+    amm["longitude"], amm["latitude"], amm["province_name"] = 112.05, 37.0, "Shanxi"
+    amm["nh3_supply_kg_per_year"], amm["nh3_cost_lb_usd_per_kg"] = 1.0e10, 0.05
+    amm.to_csv(paths.inputs_dir / "ammonia_supply_curve.csv", index=False)
+    _write_targets(paths, {2030: 1.0, 2040: 1.0, **power_caps})
+    scenario = OptimizationScenario(
+        experiment_id="TEST-BLEND", description="toy", planning_years=(2050, 2060),
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=carbon,
+        electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
+        pathway_disable=pathway_disable,
+        solver_time_limit=300,
+    )
+    assumptions = OptimizationAssumptions(
+        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), hub_decisions_continuous=continuous,
+    )
+    solution = _solve_toy(paths, scenario, assumptions)
+    return scenario, assumptions, prepare_inputs(paths, scenario, assumptions), solution
+
+
+@pytest.fixture(scope="module")
+def ammonia_continuous(tmp_path_factory):
+    """连续 hub、只开放掺氨，电力上限 2050 年 0.75、2060 年 0.6：两年都只改造一部分份额。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    return _solve_blend_toy(tmp_path_factory.mktemp("ammonia"), _ONLY["ammonia"], {2050: 0.75, 2060: 0.6})
+
+
+@pytest.mark.parametrize(
+    ("pathway", "power_caps"), [("beccs", {2050: 0.0, 2060: 0.0}), ("ammonia", {2050: 0.75, 2060: 0.6})],
+)
+def test_one_hot_levels_give_the_ratio_blend_level_to_ratio_reads(tmp_path, pathway, power_caps) -> None:
+    """独热档位（`hub_decisions_continuous=False`）下档位下标是整数，按档位读出的比例与 Σβ·z ÷ 份额相同。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    _, _, _, solution = _solve_blend_toy(tmp_path, _ONLY[pathway], power_caps, continuous=False)
+    level_key, levels = ("blend_level_b", LEVELS_B) if pathway == "beccs" else ("blend_level_a", LEVELS_A)
+    for ys in solution["year_solutions"].values():
+        assert float(ys["share"][0, PATHWAY_INDEX[pathway]]) > 0.0
+        ratios = _blend_ratios(
+            ys["share"], ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
+            biomass_levels=LEVELS_B, ammonia_levels=LEVELS_A,
+        )
+        by_level = blend_level_to_ratio(float(ys[level_key][0]), levels)
+        assert float(ratios[pathway][0]) == pytest.approx(by_level, abs=1e-6)
+
+
+def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeypatch) -> None:
+    """`plot_style.residual_emissions_mt` 有 `*_blend_ratio` 列时按它们算，与求解器的残余排放一致。
+    连续 hub 下档位下标不是整数，没有这几列的旧结果表在 `blend_level_to_ratio` 处报错，不会把 2.9 读成 290%。"""
+    pytest.importorskip("matplotlib", reason="plot_style imports matplotlib")
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    import plot_style
+
+    scenario, _, prepared, solution = ammonia_continuous
+    for year, ys in solution["year_solutions"].items():
+        level = float(ys["blend_level_a"][0])
+        assert abs(level - round(level)) > 1e-3, "前提：档位取份额，下标不是整数"
+        detail = _build_plant_detail_table(
+            prepared, scenario, year, ys["share"], ys["captured_mt_by_plant"], ys["biomass_use_gj"],
+            ys["ammonia_use_kg"], ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"], ys["air_share"],
+            year_data=ys["year_data"], plant_reduction_mt=ys["plant_reduction_mt"],
+            biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
+            ammonia_blend_x_share=ys["ammonia_blend_x_share"],
+        )
+        model_residual = float(np.sum(ys["year_data"].emissions_mt - ys["plant_reduction_mt"]))
+        assert plot_style.residual_emissions_mt(detail, year) == pytest.approx(model_residual, rel=1e-9)
+        without_ratios = detail.drop(columns=["biomass_blend_ratio", "beccs_blend_ratio", "ammonia_blend_ratio"])
+        with pytest.raises(ValueError, match="blend_ratio"):
+            plot_style.residual_emissions_mt(without_ratios, year)
+
+
+def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(tmp_path) -> None:
+    """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）。
+    全部改造路径开放、连续 hub。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    scenario, assumptions, prepared, solution = _solve_blend_toy(
+        tmp_path, ("retire",), {2050: 0.45, 2060: 0.2}, carbon=(300.0, 600.0),
+    )
+    for year, ys in solution["year_solutions"].items():
+        year_data = ys["year_data"]
+        price = float(year_data.carbon_price)
+        table = _build_plant_cost_table(
+            prepared, year, year_data, ys["share"], ys["biomass_use_gj"],
+            plant_reduction_mt=ys["plant_reduction_mt"],
+            retrofit_installed=ys["retrofit_installed"],
+            capex_pathway_indices=solution["capex_pathway_indices"],
+        )
+        plant_carbon = float(table["carbon_cost_cny"].sum())
+        industry = year_data.industry
+        industry_residual = float(
+            (industry.baseline_emissions_mt - (industry.reduction_mt * ys["industry_share"]).sum(axis=1)).sum()
+        )
+        interval = scenario.interval_years(scenario.planning_years, scenario.planning_years.index(year), assumptions)
+        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
+            interval, scenario.discount_rate
+        )
+        assert price > 0.0 and plant_carbon != 0.0
+        assert plant_carbon + price * 1e6 * industry_residual == pytest.approx(
+            ys["cost_breakdown_cny"]["carbon_cost"] / weight, rel=1e-9
+        )
+
+
+def test_ammonia_blend_x_share_is_the_quantity_the_constraints_use(ammonia_continuous) -> None:
+    """掺氨的 Σβ·z 与约束里用的是同一个量：`ammonia_use_kg = G_amm × 热耗 ÷ 氨低热值 × Σβz_amm`；
+    生物质与 BECCS 两列为 0；未截断的比例落在氨的档位之内。"""
+    _, assumptions, _, solution = ammonia_continuous
+    for ys in solution["year_solutions"].values():
+        amm_xs = float(ys["ammonia_blend_x_share"][0])
+        assert amm_xs > 0.0
+        assert float(ys["biomass_blend_x_share"][0]) == pytest.approx(0.0, abs=1e-9)
+        assert float(ys["beccs_blend_x_share"][0]) == pytest.approx(0.0, abs=1e-9)
+        year_data = ys["year_data"]
+        expected_kg = (
+            float(year_data.generation_by_pathway[0, AMM]) * float(year_data.heat_rate_eff[0])
+            / assumptions.nh3_lhv_gj_per_kg * amm_xs
+        )
+        assert float(ys["ammonia_use_kg"][0]) == pytest.approx(expected_kg, rel=1e-6)
+        raw = amm_xs / float(ys["share"][0, AMM])
+        assert min(LEVELS_A) - 1e-6 <= raw <= max(LEVELS_A) + 1e-6
