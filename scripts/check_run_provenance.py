@@ -27,8 +27,16 @@ and answers two questions no figure could previously ask:
 
 Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 
+2026-09-27 起 result.json 带 `resolved` 段（全部参数、求解树、运行选项、`COAL_RETROFIT_*` 环境变量），每组对照
+另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
+`--pair A B` 只核这两次求解，不跑下面写死的 v9 seed 族与对照表；缺一边、任一边没有 `resolved` 段（2026-09-27
+之前落盘，参数与环境变量都核不了）也记 failure。本脚本读自己所在树的 `results/`：`scripts/` 这份读仓库根
+`results/`，`_indtree/scripts/` 这份读 `_indtree/results/`（`ST_` 系的结果在这里）；`--results` 可换目录（只配
+`--pair`）。
+
     python scripts/check_run_provenance.py
     python scripts/check_run_provenance.py --strict   # also fail on unpinned threads
+    python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq
 """
 from __future__ import annotations
 
@@ -36,6 +44,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+import _bootstrap  # noqa: F401  （把仓库根的 src/ 放进 sys.path）
+
+from coal_retrofit.scenarios import diff_resolved
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
@@ -81,9 +93,20 @@ FIELDS = ("fingerprint", "num_vars", "num_constrs", "num_nonzeros",
 
 D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704, 8: 2.847}
 
+# `resolved.env` 记下求解时所有 COAL_RETROFIT_* 环境变量。求解器（optimization/solver.py）的三个开关只看设没设
+# （求解器按非空判断；热启动的 .sol 路径按情景不同）；WRITE_SOL 只决定写不写 .sol，不比；其余（MIPFOCUS、
+# GUROBI_SEED 等）按原值列差，MIPFocus 不同另由下面 solver_quality 的 mip_focus 判 failure。
+ENV_SWITCHES = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_LOG_INCUMBENTS")
+ENV_SKIPPED = ("COAL_RETROFIT_WRITE_SOL",)
+# 两边不一致就不能相减。
+ENV_BLOCKING = {
+    "COAL_RETROFIT_LP_RELAX": "一边解的是 LP 松弛（整数变量改成了连续变量）",
+    "COAL_RETROFIT_START_SOL": "一边热启动、一边没有（实现说明 §9.7：同一族必须同法）",
+}
 
-def load(name):
-    path = RESULTS / f"{name}.json"
+
+def load(name, results=RESULTS):
+    path = results / f"{name}.json"
     if not path.exists():
         return None
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -91,7 +114,37 @@ def load(name):
     out = {key: quality.get(key) for key in FIELDS}
     out["objective"] = payload.get("global_objective_cny")
     out["mip_gap"] = quality.get("mip_gap")
+    out["resolved"] = payload.get("resolved")
     return out
+
+
+def _env_view(resolved):
+    env = resolved.get("env") or {}
+    view = {key: ("已设" if env.get(key) else "未设") for key in ENV_SWITCHES}
+    view.update({key: value for key, value in sorted(env.items())
+                 if key not in ENV_SWITCHES and key not in ENV_SKIPPED})
+    return view
+
+
+def describe_params(label, a, b, failures):
+    """两次求解的参数差与环境变量差（`resolved` 段），LP 松弛或热启动两边不一致记进 *failures*。
+
+    任一边没有 `resolved`（2026-09-27 之前落盘）就说明比不了。
+    """
+    if a.get("resolved") is None or b.get("resolved") is None:
+        return ["    -> 参数差：至少一边没有 resolved 段（2026-09-27 之前落盘），比不了"]
+    diffs = diff_resolved(a["resolved"], b["resolved"])
+    lines = [f"    -> 参数差 {len(diffs)} 项："] if diffs else ["    -> 参数完全相同"]
+    lines += [f"         {key}: {va!r} -> {vb!r}" for key, va, vb in diffs]
+    ea, eb = _env_view(a["resolved"]), _env_view(b["resolved"])
+    env_diffs = [(key, ea.get(key), eb.get(key)) for key in [*ea, *(k for k in eb if k not in ea)]
+                 if ea.get(key) != eb.get(key)]
+    lines.append(f"    -> 环境变量差 {len(env_diffs)} 项：" if env_diffs else "    -> 求解相关的环境变量相同")
+    lines += [f"         {key}: {va!r} -> {vb!r}" for key, va, vb in env_diffs]
+    for key, va, vb in env_diffs:
+        if key in ENV_BLOCKING:
+            failures.append(f"{label}: {key} 两边不同（{va} vs {vb}）-- {ENV_BLOCKING[key]}，这两次求解不能相减")
+    return lines
 
 
 def describe(name, row):
@@ -139,20 +192,32 @@ def check_seed_families(failures, warnings):
                   f"such runs = {1.96 * (2 ** 0.5) * sigma:.4f}%")
 
 
-def check_contrasts(failures, warnings, strict):
+def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RESULTS, require_both=False):
+    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved` 都记 failure；写死的对照表缺一边只记 warning。"""
     print()
     print("=" * 96)
     print("published contrasts -- fingerprints may differ, the thread pin may not")
     print("=" * 96)
-    for label, base, variant in CONTRASTS:
-        a, b = load(base), load(variant)
+    for label, base, variant in contrasts:
+        a, b = load(base, results), load(variant, results)
         print()
         print(f"  {label}")
         print(describe(base, a))
         print(describe(variant, b))
         if a is None or b is None:
-            warnings.append(f"{label}: one side not solved yet")
+            if require_both:
+                missing = "、".join(name for name, row in ((base, a), (variant, b)) if row is None)
+                failures.append(f"{label}: {results} 下没有 {missing} 的结果")
+            else:
+                warnings.append(f"{label}: one side not solved yet")
             continue
+        before = len(failures)
+        for line in describe_params(label, a, b, failures):
+            print(line)
+        unchecked = [name for name, row in ((base, a), (variant, b)) if row["resolved"] is None]
+        if require_both and unchecked:
+            failures.append(f"{label}: {'、'.join(unchecked)} 没有 resolved 段（2026-09-27 之前落盘），"
+                            f"参数与环境变量都核不了，重解后再比")
         if a["fingerprint"] is None or b["fingerprint"] is None:
             warnings.append(f"{label}: at least one side has no provenance, so comparability "
                             f"cannot be checked")
@@ -181,6 +246,8 @@ def check_contrasts(failures, warnings, strict):
             lo = 100.0 * ((b["objective"] * (1 - gb)) - a["objective"]) / a["objective"]
             hi = 100.0 * (b["objective"] - a["objective"] * (1 - ga)) / a["objective"]
             verdict = "SIGN RESOLVED" if lo > 0 or hi < 0 else "inside solver bounds"
+            if len(failures) > before:
+                verdict = "不可相减（见 FAILURES）"
             print(f"    -> effect {point:+.3f}%  certified [{lo:+.3f}, {hi:+.3f}]%  "
                   f"-> {verdict}")
 
@@ -210,11 +277,24 @@ def main():
     parser = argparse.ArgumentParser(description="Check run comparability")
     parser.add_argument("--strict", action="store_true",
                         help="also fail when a compared run left Threads at 0 (auto)")
+    parser.add_argument("--pair", nargs=2, metavar=("A", "B"),
+                        help="只核这两次求解（结果名），不跑写死的 v9 seed 族与对照表；"
+                             "缺一边或没有 resolved 段记 failure")
+    parser.add_argument("--results", type=Path, default=None,
+                        help="--pair 读哪个结果目录（缺省：本脚本所在树的 results/）")
     args = parser.parse_args()
+    if args.results is not None and not args.pair:
+        parser.error("--results 只配 --pair 用")
     failures, warnings = [], []
-    check_seed_families(failures, warnings)
-    check_contrasts(failures, warnings, args.strict)
-    check_legacy(warnings)
+    if args.pair:
+        results = args.results if args.results is not None else RESULTS
+        print(f"结果目录：{results}")
+        check_contrasts(failures, warnings, args.strict, contrasts=[("pair", *args.pair)],
+                        results=results, require_both=True)
+    else:
+        check_seed_families(failures, warnings)
+        check_contrasts(failures, warnings, args.strict)
+        check_legacy(warnings)
     print()
     print("=" * 96)
     if warnings:
