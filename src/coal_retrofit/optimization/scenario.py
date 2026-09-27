@@ -517,7 +517,7 @@ class OptimizationScenario:
     discount_base_year: int = 2025
     # 系统净成本参数
     # 碳价，元/t CO2，2030/2040/2050/2060 年：⚠ 假设（情景设定，无出处），每 10 年加 380 元的直线；模型没有价格指数，
-    # 按不变价用。登记表里只有 `ST_CP_BASE` 用它，另两个 `ST_` 情景置零（`scripts/run_single.py`）。对照（都只见
+    # 按不变价用。登记表里只有 `ST_CP_BASE` 用它，另两个 `ST_` 情景置零（`scenarios/st.toml`）。对照（都只见
     # 检索摘要，未核原文）：ICF 2022 中国碳价调查对 2030 年的预期 130 元/t；C-GEM（张希良等 2022，管理世界 38(1)）
     # 2030 年 100 以上、2060 年 2 700 以上；Zhang & Chen 2022（`zhang2022probabilistic`）2060 年中位数 168-1 096 USD/t。
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)

@@ -86,7 +86,7 @@
 - **v9.1 起主线改为官方指标口径**（`water_budget="official_quota"`，后缀 `_oq` / `_oq_envonly`），
   `wd085` 系只在 v9 老结果里出现；两套不能相减。
 - **2026-09-10 起的 `ST_` 系**：部门碳目标（China TIMES CN60 四类轨迹）+ 煤电利用小时轨迹 + 工业产量指数，
-  注册在 `scripts/run_single.py`，求解树在 `_indtree/`。
+  注册在 `scenarios/st.toml`（2026-09-27 之前在 `scripts/run_single.py`），求解树在 `_indtree/`（写在情景的 `tree` 里）。
 
 > **现状（2026-09-26 起）**：`src/` 只剩官方指标口径，`water_budget` 开关、runoff 口径与
 > `existing_withdrawal_share` 已删除；流域上限的开关是 `OptimizationAssumptions.apply_basin_cap`
@@ -101,7 +101,7 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
 
 `BASE` 为无水约束基准；`SA_*` 为敏感性。
 
-> **现状（2026-09-22 起）**：情景登记表（`scripts/run_single.py` 及 `_indtree` 副本）只剩
+> **现状（2026-09-22 起）**：情景登记表（2026-09-27 起在 `scenarios/st.toml`，此前在 `scripts/run_single.py` 及 `_indtree` 副本）只剩
 > `ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`。上面的 `WA_` / `BASE` / `SA_` / seed 命名属于
 > v9 / v9.1 登记表：两棵旧树的树内 `src/` 已于 892c877 删除，复现要在 `892c877^` 的工作副本里、
 > 对应树下运行；`IND_` 系的旧结果要在 `cf073be` 的副本里重画。
