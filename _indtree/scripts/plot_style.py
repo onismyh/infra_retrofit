@@ -732,7 +732,8 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
 
     plant_detail_year: rows of results/<scenario>/plant_detail.csv for `year`. The table must
     carry the `*_blend_ratio` columns (written since PR #7, 2026-09-26); without them this raises
-    ValueError instead of guessing the blend ratios from the level index.
+    ValueError instead of guessing the blend ratios from the level index. An empty table still
+    returns NaN.
     Mirrors the residual expression in optimization/constraints.py.
     """
     import pandas as pd  # local import to keep module import light
@@ -747,8 +748,9 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
             f"plant_detail 缺少 {', '.join(missing)}：残余排放只按有效掺烧比例（*_blend_ratio）算，"
             "档位下标分不出独热档位与连续 hub（下标恰为整数也可能是几档的混合）。"
             "PR #7（2026-09-26）之前落盘的 ST_ 结果重解后再画（README §0）；"
-            "v9 / v9.1 的独热结果用冻结树 _v9tree/scripts、_v91tree/scripts 里的同名脚本画，"
-            "IND_ 系旧结果在 cf073be 的工作副本里重画（CLAUDE.md §1.5）。"
+            "v9 / v9.1 的独热结果用冻结树 _v9tree/scripts、_v91tree/scripts 里的同名脚本画。"
+            "IND_ 系旧结果也没有这几列，残余排放不要去 cf073be 算：那里的同名函数把非整数下标原样当比例"
+            "（CLAUDE.md §1.5 说的在 cf073be 的副本里重画，只指 IND_ 的图；见 README §0）。"
         )
     assumptions, scenario = _plot_accounting_params()
 

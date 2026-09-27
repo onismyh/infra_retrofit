@@ -4,8 +4,8 @@
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
 路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；`plot_style` 的
 残余排放只认比例列，没有就报错；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
-（只开 BECCS 的生物质用量、独热档位对照、`plot_style` 的残余排放、成本表碳成本与目标函数对拍、掺氨用量）
-需要 Gurobi，其余不依赖。
+（只开 BECCS 的生物质用量、独热档位对照、`plot_style` 残余排放与求解器对拍、成本表碳成本与目标函数对拍、
+掺氨用量）需要 Gurobi，其余不依赖。
 """
 from __future__ import annotations
 
@@ -309,7 +309,8 @@ def test_plot_style_residual_reads_the_ratio_columns(ammonia_continuous, monkeyp
 def test_plot_style_residual_refuses_tables_without_ratio_columns(monkeypatch) -> None:
     """没有 `*_blend_ratio` 列就报错，哪怕档位下标是整数：整数下标可能是独热档位，也可能是连续 hub 下
     几档的混合（`_three_hubs` 的 hub 0：一半第 1 档、一半第 3 档记作 2，实际比例 0.30），表里分不出来。
-    此前的回退分支把它按第 2 档读成 0.25，静默出数。"""
+    此前的回退分支把它按第 2 档读成 0.25，静默出数。
+    补上比例列就按比例算：档位下标不参与，BECCS 读自己的列。"""
     pytest.importorskip("matplotlib", reason="plot_style imports matplotlib")
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     import plot_style
@@ -322,9 +323,17 @@ def test_plot_style_residual_refuses_tables_without_ratio_columns(monkeypatch) -
     }])
     with pytest.raises(ValueError, match="blend_ratio"):
         plot_style.residual_emissions_mt(hub0, 2040)
-    # 补上比例列就按比例算，档位下标不再参与。
-    ratios = {"biomass_blend_ratio": 0.30, "beccs_blend_ratio": 0.0, "ammonia_blend_ratio": 0.0}
-    assert np.isfinite(plot_style.residual_emissions_mt(hub0.assign(**ratios), 2040))
+    with_ratios = hub0.assign(biomass_blend_ratio=0.30, beccs_blend_ratio=0.0, ammonia_blend_ratio=0.0)
+    value = plot_style.residual_emissions_mt(with_ratios, 2040)
+    # 档位下标不参与：换下标结果不变；按实际比例 0.30 算，比按第 2 档读成 0.25 排得少。
+    assert plot_style.residual_emissions_mt(with_ratios.assign(biomass_blend_level=4.0), 2040) == value
+    assert value < plot_style.residual_emissions_mt(with_ratios.assign(biomass_blend_ratio=0.25), 2040)
+    # BECCS 读自己的比例列（比例高的排得少），不读生物质的（此前的回退分支令 BECCS 与生物质同比例）。
+    beccs = with_ratios.assign(share_biomass=0.0, share_beccs=1.0,
+                               biomass_blend_ratio=0.75, beccs_blend_ratio=0.30)
+    residual = plot_style.residual_emissions_mt(beccs, 2040)
+    assert residual < plot_style.residual_emissions_mt(beccs.assign(beccs_blend_ratio=0.10), 2040)
+    assert residual == plot_style.residual_emissions_mt(beccs.assign(biomass_blend_ratio=0.0), 2040)
 
 
 def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(tmp_path) -> None:
