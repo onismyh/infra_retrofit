@@ -140,8 +140,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             energy_penalty_matrix=zeros_path, ccs_om_matrix=zeros_path, stranded_per_plant=np.zeros(n),
         ))
         return _build_plant_cost_table(
-            _prepared(n), SCENARIO, OptimizationAssumptions(), 2040, year_data, share,
-            np.zeros(n), np.zeros(n), np.zeros(n),
+            _prepared(n), 2040, year_data, share, np.zeros(n),
             # 第 2 个 hub 的减排为负：惩罚燃料使排放高于基线，碳成本随之高于基线排放的碳价。
             plant_reduction_mt=np.array([7.5, -0.2]),
             retrofit_installed=np.zeros((n, 1)), capex_pathway_indices=(PATHWAY_INDEX["ccs"],),

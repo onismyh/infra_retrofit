@@ -6,7 +6,7 @@ import pandas as pd
 
 from ._shared import PATHWAY_INDEX, PreparedInputs
 from .emissions import reduction_fraction
-from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from .scenario import PATHWAYS, OptimizationScenario
 from .year_types import YearData
 
 # 路径份额不超过它时，有效掺烧比例记 0：份额在求解器可行性容差（1e-6）量级时，Σβ·z / 份额只是噪声。
@@ -220,14 +220,10 @@ def _build_plant_detail_table(
 
 def _build_plant_cost_table(
     prepared: PreparedInputs,
-    scenario: OptimizationScenario,
-    assumptions: OptimizationAssumptions,
     year: int,
     year_data: YearData,
     share_values: np.ndarray,
-    captured_mt: np.ndarray,
     biomass_use_gj: np.ndarray,
-    water_use_m3: np.ndarray,
     prev_share_values: np.ndarray | None = None,
     *,
     plant_reduction_mt: np.ndarray,
