@@ -45,8 +45,6 @@ def _build_edge_table(
     edges["new_capacity_mtpa"] = new_cap_mtpa
     edges["total_capacity_mtpa"] = edges["available_stock_before_mtpa"] + edges["new_capacity_mtpa"]
     edges["edge_active"] = ((edges["edge_flow_mtpa"] > 1e-6) | (edges["new_capacity_mtpa"] > 1e-6)).astype(int)
-    edges["num_pipe_new"] = edges["new_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
-    edges["num_pipe_stock"] = edges["total_capacity_mtpa"] / assumptions.standard_pipe_capacity_mtpa
     # 本年按管径档铺设的整根管数，例如 "2x2|1x20"——即实际建成的内容。
     counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
     edges["pipes_new_by_tier"] = [
@@ -71,8 +69,6 @@ def _build_edge_table(
             "edge_flow_mtpa",
             "new_capacity_mtpa",
             "total_capacity_mtpa",
-            "num_pipe_new",
-            "num_pipe_stock",
             "pipes_new_by_tier",
         ]
     ]
