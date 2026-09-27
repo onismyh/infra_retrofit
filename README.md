@@ -54,6 +54,16 @@
 > `IND_` 系旧结果也没有这几列，残余排放不要去 `cf073be` 算：它们 2026-09-12 重解时 hub 决策缺省已是连续的（`7a5fc94`，
 > 登记表没有覆盖），而 `cf073be` 的同名函数把非整数下标原样当比例。CLAUDE.md §1.5 说的在 `cf073be` 的副本里重画，
 > 只指它们的图（`plot_ind_*` 不读档位列）。
+> 2026-09-27 起情景登记在仓库根 `scenarios/*.toml`（`ST_` 系在 `scenarios/st.toml`，格式见 `src/coal_retrofit/scenarios.py`），
+> 入口是 `python -m coal_retrofit`（`list` / `show` / `diff` / `run`，要先 `pip install -e .`），求解与写结果在
+> `src/coal_retrofit/runner.py`。`scripts/run_single.py` 与 `_indtree/scripts/run_single.py` 留作薄壳，原命令照用，
+> `from run_single import EXPERIMENTS` 照旧读得到登记表。求解树写在情景里（`ST_` 系是 `tree = "_indtree"`），
+> 从哪个目录启动都读同一套输入，树下没有 `inputs/` 就报错，`--tree` 可换树。`run --set 节.字段=值` 必须配 `--as 结果名`，
+> 结果名不许与登记情景同名（不分大小写）。result.json 末尾新增 `resolved` 段（全部参数、求解树、`--set` 覆盖项、运行选项与
+> `COAL_RETROFIT_*` 环境变量），其余键不变；`python _indtree/scripts/check_run_provenance.py --pair A B` 列出两次求解的
+> 参数差与环境变量差。缺一边、有一边没有 `resolved` 段（2026-09-27 之前落盘）、一边是 LP 松弛或热启动而另一边不是，
+> 都判不过（退出码 1）。脚本读自己所在树的 `results/`（仓库根那份读仓库根 `results/`），`--results` 可换目录（只配 `--pair`）。
+> 模型、参数缺省值与结果表都不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

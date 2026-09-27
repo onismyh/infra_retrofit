@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Python 3.11+ `src`-layout project. Reusable code lives in `src/coal_retrofit/`: `builders/` prepares model inputs, and `optimization/` contains the Gurobi model and its result tables. Scenarios are registered in `scripts/run_single.py`; the copy in `_indtree/scripts/` reads `_indtree/inputs/` and writes `_indtree/results/`. Keep `scripts/` as thin command-line orchestration. Tests belong in `tests/`. Treat `data/` as raw source material, `inputs/` as normalized model inputs, and `results/` or `outputs/` as generated artifacts. Research notes and reference material live in `plan/`, root-level Markdown files, and `reference/`.
+This is a Python 3.11+ `src`-layout project. Reusable code lives in `src/coal_retrofit/`: `builders/` prepares model inputs, `optimization/` contains the Gurobi model and its result tables, and `runner.py` solves a registered scenario and writes its results. Scenarios are registered in `scenarios/*.toml` (parsed by `scenarios.py`); each names its solve tree, e.g. `tree = "_indtree"` reads `_indtree/inputs/` and writes `_indtree/results/`. The entry point is `python -m coal_retrofit` (`list`, `show`, `diff`, `run`); `scripts/run_single.py` and its copy in `_indtree/scripts/` are thin wrappers kept for the old commands. Keep `scripts/` as thin command-line orchestration. Tests belong in `tests/`. Treat `data/` as raw source material, `inputs/` as normalized model inputs, and `results/` or `outputs/` as generated artifacts. Research notes and reference material live in `plan/`, root-level Markdown files, and `reference/`.
 
 ## Build, Test, and Development Commands
 
@@ -11,11 +11,10 @@ Run commands from the repository root in PowerShell:
 ```powershell
 python -m pip install -e . pytest
 python -m pytest
-cd _indtree
-python scripts/run_single.py --list
+python -m coal_retrofit list
 ```
 
-The first command installs the package in editable mode with the test runner. The `scripts/build_*.py` scripts regenerate standardized inputs from raw data. Solves require a working Gurobi installation and license; `ST_` scenarios are solved in `_indtree/` with 8 threads and the LP-relaxation warm start described in `_indtree/README.md` (see `.claude/CLAUDE.md` §二).
+The first command installs the package in editable mode with the test runner; `python -m coal_retrofit` needs this install, because it reads the registry from `scenarios/` in the checkout the package is installed from. The `scripts/build_*.py` scripts regenerate standardized inputs from raw data. Solves require a working Gurobi installation and license; `ST_` scenarios are solved in `_indtree/` with 8 threads and the LP-relaxation warm start described in `_indtree/README.md` (see `.claude/CLAUDE.md` §二). Before differencing the results of two scenarios, `python -m coal_retrofit diff A B` lists every parameter in which they differ; `python _indtree/scripts/check_run_provenance.py --pair A B` does the same for two saved results; it fails if either result is missing or was saved before 2026-09-27 (no `resolved` section), or if one side was an LP relaxation or warm-started and the other was not. Each copy of that script reads its own tree's `results/` (the root copy reads the root `results/`); with `--pair`, `--results DIR` points it elsewhere.
 
 ## Coding Style & Naming Conventions
 
