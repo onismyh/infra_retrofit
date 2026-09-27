@@ -18,26 +18,31 @@ def _blend_ratios(
     biomass_blend_x_share: np.ndarray,
     beccs_blend_x_share: np.ndarray,
     ammonia_blend_x_share: np.ndarray,
+    *,
+    biomass_levels: tuple[float, ...],
+    ammonia_levels: tuple[float, ...],
 ) -> dict[str, np.ndarray]:
     """逐厂有效掺烧比例 = Σβ_l·z_l / 路径份额，键 biomass、beccs、ammonia。
 
     连续 hub 下 `select_*` 是份额，一个 hub 可以把不同份额改造到不同档位；`blend_level = Σ l·select`
     只是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是几档的混合（一半第 1 档、
     一半第 3 档记作 2）。模型的减排、燃料用量与惩罚都按 Σβ_l·z_l 计（`constraints._add_blend_level_constraints`），
-    这里除以同一条路径的份额。生物质与 BECCS 共用档位容量，但各自的 z 不同，比例分开算。
+    这里除以同一条路径的份额。生物质与 BECCS 共用档位容量与生物质档位表，但各自的 z 不同，比例分开算。
+    结果截到 [0, 最高档]：份额只比 `_SHARE_EPS` 略大时，分子分母都在求解器容差量级，商可能越出档位范围。
     """
     shares = np.asarray(share_values, dtype=np.float64)
     out: dict[str, np.ndarray] = {}
-    for pathway, blend_x_share in (
-        ("biomass", biomass_blend_x_share),
-        ("beccs", beccs_blend_x_share),
-        ("ammonia", ammonia_blend_x_share),
+    for pathway, blend_x_share, levels in (
+        ("biomass", biomass_blend_x_share, biomass_levels),
+        ("beccs", beccs_blend_x_share, biomass_levels),
+        ("ammonia", ammonia_blend_x_share, ammonia_levels),
     ):
         share = shares[:, PATHWAY_INDEX[pathway]]
-        out[pathway] = np.divide(
+        ratio = np.divide(
             np.asarray(blend_x_share, dtype=np.float64), share,
             out=np.zeros(len(share)), where=share > _SHARE_EPS,
         )
+        out[pathway] = np.clip(ratio, 0.0, max(levels))
     return out
 
 
@@ -65,7 +70,10 @@ def _build_pathway_table(
     rows: list[dict[str, object]] = []
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
-    ratios = _blend_ratios(share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share)
+    ratios = _blend_ratios(
+        share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share,
+        biomass_levels=scenario.biomass_blend_levels, ammonia_levels=scenario.ammonia_blend_levels,
+    )
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
         baseline_emissions_mt = float(em_year[plant_idx])
         # 求解器给出的实际捕集量
@@ -155,7 +163,10 @@ def _build_plant_detail_table(
     plants = prepared.plants
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
-    ratios = _blend_ratios(share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share)
+    ratios = _blend_ratios(
+        share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share,
+        biomass_levels=scenario.biomass_blend_levels, ammonia_levels=scenario.ammonia_blend_levels,
+    )
 
     # 预先计算各厂经管网边到封存汇的最小距离
     plant_to_min_storage_km: dict[str, float] = {}

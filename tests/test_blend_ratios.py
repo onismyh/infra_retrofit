@@ -27,6 +27,7 @@ from coal_retrofit.optimization.year_types import YearData
 
 SCENARIO = OptimizationScenario(experiment_id="T", description="toy")
 LEVELS_B = SCENARIO.biomass_blend_levels  # (0.10, 0.25, 0.50, 0.75, 1.00)
+LEVELS_A = SCENARIO.ammonia_blend_levels  # (0.10, 0.20, 0.30, 0.40, 0.50)
 BIO, BECCS, AMM = PATHWAY_INDEX["biomass"], PATHWAY_INDEX["beccs"], PATHWAY_INDEX["ammonia"]
 
 
@@ -66,14 +67,20 @@ def _prepared(n: int) -> PreparedInputs:
 
 def test_effective_ratio_is_sum_beta_z_over_the_pathway_share() -> None:
     hubs = _three_hubs()
-    ratios = _blend_ratios(hubs["share"], hubs["bio_xs"], hubs["beccs_xs"], hubs["amm_xs"])
+    levels = {"biomass_levels": LEVELS_B, "ammonia_levels": LEVELS_A}
+    ratios = _blend_ratios(hubs["share"], hubs["bio_xs"], hubs["beccs_xs"], hubs["amm_xs"], **levels)
     np.testing.assert_allclose(ratios["biomass"], [0.30, 0.75, 0.0], rtol=1e-12)
     np.testing.assert_allclose(ratios["beccs"], [0.0, 0.25, 0.0], rtol=1e-12)
     np.testing.assert_allclose(ratios["ammonia"], [0.0, 0.0, 0.50], rtol=1e-12)
     # 份额为零（或在可行性容差之内）的路径记 0，不做 0/0。
     tiny = np.zeros((1, len(PATHWAYS)))
     tiny[0, BIO] = 5e-7
-    assert _blend_ratios(tiny, np.array([5e-7]), np.zeros(1), np.zeros(1))["biomass"][0] == 0.0
+    assert _blend_ratios(tiny, np.array([5e-7]), np.zeros(1), np.zeros(1), **levels)["biomass"][0] == 0.0
+    # 份额只比容差略大时商是噪声，可能越出档位范围：截到 [0, 最高档]，BECCS 用生物质的档位表。
+    near = np.zeros((1, len(PATHWAYS)))
+    near[0, BIO] = near[0, BECCS] = near[0, AMM] = 2e-6
+    clipped = _blend_ratios(near, np.array([5e-6]), np.array([-1e-7]), np.array([5e-6]), **levels)
+    assert (clipped["biomass"][0], clipped["beccs"][0], clipped["ammonia"][0]) == (max(LEVELS_B), 0.0, max(LEVELS_A))
 
 
 def test_blend_level_to_ratio_reads_integer_levels_only() -> None:
@@ -183,7 +190,11 @@ def test_solved_blend_x_share_is_the_quantity_the_constraints_use(tmp_path) -> N
     gen = y50["year_data"].generation_by_pathway[0]
     expected_gj = float(y50["year_data"].heat_rate_eff[0]) * (gen[BIO] * bio_xs + gen[BECCS] * beccs_xs)
     assert float(y50["biomass_use_gj"][0]) == pytest.approx(expected_gj, rel=1e-6)
+    # 用未截断的商核对：落在档位之内要靠约束本身，不靠 `_blend_ratios` 的截断。
+    raw = beccs_xs / float(y50["share"][0, BECCS])
+    assert min(LEVELS_B) - 1e-6 <= raw <= max(LEVELS_B) + 1e-6
     ratios = _blend_ratios(
         y50["share"], y50["biomass_blend_x_share"], y50["beccs_blend_x_share"], y50["ammonia_blend_x_share"],
+        biomass_levels=LEVELS_B, ammonia_levels=LEVELS_A,
     )
-    assert min(LEVELS_B) - 1e-6 <= float(ratios["beccs"][0]) <= max(LEVELS_B) + 1e-6
+    assert float(ratios["beccs"][0]) == pytest.approx(raw, abs=1e-6)
