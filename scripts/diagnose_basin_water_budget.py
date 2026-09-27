@@ -6,24 +6,24 @@ zones==0 是流域外（含海洋），必须排除。
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import netCDF4
 import numpy as np
 
-ROOT = Path(r"D:\000. Paper work\煤电改造claude")
-sys.path.insert(0, str(ROOT / "src"))
+from _bootstrap import SRC
 
-from coal_retrofit.builders.water import (  # noqa: E402
+from coal_retrofit.builders.water import (
     SECONDS_PER_YEAR, WATER_WINDOW_BASIS, _basin_zone_grid, _cell_area_m2, _clean_series,
     _nc_path, basin_bias_factors,
 )
-from coal_retrofit.constants import (  # noqa: E402
+from coal_retrofit.constants import (
     OFFICIAL_BASIN_WATER_1E8_M3, WATER_EXTRACTABLE_FRACTION,
 )
-from coal_retrofit.paths import ProjectPaths  # noqa: E402
+from coal_retrofit.paths import ProjectPaths
 
+# 仓库根。只读 data/ 下的流域多边形与 ISIMIP 文件、不读 inputs/；求解树没有 data/，两份副本都指向这里。
+ROOT = SRC.parent
 NAMES = {"A": "东北诸河", "C": "海河", "D": "黄河", "E": "淮河", "F": "长江",
          "G": "东南诸河", "H": "珠江", "J": "西南诸河", "K": "西北诸河"}
 W = ROOT / "data" / "water"

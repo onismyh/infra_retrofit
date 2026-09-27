@@ -46,6 +46,7 @@ Output index (production, Mt product):
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -55,7 +56,11 @@ from _bootstrap import ROOT
 
 logger = logging.getLogger(__name__)
 
-TIMES_XLSX = Path(r"D:\6. Transfer\China-TIMES2.0\China-TIMES-V2.0\Exported_files\CN60-noTS.xlsx")
+# Not in the repo: defaults to the author's machine; set COAL_RETROFIT_TIMES_XLSX elsewhere.
+TIMES_XLSX = Path(os.environ.get(
+    "COAL_RETROFIT_TIMES_XLSX",
+    r"D:\6. Transfer\China-TIMES2.0\China-TIMES-V2.0\Exported_files\CN60-noTS.xlsx",
+))
 PLANNING_YEARS = (2030, 2040, 2050, 2060)
 BASE_YEAR = 2030
 SOURCE_TAG = "times_cn60"
