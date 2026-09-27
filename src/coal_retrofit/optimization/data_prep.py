@@ -15,6 +15,7 @@ from ._shared import PreparedInputs
 from .network import build_runtime_network
 from .resource_access import _haversine_distances_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
+from .solver_provenance import _input_digest
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +369,6 @@ def prepare_inputs(
         industry=industry,
         sector_targets=sector_targets,
         industry_h2_links=industry_h2_links,
-        inputs_dir=paths.inputs_dir,
-        input_files=_input_files(paths, scenario),
+        input_digest=_input_digest(paths.inputs_dir, _input_files(paths, scenario)),
     )
 

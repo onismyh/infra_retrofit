@@ -26,7 +26,7 @@ def _scale_optional_cost(value: float | int | str | None) -> float | None:
 
 
 def _solver_quality(
-    model, status: str, inputs_dir: Path, input_files: Mapping[str, Path]
+    model, status: str, input_digest: Mapping[str, str | None]
 ) -> dict[str, float | int | str | None]:
     """目标值、界、gap、耗时，外加 `_run_provenance` 的溯源字段。"""
     objective = _model_obj_value(model, default=float("nan"))
@@ -43,20 +43,21 @@ def _solver_quality(
         "runtime_seconds": _optional_model_attr(model, "Runtime"),
         "node_count": _optional_model_attr(model, "NodeCount"),
         "solution_count": sol_count_out,
-        **_run_provenance(model, inputs_dir, input_files),
+        **_run_provenance(model, input_digest),
     }
 
 
 def _input_digest(inputs_dir: Path, input_files: Mapping[str, Path]) -> dict[str, str | None]:
     """本次求解实际读取的文件的 SHA-256 前缀（键 `digest_<逻辑名>`），外加输入目录。
 
-    列名与形状已由指纹覆盖，这里补数值的变化。清单是 `PreparedInputs.input_files`
-    （`data_prep._input_files`），条件与读取处一致：没读的文件不记（无水约束时没有
-    `digest_water_basin_caps`），读了的都记，包括 `data/` 下的流域多边形。仓库根 `inputs/`
-    （v7 管网）与求解树 `_indtree/inputs/`（2026-09-12 重建的 v9.2 管网）至少在管网节点、候选边
-    与封存汇这几张表上不同（CLAUDE.md §二.6）。
+    列名与形状已由指纹覆盖，这里补数值的变化。清单是 `data_prep._input_files`，条件与读取处一致：
+    没读的文件不记（无水约束时没有 `digest_water_basin_caps`），读了的都记，包括 `data/` 下的
+    流域多边形。仓库根 `inputs/`（v7 管网）与求解树 `_indtree/inputs/`（2026-09-12 重建的 v9.2 管网）
+    至少在管网节点、候选边与封存汇这几张表上不同（CLAUDE.md §二.6）。
     路径来自 `prepare_inputs` 真正读的目录；此前按源码位置推仓库根，求解树里的运行会记下
     仓库根文件的摘要。`input_dir` 在仓库内时记相对路径（如 `_indtree/inputs`）。
+    由 `prepare_inputs` 在读完文件时调用，存进 `PreparedInputs.input_digest`。此前在求解结束后才算，
+    求解期间改写过的文件会被记成这次读到的。
     """
     repo_root = Path(__file__).resolve().parents[3]
     inputs = Path(inputs_dir).resolve()
@@ -74,13 +75,14 @@ def _input_digest(inputs_dir: Path, input_files: Mapping[str, Path]) -> dict[str
 
 
 def _run_provenance(
-    model, inputs_dir: Path, input_files: Mapping[str, Path]
+    model, input_digest: Mapping[str, str | None]
 ) -> dict[str, float | int | str | None]:
     """标识模型与求解，使两个结果可判断是否可比。
 
     Gurobi 只在 (模型, 参数, 线程数) 三者不变时确定性可复现：`fingerprint` 是模型哈希，
     只换种子的两次求解必须一致；`threads_param` 为 0 表示自动，不算固定；`mip_focus`
-    属于参数元组，要相减的两次求解必须相同；输入数值的改动指纹看不到，由 `_input_digest` 补。
+    属于参数元组，要相减的两次求解必须相同；输入数值的改动指纹看不到，由 `_input_digest` 补
+    （`prepare_inputs` 读完文件时算好，这里照抄 `input_digest`）。
 
     `mip_focus` 与 `threads_param` 一样读回模型上实际生效的值：`_new_gurobi_model` 缺省设 1，
     `COAL_RETROFIT_MIPFOCUS` 可覆盖。较早的记录读的是环境变量，未设时记 0，而实际生效的是 1。
@@ -108,6 +110,6 @@ def _run_provenance(
         "threads_pinned": bool(threads_out),
         "seed": int(seed_env) if seed_env else 0,
         "mip_focus": mip_focus_out,
-        **_input_digest(inputs_dir, input_files),
+        **input_digest,
         "host_cpu_count": os.cpu_count(),
     }

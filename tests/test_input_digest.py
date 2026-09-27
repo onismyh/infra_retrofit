@@ -1,13 +1,16 @@
-"""溯源记录：输入摘要只摘本情景实际读取的文件、按实际读取的目录计算；mip_focus 读回模型上的实际值。"""
+"""溯源记录：输入摘要只摘本情景实际读取的文件、按实际读取的目录、在读完文件时计算；
+mip_focus 读回模型上的实际值。"""
 from __future__ import annotations
 
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 from shapely.geometry import box
 
+from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.data_prep import _input_files, prepare_inputs
 from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.solver_provenance import _input_digest, _run_provenance
@@ -95,7 +98,45 @@ def test_digest_covers_the_files_that_were_read(tmp_path) -> None:
     assert _input_digest(paths_a.inputs_dir, _input_files(paths_a, scenario))["digest_storage_hubs"] is None
 
 
-def test_mip_focus_is_read_back_from_the_model(tmp_path, monkeypatch) -> None:
+def _rewrite_plants(paths) -> None:
+    """改一个数，模拟求解期间有人重建了输入。"""
+    plants = pd.read_csv(paths.inputs_dir / "plants.csv")
+    plants["total_capacity_mw"] = plants["total_capacity_mw"].astype(float) * 2.0
+    plants.to_csv(paths.inputs_dir / "plants.csv", index=False)
+
+
+def test_digest_is_taken_when_prepare_inputs_reads(tmp_path) -> None:
+    """摘要在 `prepare_inputs` 读完文件时算好，之后改写输入不影响已记下的值。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    scenario = _scenario()
+    prepared = prepare_inputs(paths, scenario, _toy_assumptions())
+    at_read = _input_digest(paths.inputs_dir, _input_files(paths, scenario))
+    assert prepared.input_digest == at_read
+    _rewrite_plants(paths)
+    assert _input_digest(paths.inputs_dir, _input_files(paths, scenario))["digest_plants"] != at_read["digest_plants"]
+    assert prepared.input_digest == at_read
+
+
+def test_solver_records_the_digest_taken_at_read_time(tmp_path) -> None:
+    """求解结果的溯源照抄 `PreparedInputs.input_digest`，不在求解结束后重算：读完输入后改写的文件不算数。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    from coal_retrofit.optimization.solver import _solve_joint_multi_period
+
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    scenario = _scenario(solver_time_limit=60)
+    assumptions = _toy_assumptions()
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    _rewrite_plants(paths)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
+    )
+    quality = _solve_joint_multi_period(prepared, scenario, assumptions, YEARS, state)["solver_quality"]
+    assert {k: quality[k] for k in prepared.input_digest} == prepared.input_digest
+    assert quality["digest_plants"] != _input_digest(paths.inputs_dir, _input_files(paths, scenario))["digest_plants"]
+
+
+def test_mip_focus_is_read_back_from_the_model(monkeypatch) -> None:
     """溯源记模型上实际生效的 MIPFocus：未设环境变量时是 `_new_gurobi_model` 的缺省 1，不是 0。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     from coal_retrofit.optimization._shared import _new_gurobi_model
@@ -103,8 +144,8 @@ def test_mip_focus_is_read_back_from_the_model(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("COAL_RETROFIT_MIPFOCUS", raising=False)
     model = _new_gurobi_model("provenance")
     try:
-        assert _run_provenance(model, tmp_path, {})["mip_focus"] == 1
+        assert _run_provenance(model, {})["mip_focus"] == 1
         model.Params.MIPFocus = 2
-        assert _run_provenance(model, tmp_path, {})["mip_focus"] == 2
+        assert _run_provenance(model, {})["mip_focus"] == 2
     finally:
         model.dispose()
