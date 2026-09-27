@@ -26,7 +26,11 @@ def _add_vector_upper_bound(model, lhs, rhs, length: int, name: str) -> None:
 
 
 def _add_mccormick_product(model, share_var, binary_var, name: str):
-    """线性化 z = share_var * binary_var，其中 binary 取值 {0,1}，share 取值 [0,1]。"""
+    """线性化 z = share_var * binary_var，其中 binary 取值 {0,1}，share 取值 [0,1]。
+
+    连续 hub 下 binary 是改造到该档位的容量份额，z 是路径份额里落在该档位的部分，不等于两者之积：
+    这三条只给上下界，怎样分摊由调用方的 `Σ_l z = share` 等约束决定。
+    """
     z = model.addVar(lb=0.0, ub=1.0, name=name)
     model.addConstr(z <= share_var,                      name=f"{name}_u1")
     model.addConstr(z <= binary_var,                     name=f"{name}_u2")
@@ -233,10 +237,12 @@ def _add_blend_level_constraints(
             )
             beccs_penalty_captured += beta_b * beccs_pen_cap_coeff * G_beccs * z_beccs
 
-        # 一条路径的份额在各档位间至多分摊一次（多个档位份额为正时，
-        # 减排量不会被重复计算）。
-        model.addConstr(gp.quicksum(z_bio_all) <= s_bio, name=f"zsum_bio_{p}{sfx}")
-        model.addConstr(gp.quicksum(z_beccs_all) <= s_beccs, name=f"zsum_beccs_{p}{sfx}")
+        # 一条路径的份额恰好分摊到各档位上。上界：多个档位份额为正时，减排量不会被重复计算；
+        # 下界：份额为正就至少按最低档掺烧。独热档位下 McCormick 精确，等式自动成立；连续 hub 下
+        # McCormick 只是松弛，2026-09-27 前这里是 `<=`，份额可以有一部分不落在任何档位上
+        # （BECCS 不掺生物质就是 CCS；"生物质"份额不烧生物质，也能拿改造路径的 CF 提升）。
+        model.addConstr(gp.quicksum(z_bio_all) == s_bio, name=f"zsum_bio_{p}{sfx}")
+        model.addConstr(gp.quicksum(z_beccs_all) == s_beccs, name=f"zsum_beccs_{p}{sfx}")
         model.addConstr(biomass_use_gj[p] == bio_use_expr, name=f"bu_{p}{sfx}")
 
         amm_use_expr = gp.LinExpr()
@@ -252,7 +258,8 @@ def _add_blend_level_constraints(
             amm_red  += E_rt * beta_a * z_amm
             amm_bxs += beta_a * z_amm
 
-        model.addConstr(gp.quicksum(z_amm_all) <= s_amm, name=f"zsum_amm_{p}{sfx}")
+        # 同生物质：份额恰好分摊到各档位上。
+        model.addConstr(gp.quicksum(z_amm_all) == s_amm, name=f"zsum_amm_{p}{sfx}")
         model.addConstr(ammonia_use_kg[p] == amm_use_expr, name=f"au_{p}{sfx}")
 
         bio_red_exprs.append(bio_red)

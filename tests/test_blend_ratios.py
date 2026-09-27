@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -216,9 +217,10 @@ _ONLY = {
 }
 
 
-def _solve_blend_toy(root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0)):
+def _solve_blend_toy(root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None):
     """求解 2050、2060 两年的 toy，生物质与氨的供给挪到电厂旁边且充足。
 
+    `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`mip_gap` 缺省用情景的缺省值。
     返回 (scenario, assumptions, prepared, solution)；`prepared` 供结果表函数用。
     """
     from test_capex_stock_and_lifetimes import _solve_toy
@@ -243,9 +245,15 @@ def _solve_blend_toy(root, pathway_disable, power_caps, *, continuous=True, carb
         pathway_disable=pathway_disable,
         solver_time_limit=300,
     )
+    if mip_gap is not None:
+        scenario = replace(scenario, mip_gap=mip_gap)
     assumptions = OptimizationAssumptions(
         storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), hub_decisions_continuous=continuous,
     )
+    if coal is not None:
+        assumptions = replace(
+            assumptions, province_coal_cost_cny_per_gj={**assumptions.province_coal_cost_cny_per_gj, "Shanxi": coal},
+        )
     solution = _solve_toy(paths, scenario, assumptions)
     return scenario, assumptions, prepare_inputs(paths, scenario, assumptions), solution
 
