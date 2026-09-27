@@ -1,6 +1,7 @@
 """情景登记表（`coal_retrofit.scenarios`）与命令行（`coal_retrofit.cli`）：不求解，不需要 Gurobi。"""
 from __future__ import annotations
 
+import filecmp
 import importlib.util
 import sys
 from dataclasses import asdict
@@ -158,6 +159,28 @@ def test_parse_set_reads_toml_values_and_bare_strings() -> None:
             parse_set(broken)
 
 
+def test_dict_fields_are_replaced_whole(tmp_path) -> None:
+    """字典型字段整张替换，不按键合并：子情景、`--set` 只写一个省，别的省不从父情景或缺省继承。"""
+    text = """
+[P]
+abstract = true
+tree = "t"
+
+[P.assumptions]
+province_coal_cost_cny_per_gj = {Anhui = 40.0, Beijing = 38.6}
+
+[C]
+extends = "P"
+
+[C.assumptions]
+province_coal_cost_cny_per_gj = {Anhui = 45.0}
+"""
+    spec = load_registry(_registry_dir(tmp_path, text)).get("C")
+    assert spec.assumptions == {"province_coal_cost_cny_per_gj": {"Anhui": 45.0}}
+    new, _ = apply_sets(spec, ["assumptions.province_coal_cost_cny_per_gj={Beijing = 50}"])
+    assert build_parameters(new, "C")[1].province_coal_cost_cny_per_gj == {"Beijing": 50.0}
+
+
 def test_apply_sets_later_wins_and_records_what_was_applied(tmp_path) -> None:
     spec = load_registry(_registry_dir(tmp_path, FAMILY)).get("CHILD")
     new, applied = apply_sets(spec, ["scenario.mip_gap=0.05", "assumptions.apply_basin_cap=true",
@@ -248,3 +271,7 @@ def test_run_single_wrapper(monkeypatch, capsys, directory: Path) -> None:
     capsys.readouterr()
     assert module.main(["--list"]) == 0 and len(calls) == 3
     assert capsys.readouterr().out.splitlines() == list(module.EXPERIMENTS)  # 原格式：每行一个名字
+
+
+def test_two_run_single_copies_are_identical() -> None:
+    assert filecmp.cmp(REPO / "scripts" / "run_single.py", REPO / "_indtree" / "scripts" / "run_single.py", shallow=False)

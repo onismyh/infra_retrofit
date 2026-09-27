@@ -41,7 +41,7 @@ _SECTIONS: dict[str, type] = {"scenario": OptimizationScenario, "assumptions": O
 _HINTS: dict[str, dict[str, Any]] = {name: typing.get_type_hints(cls) for name, cls in _SECTIONS.items()}
 _ENTRY_KEYS = ("extends", "abstract", "tree", "note", *_SECTIONS)
 NAME_RE = re.compile(r"(?!.*(?i:\.json)$)[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?")
-NAME_RULE = "只许字母、数字、_ . -，以字母或数字开头，不以 . 或 .json 结尾"
+NAME_RULE = "只许字母、数字、_ . -，以字母或数字开头，不以 . 或 .json（不分大小写）结尾"
 
 # 由运行器按结果名与命令行给出的字段；写进登记表会被静默改掉，所以直接拒绝。
 RESERVED_FIELDS: dict[str, str] = {

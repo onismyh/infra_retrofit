@@ -217,7 +217,8 @@ COAL_RETROFIT_START_SOL=$S COAL_RETROFIT_LOG_INCUMBENTS=1 python -m coal_retrofi
 要先 `pip install -e .`；没装时 `python scripts/run_single.py ST_BASE --threads 8` 等价，参数相同。
 两次求解相减之前，在仓库根跑 `python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
 列出两边的参数差与环境变量差（热启动只看设没设，`WRITE_SOL` 不比）。缺一边、有一边没有 `resolved` 段（2026-09-27
-之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是，都判不过（退出码 1）。
+之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛（热启动第 1 步的解）、
+有一边没有可用的解（目标函数为 NaN），都判不过（退出码 1）。
 这份脚本和本树 `scripts/` 下的出图脚本一样读本树 `results/`；仓库根 `scripts/` 那份读仓库根 `results/`。
 
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |

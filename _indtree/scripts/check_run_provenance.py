@@ -30,9 +30,9 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 2026-09-27 起 result.json 带 `resolved` 段（全部参数、求解树、运行选项、`COAL_RETROFIT_*` 环境变量），每组对照
 另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
 `--pair A B` 只核这两次求解，不跑下面写死的 v9 seed 族与对照表；缺一边、任一边没有 `resolved` 段（2026-09-27
-之前落盘，参数与环境变量都核不了）也记 failure。本脚本读自己所在树的 `results/`：`scripts/` 这份读仓库根
-`results/`，`_indtree/scripts/` 这份读 `_indtree/results/`（`ST_` 系的结果在这里）；`--results` 可换目录（只配
-`--pair`）。
+之前落盘，参数与环境变量都核不了）、两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
+本脚本读自己所在树的 `results/`：`scripts/` 这份读仓库根 `results/`，`_indtree/scripts/` 这份读
+`_indtree/results/`（`ST_` 系的结果在这里）；`--results` 可换目录（只配 `--pair`）。
 
     python scripts/check_run_provenance.py
     python scripts/check_run_provenance.py --strict   # also fail on unpinned threads
@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -116,6 +117,10 @@ def load(name, results=RESULTS):
     out["mip_gap"] = quality.get("mip_gap")
     out["resolved"] = payload.get("resolved")
     return out
+
+
+def _lp_relaxed(row):
+    return bool(((row["resolved"] or {}).get("env") or {}).get("COAL_RETROFIT_LP_RELAX"))
 
 
 def _env_view(resolved):
@@ -193,7 +198,8 @@ def check_seed_families(failures, warnings):
 
 
 def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RESULTS, require_both=False):
-    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved` 都记 failure；写死的对照表缺一边只记 warning。"""
+    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved`、两边都是 LP 松弛、任一边没有可用的解，都记 failure；
+    写死的对照表照旧：缺一边只记 warning，没有 `resolved` 只注明比不了。"""
     print()
     print("=" * 96)
     print("published contrasts -- fingerprints may differ, the thread pin may not")
@@ -218,6 +224,16 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
         if require_both and unchecked:
             failures.append(f"{label}: {'、'.join(unchecked)} 没有 resolved 段（2026-09-27 之前落盘），"
                             f"参数与环境变量都核不了，重解后再比")
+        if require_both:
+            # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
+            if _lp_relaxed(a) and _lp_relaxed(b):
+                failures.append(f"{label}: 两边都是 LP 松弛的解（整数变量改成了连续变量），"
+                                f"只是下界，不能拿来相减")
+            for name, row in ((base, a), (variant, b)):
+                objective = row["objective"]
+                if not isinstance(objective, (int, float)) or not math.isfinite(objective):
+                    failures.append(f"{label}: {name} 没有可用的解（目标函数是 {objective!r}：求解状态不可接受，"
+                                    f"结果表是补零的），不能拿来相减")
         if a["fingerprint"] is None or b["fingerprint"] is None:
             warnings.append(f"{label}: at least one side has no provenance, so comparability "
                             f"cannot be checked")
@@ -279,7 +295,7 @@ def main():
                         help="also fail when a compared run left Threads at 0 (auto)")
     parser.add_argument("--pair", nargs=2, metavar=("A", "B"),
                         help="只核这两次求解（结果名），不跑写死的 v9 seed 族与对照表；"
-                             "缺一边或没有 resolved 段记 failure")
+                             "缺一边、没有 resolved 段、两边都是 LP 松弛、没有可用的解，都记 failure")
     parser.add_argument("--results", type=Path, default=None,
                         help="--pair 读哪个结果目录（缺省：本脚本所在树的 results/）")
     args = parser.parse_args()

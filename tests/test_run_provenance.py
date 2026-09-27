@@ -39,8 +39,15 @@ RESULTS = {
     "WARM": _result({"COAL_RETROFIT_START_SOL": "/s/a.sol"}),
     "WARM_DRY": _result({"COAL_RETROFIT_START_SOL": "/s/b.sol"}, objective=4.5e12, water_season="dry"),
     "LP": _result({"COAL_RETROFIT_LP_RELAX": "1"}, objective=3.7e12, mip_gap=None),
+    "LP_DRY": _result({"COAL_RETROFIT_LP_RELAX": "1"}, objective=3.9e12, mip_gap=None, water_season="dry"),
+    "NOSOL": _result({}, objective=float("nan"), mip_gap=None),  # 求解状态不可接受：目标函数写成 NaN，结果表补零
     "OLD": _result(None),
 }
+
+
+def _write_results(directory: Path) -> None:
+    for name, payload in RESULTS.items():
+        (directory / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _load(monkeypatch: pytest.MonkeyPatch, directory: Path) -> ModuleType:
@@ -60,8 +67,7 @@ def check(request, monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, st
     """跑一份脚本的 `main()`，结果目录由 `--results` 指到 *tmp_path*；返回 (退出码, 标准输出)。"""
     module = _load(monkeypatch, request.param)
     assert module.RESULTS == request.param.parent / "results"  # 缺省读本树的 results/
-    for name, payload in RESULTS.items():
-        (tmp_path / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+    _write_results(tmp_path)
 
     def run(*argv: str) -> tuple[int, str]:
         monkeypatch.setattr(sys, "argv", ["check_run_provenance.py", "--results", str(tmp_path), *argv])
@@ -89,7 +95,11 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
         ("MIP", "LP", "COAL_RETROFIT_LP_RELAX 两边不同"),
         ("MIP", "WARM", "COAL_RETROFIT_START_SOL 两边不同"),
         ("OLD", "LP", "OLD 没有 resolved 段"),  # 旧结果核不了参数与环境变量：不放行
+        ("MIP", "OLD", "OLD 没有 resolved 段"),  # 两个位置都要查
         ("OLD", "OLD", "没有 resolved 段"),
+        ("LP", "LP_DRY", "两边都是 LP 松弛"),  # 热启动第 1 步都没接上第 2 步：环境变量相同，也不能相减
+        ("MIP", "NOSOL", "NOSOL 没有可用的解"),
+        ("NOSOL", "MIP", "NOSOL 没有可用的解"),
         ("MIP", "NOPE", "下没有 NOPE 的结果"),
     ],
 )
@@ -97,6 +107,19 @@ def test_pair_fails(check, a: str, b: str, message: str) -> None:
     code, out = check("--pair", a, b)
     assert code == 1 and message in out
     assert "SIGN RESOLVED" not in out and "inside solver bounds" not in out  # 不能相减的一对不给判断
+
+
+@pytest.mark.parametrize("directory", COPIES, ids=["scripts", "_indtree"])
+def test_hardcoded_contrasts_only_warn(monkeypatch, tmp_path, capsys, directory: Path) -> None:
+    """不带 `--pair` 的写死对照表照旧（那批 v9 结果都早于 resolved 段）：旧结果只注明比不了，缺一边只记 warning。"""
+    module = _load(monkeypatch, directory)
+    _write_results(tmp_path)
+    failures: list[str] = []
+    warnings: list[str] = []
+    module.check_contrasts(failures, warnings, False, contrasts=[("old", "OLD", "MIP"), ("missing", "MIP", "NOPE")],
+                           results=tmp_path)
+    assert failures == [] and warnings == ["missing: one side not solved yet"]
+    assert "比不了" in capsys.readouterr().out
 
 
 def test_results_only_with_pair(check) -> None:
