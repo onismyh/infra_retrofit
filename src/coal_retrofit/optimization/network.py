@@ -140,7 +140,7 @@ def _require_sources_reach_sinks(
     """每个参与求解的源（煤电 + 工业）都必须沿候选网络到达至少一个汇，否则报错。
 
     builders 建网时已对每个源做过这项检查（`builders.network_repair._unreached_terminals`）。运行期
-    再查一次，拦的是代码与管网输入不配套：2026-09-12 之前的管网（例如仓库根的 v7 输入，
+    再查一次，拦的是代码与管网输入不配套：2026-09-12 之前的管网（例如 `a303f05` 里仓库根的 v7 输入，
     35 汇 / 923 边）不含工业节点；运行期直连弧去掉后，挂上去的工业点源会有一批到不了任何汇，
     CCS 通路静默不可行，求解却照常完成。
 
@@ -158,7 +158,7 @@ def _require_sources_reach_sinks(
         raise ValueError(
             f"{len(stranded)} 个参与求解的源到不了任何封存汇（{', '.join(stranded[:6])}{more}）。"
             f"{inputs_dir} 的管网多半不是本代码对应的版本：2026-09-12 重建后的管网把工业点源作为 "
-            "industry_hub 节点收进 pipeline_nodes.csv，并保证每个源都可达；仓库根的 v7 输入不满足这一点。"
+            "industry_hub 节点收进 pipeline_nodes.csv，并保证每个源都可达；v7 输入（a303f05 的仓库根 inputs/）不满足这一点。"
         )
 
 

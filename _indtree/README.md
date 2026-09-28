@@ -97,13 +97,13 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 代码只有仓库根 `src/` 一份（2026-09-22 起），脚本只有仓库根 `scripts/` 一份（2026-09-28 起，此前本树有自己的 `scripts/`）。
 `scripts/_bootstrap.py` 里 `ROOT` 是本树根（输入构建、诊断与出图脚本用它读写本树 `inputs/`、`results/`），
 `REPO_ROOT` 是仓库根（图幅归档写仓库根 `results/figures/`），`SRC` 指向仓库根 `src/`。
-**`ROOT` 不能改成仓库根**：那样脚本会悄悄改读改写仓库根的 v7 输入（35 汇 / 923 边、无工业节点）；
+**`ROOT` 不能改成仓库根**：那样脚本读写的是仓库根的 `inputs/`、`results/`，不是求解用的这一套；
 `tests/test_scenarios.py` 核对它就是登记情景的 `tree`。
 2026-09-27 起求解不经 `ROOT`：仓库根 `scenarios/st.toml` 给 `ST_` 系登记了 `tree = "_indtree"`，
 求解读本树 `inputs/`、写本树 `results/`，从哪个目录启动都一样，树下没有 `inputs/` 就报错；
 万一用 `--tree` 指到了 v7 输入，`build_runtime_network` 会因"有源到不了任何汇"直接报错。
 
-`inputs/` 是仓库根 `inputs/` 的完整副本，**只替换三个网络文件**：
+`inputs/` 是 v7 输入（仓库根 `inputs/`，2026-09-28 删除，`a303f05` 里还在）的完整副本，**只替换三个网络文件**：
 
 ```
 pipeline_nodes.csv            612 -> 1052    2026-09-12 重建（此前 666，取自 _v9tree/inputs/）
@@ -113,7 +113,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 > ⚠ 截至 2026-09-22，本目录只有 `sector_targets_times_cn60.csv` 与 `industry_output_index_times_cn60.csv`
 > 两个文件入了库，重建后的管网等其余输入只在作者本机。它们是 `ST_` 系重解的前提，应一并入库。
-> `ST_CP_BASE` 还需要 `sector_targets_none.csv`（ba967c1 只加到了仓库根 `inputs/`）。
+> `ST_CP_BASE` 还需要 `sector_targets_none.csv`：ba967c1 只把它加到了仓库根 `inputs/`，那份已随仓库根 `inputs/`
+> 删除，用 `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪进本目录
+> （不要用 `git show … >` 落盘，PowerShell 的 `>` 会改编码）。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -121,7 +123,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
-逐列实测过，不是推断：
+逐列实测过，不是推断（下面说的仓库根文件在 `a303f05` 里）：
 
 * 仓库根 `plants.csv` 是 `_v9tree/inputs/plants.csv` 的**严格超集**——同样 350 个 `plant_id`、
   同样顺序，32 个共有列的数值差全部 < 1e-9，只多 4 个 v9.1 需要的取水强度列

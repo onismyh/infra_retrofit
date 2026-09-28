@@ -85,7 +85,7 @@ def test_digest_covers_the_files_that_were_read(tmp_path) -> None:
     a = _input_digest(paths_a.inputs_dir, _input_files(paths_a, scenario))
     b = _input_digest(paths_b.inputs_dir, _input_files(paths_b, scenario))
     assert a["digest_plants"] == b["digest_plants"]
-    # 两棵树只差管网：摘要必须能区分，这正是仓库根 v7 与 _indtree 的差别所在。
+    # 两棵树只差管网：摘要必须能区分，这正是 v7（a303f05 的仓库根 inputs/）与 _indtree 的差别所在。
     assert a["digest_pipeline_nodes"] != b["digest_pipeline_nodes"]
     assert str(a["input_dir"]).endswith("tree_a/inputs")
     # 只摘读了的文件：无水约束时没有流域指标，求解不读的 water_supply_links 也不在内。

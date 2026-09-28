@@ -92,6 +92,11 @@
 > v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
 > 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：在本机工作区 `git switch --detach a303f05`，画完 `git switch -`
 > （先提交或 stash 改动）。不要另开 worktree，没入库的 `data/` 与结果都不在那里。模型、求解与结果表不变。
+>
+> 2026-09-28 起仓库根不再有 `inputs/`：那是 v7 输入（35 汇 / 923 边），没有登记情景读它，要用就到 `a303f05` 里取。
+> `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库，要放进 `_indtree/inputs/`：
+> `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪过去。不要用 `git show … >` 落盘，
+> PowerShell 的 `>` 会改编码（5.1 存成 UTF-16，`pd.read_csv` 读不了）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
