@@ -105,10 +105,9 @@ def main() -> None:
     registry = _registry()
     if not any(name.startswith("SA_") for name in registry):
         raise SystemExit(
-            "情景登记表（scenarios/）里没有 SA_ 敏感性情景（自 ba967c1 起只登记 ST_ 系）。ED7 属 v9.1，原地切到 a303f05 画（README §0）："
-            "python scripts/render_version.py --tree _v91tree --version v9.1 --freeze-tag="
-            "（留空：那里的缺省会把已有的 v9.1 图挪进 frozen_103sink_lost_tree/），"
-            "或 cd _v91tree && python scripts/plot_ed_sensitivity.py。"
+            "情景登记表（scenarios/）里没有 SA_ 敏感性情景（自 ba967c1 起只登记 ST_ 系）。ED7 属 v9.1，"
+            "可它要的 22 个 SA_* 在 v9 / v9.1 都没解过（results/figures/v9.1/README.md）：先在 892c877^ 的 "
+            "_v91tree 下解出来，再原地切到 a303f05 画，命令见 README §0。"
         )
     floor, k_floor = seed_floor(WATER_HEAD, WATER_SEEDS)
     floor_treat, k_treat = seed_floor(TREAT_HEAD, TREAT_SEEDS)

@@ -276,9 +276,9 @@ python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动�
 的联合目标份额；ba967c1 之后它们在新代码下直接停下并说明原因（`_require_registered`）。
 重画这批旧图请在 `cf073be` 的工作副本里运行；`ST_` 版需要另行设计。
 
-输出在 `_indtree/results/figures/main/`，已归档到仓库根
+输出在 `_indtree/results/figures/main/`（ED1 在 `extended/`），已归档到仓库根
 `results/figures/v9.1/industry/`（含 README、数据与求解日志）。
-这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，正常运行也只拷本次画出的图，
+这四个脚本都**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，正常运行也只拷本次画出的图，
 所以这几张旧图不会混进 `ST_` 的归档——这是有意的：管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，
 两条线的模型不同。两处例外：给了 `--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的
 全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。

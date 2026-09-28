@@ -1,5 +1,6 @@
-"""`scripts/render_version.py` 只归档本次画出的图：`plot_ind_*` 等不由它跑的脚本留在
-`_indtree/results/figures/` 的旧图不拷进新版本（`--skip-plots` 时全拷）。不求解，不需要 Gurobi。"""
+"""`scripts/render_version.py` 的 `tree_figures`：给了 since 只收这之后写出的图，since 为 None 时全收。
+`plot_ind_*` 也往 `_indtree/results/figures/` 存图，`render_version` 正常运行靠这个过滤不把它们拷进归档；
+`main()` 怎么传 since（正常运行传画图前的时刻，`--skip-plots` 时传 None）不在本测试里。不求解，不需要 Gurobi。"""
 from __future__ import annotations
 
 import importlib.util
@@ -26,13 +27,12 @@ def _load(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
 
 def test_tree_figures_keeps_only_figures_written_since(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     render_version = _load(monkeypatch)
-    figures = tmp_path / "results" / "figures"
-    (figures / "main").mkdir(parents=True)
-    (figures / "extended").mkdir()
-    old = figures / "main" / "ind_fig1_joint_allocation.pdf"   # plot_ind_* 早先留下的
-    new = figures / "extended" / "ed_fig1_fleet_atlas.png"     # 本次画的
+    figures = tmp_path / "results" / "figures" / "main"
+    figures.mkdir(parents=True)
+    old = figures / "ind_fig1_joint_allocation.pdf"   # plot_ind_* 早先留下的，与本次画的图同目录
+    new = figures / "fig1_water_footprint.pdf"        # 本次画的
     for path, mtime in ((old, 1.0e9), (new, 1.7e9)):
         path.write_bytes(b"")
         os.utime(path, (mtime, mtime))
-    assert render_version.tree_figures(tmp_path, since=1.5e9) == [(new, "extended")]
-    assert sorted(render_version.tree_figures(tmp_path, since=None)) == [(new, "extended"), (old, "figures")]
+    assert render_version.tree_figures(tmp_path, since=1.5e9) == [(new, "figures")]
+    assert sorted(render_version.tree_figures(tmp_path, since=None)) == [(new, "figures"), (old, "figures")]
