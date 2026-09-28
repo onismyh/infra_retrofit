@@ -126,6 +126,10 @@
 > 2026-09-28 起图幅版本目录 `results/figures/v9/`（88 个文件，其中图 62 张）与 `results/figures/v9.1/`（README 与
 > `docs/官方指标口径水预算.md` 的一份旧快照）也移出当前版本，上文 v9 / v9.1 的重画做法随之删去。
 > **旧版本（v7 / v9 / v9.1 / `IND_`）的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，当前版本不再维护复现步骤。**
+>
+> 2026-09-28 起 `.gitignore` 放开仓库根 `data/` 下求解与出图要读的三样：`ChinaMapTHT/`、`ChinaMap/`、`ChinaBasins/basin_l1.gpkg`。
+> 其余源数据照旧不入库，其他层级名为 `data` 的目录（如 `results/figures/<版本>/data/` 的结果拷贝）照旧忽略。
+> `scripts/render_version.py` 去掉 SKIP（里面的两个脚本已删），通配只匹配留下的 5 个出图脚本。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
