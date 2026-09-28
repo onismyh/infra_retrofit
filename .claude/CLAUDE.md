@@ -103,9 +103,9 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
 
 > **现状（2026-09-22 起）**：情景登记表（2026-09-27 起在 `scenarios/st.toml`，此前在 `scripts/run_single.py` 及 `_indtree` 副本）只剩
 > `ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`。上面的 `WA_` / `BASE` / `SA_` / seed 命名属于
-> v9 / v9.1 登记表：两棵旧树（`_v9tree`、`_v91tree`）的树内 `src/` 已于 892c877 删除，树本身与图幅目录 `results/figures/v9/`、
+> v9 / v9.1 登记表：两棵旧树（`_v9tree`、`_v91tree`）的树内 `src/` 已于 892c877 删除，树本身与图幅版本目录 `results/figures/v9/`、
 > `v9.1/` 2026-09-28 移出当前版本。v9 / v9.1 / `IND_` 的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，
-> 当前版本不再维护复现步骤（README §0）。
+> 当前版本不再维护复现步骤（README §0）；`IND_` 系的旧图在 `cf073be` 的副本里重画（`_indtree/README.md` 的"图"一节）。
 
 ---
 

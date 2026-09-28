@@ -16,9 +16,10 @@ says so rather than leaving a reader to infer a missing layer.
 MARKER AREA IS CO2, FOR BOTH SIDES, ON ONE SCALE. Sizing coal by GW and industry by Mt would put
 two units on one visual channel and make the comparison meaningless. Baseline emissions are the
 one quantity both carry.
-煤电的基准排放取 `ST_BASE` 结果表里 2030 年的 `baseline_emissions_mt`，所以要先解 `ST_BASE`，且它的输入要与
-`industry_sources.csv` 同一版（CLAUDE.md 二.6）。"基准排放与情景无关"只在 v9.1 核过（`BASE` 与 `WA_cwatm_126_dry_oq`
-逐 hub 最大差 0.0）；ST_ 重解后要再核 `ST_BASE` 与 `ST_WA_cwatm_126_dry_oq`。
+煤电的基准排放用模型读入 `plants.csv` 时的算法现算（`data_prep._prepare_plants`：装机 × 分省利用小时 × 排放因子），
+是现状值，与 `industry_sources.csv` 的现状排放同一口径、出自同一个 `inputs/`，不依赖任何求解结果，也就不会混用
+输入版本（CLAUDE.md 二.6）。不读结果表：`ST_` 系结果表里的 `baseline_emissions_mt` 按煤电利用小时轨迹逐年缩放过
+（2030 年乘 3600 h ÷ 现状加权小时，v9.1 的 `plants.csv` 上是 0.775），已不是现状值。
 
 NO CLIPPING ON THE SIZE SCALE. A reference value that keeps the industrial cloud legible would
 flatten 62 of 350 coal hubs at vref = 25 Mt. The un-clipped scale instead says something true:
@@ -26,6 +27,8 @@ individual coal hubs are much larger emitters (median 9.4 Mt, max 114.8) than in
 industrial plants (median 0.83, max 20.7), and industry's 3,269 Mt arrives as 2,552 small points
 rather than as a few large ones. That asymmetry is the reason the two behave differently under a
 per-basin cap, so it should be visible rather than normalised away.
+这一段的数是在 v9.1 的输入（`a303f05` 的 `_v91tree/inputs/`）上算的，按现在的算法重算一致；`_indtree/inputs/`
+入库后要在那一版上重核。
 
 STYLE follows 昊天 (Haotian Tang) 氢管网论文 EST, `GIS_layer/plot.ipynb` Figure 6B: pentagon
 markers, Dark2 palette, alpha 0.55, category legend at upper right with `frameon=False` and
@@ -60,18 +63,15 @@ from plot_style import (
     BASIN_NAMES_ZH,
     BASIN_ORDER,
     draw_china_basemap,
-    hub_frame,
     mainland_extent,
     MM,
     panel_label,
-    RESULTS_DIR,
     ROOT,
     save_fig,
     to_map_xy,
 )
 
 INPUTS = ROOT / "inputs"
-# 结果目录一律用 plot_style 的 RESULTS_DIR，不要自己拼。
 
 # 煤电沿用本仓库通路色表（CLAUDE.md 三.3），工业用昊天 Fig 6B 的 Dark2 系。
 # 钢铁两条路线共用绿色族 —— 同一大类留在同一条 ramp 上。
@@ -106,14 +106,16 @@ def _area(values: np.ndarray, vmax: float) -> np.ndarray:
 
 
 def coal_sources() -> pd.DataFrame:
-    """350 厂址级 hub：坐标、装机、基准排放（`ST_BASE` 结果表的 2030 年，见文件说明）。"""
-    plants = pd.read_csv(INPUTS / "plants.csv")
-    emissions = (hub_frame("ST_BASE", 2030, results_dir=RESULTS_DIR)
-                 .set_index("plant_id")["baseline_emissions_mt"])
-    plants = plants.set_index("plant_id")
-    plants["co2_mt"] = emissions.reindex(plants.index)
+    """350 厂址级 hub：坐标、装机、基准排放（按 `plants.csv` 现算的现状值，不读结果表，见文件说明）。"""
+    from coal_retrofit.optimization.data_prep import _prepare_plants
+    from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+    from coal_retrofit.paths import ProjectPaths
+
+    plants = _prepare_plants(ProjectPaths(ROOT), OptimizationScenario(experiment_id="plot", description="plot"),
+                             OptimizationAssumptions())
+    plants["co2_mt"] = plants["baseline_emissions_mt"]
     plants["cap_gw"] = plants["total_capacity_mw"] / 1000.0
-    return plants.reset_index()
+    return plants
 
 
 def industry_sources() -> pd.DataFrame:

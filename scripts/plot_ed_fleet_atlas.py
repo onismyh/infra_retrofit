@@ -35,7 +35,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 import ed_plant_data as EP
-from plot_style import BASIN_NAMES_ZH, MAP_CRS, MM, save_fig
+from plot_style import BASIN_NAMES_ZH, MAP_CRS, MM, apply_style, save_fig
 
 # One colour per constrained basin, colour-blind safe (Tol bright). Everything unconstrained is
 # grey: the figure's job is to show where the constraint lands, not to name nine basins.
@@ -204,6 +204,9 @@ def main() -> None:
     ax_map = fig.add_axes([0.010, 0.055, 0.520, 0.880])
     ax_cool = fig.add_axes([0.605, 0.560, 0.375, 0.365])
     ax_age = fig.add_axes([0.605, 0.085, 0.375, 0.330])
+    # 建轴之后再套样式：原先是 panel_map 里导入 plot_extended 时顺带套上的（它 2026-09-28 删除），
+    # 挪到 main 开头三个轴就按新样式建，刻度线宽从 0.8 变成 0.5，图与原先不同。
+    apply_style()
 
     panel_map(ax_map, fleet)
     panel_cooling(ax_cool, fleet)

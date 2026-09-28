@@ -118,18 +118,20 @@
 >
 > 留下的出图脚本是 3 个 `ST_` 幻灯片脚本和主要画输入的 6 个（`plot_candidate_network`、`plot_fig1_water_footprint`、
 > `plot_ed_fleet_atlas`、`plot_ed_water_basis`、`plot_ed_source_atlas`、`plot_ed_variance_decomposition`）。随之：
-> `plot_ed_source_atlas` 的煤电基准排放改读 `ST_BASE`（原读 `BASE`，要先解 `ST_BASE`）；`plot_ed_fleet_atlas` 把从
-> `plot_extended` 借的 `_reproj` 挪进来；`plot_style` 删掉 v9.1 情景族（`BASE_SCENARIO`、`ARMS`、`treat_of`、`seeds_of` 等）
+> `plot_ed_source_atlas` 的煤电基准排放不再读结果表（原读 `BASE` 的 2030 年），改用模型的 `_prepare_plants` 从 `plants.csv`
+> 现算，同为未缩放的现状值，不用先求解；`plot_ed_fleet_atlas` 把从 `plot_extended` 借的 `_reproj` 挪进来，样式改为自己调
+> `apply_style()`（原先是导入 `plot_extended` 时顺带套上的）；`plot_style` 删掉 v9.1 情景族（`BASE_SCENARIO`、`ARMS`、`treat_of`、`seeds_of` 等）
 > 与 `BASE_DIR`；`ed_plant_data` 删掉读结果表的 `outcomes`、`pair`；`check_run_provenance.py` 删掉写死 v9 seed 族与对照表
 > 的缺省模式，`--pair` 改为必填。模型、求解与结果表不变。
 >
-> 2026-09-28 起图幅版本目录 `results/figures/v9/`（88 个文件，其中图 62 张）与 `results/figures/v9.1/`（README 与
-> `docs/官方指标口径水预算.md` 的一份旧快照）也移出当前版本，上文 v9 / v9.1 的重画做法随之删去。
+> 2026-09-28 起图幅版本目录 `results/figures/v9/`（88 个文件，其中 PDF / PNG 62 个，即 31 张图）与 `results/figures/v9.1/`
+> （README 与 `docs/官方指标口径水预算.md` 的一份旧快照）也移出当前版本，原先写在上文两段里的 v9 / v9.1 重画做法随之删去。
 > **旧版本（v7 / v9 / v9.1 / `IND_`）的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，当前版本不再维护复现步骤。**
 >
 > 2026-09-28 起 `.gitignore` 放开仓库根 `data/` 下求解与出图要读的三样：`ChinaMapTHT/`、`ChinaMap/`、`ChinaBasins/basin_l1.gpkg`。
 > 其余源数据照旧不入库，其他层级名为 `data` 的目录（如 `results/figures/<版本>/data/` 的结果拷贝）照旧忽略。
-> `scripts/render_version.py` 去掉 SKIP（里面的两个脚本已删），通配只匹配留下的 5 个出图脚本。
+> `scripts/render_version.py` 去掉 SKIP（里面的两个脚本已删），通配（`plot_fig*` / `plot_ed*`）只匹配留下的出图脚本里的 5 个：
+> `plot_fig1_water_footprint` 与 4 个 `plot_ed_*`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

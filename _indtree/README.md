@@ -265,11 +265,12 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
 `IND_` 系的四个出图脚本（`plot_ind_fig1_joint_allocation`、`plot_ind_fig2_storage_allocation`、
 `plot_ind_fig3_water_coupling`、`plot_ind_ed1_target_level`）2026-09-28 起不在当前版本：它们画的 `IND_` 情景已不在
 登记表。旧图在 `cf073be` 的工作副本里重画，脚本在那里的 `_indtree/scripts/`。`ST_` 版需要另行设计；`plot_ind_fig1`
-的面板 d 已改到新成本口径（`levelised_capture_cost_cny_per_t`，扣再生蒸汽排放），做 `ST_` 版时可从 `a184984` 取回。
+的面板 d 已改为用模型自己的函数算成本（`levelised_capture_cost_cny_per_t`：按 09-22 起的成本参数折成平准化值，只供出图
+比较，目标函数不用；扣再生蒸汽排放），做 `ST_` 版时可从 `a184984` 取回。
 
-本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图不会混进 `render_version.py` 的归档：它只拷本次画出的图。两处例外：
-给了 `--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的全部结果（含 `IND_`）总会被它
-拷进 `<版本>/data/`。`IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。
+本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图不会混进 `render_version.py` 的归档：它只拷本次画出的图。这是有意的：
+`IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。两处例外：给了
+`--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
 
 ---
 

@@ -212,7 +212,7 @@ def check_contrasts(failures, warnings, strict, contrasts, results=RESULTS):
     """缺一边、任一边没有 `resolved` 或 `resolved.code`、两边都是 LP 松弛、任一边没有可用的解、输入摘要不同，都记 failure。"""
     print()
     print("=" * 96)
-    print("published contrasts -- fingerprints may differ, the thread pin may not")
+    print("--pair contrast -- fingerprints may differ, the thread pin may not")
     print("=" * 96)
     for label, base, variant in contrasts:
         a, b = load(base, results), load(variant, results)

@@ -21,8 +21,8 @@ This module assembles it once, joins each site to its level-1 basin through the 
 network, and hands the figure scripts a single tidy frame. Every figure that follows is drawn on
 sites, units and capacity rather than on provincial polygons.
 
-2026-09-28 起本模块只拼厂址的静态属性与流域（`fleet`、`plant_basin`）：读结果表的 `outcomes`、`pair`
-只有已删的 v9 / v9.1 图在用，一并删除。
+2026-09-28 起本模块只拼厂址的静态属性与流域（`fleet`、`plant_basin`），不再读上文说的 `plant_detail.csv`：
+读它的 `outcomes`、`pair` 只有已删的 v9 / v9.1 图在用，一并删除。
 """
 from __future__ import annotations
 
