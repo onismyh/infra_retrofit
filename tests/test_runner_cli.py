@@ -123,6 +123,7 @@ def test_seed_and_mip_focus_reach_the_model(tmp_path) -> None:
     assert (quality["seed"], quality["mip_focus"]) == (3, 2)
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_warm_start_matches_the_manual_two_steps(tmp_path, monkeypatch) -> None:
     """情景 `warm_start = "lp_relax"` 的一次 run 与此前手工的两次 run（第 1 步设 LP_RELAX 与 WRITE_SOL，第 2 步设
     START_SOL）是同一对求解：第 1 步的 .sol、第 2 步的目标函数与 15 张表逐字节相同。两边走的是同一段代码，所以另核

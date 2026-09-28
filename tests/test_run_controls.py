@@ -39,20 +39,16 @@ tree = "tree"
 """
 
 
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch) -> None:
-    for key in ENV:
-        monkeypatch.delenv(key, raising=False)
-
-
 # --- .sol 的位置 -------------------------------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_sol_path_defaults_to_the_results_directory(tmp_path) -> None:
     assert run_controls.sol_path(tmp_path / "tree", "ST_BASE", None) == tmp_path / "tree" / "results" / "ST_BASE.lp.sol"
     assert run_controls.sol_path(tmp_path / "tree", "ST_BASE", tmp_path / "sols") == tmp_path / "sols" / "ST_BASE.lp.sol"
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_sol_path_moves_to_the_temp_directory_when_the_tree_is_not_ascii(tmp_path, monkeypatch) -> None:
     """Gurobi 在中文路径下写不了文件：结果目录不是 ASCII 时改写到系统临时目录下新建的子目录。"""
     temp_root = tmp_path / "tmp"
@@ -246,10 +242,12 @@ def cli_run(tmp_path, monkeypatch, capsys):
     return run, calls, state, tmp_path / "tree" / "results"
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_warm_start_runs_both_steps_and_records_step_one(cli_run, monkeypatch, tmp_path) -> None:
     run, calls, _, results = cli_run
     monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", str(tmp_path / "w.sol"))  # 兼容开关照旧作用于第 2 步
     monkeypatch.setenv("COAL_RETROFIT_LOG_INCUMBENTS", "1")
+    monkeypatch.setattr(runner, "code_state", lambda: {"commit": "f" * 40, "dirty": True})
     assert run("WARM") == (0, "")
     sol = results / "WARM.lp.sol"
     assert calls == [("step1", sol), ("solve", SolveControls(start_sol=sol, write_sol=tmp_path / "w.sol",
@@ -258,16 +256,25 @@ def test_warm_start_runs_both_steps_and_records_step_one(cli_run, monkeypatch, t
     assert resolved["warm_start"] == {"method": "lp_relax", "status": "optimal"}
     assert resolved["scenario"]["warm_start"] == "lp_relax" and resolved["scenario"]["warm_start_time_limit"] == 77
     assert resolved["options"] == {"threads": 1, "time_limit": 60, "mip_gap": None, "sol_dir": None, "force": False}
-    assert set(resolved["code"]) == {"commit", "dirty"}
+    assert resolved["code"] == {"commit": "f" * 40, "dirty": True}  # 原样记 code_state() 的返回值
     assert resolved["input_files"]["plants"] == "inputs/plants.csv"
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_sol_dir_moves_the_step_one_sol(cli_run, tmp_path) -> None:
     run, calls, _, results = cli_run
     assert run("WARM", "--sol-dir", str(tmp_path / "sols"))[0] == 0
     assert calls[0] == ("step1", tmp_path / "sols" / "WARM.lp.sol")
     assert json.loads((results / "WARM.json").read_text(encoding="utf-8"))["resolved"]["options"]["sol_dir"] == (
         (tmp_path / "sols").as_posix())
+
+
+@pytest.mark.usefixtures("ascii_tmp_path")
+def test_step_one_sol_is_named_after_the_result(cli_run) -> None:
+    """.sol 按结果名起名：`--as` 另起名的 seed 族各写各的 .sol，并发时不互相覆盖。"""
+    run, calls, _, results = cli_run
+    assert run("WARM", "--set", "scenario.solver_seed=3", "--as", "WARM_s3")[0] == 0
+    assert calls[0] == ("step1", results / "WARM_s3.lp.sol")
 
 
 def test_existing_result_is_refused_before_solving_unless_forced(cli_run) -> None:
@@ -316,6 +323,7 @@ def test_manual_warm_start_still_works_without_the_field(cli_run, monkeypatch) -
     assert json.loads((results / "PLAIN.json").read_text(encoding="utf-8"))["resolved"]["warm_start"] is None
 
 
+@pytest.mark.usefixtures("ascii_tmp_path")
 def test_step_one_failure_exits_3_without_step_two(cli_run) -> None:
     run, calls, state, results = cli_run
     state["fail_step_one"] = True

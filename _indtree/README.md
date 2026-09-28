@@ -219,8 +219,9 @@ python -m coal_retrofit run ST_BASE --threads 8
 第 1 步的 `.sol` 写在 `results/ST_BASE.lp.sol`（路径须是 ASCII，否则改写到系统临时目录；`--sol-dir` 可换目录），
 时限 1800 s（`warm_start_time_limit`）。已有 `results/ST_BASE.json` 时求解之前就拒绝，要覆盖加 `--force`。退出码 3 表示
 没有可用的解（第 1 步没解就不跑第 2 步、不写结果）。此前手工设环境变量的两次运行（`COAL_RETROFIT_LP_RELAX` 与
-`COAL_RETROFIT_WRITE_SOL`，再 `COAL_RETROFIT_START_SOL`）与之是同一对求解；对 `ST_` 情景再设这两个开关会报错，
-`COAL_RETROFIT_LOG_INCUMBENTS=1` 照旧作用于第 2 步。
+`COAL_RETROFIT_WRITE_SOL`，再 `COAL_RETROFIT_START_SOL`）与之是同一对求解；对 `ST_` 情景再设 `COAL_RETROFIT_LP_RELAX`
+或 `COAL_RETROFIT_START_SOL` 会报错，`COAL_RETROFIT_WRITE_SOL` 与 `COAL_RETROFIT_LOG_INCUMBENTS=1` 照旧作用于第二次求解
+（第 2、3 步）。
 
 情景登记在仓库根 `scenarios/st.toml`（2026-09-27 起），`python -m coal_retrofit list` 列出情景，
 `python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq` 核对两者只差水的三项。`python -m coal_retrofit`
@@ -229,8 +230,8 @@ python -m coal_retrofit run ST_BASE --threads 8
 列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
 有一边没有 `resolved` 段（2026-09-27 之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是
 LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价不同、读的同一个输入文件摘要不同、有一边
-没有 `resolved.code`（求解时的提交号，这一项加上之前落盘），都判不过（退出码 1）；提交号不同或求解时有未提交的改动
-只告警。可证区间的下界用 result.json 记的 ObjBound（CLAUDE.md §二.3）。
+没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同或求解时有未提交的改动
+只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
 这份脚本和本树 `scripts/` 下的出图脚本一样读本树 `results/`；仓库根 `scripts/` 那份读仓库根 `results/`。
 
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |

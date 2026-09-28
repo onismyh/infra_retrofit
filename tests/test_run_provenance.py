@@ -69,6 +69,9 @@ RESULTS = {
     # toy 的目标函数是负的：只给绝对区间。
     "NEG_C": _result({}, objective=-5.0e8, bound=-5.1e8),
     "NEG_T": _result({}, objective=-4.0e8, bound=-4.2e8),
+    # 目标函数是正的，下界不是：hi 的分母 LB_c 不是正数，同样只给绝对区间。
+    "LBNEG_C": _result({}, objective=1.0e9, bound=-1.0e8),
+    "LBNEG_T": _result({}, objective=1.1e9, bound=0.9e9),
 }
 
 
@@ -112,6 +115,7 @@ def check(request, monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, st
         ("AUTO", "WARM", "参数差 1 项"),  # 自动两步与手工 START_SOL 是同一套流程，算都热启动了
         ("DIG", "DIG_OTHER_FILE", "两边读的文件不同"),  # 部门目标换了来源：文件不同，摘要不比
         ("DIG", "DIG_WATER", "只有 DIG_WATER 读了"),  # 无水约束的一边不读水的文件
+        ("DIG_WATER", "DIG", "只有 DIG_WATER 读了"),  # 两边换位置，点名的仍是读了水文件的那一边
     ],
 )
 def test_pair_passes(check, a: str, b: str, message: str) -> None:
@@ -162,6 +166,7 @@ def test_pair_code_differences_only_warn(check, b: str, message: str) -> None:
     """提交号不同、有未提交的改动、记不了提交号：只告警（模型改动与否要人对着提交核），仍给区间判断。"""
     code, out = check("--pair", "MIP", b)
     assert code == 0 and "WARNINGS (1)" in out and message in out and "no hard failures" in out
+    assert "certified [-3.000, +3.093]%  -> inside solver bounds" in out  # 两边同为 INC 4e12、gap 3%
 
 
 def test_interval_uses_the_recorded_bound(check) -> None:
@@ -181,6 +186,13 @@ def test_interval_is_absolute_when_the_objective_is_negative(check) -> None:
     code, out = check("--pair", "NEG_C", "NEG_T")
     assert code == 0
     assert "effect +1.0000e+08 元  certified [+8.0000e+07, +1.1000e+08] 元" in out and "SIGN RESOLVED" in out
+
+
+def test_interval_is_absolute_when_the_bound_is_not_positive(check) -> None:
+    """对照的目标函数是正的、下界不是：hi = (INC_t − LB_c)/LB_c 的分母不是正数，也只给绝对区间。"""
+    code, out = check("--pair", "LBNEG_C", "LBNEG_T")
+    assert code == 0 and "inside solver bounds" in out
+    assert "effect +1.0000e+08 元  certified [-1.0000e+08, +1.2000e+09] 元" in out
 
 
 @pytest.mark.parametrize("directory", COPIES, ids=["scripts", "_indtree"])

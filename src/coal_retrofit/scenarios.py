@@ -52,8 +52,9 @@ RESERVED_FIELDS: dict[str, str] = {
     "solver_time_limit": "用命令行 --time-limit",
 }
 
-# scenario 节里只认这几个值的字段。模型与运行器按值比较，写错不报错，而是静默走另一支：`water_season = "dyr"`
-# 按全年算，`water_mode` 拼错就按有水约束的 baseline 族算，`warm_start` 拼错就不热启动。`mip_focus` 是 Gurobi 的取值范围。
+# scenario 节里只认这几个值的字段，读登记表、`--set` 与兼容环境变量时就查。`water_season`、`water_mode` 模型按值比较，
+# 写错不报错，而是静默走另一支：`water_season = "dyr"` 按全年算，`water_mode` 拼错就按有水约束的 baseline 族算。
+# `warm_start` 运行器另有兜底检查，`mip_focus`（Gurobi 的取值范围）越界时 Gurobi 设参数才报错，这里都提前报错。
 CHOICES: dict[str, tuple[Any, ...]] = {
     "water_mode": ("no_water", "base_water", "grid_supply", "high_water_stress"),
     "water_season": ("annual", "dry"),

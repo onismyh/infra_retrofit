@@ -45,8 +45,9 @@ class SolveControls:
     - `write_sol`：有解时把解写到这里。路径须是 ASCII：Gurobi 在中文路径下写文件会失败。
     - `log_incumbents`：每个新可行解打一行 INCUMBENT。
 
-    由运行器给：情景 `warm_start = "lp_relax"` 时两步各一套；此外读兼容的环境变量（`runner.env_controls`），
-    此前由本函数自己读 COAL_RETROFIT_LP_RELAX / START_SOL / WRITE_SOL / LOG_INCUMBENTS。缺省（None）全关。
+    由运行器给：情景 `warm_start = "lp_relax"` 时两步各一套；此外读兼容的环境变量（`run_controls.env_controls`），
+    此前由 `_solve_joint_multi_period` 自己读 COAL_RETROFIT_LP_RELAX / START_SOL / WRITE_SOL / LOG_INCUMBENTS。
+    `_solve_joint_multi_period` 的 *controls* 缺省（None）即全关。
     """
 
     relax: bool = False

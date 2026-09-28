@@ -36,7 +36,7 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 
 2026-09-28 起（求解流程进情景定义）又加了几条：
 - 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`），没有这个键的旧结果才按 gap
-  反推；目标函数或下界不是正数时只给绝对区间（元）。
+  反推；对照一边（c）的目标函数或下界不是正数时只给绝对区间（元）。
 - 热启动看两处：情景 `warm_start = "lp_relax"`（运行器自动两步）或手工设 COAL_RETROFIT_START_SOL，两边一个热启动
   一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
 - `--pair` 另比两边都有的输入摘要（`digest_*`），不同就记 failure（CLAUDE.md 二.6）；两边读的不是同一个文件的
@@ -318,7 +318,7 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
             uncoded = [name for name, row in ((base, a), (variant, b))
                        if row["resolved"] is not None and "code" not in row["resolved"]]
             if uncoded:
-                failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（这一项加上之前落盘）："
+                failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（加这一项之前落盘）："
                                 f"是不是在 PR #11（连续 hub 掺烧等式，模型改动）之后求解的核不了，重解后再比")
             # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
             if _lp_relaxed(a) and _lp_relaxed(b):
@@ -388,8 +388,9 @@ def main():
     parser.add_argument("--strict", action="store_true",
                         help="also fail when a compared run left Threads at 0 (auto)")
     parser.add_argument("--pair", nargs=2, metavar=("A", "B"),
-                        help="只核这两次求解（结果名），不跑写死的 v9 seed 族与对照表；"
-                             "缺一边、没有 resolved 段、两边都是 LP 松弛、没有可用的解，都记 failure")
+                        help="只核这两次求解（结果名），不跑写死的 v9 seed 族与对照表；缺一边、没有 resolved 段或"
+                             " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价不同、"
+                             "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、有未提交的改动只告警")
     parser.add_argument("--results", type=Path, default=None,
                         help="--pair 读哪个结果目录（缺省：本脚本所在树的 results/）")
     args = parser.parse_args()

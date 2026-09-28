@@ -129,7 +129,7 @@ def solve(
 ) -> dict[str, Any]:
     """建模、求解，把 15 张结果表写到 `<树>/results/<name>/`；返回 result.json 的内容（还没有 `resolved`）。
 
-    *controls* 是只改搜索路径的开关（热启动第 2 步的 MIP start 等），缺省全关。
+    *controls* 是只改搜索路径或只做诊断的开关（`SolveControls`：热启动第 2 步的 MIP start、LP 松弛诊断等），缺省全关。
     """
     t0 = time.time()
     prepared = prepare_inputs(paths, scenario, assumptions)
