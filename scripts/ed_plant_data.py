@@ -23,14 +23,13 @@ sites, units and capacity rather than on provincial polygons.
 """
 from __future__ import annotations
 
-import sys
 from functools import lru_cache
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
+from _bootstrap import ROOT
+
 INPUTS = ROOT / "inputs"
 RESULTS = ROOT / "results"
 
@@ -56,7 +55,6 @@ def unit_to_site() -> pd.DataFrame:
     linkage, precomputed haversine, fixed k), so re-running it reproduces the labels exactly;
     the assertions below fail loudly if that ever stops being true.
     """
-    sys.path.insert(0, str(ROOT / "src"))
     from coal_retrofit.builders.plants import _cluster_plants_to_hubs
 
     units = pd.read_csv(INPUTS / "plants_unit.csv", encoding="utf-8-sig")

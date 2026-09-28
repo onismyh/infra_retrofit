@@ -23,9 +23,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import plot_style                                          # noqa: E402
+from _bootstrap import REPO_ROOT                           # noqa: E402
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-plot_style.RESULTS_DIR = ROOT / "results" / "figures" / "v9.1" / "data"   # 必须早于下面的 import
+# 管网（汇与候选边）经 plot_ed_water_abatement.INPUTS 读，2026-09-28 起那是 _indtree 的 v9.2 管网，
+# 与这里的 v9.1 结果不是同一个输入版本（CLAUDE.md 二.6），不报错也会画错，所以停下。
+if __name__ == "__main__":
+    raise SystemExit("v9.1 的幻灯片：原地切到 a303f05（做法见 README §0），在仓库根运行本脚本"
+                     "（那里读仓库根 inputs/，与 v9.1 求解用的管网逐字节相同）。")
+plot_style.RESULTS_DIR = REPO_ROOT / "results" / "figures" / "v9.1" / "data"   # 必须早于下面的 import
 
 from plot_style import (                                   # noqa: E402
     PATHWAY_COLORS, add_scs_inset, apply_style, draw_china_basemap, mainland_extent, to_map_xy,
@@ -35,7 +40,7 @@ from plot_ed_source_sink_matching import (                 # noqa: E402
     ACTIVE, FLOW_REF, GEOM, HUBS, SINK_REF, BASE, TREAT, edge_flows, hub_frame, sink_injection,
 )
 
-OUT = ROOT / "results" / "figures" / "slides" / "anim"
+OUT = REPO_ROOT / "results" / "figures" / "slides" / "anim"
 YEARS = (2030, 2040, 2050, 2060)
 MAIN, CTRL = "5C3A6E", "8A6520"                 # 两种口径的标识色（非蓝、与数据色不撞）
 CASES = ((TREAT, "water", "考虑水约束 · 主情景", "#" + MAIN),

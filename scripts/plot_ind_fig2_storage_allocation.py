@@ -85,19 +85,19 @@ def _read_input(name: str) -> pd.DataFrame:
 
 
 def assert_v9_tree(run: str) -> int:
-    """确认脚本正跑在 v9 求解树上，而不是仓库根的 v7 结果上。
+    """确认读的是 v9 求解树的结果，而不是仓库根的 v7 结果。
 
-    两棵树里都有同名目录 `IND_WA_cwatm_126_dry_oq_t95`，`RESULTS_DIR` 只跟着脚本自己的
-    位置走（`plot_style.py`：`__file__.parent.parent / "results"`）。在仓库根跑会画出
-    35 汇的 v7 结果，而图注里"89 个汇全部可达"是算出来的、"v9 管网"却是写死的字符串——
-    图看上去完全正常。这一条就是防那个。
+    两棵树里都有同名目录 `IND_WA_cwatm_126_dry_oq_t95`。2026-09-28 之前 `RESULTS_DIR` 跟着脚本
+    自己的位置走，在仓库根跑会画出 35 汇的 v7 结果，而图注里的汇数是算出来的、管网名（现为
+    "v9.2 管网"）却是写死的字符串——图看上去完全正常。这一条就是防那个；现在 `RESULTS_DIR`
+    固定是 `_indtree/results`。
     """
     sinks_here = pd.read_csv(RESULTS_DIR / run / "storage_utilization.csv")[
         "storage_hub_id"].nunique()
     if sinks_here != EXPECTED_SINKS:
         raise RuntimeError(
             f"{RESULTS_DIR} 不是 v9 求解树：{run} 只有 {sinks_here} 个汇"
-            f"（应为 {EXPECTED_SINKS}）。请在 _indtree/ 下运行本脚本。")
+            f"（应为 {EXPECTED_SINKS}）。")
     return int(sinks_here)
 
 
@@ -457,7 +457,7 @@ def main() -> None:
                 f"（{deg_n}/{deg_total} 个厂址的 CO$_2$ 强度完全相同），不承载空间信息。"
                 if deg_n else "")
     fig.text(0.004, 0.004, cjk_fill(
-        f"情景 {RUN}（v9 管网，{n_sinks} 个汇全部可达），{YEAR} 年横截面。"
+        f"情景 {RUN}（v9.2 管网，2026-09-12 重建，{n_sinks} 个汇对每个源都可达），{YEAR} 年横截面。"
         f"注入合计 {coal_captured:,.1f}，"
         f"全国注入能力 {sink['injectivity_mtpa'].sum():,.1f} Mt CO$_2$ yr$^{{-1}}$"
         f"（{coal_captured / sink['injectivity_mtpa'].sum():.1%}），其中 {n_full} 个汇正好压在各自的"

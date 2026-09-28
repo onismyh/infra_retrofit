@@ -25,9 +25,9 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bootstrap import ROOT  # noqa: E402
 from plot_style import input_vintage, same_model_runs  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 OUT_JSON = RESULTS / "numbers_ledger.json"
 OUT_MD = RESULTS / "numbers_ledger.md"

@@ -28,11 +28,12 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from _bootstrap import REPO_ROOT, ROOT                     # noqa: E402
 from plot_style import apply_style                         # noqa: E402
 
-TREE = HERE.parent
+TREE = ROOT
 RES = TREE / "results"
-OUT = TREE.parent / "results" / "figures" / "slides"
+OUT = REPO_ROOT / "results" / "figures" / "slides"
 MAIN = "ST_WA_cwatm_126_dry_oq"
 CTRL = "ST_BASE"
 YEARS = (2030, 2040, 2050, 2060)

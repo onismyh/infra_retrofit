@@ -31,7 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent
+from _bootstrap import ROOT  # 数据树 _indtree/
 RESULTS_DIR = ROOT / "results"
 FIGURES_DIR = RESULTS_DIR / "figures"
 MAIN_FIGURES_DIR = FIGURES_DIR / "main"
@@ -1135,7 +1135,7 @@ def load_basins(root=None):
     import geopandas as gpd
     from pathlib import Path
 
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
+    root = Path(root) if root is not None else ROOT
     path = root / "data" / "ChinaBasins" / "basin_l1.gpkg"
     if not path.exists():
         return None

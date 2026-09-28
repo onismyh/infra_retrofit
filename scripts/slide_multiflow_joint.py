@@ -30,11 +30,12 @@ sys.path.insert(0, str(HERE))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import map_tht as M                                        # noqa: E402
+from _bootstrap import REPO_ROOT, ROOT                     # noqa: E402
 from plot_style import apply_style, load_basins            # noqa: E402
 
-TREE = HERE.parent
+TREE = ROOT
 RES = TREE / "results"
-OUT = TREE.parent / "results" / "figures" / "slides"
+OUT = REPO_ROOT / "results" / "figures" / "slides"
 CASE = "ST_WA_cwatm_126_dry_oq"
 YEAR = 2050
 

@@ -62,6 +62,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bootstrap import ROOT  # noqa: E402
 from plot_style import (  # noqa: E402
     apply_style,
     country_main,
@@ -112,7 +113,6 @@ ANNOTATION_SIZE = 6.3
 DETAIL_SIZE = 6.0
 LEGEND_SIZE = 6.4
 
-ROOT = Path(__file__).resolve().parents[1]
 INPUTS_DIR = ROOT / "inputs"
 YEARS = [2030, 2040, 2050, 2060]
 MAP_YEAR = 2060

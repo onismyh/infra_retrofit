@@ -47,7 +47,7 @@
 > 要用这几列，这一改动合入之前落盘的 `ST_` 结果需重解（实现说明 §9.8）。
 > 2026-09-27 起 `network_edges.csv` 删去 `num_pipe_new`、`num_pipe_stock` 两列：它们是容量 ÷ `standard_pipe_capacity_mtpa`（20 Mtpa），
 > 不是管道根数；本年实际铺设的根数见 `pipes_new_by_tier`（如 `1x2|1x20`）。
-> 2026-09-27 起 `plot_style.residual_emissions_mt`（`scripts/` 与 `_indtree/scripts/` 两份）只按 `*_blend_ratio` 列算残余排放，
+> 2026-09-27 起 `plot_style.residual_emissions_mt`（`scripts/plot_style.py`）只按 `*_blend_ratio` 列算残余排放，
 > 没有这几列就报错。此前没有这几列时按档位下标换算，而下标分不出独热档位与连续 hub：连续 hub 的下标恰为整数时
 > 也可能是几档的混合，会被静默读错。
 > PR #7 之前落盘的 `ST_` 结果重解后再画；v9 / v9.1 的独热结果用冻结树 `_v9tree/scripts`、`_v91tree/scripts` 里的同名脚本画。
@@ -56,14 +56,14 @@
 > 只指它们的图（`plot_ind_*` 不读档位列）。
 > 2026-09-27 起情景登记在仓库根 `scenarios/*.toml`（`ST_` 系在 `scenarios/st.toml`，格式见 `src/coal_retrofit/scenarios.py`），
 > 入口是 `python -m coal_retrofit`（`list` / `show` / `diff` / `run`，要先 `pip install -e .`），求解与写结果在
-> `src/coal_retrofit/runner.py`。`scripts/run_single.py` 与 `_indtree/scripts/run_single.py` 留作薄壳，原命令照用，
+> `src/coal_retrofit/runner.py`。`scripts/run_single.py` 留作薄壳，原命令照用，
 > `from run_single import EXPERIMENTS` 照旧读得到登记表。求解树写在情景里（`ST_` 系是 `tree = "_indtree"`），
 > 从哪个目录启动都读同一套输入，树下没有 `inputs/` 就报错，`--tree` 可换树。`run --set 节.字段=值` 必须配 `--as 结果名`，
 > 结果名不许与登记情景同名（不分大小写）。result.json 末尾新增 `resolved` 段（全部参数、求解树、`--set` 覆盖项、运行选项与
-> `COAL_RETROFIT_*` 环境变量），其余键不变；`python _indtree/scripts/check_run_provenance.py --pair A B` 列出两次求解的
+> `COAL_RETROFIT_*` 环境变量），其余键不变；`python scripts/check_run_provenance.py --pair A B` 列出两次求解的
 > 参数差与环境变量差。缺一边、有一边没有 `resolved` 段（2026-09-27 之前落盘）、一边是 LP 松弛或热启动而另一边不是、
-> 两边都是 LP 松弛、有一边没有可用的解（目标函数为 NaN），都判不过（退出码 1）。脚本读自己所在树的 `results/`
-> （仓库根那份读仓库根 `results/`），`--results` 可换目录（只配 `--pair`）。
+> 两边都是 LP 松弛、有一边没有可用的解（目标函数为 NaN），都判不过（退出码 1）。脚本读 `_indtree/results/`，
+> `--results` 可换目录（只配 `--pair`）。
 > 模型、参数缺省值与结果表都不变。
 >
 > 2026-09-27 起连续 hub 下路径份额恰好分摊到各掺烧档位上（`Σ_l z = s`，此前是 `≤`；`optimization/constraints.py`，
@@ -83,6 +83,15 @@
 > （`code`：`commit`、`dirty`）。`check_run_provenance.py` 的可证区间里，目标函数下界 LB 改用记下的 ObjBound（没有这一项的
 > 旧结果照旧按 gap 反推），`hi` 的分母按 CLAUDE.md §二.3 由 INC_c 改为 LB_c；`--pair` 下碳价不同、读的同一个输入文件摘要
 > 不同、有一边没有 `resolved.code` 都判不过，提交号不同、记不了提交号或求解时有未提交的改动只告警。模型与结果表不变（toy 12 个变体逐字节一致）。
+>
+> 2026-09-28 起脚本只有仓库根 `scripts/` 一份：`_indtree/scripts/` 并入后删除。两份不同的 7 个文件里，5 个取 `_indtree`
+> 那份（它带 2026-09-10、09-12 之后的改动，仓库根那份没有），`plot_ed_sensitivity.py` 取仓库根那份，`_bootstrap.py` 重写；
+> 3 个 `ST_` 幻灯片脚本挪到仓库根。脚本读写的数据树固定是 `_indtree/`（`scripts/_bootstrap.py` 的 `ROOT`，测试核对它就是
+> 登记情景的 `tree`），图幅归档写仓库根 `results/figures/`（`REPO_ROOT`）。仓库根 `scripts/` 原先读写仓库根的 v7 `inputs/`
+> 与 `results/`，现在除 `render_version.py`（照仓库根那份）外，读写的路径与原 `_indtree/scripts/` 那份相同。
+> v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
+> 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：在本机工作区 `git switch --detach a303f05`，画完 `git switch -`
+> （先提交或 stash 改动）。不要另开 worktree，没入库的 `data/` 与结果都不在那里。模型、求解与结果表不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

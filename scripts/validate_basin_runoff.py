@@ -34,11 +34,10 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _bootstrap  # noqa: F401
+from _bootstrap import ROOT
 
 from coal_retrofit.builders.water import SECONDS_PER_YEAR, _cell_area_m2, _clean_series
 
-ROOT = Path(__file__).resolve().parents[1]
 BASIN_L1 = ROOT / "data" / "ChinaBasins" / "basin_l1.gpkg"
 WATER_DIR = ROOT / "data" / "water"
 

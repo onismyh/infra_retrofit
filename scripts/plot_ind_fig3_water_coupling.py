@@ -88,9 +88,10 @@ GRID = "#E4E7EA"
 CATEGORY_ZH = {
     "slack_penalty": "松弛罚金（big-M）",
     "incremental_om": "增量运维",
-    "industry_cost": "工业改造运行",
-    "industry_capex": "工业改造投资",
+    "industry_cost": "工业改造运维",
     "salvage_credit": "期末残值抵扣",
+    # 2026-09-10 起 industry_cost 只留年度运维，投资单列为 industry_capex
+    "industry_capex": "工业改造投资",
     "baseline_net_cost": "基准净成本",
     "stranded_capex": "搁浅资产",
     "coal_savings_credit": "燃料节约抵扣",
@@ -115,17 +116,16 @@ TOP_N = 8                  # 面板 d 单列的类别数，其余并入"其他"
 # 读数
 # =========================================================================================
 def assert_v9_tree(run: str) -> int:
-    """确认脚本正跑在 v9 求解树上，而不是仓库根的 v7 结果上。
+    """确认读的是 v9 求解树的结果，而不是仓库根的 v7 结果。
 
-    两棵树里都有同名目录 `IND_WA_cwatm_126_dry_oq_t95`，`RESULTS_DIR` 只跟着脚本自己的位置
-    走（`plot_style.py`：`__file__.parent.parent / "results"`）。在仓库根跑会画出 35 汇的
-    v7 结果，而图注里"v9 管网"是写死的字符串——图看上去完全正常。这一条就是防那个。
+    两棵树里都有同名目录 `IND_WA_cwatm_126_dry_oq_t95`。2026-09-28 之前 `RESULTS_DIR` 跟着脚本
+    自己的位置走，在仓库根跑会画出 35 汇的 v7 结果，而图注里的管网名（现为"v9.2 管网"）是写死的字符串——
+    图看上去完全正常。这一条就是防那个；现在 `RESULTS_DIR` 固定是 `_indtree/results`。
     """
     sinks = pd.read_csv(RESULTS_DIR / run / "storage_utilization.csv")["storage_hub_id"].nunique()
     if sinks != EXPECTED_SINKS:
         raise RuntimeError(
-            f"{RESULTS_DIR} 不是 v9 求解树：{run} 只有 {sinks} 个汇（应为 {EXPECTED_SINKS}）。"
-            f"请在 _indtree/ 下运行本脚本。")
+            f"{RESULTS_DIR} 不是 v9 求解树：{run} 只有 {sinks} 个汇（应为 {EXPECTED_SINKS}）。")
     return int(sinks)
 
 
@@ -396,15 +396,21 @@ def main() -> None:
         panel_label(ax, letter, x=-0.16, y=1.06)
 
     basin_years = "-".join(str(y) for y in (slack["basin_years"][0], slack["basin_years"][-1]))
+    # 2026-09-12 重建的管网不再出现管道容量 big-M 松弛，这一句要能说没有。
+    if slack["other_years"]:
+        other_txt = (f" {slack['other'] / 1e9:,.0f} 十亿元是 "
+                     f"{slack['other_years'][0]} 年的管道容量罚金；")
+    else:
+        other_txt = "无其他类别的罚金；"
     fig.text(0.004, 0.004, cjk_fill(
         f"{RUN_OFF} 对 {RUN_ON}：同一模型、同一联合目标（0.95）、同一 v9 管网，"
-        f"只差流域取水上限一个旋钮，因此这一对可以相减。"
+        f"只差流域取水上限一个旋钮，因此这一对可以相减（v9.2 管网，2026-09-12 重建）。"
         f"(a) 只计本次改造转空冷的容量，按 1 减去存量空冷份额折算，不含"
         f" {off['already_air_gw'].iloc[0]:.0f} GW 的存量空冷（两情景相同）。"
         f"(b) 煤电走耗水表、工业走取水表，煤电的取水量不在任何产物 CSV 里，两条不可相加。"
         f"(d) 的合计 {float(delta.sum()) / 1e9:+,.0f} 十亿元里有 {slack['basin'] / 1e9:,.0f}"
         f" 十亿元是流域 K 在 {basin_years} 年的 big-M 违约罚金，另有"
-        f" {slack['other'] / 1e9:,.0f} 十亿元是 {slack['other_years'][0]} 年的管道容量罚金；"
+        f"{other_txt}"
         f"罚参数为设定值而非价格，因此 {band['point']:+.2%}"
         f"（两臂均 1% gap，可证区间 {band['lo']:+.2%} 到 {band['hi']:+.2%}）"
         f"不可作为水约束的成本引用，"

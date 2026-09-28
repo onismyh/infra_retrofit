@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from _bootstrap import REPO_ROOT
 # 已被 plot_ed_multihop_matching.py 取代的旧 ED14（年份 × 口径六张管网图）；
 # plot_fig3_attribution 是 BASE 单情景的成本归因，不在 v9 图序列里，且要 8 条 annual/wgap_370
 # 臂才画得全，不随版本归档。
@@ -128,8 +128,8 @@ def main() -> None:
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--skip-plots", action="store_true")
     args = parser.parse_args()
-    tree = (ROOT / args.tree).resolve()
-    dest = ROOT / "results" / "figures" / args.version
+    tree = (REPO_ROOT / args.tree).resolve()
+    dest = REPO_ROOT / "results" / "figures" / args.version
     dest.mkdir(parents=True, exist_ok=True)
 
     rows = [] if args.skip_plots else run_plots(tree, dest / "render.log", args.timeout)

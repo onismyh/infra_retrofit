@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """幻灯片用：煤电 + 工业联合求解的源汇匹配跨期演变（2030/2040/2050/2060）。
 
-数据源固定为本树（v9 管网 + 工业点源联合三角剖分）的部门碳目标算例：
+数据源固定为 `_indtree`（v9 管网 + 工业点源联合三角剖分）的部门碳目标算例：
     ST_WA_cwatm_126_dry_oq  考虑水约束（主情景）
     ST_BASE                 不考虑水约束（对照）
 工业活动量与部门目标出自 China TIMES V2.0（inputs/sector_targets_times_cn60.csv、
@@ -31,13 +31,14 @@ sys.path.insert(0, str(HERE))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import map_tht as M                                        # noqa: E402
+from _bootstrap import REPO_ROOT, ROOT                     # noqa: E402
 from plot_style import (                                   # noqa: E402
     PATHWAY_COLORS, apply_style, to_map_xy,
 )
 
-TREE = HERE.parent
+TREE = ROOT
 INP, RES = TREE / "inputs", TREE / "results"
-OUT = TREE.parent / "results" / "figures" / "slides" / "anim_joint"
+OUT = REPO_ROOT / "results" / "figures" / "slides" / "anim_joint"
 YEARS = (2030, 2040, 2050, 2060)
 MAIN, CTRL = "#5C3A6E", "#8A6520"
 CASES = (("ST_WA_cwatm_126_dry_oq", "water", "考虑水约束 · 主情景", MAIN),
