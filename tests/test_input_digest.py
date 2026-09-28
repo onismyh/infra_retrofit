@@ -136,16 +136,19 @@ def test_solver_records_the_digest_taken_at_read_time(tmp_path) -> None:
     assert quality["digest_plants"] != _input_digest(paths.inputs_dir, _input_files(paths, scenario))["digest_plants"]
 
 
-def test_mip_focus_is_read_back_from_the_model(monkeypatch) -> None:
-    """溯源记模型上实际生效的 MIPFocus：未设环境变量时是 `_new_gurobi_model` 的缺省 1，不是 0。"""
+def test_seed_and_mip_focus_are_read_back_from_the_model() -> None:
+    """溯源记模型上实际生效的 Seed 与 MIPFocus（由情景字段 `solver_seed`、`mip_focus` 经 `_new_gurobi_model` 设上）：
+    缺省是 Gurobi 的 Seed 0 与 `_new_gurobi_model` 的 MIPFocus 1，不是 0。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     from coal_retrofit.optimization._shared import _new_gurobi_model
 
-    monkeypatch.delenv("COAL_RETROFIT_MIPFOCUS", raising=False)
     model = _new_gurobi_model("provenance")
+    seeded = _new_gurobi_model("provenance", seed=3, mip_focus=2)
     try:
-        assert _run_provenance(model, {})["mip_focus"] == 1
+        assert {k: _run_provenance(model, {})[k] for k in ("seed", "mip_focus")} == {"seed": 0, "mip_focus": 1}
+        assert {k: _run_provenance(seeded, {})[k] for k in ("seed", "mip_focus")} == {"seed": 3, "mip_focus": 2}
         model.Params.MIPFocus = 2
         assert _run_provenance(model, {})["mip_focus"] == 2
     finally:
         model.dispose()
+        seeded.dispose()

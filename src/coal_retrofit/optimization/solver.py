@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -36,26 +36,44 @@ from .year_types import SolveResult, YearPayload
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SolveControls:
+    """只改搜索路径或只做诊断的开关，不改模型；要相减的求解必须用同一套（实现说明 §9.7）。
+
+    - `relax`：把全部整数变量改成连续变量再求解（LP 松弛，热启动第 1 步）。
+    - `start_sol`：按这个 .sol 给整数变量设 MIP start（热启动第 2 步，`solver_start._apply_rounded_start`）。
+    - `write_sol`：有解时把解写到这里。路径须是 ASCII：Gurobi 在中文路径下写文件会失败。
+    - `log_incumbents`：每个新可行解打一行 INCUMBENT。
+
+    由运行器给：情景 `warm_start = "lp_relax"` 时两步各一套；此外读兼容的环境变量（`runner.env_controls`），
+    此前由本函数自己读 COAL_RETROFIT_LP_RELAX / START_SOL / WRITE_SOL / LOG_INCUMBENTS。缺省（None）全关。
+    """
+
+    relax: bool = False
+    start_sol: Path | None = None
+    write_sol: Path | None = None
+    log_incumbents: bool = False
+
+
 def _solve_joint_multi_period(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
     years: tuple[int, ...],
     state: SolveState,
+    controls: SolveControls | None = None,
 ) -> SolveResult:
+    controls = controls if controls is not None else SolveControls()
+    # 线程数、MIPFocus、seed 都属于（模型, 参数, 线程数）：要相减的两次求解必须一致，溯源记录里有它们。
     model = _new_gurobi_model(
         "joint_multi_period",
         threads=scenario.solver_threads,
         time_limit=scenario.solver_time_limit,
+        seed=scenario.solver_seed,
+        mip_focus=scenario.mip_focus,
     )
     model.Params.MIPGap = scenario.mip_gap
-    logger.info("MIPGap set to %.4f", scenario.mip_gap)
-    # MIPFocus 从环境变量读，整个求解批次统一设置。它属于 (模型, 参数, 线程) 元组，
-    # 要相减的两次求解必须一致，溯源记录里有它。
-    _focus = os.environ.get("COAL_RETROFIT_MIPFOCUS")
-    if _focus:
-        model.Params.MIPFocus = int(_focus)
-        logger.info("MIPFocus set to %s", _focus)
+    logger.info("MIPGap %.4f, MIPFocus %d, Seed %d", scenario.mip_gap, scenario.mip_focus, scenario.solver_seed)
 
     idx = build_model_index(prepared, scenario, assumptions)
     year_payloads: list[YearPayload] = [
@@ -82,24 +100,21 @@ def _solve_joint_multi_period(
     _add_salvage_credit(year_payloads, scenario, assumptions, _COST_SCALE)
     model.setObjective(gp.quicksum(payload.objective_expr for payload in year_payloads), GRB.MINIMIZE)
 
-    # 以下环境变量只用于诊断或热启动，改搜索路径不改模型；要相减的求解必须用同一套。
-    if os.environ.get("COAL_RETROFIT_LP_RELAX"):
+    if controls.relax:
         model.update()
         for var in model.getVars():
             if var.VType != GRB.CONTINUOUS:
                 var.VType = GRB.CONTINUOUS
-        logger.warning("COAL_RETROFIT_LP_RELAX set: solving the LP relaxation, not the MIP")
-    start_sol = os.environ.get("COAL_RETROFIT_START_SOL")
-    if start_sol:
-        _apply_rounded_start(model, Path(start_sol), assumptions)
-    if os.environ.get("COAL_RETROFIT_LOG_INCUMBENTS"):
+        logger.warning("solving the LP relaxation, not the MIP")
+    if controls.start_sol is not None:
+        _apply_rounded_start(model, Path(controls.start_sol), assumptions)
+    if controls.log_incumbents:
         model.optimize(_incumbent_logger(year_payloads))
     else:
         model.optimize()
-    write_sol = os.environ.get("COAL_RETROFIT_WRITE_SOL")
-    if write_sol and int(_optional_model_attr(model, "SolCount") or 0) > 0:
-        model.write(write_sol)
-        logger.warning("solution written to %s", write_sol)
+    if controls.write_sol is not None and int(_optional_model_attr(model, "SolCount") or 0) > 0:
+        model.write(str(controls.write_sol))
+        logger.warning("solution written to %s", controls.write_sol)
 
     status = _extract_solver_status(model)
     solver_quality = _solver_quality(model, status, prepared.input_digest)

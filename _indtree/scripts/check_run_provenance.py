@@ -34,6 +34,15 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 本脚本读自己所在树的 `results/`：`scripts/` 这份读仓库根 `results/`，`_indtree/scripts/` 这份读
 `_indtree/results/`（`ST_` 系的结果在这里）；`--results` 可换目录（只配 `--pair`）。
 
+2026-09-28 起（求解流程进情景定义）又加了几条：
+- 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`），没有这个键的旧结果才按 gap
+  反推；目标函数或下界不是正数时只给绝对区间（元）。
+- 热启动看两处：情景 `warm_start = "lp_relax"`（运行器自动两步）或手工设 COAL_RETROFIT_START_SOL，两边一个热启动
+  一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
+- `--pair` 另比两边都有的输入摘要（`digest_*`），不同就记 failure（CLAUDE.md 二.6）；两边读的不是同一个文件的
+  （`resolved.input_files` 不同）与只有一边有的只列出。任一边没有 `resolved.code`（这之前落盘，跨 PR #11 连续 hub
+  掺烧等式的模型改动分不出来）记 failure；提交号不同、求解时有未提交的改动、记不了提交号，只告警。
+
     python scripts/check_run_provenance.py
     python scripts/check_run_provenance.py --strict   # also fail on unpinned threads
     python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq
@@ -94,15 +103,18 @@ FIELDS = ("fingerprint", "num_vars", "num_constrs", "num_nonzeros",
 
 D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704, 8: 2.847}
 
-# `resolved.env` 记下求解时所有 COAL_RETROFIT_* 环境变量。求解器（optimization/solver.py）的三个开关只看设没设
-# （求解器按非空判断；热启动的 .sol 路径按情景不同）；WRITE_SOL 只决定写不写 .sol，不比；其余（MIPFOCUS、
-# GUROBI_SEED 等）按原值列差，MIPFocus 不同另由下面 solver_quality 的 mip_focus 判 failure。
+# `resolved.env` 记下求解时所有 COAL_RETROFIT_* 环境变量。运行器的三个兼容开关只看设没设（按非空判断；热启动的
+# .sol 路径按情景不同）；WRITE_SOL 只决定写不写 .sol，不比；其余（MIPFOCUS、GUROBI_SEED 等）按原值列差，
+# 它们实际生效的值记在情景字段 `mip_focus`、`solver_seed` 里，MIPFocus 不同另由 solver_quality 的 mip_focus 判 failure。
 ENV_SWITCHES = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_LOG_INCUMBENTS")
 ENV_SKIPPED = ("COAL_RETROFIT_WRITE_SOL",)
-# 两边不一致就不能相减。
+# 两边不一致就不能相减。热启动的两种来源（情景字段与 START_SOL）合起来由 `_warm_started` 判。
 ENV_BLOCKING = {
     "COAL_RETROFIT_LP_RELAX": "一边解的是 LP 松弛（整数变量改成了连续变量）",
-    "COAL_RETROFIT_START_SOL": "一边热启动、一边没有（实现说明 §9.7：同一族必须同法）",
+}
+# 这些参数两边不同，目标函数的口径就不同，目标函数不能相减。
+OBJECTIVE_BASIS = {
+    "scenario.carbon_price_cny_per_t_by_year": "目标函数含的碳价支出不同，只能比路径结构",
 }
 
 
@@ -115,12 +127,22 @@ def load(name, results=RESULTS):
     out = {key: quality.get(key) for key in FIELDS}
     out["objective"] = payload.get("global_objective_cny")
     out["mip_gap"] = quality.get("mip_gap")
+    out["bound"] = quality.get("objective_bound_cny")
+    out["digests"] = {key: value for key, value in quality.items() if key.startswith("digest_")}
     out["resolved"] = payload.get("resolved")
     return out
 
 
 def _lp_relaxed(row):
     return bool(((row["resolved"] or {}).get("env") or {}).get("COAL_RETROFIT_LP_RELAX"))
+
+
+def _warm_started(resolved):
+    """热启动了没有：情景 `warm_start = "lp_relax"`（运行器自动两步），或手工设了 COAL_RETROFIT_START_SOL。
+    两者是同一套流程（实现说明 §9.7），只看有没有。"""
+    scenario = resolved.get("scenario") or {}
+    env = resolved.get("env") or {}
+    return scenario.get("warm_start", "none") != "none" or bool(env.get("COAL_RETROFIT_START_SOL"))
 
 
 def _env_view(resolved):
@@ -131,8 +153,9 @@ def _env_view(resolved):
     return view
 
 
-def describe_params(label, a, b, failures):
-    """两次求解的参数差与环境变量差（`resolved` 段），LP 松弛或热启动两边不一致记进 *failures*。
+def describe_params(label, names, a, b, failures, warnings):
+    """两次求解的参数差与环境变量差（`resolved` 段）。LP 松弛或热启动两边不一致、碳价不同（`OBJECTIVE_BASIS`）
+    记进 *failures*；提交号不同、有未提交的改动、记不了提交号记进 *warnings*（`resolved.code`，旧结果没有这一项）。
 
     任一边没有 `resolved`（2026-09-27 之前落盘）就说明比不了。
     """
@@ -141,6 +164,9 @@ def describe_params(label, a, b, failures):
     diffs = diff_resolved(a["resolved"], b["resolved"])
     lines = [f"    -> 参数差 {len(diffs)} 项："] if diffs else ["    -> 参数完全相同"]
     lines += [f"         {key}: {va!r} -> {vb!r}" for key, va, vb in diffs]
+    for key, _, _ in diffs:
+        if key in OBJECTIVE_BASIS:
+            failures.append(f"{label}: {key} 两边不同 -- {OBJECTIVE_BASIS[key]}，目标函数不能相减")
     ea, eb = _env_view(a["resolved"]), _env_view(b["resolved"])
     env_diffs = [(key, ea.get(key), eb.get(key)) for key in [*ea, *(k for k in eb if k not in ea)]
                  if ea.get(key) != eb.get(key)]
@@ -149,6 +175,21 @@ def describe_params(label, a, b, failures):
     for key, va, vb in env_diffs:
         if key in ENV_BLOCKING:
             failures.append(f"{label}: {key} 两边不同（{va} vs {vb}）-- {ENV_BLOCKING[key]}，这两次求解不能相减")
+    warm = [_warm_started(a["resolved"]), _warm_started(b["resolved"])]
+    if warm[0] != warm[1]:
+        which = "、".join(name for name, flag in zip(names, warm) if flag)
+        failures.append(f"{label}: 只有 {which} 热启动了（实现说明 §9.7：同一族必须同法），这两次求解不能相减")
+    codes = [a["resolved"].get("code"), b["resolved"].get("code")]
+    if all(code is not None for code in codes):
+        commits = [code.get("commit") for code in codes]
+        lines.append(f"    -> 提交号：{commits[0]} -> {commits[1]}")
+        if None in commits:
+            warnings.append(f"{label}: 至少一边求解时记不了提交号（没有 git），两边是不是同一份代码核不了")
+        elif commits[0] != commits[1]:
+            warnings.append(f"{label}: 两边的提交号不同（{commits[0][:9]} vs {commits[1][:9]}），"
+                            f"核对这两个提交之间没有模型改动（CLAUDE.md 二.7）")
+        warnings += [f"{label}: {name} 求解时有未提交的改动，提交号不能完全代表所用的代码"
+                     for name, code in zip(names, codes) if code.get("dirty")]
     return lines
 
 
@@ -197,9 +238,56 @@ def check_seed_families(failures, warnings):
                   f"such runs = {1.96 * (2 ** 0.5) * sigma:.4f}%")
 
 
+def lower_bound(row):
+    """下界：result.json 记的 ObjBound（`objective_bound_cny`）。没有这个键的旧结果按 gap 反推：Gurobi 的
+    gap = |ObjBound − ObjVal| / |ObjVal|，最小化时 ObjBound ≤ ObjVal，所以 LB = INC − gap·|INC|。"""
+    if row.get("bound") is not None:
+        return float(row["bound"])
+    objective = float(row["objective"])
+    return objective - float(row["mip_gap"] or 0.0) * abs(objective)
+
+
+def certified_interval(a, b):
+    """CLAUDE.md 二.3 的可证区间，a 是对照（c）、b 是处理（t）：lo = (LB_t − INC_c)/INC_c，hi = (INC_t − LB_c)/LB_c。
+
+    返回 (点估计, lo, hi, 单位)。INC_c 或 LB_c 不是正数时（toy 的目标函数就是负的）相对区间的正负与大小都不对，
+    只给绝对区间 [LB_t − INC_c, INC_t − LB_c]，单位是元。
+    """
+    inc_c, inc_t = float(a["objective"]), float(b["objective"])
+    lb_c, lb_t = lower_bound(a), lower_bound(b)
+    if inc_c > 0 and lb_c > 0:
+        return 100.0 * (inc_t - inc_c) / inc_c, 100.0 * (lb_t - inc_c) / inc_c, 100.0 * (inc_t - lb_c) / lb_c, "%"
+    return inc_t - inc_c, lb_t - inc_c, inc_t - lb_c, "元"
+
+
+def describe_digests(label, names, a, b, failures):
+    """`--pair`：两边都有的输入摘要（`digest_*`）逐项比，不同就记 failure（CLAUDE.md 二.6：不同输入版本的结果不得
+    相减）。两边读的不是同一个文件（`resolved.input_files` 不同：部门目标、产量指数的文件随情景的来源换）、
+    只有一边有（如无水约束时没有水的文件）的只列出。"""
+    da, db = a["digests"], b["digests"]
+    files = [(row["resolved"] or {}).get("input_files") or {} for row in (a, b)]
+    lines, same = [], 0
+    for key in [*da, *(k for k in db if k not in da)]:
+        logical = key.removeprefix("digest_")
+        fa, fb = files[0].get(logical), files[1].get(logical)
+        if key not in da or key not in db:
+            lines.append(f"         {key}: 只有 {names[0] if key in da else names[1]} 读了，不比")
+        elif da[key] == db[key]:
+            same += 1
+        elif fa is not None and fb is not None and fa != fb:
+            lines.append(f"         {key}: 两边读的文件不同（{fa} vs {fb}），不比")
+        else:
+            lines.append(f"         {key}: {da[key]} -> {db[key]}")
+            failures.append(f"{label}: 输入 {logical} 两边不同（{da[key]} vs {db[key]}）-- CLAUDE.md 二.6："
+                            f"不同输入版本的结果不得相减")
+    if not da and not db:
+        return ["    -> 两边都没有输入摘要，输入版本核不了"]
+    return [f"    -> 输入摘要 {same} 项相同" + (f"，另有 {len(lines)} 项：" if lines else ""), *lines]
+
+
 def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RESULTS, require_both=False):
-    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved`、两边都是 LP 松弛、任一边没有可用的解，都记 failure；
-    写死的对照表照旧：缺一边只记 warning，没有 `resolved` 只注明比不了。"""
+    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved` 或 `resolved.code`、两边都是 LP 松弛、任一边没有可用的解、
+    输入摘要不同，都记 failure；写死的对照表照旧：缺一边只记 warning，没有 `resolved` 只注明比不了。"""
     print()
     print("=" * 96)
     print("published contrasts -- fingerprints may differ, the thread pin may not")
@@ -218,13 +306,20 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
                 warnings.append(f"{label}: one side not solved yet")
             continue
         before = len(failures)
-        for line in describe_params(label, a, b, failures):
+        for line in describe_params(label, (base, variant), a, b, failures, warnings):
             print(line)
         unchecked = [name for name, row in ((base, a), (variant, b)) if row["resolved"] is None]
         if require_both and unchecked:
             failures.append(f"{label}: {'、'.join(unchecked)} 没有 resolved 段（2026-09-27 之前落盘），"
                             f"参数与环境变量都核不了，重解后再比")
         if require_both:
+            for line in describe_digests(label, (base, variant), a, b, failures):
+                print(line)
+            uncoded = [name for name, row in ((base, a), (variant, b))
+                       if row["resolved"] is not None and "code" not in row["resolved"]]
+            if uncoded:
+                failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（这一项加上之前落盘）："
+                                f"是不是在 PR #11（连续 hub 掺烧等式，模型改动）之后求解的核不了，重解后再比")
             # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
             if _lp_relaxed(a) and _lp_relaxed(b):
                 failures.append(f"{label}: 两边都是 LP 松弛的解（整数变量改成了连续变量），"
@@ -256,16 +351,15 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
                            f"reproducible")
                 (failures if strict else warnings).append(message)
         if a["objective"] and b["objective"]:
-            point = 100.0 * (b["objective"] - a["objective"]) / a["objective"]
-            ga = float(a["mip_gap"] or 0.0)
-            gb = float(b["mip_gap"] or 0.0)
-            lo = 100.0 * ((b["objective"] * (1 - gb)) - a["objective"]) / a["objective"]
-            hi = 100.0 * (b["objective"] - a["objective"] * (1 - ga)) / a["objective"]
+            point, lo, hi, unit = certified_interval(a, b)
             verdict = "SIGN RESOLVED" if lo > 0 or hi < 0 else "inside solver bounds"
             if len(failures) > before:
                 verdict = "不可相减（见 FAILURES）"
-            print(f"    -> effect {point:+.3f}%  certified [{lo:+.3f}, {hi:+.3f}]%  "
-                  f"-> {verdict}")
+            if unit == "%":
+                print(f"    -> effect {point:+.3f}%  certified [{lo:+.3f}, {hi:+.3f}]%  -> {verdict}")
+            else:
+                print(f"    -> effect {point:+.4e} 元  certified [{lo:+.4e}, {hi:+.4e}] 元"
+                      f"（对照的目标函数或下界不是正数，不给相对区间）  -> {verdict}")
 
 
 def check_legacy(warnings):

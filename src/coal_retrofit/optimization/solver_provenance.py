@@ -84,8 +84,9 @@ def _run_provenance(
     属于参数元组，要相减的两次求解必须相同；输入数值的改动指纹看不到，由 `_input_digest` 补
     （`prepare_inputs` 读完文件时算好，这里照抄 `input_digest`）。
 
-    `mip_focus` 与 `threads_param` 一样读回模型上实际生效的值：`_new_gurobi_model` 缺省设 1，
-    `COAL_RETROFIT_MIPFOCUS` 可覆盖。较早的记录读的是环境变量，未设时记 0，而实际生效的是 1。
+    `seed`、`mip_focus` 与 `threads_param` 一样读回模型上实际生效的值（取自情景字段 `solver_seed`、`mip_focus`、
+    `solver_threads`）。较早的记录 `mip_focus` 读的是环境变量，未设时记 0，而实际生效的是 1；`seed` 读的也是
+    环境变量 COAL_RETROFIT_GUROBI_SEED，未设时记 0，与 Gurobi 的缺省种子相同。
     """
     try:
         threads_out = int(model.Params.Threads)
@@ -95,12 +96,15 @@ def _run_provenance(
         mip_focus_out = int(model.Params.MIPFocus)
     except Exception:
         mip_focus_out = None
+    try:
+        seed_out = int(model.Params.Seed)
+    except Exception:
+        seed_out = None
     fingerprint = _optional_model_attr(model, "Fingerprint")
     try:
         fingerprint_out = hex(int(fingerprint) & 0xFFFFFFFF) if fingerprint is not None else None
     except (TypeError, ValueError):
         fingerprint_out = None
-    seed_env = os.environ.get("COAL_RETROFIT_GUROBI_SEED")
     return {
         "fingerprint": fingerprint_out,
         "num_vars": _optional_model_attr(model, "NumVars"),
@@ -108,7 +112,7 @@ def _run_provenance(
         "num_nonzeros": _optional_model_attr(model, "NumNZs"),
         "threads_param": threads_out,
         "threads_pinned": bool(threads_out),
-        "seed": int(seed_env) if seed_env else 0,
+        "seed": seed_out,
         "mip_focus": mip_focus_out,
         **input_digest,
         "host_cpu_count": os.cpu_count(),

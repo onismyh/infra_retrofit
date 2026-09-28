@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -87,7 +85,9 @@ def _require_gurobi() -> None:
         raise RuntimeError("gurobipy is required to run the optimization model.")
 
 
-def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000):
+def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000, *, seed: int = 0, mip_focus: int = 1):
+    """求解参数取自情景（`OptimizationScenario` 的 `solver_threads`、`solver_time_limit`、`solver_seed`、`mip_focus`），
+    缺省值与情景字段的缺省相同。"""
     _require_gurobi()
     try:
         model = gp.Model(name)
@@ -95,7 +95,7 @@ def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000):
         raise RuntimeError("Could not initialize Gurobi. Please verify the local license environment.") from exc
     model.Params.OutputFlag = 1
     model.Params.MIPGap = 0.01    # 1% gap，达到发表质量
-    model.Params.MIPFocus = 1     # 侧重于尽快找到好的可行解
+    model.Params.MIPFocus = mip_focus  # 缺省 1：侧重于尽快找到好的可行解
     model.Params.Presolve = 2     # 激进预求解
     model.Params.TimeLimit = time_limit
     model.Params.Heuristics = 0.3        # 加大启发式力度，以得到更好的当前最优可行解（incumbent）
@@ -103,15 +103,13 @@ def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000):
     model.Params.ScaleFlag = 2           # 对大系数模型做激进缩放
     if threads > 0:
         model.Params.Threads = threads
-    # 仅用于诊断，并且有意不作为模型参数：改变 seed 会改变搜索路径，同时模型、参数与可行集
-    # 保持逐位相同。这是度量本模型简并度的唯一办法。Gurobi 在（模型、参数、线程数）固定时
-    # 是确定性的，所以不换 seed 重解什么也测不到；而扰动任何物理输入，测到的是物理而不是
-    # 求解器的随意性——这正是 v9 的 `*_nobias` 那个"地板"犯的错（Hai 的偏差因子为 0.412，意味着
-    # 在这个起约束作用的流域里，关掉偏差校正会把其可用量乘以 2.43x）。默认不设置，
-    # 因此默认行为不变。
-    seed = os.environ.get("COAL_RETROFIT_GUROBI_SEED")
+    # seed 不改模型：换 seed 只改搜索路径，模型、其余参数与可行集保持逐位相同。这是度量本模型简并度的
+    # 唯一办法。Gurobi 在（模型、参数、线程数）固定时是确定性的，所以不换 seed 重解什么也测不到；而扰动
+    # 任何物理输入，测到的是物理而不是求解器的随意性——这正是 v9 的 `*_nobias` 那个"地板"犯的错（Hai 的
+    # 偏差因子为 0.412，意味着在这个起约束作用的流域里，关掉偏差校正会把其可用量乘以 2.43x）。
+    # 0 是 Gurobi 的缺省种子，不设置，因此缺省行为不变。
     if seed:
-        model.Params.Seed = int(seed)
+        model.Params.Seed = seed
     return model
 
 
