@@ -37,7 +37,6 @@ FIGURES_DIR = RESULTS_DIR / "figures"
 MAIN_FIGURES_DIR = FIGURES_DIR / "main"
 EXTENDED_FIGURES_DIR = FIGURES_DIR / "extended"
 PATENT_FIGURES_DIR = FIGURES_DIR / "patent"
-BASE_DIR = RESULTS_DIR / "BASE"
 
 # ── Figure sizes (Nature Energy: single=89mm, double=183mm) ─────────────────
 MM = 1 / 25.4  # mm to inches
@@ -84,49 +83,6 @@ PATHWAY_ORDER = ["unabated", "biomass", "ccs", "beccs", "ammonia", "retire"]
 
 SCENARIO_COLORS = {"low": "#4477AA", "base": "#666666", "high": "#CC3311"}
 DIVERGING = {"neg": "#0077BB", "pos": "#CC3311"}
-
-# --- Scenario family: v9.1, the official 用水总量控制指标 basis -----------------------------
-# The figures used to hard-code v9's `_wd085` names. v9.1 replaces that on/off pair with a
-# three-rung ladder, and every script now composes its names from here, so a basis change is
-# one edit instead of twenty:
-#
-#   BASE_SCENARIO       no water rule at all
-#   <arm> + CTRL_SUFFIX  node  <= qtot x 0.20                     environmental flow, on
-#                                                                 consumption (a depletion rule)
-#   <arm> + TREAT_SUFFIX + basin <= 用水总量控制指标 - 非电既有取水  allocation, on withdrawal
-#
-# `ARMS` holds the CONTROL scenario names, not bare stems, because that is how the figures use
-# them; `treat_of` maps a control name to its treatment partner.
-#
-# NEVER put a `_wd085` result on the same axes as an `_oq*` one, and never difference them:
-# the two have different constraint structures, so the difference is not a physical quantity
-# (CLAUDE.md 二.6).
-BASE_SCENARIO = "BASE"
-ARM_STEMS = ["WA_cwatm_126_dry", "WA_cwatm_370_dry", "WA_wgap_126_dry"]
-SEED_ARM_STEM = "WA_cwatm_126_dry"
-SEEDS = (2, 3, 4)          # k = 4 with the base run; d2 = 2.059 (CLAUDE.md 二.4)
-CTRL_SUFFIX = "_oq_envonly"
-TREAT_SUFFIX = "_oq"
-
-ARMS = [f"{stem}{CTRL_SUFFIX}" for stem in ARM_STEMS]
-SEED_ARM = f"{SEED_ARM_STEM}{CTRL_SUFFIX}"
-
-
-def treat_of(control_name: str) -> str:
-    """Treatment partner of a control scenario name: `..._oq_envonly` -> `..._oq`.
-
-    Raises:
-        ValueError: when `control_name` is not a control arm, which would otherwise silently
-            produce a name that does not exist and fail much later as a missing-file error.
-    """
-    if not control_name.endswith(CTRL_SUFFIX):
-        raise ValueError(f"{control_name!r} is not a control arm (expected suffix {CTRL_SUFFIX!r})")
-    return control_name[: -len(CTRL_SUFFIX)] + TREAT_SUFFIX
-
-
-def seeds_of(name: str) -> list[str]:
-    """The seed replicate family of a scenario, base run first."""
-    return [name] + [f"{name}_seed{i}" for i in SEEDS]
 
 # Region grouping (6 regions)
 REGIONS = {

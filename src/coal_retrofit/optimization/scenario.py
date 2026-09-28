@@ -536,7 +536,7 @@ class OptimizationScenario:
     # 每个规划期新增的自愿退役（未到设计寿命的机组）不超过当年总发电量的 15%，约合每年 1.5%：⚠ 假设（无出处）。
     # 对照：REMIND 的提前退役上限，中国落在缺省组 2%/年，常规煤电再乘 1.2，即 2.4%/年（`remind`，按装机计）；
     # An et al. 2025 不设速率上限，其 Base 情景 2030-2040 年仅比 Flex 情景多出的提前退役就有 302.8-397.1 GW。
-    # v9 的 `*_noair` 结果正好卡在这个上限上（`scripts/plot_fig5_pathway_succession.py`）。
+    # v9 的 `*_noair` 结果正好卡在这个上限上（`a303f05` 里的 `_v9tree/scripts/plot_fig5_pathway_succession.py`）。
     max_new_retirement_share_per_period: float = 0.15
     # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线乘以此系数，是必然多发，不是上限。
     # ⚠ 假设（用法无出处）：数值与 Fan et al. 2023 SI Table 11 里 CCS 类机组与未改造煤电的最大容量因子之比

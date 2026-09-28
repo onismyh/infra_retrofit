@@ -91,7 +91,7 @@
 > 登记情景的 `tree`），图幅归档写仓库根 `results/figures/`（`REPO_ROOT`）。仓库根 `scripts/` 原先读写仓库根的 v7 `inputs/`
 > 与 `results/`，现在除 `render_version.py`（照仓库根那份）外，读写的路径与原 `_indtree/scripts/` 那份相同。
 > v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
-> 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：先提交或 stash 改动，在本机工作区 `git switch --detach a303f05`，
+> 对不上，所以直接停下（同日删除，见下文）。这类旧图要原地切到 `a303f05` 画：先提交或 stash 改动，在本机工作区 `git switch --detach a303f05`，
 > 在仓库根跑那里的 `scripts/render_version.py --tree _v9tree --version <新目录名>`（v9.1 用 `--tree _v91tree`；幻灯片另跑
 > 那里的 `scripts/slide_matching_anim.py`），出图脚本读的是本机工作区里这棵树的 `results/`。`<新目录名>` 取两边都没入库的
 > （比如 `v9_redraw`）：`results/figures/<新目录名>/` 切换时原样留着，不会盖掉分支上已提交的图。画完 `git switch -f <原分支>`
@@ -113,6 +113,25 @@
 > 规则保留）。`scripts/render_version.py` 去掉 `--tree`（出图脚本只读 `_indtree`），`--version` 改为必填（原缺省 `v9`，
 > 会把 `_indtree` 的图拷进 v9 的归档）；只拷这次画出的图（`plot_ind_*` 也往 `_indtree/results/figures/` 存图，那些旧图
 > 不拷；`--skip-plots` 时不画图，目录里的图全拷，它们也会进去），`--freeze-tag` 缺省不挪旧图。
+>
+> 2026-09-28 起 `scripts/` 只留 `ST_` 一条线用得上的 29 个脚本，删掉只服务 v9 / v9.1 / `IND_` 的 27 个（删之前的版本都在
+> `6917c9c` 的 `scripts/` 里）：
+> - 读 v9 / v9.1 情景的 17 个：`plot_fig2_constraint_response`、`plot_fig3_attribution`、`plot_fig3_mechanism`、
+>   `plot_fig4_network_reconfiguration`、`plot_fig5_pathway_succession`、`plot_extended`、`build_numbers_ledger` 与
+>   10 个 `plot_ed_*`（`water_on_off`、`water_abatement`、`source_sink_matching`、`source_sink_matching_years`、
+>   `multihop_matching`、`basin_closeup`、`biomass_sourcing`、`province_transition`、`reversion`、`who_converts`）；
+> - 已在守卫处停下、提示去旧提交画的 5 个：`slide_matching_anim`、`plot_ed_sensitivity`、`plot_ed_sink_network`、
+>   `plot_ind_ed1_target_level`、`plot_ind_fig1_joint_allocation`；
+> - 另外 5 个：读 `IND_` 的 `plot_ind_fig2_storage_allocation`、`plot_ind_fig3_water_coupling`，缺省读旧情景的
+>   `validate_baseline_year`（`BASE`）、`summarize_industry_runs`（`IND_`），一次性的 `_check_figure_widths`
+>   （`save_fig` 的宽度守卫已覆盖）。
+>
+> 留下的出图脚本是 3 个 `ST_` 幻灯片脚本和主要画输入的 6 个（`plot_candidate_network`、`plot_fig1_water_footprint`、
+> `plot_ed_fleet_atlas`、`plot_ed_water_basis`、`plot_ed_source_atlas`、`plot_ed_variance_decomposition`）。随之：
+> `plot_ed_source_atlas` 的煤电基准排放改读 `ST_BASE`（原读 `BASE`，要先解 `ST_BASE`）；`plot_ed_fleet_atlas` 把从
+> `plot_extended` 借的 `_reproj` 挪进来；`plot_style` 删掉 v9.1 情景族（`BASE_SCENARIO`、`ARMS`、`treat_of`、`seeds_of` 等）
+> 与 `BASE_DIR`；`ed_plant_data` 删掉读结果表的 `outcomes`、`pair`；`check_run_provenance.py` 删掉写死 v9 seed 族与对照表
+> 的缺省模式，`--pair` 改为必填。模型、求解与结果表不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

@@ -35,7 +35,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 import ed_plant_data as EP
-from plot_style import BASIN_NAMES_ZH, MM, save_fig
+from plot_style import BASIN_NAMES_ZH, MAP_CRS, MM, save_fig
 
 # One colour per constrained basin, colour-blind safe (Tol bright). Everything unconstrained is
 # grey: the figure's job is to show where the constraint lands, not to name nine basins.
@@ -55,9 +55,21 @@ def _sized(cap_gw: np.ndarray) -> np.ndarray:
     return 2.2 + 26.0 * cap_gw / np.nanmax(cap_gw)
 
 
+def _reproj(df: pd.DataFrame, lon_col: str, lat_col: str) -> pd.DataFrame:
+    """经纬度两列 -> MAP_CRS 下的点图层（GeoDataFrame）。原在 `plot_extended.py`，2026-09-28 随它删除挪到这里。"""
+    import geopandas as gpd
+    valid = df.dropna(subset=[lon_col, lat_col])
+    gdf = gpd.GeoDataFrame(
+        valid, geometry=gpd.points_from_xy(valid[lon_col], valid[lat_col]),
+        crs="EPSG:4326",
+    ).to_crs(MAP_CRS)
+    gdf["px"] = gdf.geometry.x
+    gdf["py"] = gdf.geometry.y
+    return gdf
+
+
 def panel_map(ax, fleet: pd.DataFrame) -> None:
     import geopandas as gpd
-    from plot_extended import _load_provinces, _reproj, _add_map_elements
     from plot_style import draw_china_basemap, add_scs_inset, mainland_extent
 
     # 省界 + 国界（国界图层含九段线，见 plot_style.load_country 的断言）

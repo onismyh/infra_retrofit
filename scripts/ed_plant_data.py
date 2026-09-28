@@ -20,6 +20,9 @@ to the nearest storage sink. None of that was reaching the appendix.
 This module assembles it once, joins each site to its level-1 basin through the water supply
 network, and hands the figure scripts a single tidy frame. Every figure that follows is drawn on
 sites, units and capacity rather than on provincial polygons.
+
+2026-09-28 起本模块只拼厂址的静态属性与流域（`fleet`、`plant_basin`）：读结果表的 `outcomes`、`pair`
+只有已删的 v9 / v9.1 图在用，一并删除。
 """
 from __future__ import annotations
 
@@ -31,7 +34,6 @@ import pandas as pd
 from _bootstrap import ROOT
 
 INPUTS = ROOT / "inputs"
-RESULTS = ROOT / "results"
 
 # Level-1 basin names. J hosts no coal capacity and is kept only so a missing join is visible
 # rather than silently dropped.
@@ -153,58 +155,4 @@ def fleet() -> pd.DataFrame:
     return p.merge(capacity_mode_labels(), on="plant_id", how="left")
 
 
-def outcomes(scenario: str, year: int | None = None) -> pd.DataFrame:
-    """Realised per-site outcomes for one scenario, joined to the static fleet.
-
-    `share_*` columns are STOCKS and monotone in year -- they are shares of the site's capacity
-    already committed to a pathway, not annual increments. They must never be accumulated across
-    years, which is the single most common way this table has been misread.
-    """
-    path = RESULTS / scenario / "plant_detail.csv"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} — solve {scenario} first")
-    d = pd.read_csv(path)
-    if year is not None:
-        d = d[d["year"] == year].copy()
-    base = fleet().drop(columns=["retirement_year", "centroid_latitude",
-                                 "centroid_longitude"], errors="ignore")
-    out = d.merge(base, on="plant_id", how="left", suffixes=("", "_static"))
-
-    # Dry cooling actually OPERATING this year, net of the units that were built dry. The
-    # distinction matters: `air_cooled_share` is an operating fraction, and by 2060 a large part
-    # of the installed dry stock has reverted to wet operation.
-    already = out.get("already_air_share_static", out.get("already_air_share", 0.0))
-    out["converted_share"] = (out["air_cooled_share"].fillna(0.0)
-                              * (1.0 - pd.Series(already).fillna(0.0).to_numpy()))
-    out["converted_gw"] = out["converted_share"] * out["capacity_mw"] / 1e3
-    out["surviving_gw"] = (1.0 - out["share_retire"].fillna(0.0)) * out["capacity_mw"] / 1e3
-    out["retired_gw"] = out["share_retire"].fillna(0.0) * out["capacity_mw"] / 1e3
-    gen = out["annual_generation_mwh"].replace(0.0, np.nan)
-    out["water_m3_per_mwh"] = out["water_use_m3"] / gen
-    out["age_2030"] = 2030 - out["mean_commission_year"]
-    return out
-
-
-def pair(control: str, treatment: str, year: int) -> pd.DataFrame:
-    """Per-site response to making the water reservation bind.
-
-    The whole paper is a difference between two runs, so the appendix should be able to show
-    that difference at the unit where the decision is taken. Columns suffixed `_c` and `_t` are
-    control and treatment; `d_*` are treatment minus control.
-    """
-    c = outcomes(control, year).set_index("plant_id")
-    t = outcomes(treatment, year).set_index("plant_id")
-    cols = ["converted_gw", "retired_gw", "captured_mt", "biomass_use_gj", "water_use_m3",
-            "surviving_gw", "annual_generation_mwh"]
-    out = c[["province_name", "capacity_mw", "basin_code", "basin_name", "constrained",
-             "centroid_longitude", "centroid_latitude", "unit_count", "mean_commission_year",
-             "min_distance_to_storage_km", "dominant_cooling", "share_once_through",
-             "share_recirculating", "share_air", "seawater_cooled"]].copy()
-    for col in cols:
-        out[f"{col}_c"] = c[col]
-        out[f"{col}_t"] = t[col]
-        out[f"d_{col}"] = t[col] - c[col]
-    return out.reset_index()
-
-
-__all__ = ["BASIN_NAMES", "CONSTRAINED_BASINS", "plant_basin", "fleet", "outcomes", "pair"]
+__all__ = ["BASIN_NAMES", "CONSTRAINED_BASINS", "plant_basin", "fleet"]

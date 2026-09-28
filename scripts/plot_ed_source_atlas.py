@@ -15,9 +15,10 @@ says so rather than leaving a reader to infer a missing layer.
 
 MARKER AREA IS CO2, FOR BOTH SIDES, ON ONE SCALE. Sizing coal by GW and industry by Mt would put
 two units on one visual channel and make the comparison meaningless. Baseline emissions are the
-one quantity both carry, and `baseline_emissions_mt` is verified scenario-independent (max
-per-hub difference between BASE and `WA_cwatm_126_dry_oq` is exactly 0.0), so this figure depends
-on NO solved scenario and cannot mix input versions -- the failure mode CLAUDE.md 二.6 exists for.
+one quantity both carry.
+煤电的基准排放取 `ST_BASE` 结果表里 2030 年的 `baseline_emissions_mt`，所以要先解 `ST_BASE`，且它的输入要与
+`industry_sources.csv` 同一版（CLAUDE.md 二.6）。"基准排放与情景无关"只在 v9.1 核过（`BASE` 与 `WA_cwatm_126_dry_oq`
+逐 hub 最大差 0.0）；ST_ 重解后要再核 `ST_BASE` 与 `ST_WA_cwatm_126_dry_oq`。
 
 NO CLIPPING ON THE SIZE SCALE. A reference value that keeps the industrial cloud legible would
 flatten 62 of 350 coal hubs at vref = 25 Mt. The un-clipped scale instead says something true:
@@ -105,9 +106,9 @@ def _area(values: np.ndarray, vmax: float) -> np.ndarray:
 
 
 def coal_sources() -> pd.DataFrame:
-    """350 厂址级 hub：坐标、装机、基准排放。不依赖任何求解结果。"""
+    """350 厂址级 hub：坐标、装机、基准排放（`ST_BASE` 结果表的 2030 年，见文件说明）。"""
     plants = pd.read_csv(INPUTS / "plants.csv")
-    emissions = (hub_frame("BASE", 2030, results_dir=RESULTS_DIR)
+    emissions = (hub_frame("ST_BASE", 2030, results_dir=RESULTS_DIR)
                  .set_index("plant_id")["baseline_emissions_mt"])
     plants = plants.set_index("plant_id")
     plants["co2_mt"] = emissions.reindex(plants.index)
