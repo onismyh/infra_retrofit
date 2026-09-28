@@ -23,8 +23,8 @@ from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.run_controls import RunError, WarmStartFailed
 from coal_retrofit.scenarios import ScenarioSpec
 
-ENV = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_WRITE_SOL", "COAL_RETROFIT_LOG_INCUMBENTS",
-       "COAL_RETROFIT_GUROBI_SEED", "COAL_RETROFIT_MIPFOCUS")
+# `run_controls.env_controls` 读的四个兼容开关；每个测试开始前 conftest 已把它们清掉。
+ENV = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_WRITE_SOL", "COAL_RETROFIT_LOG_INCUMBENTS")
 
 REGISTRY = """
 [WARM]
@@ -140,7 +140,7 @@ def test_env_controls_reads_the_compatible_switches(monkeypatch) -> None:
     monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", "b.sol")
     monkeypatch.setenv("COAL_RETROFIT_LOG_INCUMBENTS", "1")
     assert run_controls.env_controls() == SolveControls(True, Path("a.sol"), Path("b.sol"), True)
-    for key in ENV[:4]:
+    for key in ENV:
         monkeypatch.setenv(key, "")  # 空值与未设相同
     assert run_controls.env_controls() == SolveControls()
 

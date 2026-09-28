@@ -82,7 +82,7 @@
 > result.json 的 `resolved` 另记热启动第 1 步（`warm_start`）、读了哪些输入文件（`input_files`）与求解时的提交号
 > （`code`：`commit`、`dirty`）。`check_run_provenance.py` 的可证区间里，目标函数下界 LB 改用记下的 ObjBound（没有这一项的
 > 旧结果照旧按 gap 反推），`hi` 的分母按 CLAUDE.md §二.3 由 INC_c 改为 LB_c；`--pair` 下碳价不同、读的同一个输入文件摘要
-> 不同、有一边没有 `resolved.code` 都判不过，提交号不同或求解时有未提交的改动只告警。模型与结果表不变（toy 12 个变体逐字节一致）。
+> 不同、有一边没有 `resolved.code` 都判不过，提交号不同、记不了提交号或求解时有未提交的改动只告警。模型与结果表不变（toy 12 个变体逐字节一致）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
