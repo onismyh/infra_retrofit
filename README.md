@@ -94,9 +94,8 @@
 > 模型、求解与结果表不变。
 >
 > 2026-09-28 起仓库根不再有 `inputs/`：那是 v7 输入（35 汇 / 923 边），没有登记情景读它，要用就到 `a303f05` 里取。
-> `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库，要放进 `_indtree/inputs/`：
-> `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪过去。不要用 `git show … >` 落盘，
-> PowerShell 的 `>` 会改编码（5.1 存成 UTF-16，`pd.read_csv` 读不了）。
+> `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库；同日 `_indtree/inputs/` 整个入库（提交 `89f8205`），
+> 里面那份与它逐字节相同。
 >
 > 2026-09-28 起冻结树 `_v9tree/`、`_v91tree/` 也移出当前版本（436 个入库文件，约 470 MB，含 v9 的求解结果）。
 > `_v91tree/results/` 不在库里，本机那份拉取后原处不动（`.gitignore` 的规则保留）。`scripts/render_version.py` 去掉 `--tree`
