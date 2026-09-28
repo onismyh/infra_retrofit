@@ -278,9 +278,10 @@ python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动�
 
 输出在 `_indtree/results/figures/main/`，已归档到仓库根
 `results/figures/v9.1/industry/`（含 README、数据与求解日志）。
-这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，也只拷本次画出的图，
-所以这几张旧图不会混进 `ST_` 的归档——这是有意的，两条线的输入版本与模型都不同。但本树 `results/` 下的全部
-结果（含 `IND_`）都会被它拷进 `<版本>/data/`。
+这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，正常运行也只拷本次画出的图，
+所以这几张旧图不会混进 `ST_` 的归档——这是有意的：管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，
+两条线的模型不同。两处例外：给了 `--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的
+全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
 
 ---
 

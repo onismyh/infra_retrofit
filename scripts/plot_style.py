@@ -646,9 +646,9 @@ def save_fig(fig, name: str, subdir: str = ""):
                       if "missing from" in str(w.message) and "font" in str(w.message)})
     if _glyphs:
         # DELETE WHAT WAS JUST WRITTEN. savefig has already run by the time the warning is in
-        # hand, so a box-containing PDF is on disk; render_version.tree_figures() copies every
-        # PDF/PNG it finds regardless of the script's exit code, so leaving them would ship the
-        # very file this guard exists to stop.
+        # hand, so a box-containing PDF is on disk; render_version.tree_figures() picks up every
+        # PDF/PNG written during the run (every one it finds under --skip-plots) regardless of the
+        # script's exit code, so leaving them would ship the very file this guard exists to stop.
         for _ext in (".pdf", ".png"):
             (out_dir / f"{name}{_ext}").unlink(missing_ok=True)
         raise RuntimeError(

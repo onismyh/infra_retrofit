@@ -51,7 +51,7 @@
 > 没有这几列就报错。此前没有这几列时按档位下标换算，而下标分不出独热档位与连续 hub：连续 hub 的下标恰为整数时
 > 也可能是几档的混合，会被静默读错。
 > PR #7 之前落盘的 `ST_` 结果重解后再画；v9 / v9.1 的独热结果原地切到 `a303f05`，用冻结树 `_v9tree/scripts`、
-> `_v91tree/scripts` 里的同名脚本画（做法见下文 2026-09-28 的两段）。
+> `_v91tree/scripts` 里的同名脚本画（做法见下文以"2026-09-28 起脚本只有"与"2026-09-28 起冻结树"开头的两段）。
 > `IND_` 系旧结果也没有这几列，残余排放不要去 `cf073be` 算：它们 2026-09-12 重解时 hub 决策缺省已是连续的（`7a5fc94`，
 > 登记表没有覆盖），而 `cf073be` 的同名函数把非整数下标原样当比例。CLAUDE.md §1.5 说的在 `cf073be` 的副本里重画，
 > 只指它们的图（`plot_ind_*` 不读档位列）。
@@ -91,8 +91,10 @@
 > 登记情景的 `tree`），图幅归档写仓库根 `results/figures/`（`REPO_ROOT`）。仓库根 `scripts/` 原先读写仓库根的 v7 `inputs/`
 > 与 `results/`，现在除 `render_version.py`（照仓库根那份）外，读写的路径与原 `_indtree/scripts/` 那份相同。
 > v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
-> 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：在本机工作区 `git switch --detach a303f05`，画完 `git switch -`
-> （先提交或 stash 改动）。不要另开 worktree，没入库的 `data/` 与结果都不在那里。模型、求解与结果表不变。
+> 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：先提交或 stash 改动，在本机工作区 `git switch --detach a303f05`；
+> 画完先 `git restore _v9tree _v91tree`，再 `git switch -`。重画 v9 会改写 `_v9tree/results/figures/` 里入库的图，
+> 不撤掉就切不回来；要留的图先拷出来（用那里的 `render_version` 画的，已拷进 `results/figures/<版本>/`）。
+> 不要另开 worktree，没入库的 `data/` 与结果都不在那里。模型、求解与结果表不变。
 >
 > 2026-09-28 起仓库根不再有 `inputs/`：那是 v7 输入（35 汇 / 923 边），没有登记情景读它，要用就到 `a303f05` 里取。
 > `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库，要放进 `_indtree/inputs/`：
@@ -105,7 +107,7 @@
 > （本机工作区的 `src/`），不是 `a303f05` 的。`_v91tree/results/` 不在库里，本机那份拉取后原处不动（`.gitignore` 的
 > 规则保留）。`scripts/render_version.py` 去掉 `--tree`（出图脚本只读 `_indtree`），`--version` 改为必填（原缺省 `v9`，
 > 会把 `_indtree` 的图拷进 v9 的归档）；只拷这次画出的图（`plot_ind_*` 也往 `_indtree/results/figures/` 存图，那些旧图
-> 不拷），`--freeze-tag` 缺省不挪旧图。
+> 不拷；`--skip-plots` 时不画图，目录里的图全拷，它们也会进去），`--freeze-tag` 缺省不挪旧图。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
