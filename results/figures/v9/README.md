@@ -198,8 +198,8 @@ v7（35 汇 / 923 边）、v8（103 汇 / 1.5 pp）、冻结旧 v9（103 汇 / 2
 4. **`WA_wgap_126_dry` + `WA_wgap_126_dry_wd085`** → 第三条水文臂，解锁图 4 的包络。
 5. **22 个 `SA_*`** → 解锁 ED7；先修 `plot_ed_sensitivity.py:47` 的硬编码地板。
 
-每补一批，重跑 `python scripts/render_version.py --tree _v9tree --version v9`（它只在
-`frozen_103sink_lost_tree/` 不存在时才冻结，第二次运行不会再动旧图），然后改写 §一、§二。
+每补一批，按仓库根 README §0 原地切到 `a303f05` 重画（2026-09-28 起 `_v9tree/` 不在当前版本里，
+不能再直接 `--version v9`），然后改写 §一、§二。
 
 ---
 

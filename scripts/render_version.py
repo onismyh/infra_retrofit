@@ -6,7 +6,7 @@
 求解树 <tree> 固定是 `_bootstrap.ROOT`（`_indtree`）：出图脚本只读这棵树，所以没有 `--tree`，另指一棵树，
 归档的数据就不是画图用的那套。`--version` 必填（原缺省 `v9`，会把 `_indtree` 的图拷进 v9 的归档）。
 v9 / v9.1 的图原地切到 `a303f05` 重绘（做法见 README §0），那里有 `_v9tree`、`_v91tree` 与 `--tree`
-（如 `--tree _v9tree --version v9`）。
+（如 `--tree _v9tree --version v9_redraw`：先写进两边都没入库的新目录，切回后再挪进版本目录）。
 
 做四件事：
 1. 给了 `--freeze-tag` 时，把版本目录里**已有的** PDF/PNG 挪到 <version>/frozen_<tag>/ ——它们画自另一套输入

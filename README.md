@@ -92,12 +92,14 @@
 > 与 `results/`，现在除 `render_version.py`（照仓库根那份）外，读写的路径与原 `_indtree/scripts/` 那份相同。
 > v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
 > 对不上，所以直接停下。这类旧图要原地切到 `a303f05` 画：先提交或 stash 改动，在本机工作区 `git switch --detach a303f05`，
-> 在仓库根跑那里的 `scripts/render_version.py`（v9 用 `--tree _v9tree --version v9`；v9.1 用
-> `--tree _v91tree --version v9.1 --freeze-tag=`，那里的缺省会把已有的 v9.1 图挪进 `frozen_103sink_lost_tree/`）。
-> 画完把 `results/figures/<版本>/` 拷到仓库外，`git switch -f -` 切回，再拷回来。不能直接 `git switch -`：重画 v9
-> 会改写冻结树里入库的图；上一轮的图提交过的话，`results/figures/<版本>/` 两边也不同。这些改动都会挡住切回。
-> `-f` 把它们连同在那里改过的脚本一起丢掉，所以第一步要先提交或 stash，stash 过的切回后 `git stash pop`。
-> `_v9tree/` 下剩的没入库的图不要提交。不要另开 worktree，没入库的 `data/` 与结果都不在那里。模型、求解与结果表不变。
+> 在仓库根跑那里的 `scripts/render_version.py --tree _v9tree --version <新目录名>`（v9.1 用 `--tree _v91tree`；幻灯片另跑
+> 那里的 `scripts/slide_matching_anim.py`），出图脚本读的是本机工作区里这棵树的 `results/`。`<新目录名>` 取两边都没入库的
+> （比如 `v9_redraw`）：`results/figures/<新目录名>/` 切换时原样留着，不会盖掉分支上已提交的图。画完 `git switch -f <原分支>`
+> 切回，stash 过的再 `git stash pop`。要用 `-f`：重画 v9 会改写冻结树里入库的图，不丢掉就切不回来；`-f` 把 `a303f05` 上的
+> 改动连同在那里改过的脚本一起丢掉。然后把新目录里要的图、`render.log` 与 `data/` 下的文件（树里结果的拷贝，不入库）挪进
+> `results/figures/<版本>/` 的对应位置，`render.log` 里失败的脚本没重画，它们的图别挪；按 CLAUDE.md §五 改那里的 README
+> 后提交，删掉新目录。`_v9tree/` 下剩的没入库的东西不要提交。不要另开 worktree，没入库的 `data/` 与结果都不在那里。
+> 模型、求解与结果表不变。
 >
 > 2026-09-28 起仓库根不再有 `inputs/`：那是 v7 输入（35 汇 / 923 边），没有登记情景读它，要用就到 `a303f05` 里取。
 > `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库，要放进 `_indtree/inputs/`：
