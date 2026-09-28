@@ -70,8 +70,7 @@ from plot_style import (
 )
 
 INPUTS = ROOT / "inputs"
-# RESULTS_DIR，不要自己拼 `ROOT / "_v91tree" / "results"`：脚本在求解树里跑时 ROOT 就是
-# _v91tree 本身，硬拼会变成 _v91tree/_v91tree/results。
+# 结果目录一律用 plot_style 的 RESULTS_DIR，不要自己拼。
 
 # 煤电沿用本仓库通路色表（CLAUDE.md 三.3），工业用昊天 Fig 6B 的 Dark2 系。
 # 钢铁两条路线共用绿色族 —— 同一大类留在同一条 ramp 上。

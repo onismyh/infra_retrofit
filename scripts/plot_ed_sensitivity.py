@@ -105,7 +105,7 @@ def main() -> None:
     registry = _registry()
     if not any(name.startswith("SA_") for name in registry):
         raise SystemExit(
-            "本目录的情景登记表里没有 SA_ 敏感性情景（仓库根自 ba967c1 起只登记 ST_ 系）。ED7 属 v9.1："
+            "情景登记表（scenarios/）里没有 SA_ 敏感性情景（自 ba967c1 起只登记 ST_ 系）。ED7 属 v9.1，原地切到 a303f05 画（README §0）："
             "python scripts/render_version.py --tree _v91tree --version v9.1，"
             "或 cd _v91tree && python scripts/plot_ed_sensitivity.py。"
         )

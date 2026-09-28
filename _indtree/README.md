@@ -111,6 +111,8 @@ pipeline_candidate_edges.csv  923 -> 1559    2026-09-12 重建（此前 2651，�
 storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 ```
 
+`_v9tree/`、`_v91tree/` 2026-09-28 移出当前版本，`a303f05` 里还在。
+
 > ⚠ 截至 2026-09-22，本目录只有 `sector_targets_times_cn60.csv` 与 `industry_output_index_times_cn60.csv`
 > 两个文件入了库，重建后的管网等其余输入只在作者本机。它们是 `ST_` 系重解的前提，应一并入库。
 > `ST_CP_BASE` 还需要 `sector_targets_none.csv`：ba967c1 只把它加到了仓库根 `inputs/`，那份已随仓库根 `inputs/`
@@ -123,7 +125,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
-逐列实测过，不是推断（下面说的仓库根文件在 `a303f05` 里）：
+逐列实测过，不是推断（下面说的仓库根文件与 `_v9tree/` 都在 `a303f05` 里）：
 
 * 仓库根 `plants.csv` 是 `_v9tree/inputs/plants.csv` 的**严格超集**——同样 350 个 `plant_id`、
   同样顺序，32 个共有列的数值差全部 < 1e-9，只多 4 个 v9.1 需要的取水强度列
@@ -276,8 +278,9 @@ python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动�
 
 输出在 `_indtree/results/figures/main/`，已归档到仓库根
 `results/figures/v9.1/industry/`（含 README、数据与求解日志）。
-这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配，
-即不会被卷进 v9.1 主线的批量重绘——这是有意的，两条线的输入版本与模型都不同。
+这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，也只拷本次画出的图，
+所以这几张旧图不会混进 `ST_` 的归档——这是有意的，两条线的输入版本与模型都不同。但本树 `results/` 下的全部
+结果（含 `IND_`）都会被它拷进 `<版本>/data/`。
 
 ---
 

@@ -55,7 +55,7 @@ from matplotlib.lines import Line2D
 from _bootstrap import ROOT
 from plot_style import MM, save_fig
 
-# 已发布输入原在主仓库 inputs/；重建输入在仓库内的隔离求解树 _v*tree/inputs/。
+# 已发布输入原在主仓库 inputs/；重建输入原在仓库内的隔离求解树 _v*tree/inputs/。
 # 2026-09-28 起脚本只有仓库根一份、ROOT 固定是 _indtree：下面的 OLD_INPUTS 成了 _indtree/inputs（v9.2，不是 v7），
 # NEW_INPUTS 拼成不存在的 _indtree/_v9tree/inputs，main 开头就停下；
 # 这张 v7 对 v9 的图（ED10）原地切到 a303f05 画（做法见 README §0），那里仓库根与 _v9tree/ 的 scripts 都能跑。

@@ -50,7 +50,8 @@
 > 2026-09-27 起 `plot_style.residual_emissions_mt`（`scripts/plot_style.py`）只按 `*_blend_ratio` 列算残余排放，
 > 没有这几列就报错。此前没有这几列时按档位下标换算，而下标分不出独热档位与连续 hub：连续 hub 的下标恰为整数时
 > 也可能是几档的混合，会被静默读错。
-> PR #7 之前落盘的 `ST_` 结果重解后再画；v9 / v9.1 的独热结果用冻结树 `_v9tree/scripts`、`_v91tree/scripts` 里的同名脚本画。
+> PR #7 之前落盘的 `ST_` 结果重解后再画；v9 / v9.1 的独热结果原地切到 `a303f05`，用冻结树 `_v9tree/scripts`、
+> `_v91tree/scripts` 里的同名脚本画（做法见下文 2026-09-28 的两段）。
 > `IND_` 系旧结果也没有这几列，残余排放不要去 `cf073be` 算：它们 2026-09-12 重解时 hub 决策缺省已是连续的（`7a5fc94`，
 > 登记表没有覆盖），而 `cf073be` 的同名函数把非整数下标原样当比例。CLAUDE.md §1.5 说的在 `cf073be` 的副本里重画，
 > 只指它们的图（`plot_ind_*` 不读档位列）。
@@ -97,6 +98,14 @@
 > `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库，要放进 `_indtree/inputs/`：
 > `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪过去。不要用 `git show … >` 落盘，
 > PowerShell 的 `>` 会改编码（5.1 存成 UTF-16，`pd.read_csv` 读不了）。
+>
+> 2026-09-28 起冻结树 `_v9tree/`、`_v91tree/` 也移出当前版本（436 个入库文件，约 470 MB，含 v9 的求解结果）。v9 / v9.1
+> 的解在 `892c877^` 的工作副本里、对应树下复现；图原地切到 `a303f05`（同上）用树内 `scripts/` 画。另开 worktree 不行：
+> 除了缺没入库的 `data/`、`_v91tree/results/`，冻结树的出图脚本导入的 `coal_retrofit` 是 `pip install -e .` 装的那份
+> （本机工作区的 `src/`），不是 `a303f05` 的。`_v91tree/results/` 不在库里，本机那份拉取后原处不动（`.gitignore` 的
+> 规则保留）。`scripts/render_version.py` 去掉 `--tree`（出图脚本只读 `_indtree`），`--version` 改为必填（原缺省 `v9`，
+> 会把 `_indtree` 的图拷进 v9 的归档）；只拷这次画出的图（`plot_ind_*` 也往 `_indtree/results/figures/` 存图，那些旧图
+> 不拷），`--freeze-tag` 缺省不挪旧图。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
