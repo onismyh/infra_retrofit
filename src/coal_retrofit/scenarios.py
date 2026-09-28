@@ -11,6 +11,7 @@
   字段名写错、写错节、类型不对都直接报错。数组读成元组，整数写在浮点字段里读成浮点。
   字典型字段（如 `province_coal_cost_cny_per_gj`）整张替换，不与缺省或父情景按键合并：只写一个省，其余省就不在
   表里了（与 `dataclasses.replace` 相同）。
+  取值有限的字段（`CHOICES`：`water_mode`、`water_season`、`warm_start`、`mip_focus`）只许写模型认的值。
 
 `experiment_id`、`description` 由运行器取结果名，`solver_threads`、`solver_time_limit` 是运行选项、
 由命令行 `--threads`、`--time-limit` 给，这四个字段不许写进登记表。
@@ -49,6 +50,16 @@ RESERVED_FIELDS: dict[str, str] = {
     "description": "取结果名",
     "solver_threads": "用命令行 --threads",
     "solver_time_limit": "用命令行 --time-limit",
+}
+
+# scenario 节里只认这几个值的字段，读登记表、`--set` 与兼容环境变量时就查。`water_season`、`water_mode` 模型按值比较，
+# 写错不报错，而是静默走另一支：`water_season = "dyr"` 按全年算，`water_mode` 拼错就按有水约束的 baseline 族算。
+# `warm_start` 运行器另有兜底检查，`mip_focus`（Gurobi 的取值范围）越界时 Gurobi 设参数才报错，这里都提前报错。
+CHOICES: dict[str, tuple[Any, ...]] = {
+    "water_mode": ("no_water", "base_water", "grid_supply", "high_water_stress"),
+    "water_season": ("annual", "dry"),
+    "warm_start": ("none", "lp_relax"),
+    "mip_focus": (0, 1, 2, 3),
 }
 
 
@@ -186,7 +197,7 @@ def _typed(entry: Mapping[str, Any], key: str, kind: type, where: str, default: 
 
 
 def convert_field(section: str, key: str, value: Any, where: str) -> Any:
-    """校验字段名并把 TOML 值转换成字段类型。"""
+    """校验字段名并把 TOML 值转换成字段类型；取值有限的字段（`CHOICES`）再核取值。"""
     if key in RESERVED_FIELDS:
         raise ScenarioRegistryError(f"{where}：{key} 不能写进登记表（{RESERVED_FIELDS[key]}）")
     hints = _HINTS[section]
@@ -195,7 +206,14 @@ def convert_field(section: str, key: str, value: Any, where: str) -> Any:
         if key in _HINTS[other]:
             raise ScenarioRegistryError(f"{where}：{key} 是 {other} 节的字段，不是 {section} 节的")
         raise ScenarioRegistryError(f"{where}：{_SECTIONS[section].__name__} 没有字段 {key}{_suggest(key, hints)}")
-    return _convert(value, hints[key], where)
+    converted = _convert(value, hints[key], where)
+    choices = CHOICES.get(key) if section == "scenario" else None
+    if choices is not None and converted not in choices:
+        hint = _suggest(converted, choices) if isinstance(converted, str) else ""
+        raise ScenarioRegistryError(
+            f"{where}：只能是 {'、'.join(repr(choice) for choice in choices)}，写的是 {converted!r}{hint}"
+        )
+    return converted
 
 
 def _convert(value: Any, hint: Any, where: str) -> Any:

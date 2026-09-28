@@ -513,6 +513,15 @@ class OptimizationScenario:
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）
+    # Gurobi 的 Seed 与 MIPFocus，与线程数同属（模型, 参数, 线程数）：对照的两次求解必须相同，seed 族只换 solver_seed。
+    # 0 是 Gurobi 的缺省种子；MIPFocus 1 侧重尽快找到好的可行解。2026-09-28 起是情景字段，此前只能用环境变量
+    # COAL_RETROFIT_GUROBI_SEED / COAL_RETROFIT_MIPFOCUS 设（仍兼容，见 `runner.build_parameters`）。
+    solver_seed: int = 0
+    mip_focus: int = 1
+    # 热启动（实现说明 §9.7）："lp_relax" 时运行器先把全部整数变量松弛后求解、写 .sol（时限 warm_start_time_limit 秒），
+    # 再重新建模，按 .sol 给整数变量设 MIP start 求 MIP。只改搜索路径，不改模型；同一族必须同法。
+    warm_start: str = "none"
+    warm_start_time_limit: int = 1800
     discount_rate: float = DEFAULT_DISCOUNT_RATE
     discount_base_year: int = 2025
     # 系统净成本参数

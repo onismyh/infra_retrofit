@@ -71,6 +71,18 @@
 > 就是 CCS；煤价低时，"生物质"份额不烧生物质，也能拿改造路径的 CF 提升。**这是模型改动**：独热档位的整数可行解不变
 > （LP 松弛变紧、模型指纹变了，重解不复现旧的搜索路径），连续 hub 的最优值只会不变或变高。改前改后的结果不得相减；
 > 此前落盘的连续 hub 结果都受影响（`_indtree/README.md` 列的结果里，除 `*_inthub` 外都是）。
+> 结果分段以 PR #11 的合入提交 `9133c7b`（2026-09-28）为界（CLAUDE.md §二.7）。
+>
+> 2026-09-28 起求解流程进情景定义（不改模型）：情景 `warm_start = "lp_relax"`（`ST_COMMON` 已设）时 `run` 自动做
+> 热启动两步（实现说明 §9.7），不再手工设 `COAL_RETROFIT_LP_RELAX` / `WRITE_SOL` / `START_SOL`；Gurobi 的 seed 与 MIPFocus
+> 改为情景字段 `solver_seed`、`mip_focus`（环境变量 `COAL_RETROFIT_GUROBI_SEED`、`COAL_RETROFIT_MIPFOCUS` 仍兼容，与
+> 登记表或 `--set` 给的值不一致就报错）。已有同名结果时求解之前就拒绝，`--force` 才覆盖；没有可用的解时退出码 3；
+> `water_mode`、`water_season`、`warm_start`、`mip_focus` 只许写模型认的值，写错时求解之前就报错（此前 `water_mode`、
+> `water_season` 拼错不报错，静默走另一支）。
+> result.json 的 `resolved` 另记热启动第 1 步（`warm_start`）、读了哪些输入文件（`input_files`）与求解时的提交号
+> （`code`：`commit`、`dirty`）。`check_run_provenance.py` 的可证区间里，目标函数下界 LB 改用记下的 ObjBound（没有这一项的
+> 旧结果照旧按 gap 反推），`hi` 的分母按 CLAUDE.md §二.3 由 INC_c 改为 LB_c；`--pair` 下碳价不同、读的同一个输入文件摘要
+> 不同、有一边没有 `resolved.code` 都判不过，提交号不同、记不了提交号或求解时有未提交的改动只告警。模型与结果表不变（toy 12 个变体逐字节一致）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

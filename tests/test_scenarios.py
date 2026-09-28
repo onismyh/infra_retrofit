@@ -65,8 +65,8 @@ def test_repo_registry_builds_every_runnable_scenario() -> None:
         scenario, assumptions = build_parameters(spec, name)
         assert scenario.experiment_id == name and scenario.solver_threads == 8
         if name.startswith("ST_"):
-            # CLAUDE.md 二.2：ST_ 系 MIPGap 统一 3%；二.6：只在 v9.2 管网（_indtree/inputs/）上求解。
-            assert scenario.mip_gap == 0.03 and shown_path(spec.tree) == "_indtree"
+            # CLAUDE.md 二.2：ST_ 系 MIPGap 统一 3%，求解走 LP 松弛热启动；二.6：只在 v9.2 管网（_indtree/inputs/）上求解。
+            assert scenario.mip_gap == 0.03 and scenario.warm_start == "lp_relax" and shown_path(spec.tree) == "_indtree"
 
 
 def test_st_water_scenario_differs_from_base_only_in_water() -> None:
@@ -109,6 +109,12 @@ def test_inheritance_merges_sections_and_keeps_note_local(tmp_path) -> None:
         ('[X]\ntree = "t"\n[X.scenario]\nmip_gap = "0.03"\n', "应为 float"),
         ('[X]\ntree = "t"\n[X.assumptions]\nmax_parallel_pipes = true\n', "应为 int"),
         ('[X]\ntree = "t"\n[X.scenario]\nplanning_years = [2030.5]\n', "应为 int"),
+        # 取值有限的字段（CHOICES）在登记表这一层拦：water_season、water_mode 模型按值比较，拼错不报错而是静默走另一支；
+        # warm_start、mip_focus 本来要到运行器或 Gurobi 才报错，这里提前。
+        ('[X]\ntree = "t"\n[X.scenario]\nwater_season = "dyr"\n', "只能是 'annual'、'dry'，写的是 'dyr'；是不是 dry"),
+        ('[X]\ntree = "t"\n[X.scenario]\nwater_mode = "grid"\n', "只能是 'no_water'、'base_water'、'grid_supply'"),
+        ('[X]\ntree = "t"\n[X.scenario]\nwarm_start = "lp"\n', "只能是 'none'、'lp_relax'，写的是 'lp'"),
+        ('[X]\ntree = "t"\n[X.scenario]\nmip_focus = 4\n', "只能是 0、1、2、3，写的是 4"),
         ('[X]\ntree = "t"\n[X.assumptions]\nprovince_operating_hours = [1.0]\n', "应为 dict"),
         ('[A]\nextends = "B"\ntree = "t"\n[B]\nextends = "A"\n', "成环"),
         ('[A]\nextends = "NOPE"\ntree = "t"\n', "不在登记表"),
@@ -199,6 +205,62 @@ def test_diff_resolved_matches_tuples_to_lists_and_skips_names() -> None:
     assert diff_resolved(a, {**b, "tree": "u", "assumptions": {"x": 1.0}}) == [("tree", "t", "u")]
 
 
+def test_set_values_are_checked_against_choices(tmp_path, capsys) -> None:
+    """`--set` 走同一道取值校验：写错在求解之前就退出 1。"""
+    directory = str(_registry_dir(tmp_path, FAMILY))
+    assert cli.main(["--registry", directory, "show", "CHILD", "--set", "scenario.water_season=Dry"]) == 1
+    assert "只能是 'annual'、'dry'，写的是 'Dry'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("env", "registered", "expected"),
+    [
+        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "", {"solver_seed": 3, "mip_focus": 1}),
+        ({"COAL_RETROFIT_MIPFOCUS": "2"}, "", {"solver_seed": 0, "mip_focus": 2}),
+        ({"COAL_RETROFIT_GUROBI_SEED": ""}, "", {"solver_seed": 0, "mip_focus": 1}),  # 空值与未设相同
+        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "solver_seed = 3\n", {"solver_seed": 3, "mip_focus": 1}),  # 两处一致可以
+        ({}, "solver_seed = 5\nmip_focus = 0\n", {"solver_seed": 5, "mip_focus": 0}),
+    ],
+)
+def test_seed_and_mip_focus_fields_and_compatible_env(tmp_path, monkeypatch, env, registered, expected) -> None:
+    """seed 与 MIPFocus 是情景字段；兼容的环境变量读进同一个字段，`resolved` 与溯源里记的都是实际生效的值。"""
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    text = FAMILY + (f"\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\n{registered}" if registered else "")
+    registry = load_registry(_registry_dir(tmp_path, text))
+    name = "SEEDED" if registered else "CHILD"
+    scenario, _ = build_parameters(registry.get(name), name)
+    assert {"solver_seed": scenario.solver_seed, "mip_focus": scenario.mip_focus} == expected
+
+
+@pytest.mark.parametrize(
+    ("env", "registered", "message"),
+    [
+        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "solver_seed = 2\n", "与登记表或 --set 给的 solver_seed = 2 不一致"),
+        ({"COAL_RETROFIT_GUROBI_SEED": "abc"}, "", "应为整数"),
+        ({"COAL_RETROFIT_MIPFOCUS": "5"}, "", "只能是 0、1、2、3，写的是 5"),
+        # 登记表写的正是缺省值也算给了值：环境变量不能静默盖掉。
+        ({"COAL_RETROFIT_MIPFOCUS": "2"}, "mip_focus = 1\n", "与登记表或 --set 给的 mip_focus = 1 不一致"),
+    ],
+)
+def test_seed_and_mip_focus_env_mistakes(tmp_path, monkeypatch, capsys, env, registered, message) -> None:
+    """环境变量与登记表各给一个不同的值、不是整数、超出取值：求解之前就退出 1（`show` 与 `run` 同一道校验）。"""
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    text = FAMILY + (f"\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\n{registered}" if registered else "")
+    name = "SEEDED" if registered else "CHILD"
+    assert cli.main(["--registry", str(_registry_dir(tmp_path, text)), "show", name]) == 1
+    assert message in capsys.readouterr().err
+
+
+def test_cli_show_names_the_compatible_env(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("COAL_RETROFIT_GUROBI_SEED", "3")
+    assert cli.main(["--registry", str(_registry_dir(tmp_path, FAMILY)), "show", "CHILD"]) == 0
+    shown = capsys.readouterr().out
+    assert "环境变量 COAL_RETROFIT_GUROBI_SEED=3 → scenario.solver_seed" in shown
+    assert "* solver_seed = 3    （缺省 0）" in shown
+
+
 def test_cli_list_show_diff(tmp_path, capsys) -> None:
     directory = str(_registry_dir(tmp_path, FAMILY))
     assert cli.main(["--registry", directory, "list"]) == 0
@@ -261,11 +323,11 @@ def test_run_single_wrapper(monkeypatch, capsys, directory: Path) -> None:
 
     def fake_cli(argv: list[str]) -> int:
         calls.append(list(argv))
-        return 0
+        return 3 if argv[1] == "ST_CP_BASE" else 0
 
     monkeypatch.setattr(module, "cli_main", fake_cli)
-    for argv in ([], ["--threads", "8"], ["ST_CP_BASE", "--threads", "1"]):
-        assert module.main(argv) == 0
+    for argv, code in (([], 0), (["--threads", "8"], 0), (["ST_CP_BASE", "--threads", "1"], 3)):
+        assert module.main(argv) == code  # 退出码照传（3 = 没有可用的解）
     assert calls == [["run", "ST_BASE"], ["run", "ST_BASE", "--threads", "8"],
                      ["run", "ST_CP_BASE", "--threads", "1"]]  # 不写情景名时跑原来的缺省 ST_BASE
     capsys.readouterr()

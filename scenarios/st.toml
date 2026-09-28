@@ -3,12 +3,14 @@
 #   python -m coal_retrofit list
 #   python -m coal_retrofit show ST_WA_cwatm_126_dry_oq       解析后的全部参数，标出与缺省不同的项
 #   python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq
-#   python -m coal_retrofit run ST_BASE --threads 8
+#   python -m coal_retrofit run ST_BASE --threads 8           热启动两步自动做；已有结果时加 --force 才覆盖
 #
 # ST_ 系（作者决定 2026-09-10/11）：部门碳目标（China TIMES CN60 四组轨迹，各组自身 2030 基线的比例）
 # + 煤电利用小时轨迹 3600/3100/2000/1500 h + 工业产量指数；MIPGap 统一 3%（CLAUDE.md 二.2），
-# 任何差值只能按可证区间报告。成本口径自 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，09-23 的
-# PR #2 又改了目标函数与约束：PR #2 合入之前落盘的 _indtree/results/ 都不得与之后的新解相减。
+# 任何差值只能按可证区间报告，求解必须走 LP 松弛热启动（warm_start = "lp_relax"，run 自动做两步）。成本口径自
+# 2026-09-22 起为改造 capex + 固定运维 + 能耗 + 期末残值，09-23 的 PR #2 又改了目标函数与约束：PR #2 合入之前落盘的
+# _indtree/results/ 都不得与之后的新解相减。09-28 合入的 PR #11（合入提交 9133c7b）又改了约束（连续 hub 下掺烧份额恰好
+# 分摊到档位，实现说明 §9.8）：它合入之前落盘的 ST_ 结果同样不得与之后的新解相减（CLAUDE.md 二.7）。
 # 只在 v9.2 管网（_indtree/inputs/；库里只有两份 TIMES 轨迹 csv，管网等其余输入在作者本机）上求解（CLAUDE.md 二.6）。
 
 [ST_COMMON]
@@ -19,6 +21,8 @@ tree = "_indtree"
 mip_gap = 0.03
 sector_target_source = "times_cn60"
 coal_operating_hours_by_year = [3600.0, 3100.0, 2000.0, 1500.0]
+# 实现说明 §9.7：先 LP 松弛写 .sol（时限 warm_start_time_limit，缺省 1800 s），再按 .sol 设 MIP start 求 MIP。
+warm_start = "lp_relax"
 
 [ST_BASE]
 extends = "ST_COMMON"

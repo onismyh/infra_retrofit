@@ -194,14 +194,14 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 >
 > ⚠ **再次变更（2026-09-23，PR #2）**：目标函数与约束又改了七处——工业 capex 改计在能力存量增量上、删掉 BECCS 重复计费、管道到寿命可在原址重铺、氨价里的合成岛年金按情景贴现率重算、北京煤价 69.4 → 38.6 元/GJ（README §0.1）、长流程钢氢路线减排比例 0.85 → 0.95、合成岛年金寿命 20 → 30 年（README §0.2）。
 > 所以 09-22 之后、PR #2 合入 `feature/industrial-sectors` 之前落盘的结果，同样**不得与合入之后的求解相减**。
-> 结果目录不记提交号，按落盘时间与合并提交的时间判断。
+> result.json 有 `resolved.code` 的（2026-09-28 起）记了求解时的提交号，按提交号判断（`commit` 为空的记不了提交号，同样按落盘时间判断）；没有的按落盘时间与合并提交的时间判断。
 >
 > ⚠ **结果表换算改正（2026-09-26，PR #7）**：模型、目标值与厂合计减排不变。hub 决策连续时，掺烧比例改按 Σβ·z ÷ 路径份额换算
 > （`plant_detail.csv` 新增 `*_blend_ratio` 三列），`pathway_shares.csv`、`province_pathways.csv` 的逐路径减排拆分随之改正；
 > `ST_CP_BASE` 的 `plant_cost.csv` 碳成本改与目标函数同式。下表三个 hub 决策连续的情景（`ST_BASE`、`ST_WA_cwatm_126_dry_oq`、`ST_CP_BASE`）都在此之前落盘，这几张表重解后再用。
 > 详见根 README §0。
 >
-> ⚠ **模型改动（2026-09-27）**：hub 决策连续时，路径份额改为恰好分摊到各掺烧档位上（`Σ_l z = s`，此前是 `≤`，
+> ⚠ **模型改动（2026-09-28，PR #11，合入提交 `9133c7b`）**：hub 决策连续时，路径份额改为恰好分摊到各掺烧档位上（`Σ_l z = s`，此前是 `≤`，
 > 份额可以有一部分改造了却不掺烧；实现说明 §9.8）。下表三个 hub 决策连续的情景都在此之前落盘，**不得与改后的求解相减**；
 > `*_inthub`（独热档位）的整数可行解不变，但 LP 松弛变紧、模型指纹变了，重解不复现旧的搜索路径（下表两个 `*_inthub`
 > 都是 10 h 时限停下、gap 4.22% / 12.1% 的解）。详见根 README §0。
@@ -209,21 +209,29 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
 
-求解流程固定为三步（§9.7）：LP 松弛写 `.sol` → 由 `.sol` 给整数变量设 MIP start → 正常 MIP：
+求解流程固定为三步（§9.7）：LP 松弛写 `.sol` → 由 `.sol` 给整数变量设 MIP start → 正常 MIP。2026-09-28 起由运行器
+自动做（`scenarios/st.toml` 的 `ST_COMMON` 设了 `warm_start = "lp_relax"`），一条命令：
 
 ```bash
-S=<ASCII 路径>/ST_BASE_lp.sol
-COAL_RETROFIT_LP_RELAX=1 COAL_RETROFIT_WRITE_SOL=$S python -m coal_retrofit run ST_BASE --threads 8 --time-limit 1800
-COAL_RETROFIT_START_SOL=$S COAL_RETROFIT_LOG_INCUMBENTS=1 python -m coal_retrofit run ST_BASE --threads 8
+python -m coal_retrofit run ST_BASE --threads 8
 ```
+
+第 1 步的 `.sol` 写在 `results/ST_BASE.lp.sol`（路径须是 ASCII，否则改写到系统临时目录；`--sol-dir` 可换目录），
+时限 1800 s（`warm_start_time_limit`）。已有 `results/ST_BASE.json` 时求解之前就拒绝，要覆盖加 `--force`。退出码 3 表示
+没有可用的解（第 1 步没解就不跑第 2、3 步、不写结果）。此前手工设环境变量的两次运行（`COAL_RETROFIT_LP_RELAX` 与
+`COAL_RETROFIT_WRITE_SOL`，再 `COAL_RETROFIT_START_SOL`）与之是同一对求解；对 `ST_` 情景再设 `COAL_RETROFIT_LP_RELAX`
+或 `COAL_RETROFIT_START_SOL` 会报错，`COAL_RETROFIT_WRITE_SOL` 与 `COAL_RETROFIT_LOG_INCUMBENTS=1` 作用于第二次求解
+（第 2、3 步）。
 
 情景登记在仓库根 `scenarios/st.toml`（2026-09-27 起），`python -m coal_retrofit list` 列出情景，
 `python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq` 核对两者只差水的三项。`python -m coal_retrofit`
 要先 `pip install -e .`；没装时 `python scripts/run_single.py ST_BASE --threads 8` 等价，参数相同。
 两次求解相减之前，在仓库根跑 `python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
-列出两边的参数差与环境变量差（热启动只看设没设，`WRITE_SOL` 不比）。缺一边、有一边没有 `resolved` 段（2026-09-27
-之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛（热启动第 1 步的解）、
-有一边没有可用的解（目标函数为 NaN），都判不过（退出码 1）。
+列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
+有一边没有 `resolved` 段（2026-09-27 之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是
+LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价不同、读的同一个输入文件摘要不同、线程数或
+MIPFocus 不同、有一边没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同、
+记不了提交号或求解时有未提交的改动只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
 这份脚本和本树 `scripts/` 下的出图脚本一样读本树 `results/`；仓库根 `scripts/` 那份读仓库根 `results/`。
 
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |
