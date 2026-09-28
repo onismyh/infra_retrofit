@@ -30,8 +30,8 @@ def _add_mccormick_product(model, share_var, binary_var, name: str):
 
     连续 hub 下 binary 是改造到该档位的容量份额，z 是路径份额里落在该档位的部分，不等于两者之积：
     这三条只给上下界，怎样分摊由调用方的 `Σ_l z = share` 与 `z_bio + z_beccs ≤ select` 这几条约束决定。
-    有了 `Σ_l z = share`，`_u1`、`_lo` 两条可由它、`_u2` 与各档位份额合计为 1 推出（两种形式下都是）；留着不删：
-    删了可行域不变，但模型指纹与求解路径都会变。
+    有了 `Σ_l z = share`，`_u1`、`_lo` 两条可由它、`_u2`、各档位份额合计为 1 与变量下界 0 推出（两种形式下都是）；
+    留着不删：删了可行域不变，但模型指纹与求解路径都会变。
     """
     z = model.addVar(lb=0.0, ub=1.0, name=name)
     model.addConstr(z <= share_var,                      name=f"{name}_u1")
@@ -192,8 +192,8 @@ def _add_blend_level_constraints(
         model.addConstr(select_a[p, :].sum() == 1.0, name=f"sel_a_{p}{sfx}")
 
         # --- 若选档位 0（不掺烧），相关份额必须为 0（连续 hub 下：份额不超过改造了的容量份额 1 − select[0]）。
-        # 下面的 `Σ_l z = s` 加上 `z_bio + z_beccs ≤ select_b`、`z_amm ≤ select_a` 已蕴含这两条（两种形式下都是），
-        # 留着不删，理由同 `_add_mccormick_product` ---
+        # 下面的 `Σ_l z = s` 加上 `z_bio + z_beccs ≤ select_b`、`z_amm ≤ select_a` 与上面的档位份额合计为 1 已蕴含这两条
+        # （两种形式下都是），留着不删，理由同 `_add_mccormick_product` ---
         model.addConstr(s_bio + s_beccs <= 1.0 - select_b[p, 0], name=f"nb_b_{p}{sfx}")
         model.addConstr(s_amm <= 1.0 - select_a[p, 0], name=f"nb_a_{p}{sfx}")
 
@@ -243,8 +243,8 @@ def _add_blend_level_constraints(
             beccs_penalty_captured += beta_b * beccs_pen_cap_coeff * G_beccs * z_beccs
 
         # 一条路径的份额恰好分摊到各档位上。上界：多个档位份额为正时，减排量不会被重复计算；
-        # 下界：份额为正就至少按最低档掺烧。独热档位下 McCormick 精确，等式自动成立；连续 hub 下
-        # McCormick 只给 z 上下界，2026-09-27 前这里是 `<=`，份额可以有一部分不落在任何档位上
+        # 下界：份额为正就至少按最低档掺烧。独热档位下 McCormick 精确，加上 `nb_b` / `nb_a`（选档位 0 时份额为 0），
+        # 等式自动成立；连续 hub 下 McCormick 只给 z 上下界，2026-09-27 前这里是 `<=`，份额可以有一部分不落在任何档位上
         # （BECCS 不掺生物质就是 CCS；"生物质"份额不烧生物质，也能拿改造路径的 CF 提升）。
         model.addConstr(gp.quicksum(z_bio_all) == s_bio, name=f"zsum_bio_{p}{sfx}")
         model.addConstr(gp.quicksum(z_beccs_all) == s_beccs, name=f"zsum_beccs_{p}{sfx}")
