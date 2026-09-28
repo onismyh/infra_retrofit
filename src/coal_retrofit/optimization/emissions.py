@@ -69,9 +69,10 @@ def blend_level_to_ratio(level: object, levels: tuple[float, ...]) -> float:
     `blend_level = Σ l·select` 是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是
     几档的混合，都换算不出比例；有效比例看 `plant_detail` 的 `*_blend_ratio` 列。
     下标不是整数或越界时报错。此前把它原样当比例返回（2.5 → 250%）。
-    `src/`、`scripts/` 与 `_indtree/scripts/` 里已不调用（`plot_style.residual_emissions_mt` 只认
-    `*_blend_ratio` 列）。还在用它的有两处：`tests/test_blend_ratios.py` 拿它核独热档位；冻结树
-    `_v9tree`、`_v91tree` 的 `plot_style` 导入它画独热结果。不要当死代码删。
+    `src/` 与 `scripts/` 里已不调用（`plot_style.residual_emissions_mt` 只认
+    `*_blend_ratio` 列），只有 `tests/test_blend_ratios.py` 拿它核独热档位。冻结树 `_v9tree`、`_v91tree`
+    的 `plot_style` 也导入它画独热结果；两棵树 2026-09-28 移出当前版本，要原地切到 `a303f05` 跑（README §0）。
+    它们导入的是 `pip install -e .` 装的那份 `coal_retrofit`，原地切过去才是那里的 `src/`。
     """
     if level is None:
         return 0.0

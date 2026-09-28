@@ -31,8 +31,7 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
 `--pair A B` 只核这两次求解，不跑下面写死的 v9 seed 族与对照表；缺一边、任一边没有 `resolved` 段（2026-09-27
 之前落盘，参数与环境变量都核不了）、两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
-本脚本读自己所在树的 `results/`：`scripts/` 这份读仓库根 `results/`，`_indtree/scripts/` 这份读
-`_indtree/results/`（`ST_` 系的结果在这里）；`--results` 可换目录（只配 `--pair`）。
+本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录（只配 `--pair`）。
 
 2026-09-28 起（求解流程进情景定义）又加了几条：
 - 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`）；没有这个键（旧结果）或记的
@@ -45,7 +44,7 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 
     python scripts/check_run_provenance.py
     python scripts/check_run_provenance.py --strict   # also fail on unpinned threads
-    python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq
+    python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq
 """
 from __future__ import annotations
 
@@ -55,11 +54,10 @@ import math
 import sys
 from pathlib import Path
 
-import _bootstrap  # noqa: F401  （把仓库根的 src/ 放进 sys.path）
+from _bootstrap import ROOT  # 导入时把仓库根的 src/ 放进 sys.path
 
 from coal_retrofit.scenarios import diff_resolved
 
-ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
 # Families whose members must be bit-identical models. Anything differing only by the Gurobi
@@ -392,7 +390,7 @@ def main():
                              " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价不同、"
                              "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、记不了提交号、有未提交的改动只告警")
     parser.add_argument("--results", type=Path, default=None,
-                        help="--pair 读哪个结果目录（缺省：本脚本所在树的 results/）")
+                        help="--pair 读哪个结果目录（缺省：_indtree/results/）")
     args = parser.parse_args()
     if args.results is not None and not args.pair:
         parser.error("--results 只配 --pair 用")

@@ -47,6 +47,7 @@ from matplotlib.patches import Patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from _bootstrap import ROOT  # noqa: E402
 from plot_style import (  # noqa: E402
     apply_style,
     save_fig,
@@ -70,7 +71,7 @@ from plot_ed_water_on_off import (  # noqa: E402
 CAP_YEARS = [y for y in YEARS if y >= 2040]
 
 RES = RESULTS_DIR
-INPUTS = Path(__file__).resolve().parents[1] / "inputs"
+INPUTS = ROOT / "inputs"
 
 # --- 配色 ---------------------------------------------------------------------------------
 C_BASE = "#969696"

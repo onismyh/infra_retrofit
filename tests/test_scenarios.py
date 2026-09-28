@@ -1,7 +1,6 @@
 """情景登记表（`coal_retrofit.scenarios`）与命令行（`coal_retrofit.cli`）：不求解，不需要 Gurobi。"""
 from __future__ import annotations
 
-import filecmp
 import importlib.util
 import sys
 from dataclasses import asdict
@@ -304,12 +303,11 @@ def test_cli_run_stops_before_solving_when_tree_has_no_inputs(tmp_path, capsys) 
     assert "是不是 CHILD？（情景名区分大小写）" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("directory", [REPO / "scripts", REPO / "_indtree" / "scripts"], ids=["scripts", "_indtree"])
-def test_run_single_wrapper(monkeypatch, capsys, directory: Path) -> None:
-    """两份薄壳：出图脚本 `from run_single import EXPERIMENTS` 的形状，原命令行的改写，`--list` 的原格式。"""
+def test_run_single_wrapper(monkeypatch, capsys) -> None:
+    """薄壳：出图脚本 `from run_single import EXPERIMENTS` 的形状，原命令行的改写，`--list` 的原格式。"""
+    directory = REPO / "scripts"
     monkeypatch.syspath_prepend(str(directory))
-    monkeypatch.delitem(sys.modules, "_bootstrap", raising=False)  # 两份 _bootstrap 不同，各载各的
-    alias = f"run_single_under_test_{directory.parent.name}"
+    alias = "run_single_under_test"
     spec = importlib.util.spec_from_file_location(alias, directory / "run_single.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -335,5 +333,13 @@ def test_run_single_wrapper(monkeypatch, capsys, directory: Path) -> None:
     assert capsys.readouterr().out.splitlines() == list(module.EXPERIMENTS)  # 原格式：每行一个名字
 
 
-def test_two_run_single_copies_are_identical() -> None:
-    assert filecmp.cmp(REPO / "scripts" / "run_single.py", REPO / "_indtree" / "scripts" / "run_single.py", shallow=False)
+def test_bootstrap_root_is_the_registered_tree(monkeypatch) -> None:
+    """脚本只有 `scripts/` 一份，读写的数据树是 `_bootstrap.ROOT`：它必须就是登记情景的求解树，
+    建输入、出图与求解才读写同一套输入与结果（CLAUDE.md 二.6）。"""
+    monkeypatch.syspath_prepend(str(REPO / "scripts"))
+    bootstrap = importlib.import_module("_bootstrap")
+    registry = load_registry()
+    assert registry.directory.parent == REPO, (
+        f"coal_retrofit 读的登记表在 {registry.directory}，不是本检出（pip install -e . 装在了别的检出上？）")
+    assert {registry.get(name).tree for name in registry.runnable()} == {bootstrap.ROOT}
+    assert bootstrap.REPO_ROOT == REPO

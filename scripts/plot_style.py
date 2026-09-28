@@ -31,7 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent
+from _bootstrap import ROOT  # 数据树 _indtree/
 RESULTS_DIR = ROOT / "results"
 FIGURES_DIR = RESULTS_DIR / "figures"
 MAIN_FIGURES_DIR = FIGURES_DIR / "main"
@@ -646,9 +646,9 @@ def save_fig(fig, name: str, subdir: str = ""):
                       if "missing from" in str(w.message) and "font" in str(w.message)})
     if _glyphs:
         # DELETE WHAT WAS JUST WRITTEN. savefig has already run by the time the warning is in
-        # hand, so a box-containing PDF is on disk; render_version.tree_figures() copies every
-        # PDF/PNG it finds regardless of the script's exit code, so leaving them would ship the
-        # very file this guard exists to stop.
+        # hand, so a box-containing PDF is on disk; render_version.tree_figures() picks up every
+        # PDF/PNG written during the run (every one it finds under --skip-plots) regardless of the
+        # script's exit code, so leaving them would ship the very file this guard exists to stop.
         for _ext in (".pdf", ".png"):
             (out_dir / f"{name}{_ext}").unlink(missing_ok=True)
         raise RuntimeError(
@@ -748,7 +748,7 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
             f"plant_detail 缺少 {', '.join(missing)}：残余排放只按有效掺烧比例（*_blend_ratio）算，"
             "档位下标分不出独热档位与连续 hub（下标恰为整数也可能是几档的混合）。"
             "PR #7（2026-09-26）之前落盘的 ST_ 结果重解后再画（README §0）；"
-            "v9 / v9.1 的独热结果用冻结树 _v9tree/scripts、_v91tree/scripts 里的同名脚本画。"
+            "v9 / v9.1 的独热结果原地切到 a303f05，用冻结树 _v9tree/scripts、_v91tree/scripts 里的同名脚本画（README §0）。"
             "IND_ 系旧结果也没有这几列，残余排放不要去 cf073be 算：那里的同名函数把非整数下标原样当比例"
             "（CLAUDE.md §1.5 说的在 cf073be 的副本里重画，只指 IND_ 的图；见 README §0）。"
         )
@@ -1135,7 +1135,7 @@ def load_basins(root=None):
     import geopandas as gpd
     from pathlib import Path
 
-    root = Path(root) if root is not None else Path(__file__).resolve().parents[1]
+    root = Path(root) if root is not None else ROOT
     path = root / "data" / "ChinaBasins" / "basin_l1.gpkg"
     if not path.exists():
         return None

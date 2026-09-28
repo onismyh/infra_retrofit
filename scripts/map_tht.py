@@ -11,9 +11,8 @@
 """
 from __future__ import annotations
 
-import pathlib
+from _bootstrap import ROOT
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAP_DIR = ROOT / "data" / "ChinaMapTHT"
 PROV_JSON = MAP_DIR / "中华人民共和国.json"
 DASH_ADCODE = "100000_JD"

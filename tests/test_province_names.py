@@ -1,6 +1,6 @@
 """2026-09-25：输入表里的省名在读入时按 `PROVINCE_NAME_ALIASES` 换成分省煤价表的写法，仍查不到的告警。
 
-仓库根 `inputs/industry_hubs.csv` 把内蒙古写作拼音 "Neimenggu"，煤价表里是 "Inner Mongolia"；此前查不到就
+仓库根 `inputs/industry_hubs.csv`（`a303f05`）把内蒙古写作拼音 "Neimenggu"，煤价表里是 "Inner Mongolia"；此前查不到就
 静默退回缺省煤价 `coal_fuel_cost_cny_per_gj`，14 个水泥 hub 的捕集蒸汽按 38.2 而不是 17.9 元/GJ 计价。
 这些测试不求解，不依赖 Gurobi。
 """

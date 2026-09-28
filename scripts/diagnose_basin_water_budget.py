@@ -23,7 +23,7 @@ from coal_retrofit.constants import (
 from coal_retrofit.paths import ProjectPaths
 
 # 仓库根。只读 data/ 下的流域多边形与 ISIMIP 文件、不读 inputs/。
-# 求解树的 data/ 只是指向仓库根 data/ 的 junction（不入库），两份副本都直接指仓库根。
+# 求解树的 data/ 只是指向仓库根 data/ 的 junction（不入库），这里直接指仓库根。
 ROOT = SRC.parent
 NAMES = {"A": "东北诸河", "C": "海河", "D": "黄河", "E": "淮河", "F": "长江",
          "G": "东南诸河", "H": "珠江", "J": "西南诸河", "K": "西北诸河"}

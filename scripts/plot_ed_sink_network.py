@@ -52,11 +52,13 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
+from _bootstrap import ROOT
 from plot_style import MM, save_fig
 
-ROOT = Path(__file__).resolve().parent.parent
-# 已发布输入永远在主仓库 inputs/；重建输入在仓库内的隔离求解树 _v*tree/inputs/。
-# 本脚本既可从主仓库运行（对比 _v9tree），也可从求解树的 scripts 副本运行（对比上级主仓库）。
+# 已发布输入原在主仓库 inputs/；重建输入原在仓库内的隔离求解树 _v*tree/inputs/。
+# 2026-09-28 起脚本只有仓库根一份、ROOT 固定是 _indtree：下面的 OLD_INPUTS 成了 _indtree/inputs（v9.2，不是 v7），
+# NEW_INPUTS 拼成不存在的 _indtree/_v9tree/inputs，main 开头就停下；
+# 这张 v7 对 v9 的图（ED10）原地切到 a303f05 画（做法见 README §0），那里仓库根与 _v9tree/ 的 scripts 都能跑。
 # 以前把重建输入指向会话 scratchpad，那个目录 2026-08-30 被清空，脚本随之失效——不要再那样写。
 _MAIN = ROOT.parent if ROOT.name.startswith("_v") else ROOT
 OLD_INPUTS = _MAIN / "inputs"
@@ -289,7 +291,6 @@ def panel_connectivity(ax, old: pd.DataFrame, new: pd.DataFrame) -> None:
 
 def merge_sweep() -> pd.DataFrame:
     """Capacity-weighted haul to the nearest sink as the merge threshold varies."""
-    sys.path.insert(0, str(ROOT / "src"))
     from coal_retrofit.builders.storage import _cluster_storage_nodes
 
     raw = _read(NEW_INPUTS, "storage_hubs.csv")
@@ -325,7 +326,8 @@ def corridor_tortuosity() -> pd.DataFrame:
 
 def main() -> None:
     if not NEW_INPUTS.exists():
-        raise SystemExit(f"rebuilt inputs not found at {NEW_INPUTS}")
+        raise SystemExit(f"找不到重建输入 {NEW_INPUTS}：这张 v7 对 v9 的图（ED10）原地切到 a303f05 画，"
+                         "做法见 README §0。")
     old_sinks, new_sinks = _read(OLD_INPUTS, "storage_hubs.csv"), _read(NEW_INPUTS, "storage_hubs.csv")
     old_route, new_route = detour_table(OLD_INPUTS), detour_table(NEW_INPUTS)
     sweep, corridors = merge_sweep(), corridor_tortuosity()

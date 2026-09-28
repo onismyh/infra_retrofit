@@ -1,10 +1,9 @@
-"""`check_run_provenance.py --pair`（`scripts/` 与 `_indtree/scripts/` 两份逐字节相同）的判定：不求解，不需要 Gurobi。
+"""`scripts/check_run_provenance.py --pair` 的判定：不求解，不需要 Gurobi。
 
 结果是手写的 result.json：`solver_quality` 只填脚本读的键，`resolved` 只有参数、环境变量与求解时的提交号几部分。
 """
 from __future__ import annotations
 
-import filecmp
 import importlib.util
 import json
 import sys
@@ -15,7 +14,7 @@ from types import ModuleType
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-COPIES = [REPO / "scripts", REPO / "_indtree" / "scripts"]
+SCRIPTS = REPO / "scripts"
 CODE = {"commit": "a" * 40, "dirty": False}
 FILES = {"plants": "inputs/plants.csv", "sector_targets": "inputs/sector_targets_times_cn60.csv"}
 
@@ -80,11 +79,10 @@ def _write_results(directory: Path) -> None:
         (directory / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
-def _load(monkeypatch: pytest.MonkeyPatch, directory: Path) -> ModuleType:
-    monkeypatch.syspath_prepend(str(directory))
-    monkeypatch.delitem(sys.modules, "_bootstrap", raising=False)  # 两份 _bootstrap 不同，各载各的
-    alias = f"check_run_provenance_under_test_{directory.parent.name}"
-    spec = importlib.util.spec_from_file_location(alias, directory / "check_run_provenance.py")
+def _load(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    alias = "check_run_provenance_under_test"
+    spec = importlib.util.spec_from_file_location(alias, SCRIPTS / "check_run_provenance.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, alias, module)
@@ -92,11 +90,11 @@ def _load(monkeypatch: pytest.MonkeyPatch, directory: Path) -> ModuleType:
     return module
 
 
-@pytest.fixture(params=COPIES, ids=["scripts", "_indtree"])
-def check(request, monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, str]]:
-    """跑一份脚本的 `main()`，结果目录由 `--results` 指到 *tmp_path*；返回 (退出码, 标准输出)。"""
-    module = _load(monkeypatch, request.param)
-    assert module.RESULTS == request.param.parent / "results"  # 缺省读本树的 results/
+@pytest.fixture
+def check(monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, str]]:
+    """跑脚本的 `main()`，结果目录由 `--results` 指到 *tmp_path*；返回 (退出码, 标准输出)。"""
+    module = _load(monkeypatch)
+    assert module.RESULTS == REPO / "_indtree" / "results"  # 缺省读数据树 _indtree/ 的 results/
     _write_results(tmp_path)
 
     def run(*argv: str) -> tuple[int, str]:
@@ -195,11 +193,10 @@ def test_interval_is_absolute_when_the_bound_is_not_positive(check) -> None:
     assert "effect +1.0000e+08 元  certified [-1.0000e+08, +1.2000e+09] 元" in out
 
 
-@pytest.mark.parametrize("directory", COPIES, ids=["scripts", "_indtree"])
-def test_hardcoded_contrasts_only_warn(monkeypatch, tmp_path, capsys, directory: Path) -> None:
+def test_hardcoded_contrasts_only_warn(monkeypatch, tmp_path, capsys) -> None:
     """不带 `--pair` 的写死对照表照旧（那批 v9 结果都早于 resolved 段）：旧结果只注明比不了，缺一边只记 warning；
     两边都是 LP 松弛、有一边没有可用的解、没有 code，也只在 `--pair` 下判。"""
-    module = _load(monkeypatch, directory)
+    module = _load(monkeypatch)
     _write_results(tmp_path)
     failures: list[str] = []
     warnings: list[str] = []
@@ -214,7 +211,3 @@ def test_results_only_with_pair(check) -> None:
     with pytest.raises(SystemExit) as excinfo:
         check()
     assert excinfo.value.code == 2
-
-
-def test_two_copies_are_identical() -> None:
-    assert filecmp.cmp(COPIES[0] / "check_run_provenance.py", COPIES[1] / "check_run_provenance.py", shallow=False)

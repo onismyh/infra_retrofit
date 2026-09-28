@@ -26,9 +26,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _bootstrap  # noqa: F401
+from _bootstrap import ROOT
 
-ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
 

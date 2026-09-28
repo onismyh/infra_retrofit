@@ -94,14 +94,16 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 
 ## 二、这棵树是怎么拼的
 
-代码只有仓库根 `src/` 一份（2026-09-22 起）。`scripts/_bootstrap.py` 里 `ROOT` 是本树根
-（输入构建与诊断脚本用它读写本树 `inputs/`），`SRC` 指向仓库根 `src/`。
-**`ROOT` 不能改成仓库根**：那样本树的脚本会悄悄改读改写仓库根的 v7 输入（35 汇 / 923 边、无工业节点）。
+代码只有仓库根 `src/` 一份（2026-09-22 起），脚本只有仓库根 `scripts/` 一份（2026-09-28 起，此前本树有自己的 `scripts/`）。
+`scripts/_bootstrap.py` 里 `ROOT` 是本树根（输入构建、诊断与出图脚本用它读写本树 `inputs/`、`results/`），
+`REPO_ROOT` 是仓库根（图幅归档写仓库根 `results/figures/`），`SRC` 指向仓库根 `src/`。
+**`ROOT` 不能改成仓库根**：那样脚本读写的是仓库根的 `inputs/`、`results/`，不是求解用的这一套；
+`tests/test_scenarios.py` 核对它就是登记情景的 `tree`。
 2026-09-27 起求解不经 `ROOT`：仓库根 `scenarios/st.toml` 给 `ST_` 系登记了 `tree = "_indtree"`，
 求解读本树 `inputs/`、写本树 `results/`，从哪个目录启动都一样，树下没有 `inputs/` 就报错；
 万一用 `--tree` 指到了 v7 输入，`build_runtime_network` 会因"有源到不了任何汇"直接报错。
 
-`inputs/` 是仓库根 `inputs/` 的完整副本，**只替换三个网络文件**：
+`inputs/` 是 v7 输入（仓库根 `inputs/`，2026-09-28 删除，`a303f05` 里还在）的完整副本，**只替换三个网络文件**：
 
 ```
 pipeline_nodes.csv            612 -> 1052    2026-09-12 重建（此前 666，取自 _v9tree/inputs/）
@@ -109,9 +111,13 @@ pipeline_candidate_edges.csv  923 -> 1559    2026-09-12 重建（此前 2651，�
 storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 ```
 
+`_v9tree/`、`_v91tree/` 2026-09-28 移出当前版本，`a303f05` 里还在。
+
 > ⚠ 截至 2026-09-22，本目录只有 `sector_targets_times_cn60.csv` 与 `industry_output_index_times_cn60.csv`
 > 两个文件入了库，重建后的管网等其余输入只在作者本机。它们是 `ST_` 系重解的前提，应一并入库。
-> `ST_CP_BASE` 还需要 `sector_targets_none.csv`（ba967c1 只加到了仓库根 `inputs/`）。
+> `ST_CP_BASE` 还需要 `sector_targets_none.csv`：ba967c1 只把它加到了仓库根 `inputs/`，那份已随仓库根 `inputs/`
+> 删除，用 `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪进本目录
+> （不要用 `git show … >` 落盘，PowerShell 的 `>` 会改编码）。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -119,7 +125,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
-逐列实测过，不是推断：
+逐列实测过，不是推断（下面说的仓库根文件与 `_v9tree/` 都在 `a303f05` 里）：
 
 * 仓库根 `plants.csv` 是 `_v9tree/inputs/plants.csv` 的**严格超集**——同样 350 个 `plant_id`、
   同样顺序，32 个共有列的数值差全部 < 1e-9，只多 4 个 v9.1 需要的取水强度列
@@ -226,13 +232,13 @@ python -m coal_retrofit run ST_BASE --threads 8
 情景登记在仓库根 `scenarios/st.toml`（2026-09-27 起），`python -m coal_retrofit list` 列出情景，
 `python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq` 核对两者只差水的三项。`python -m coal_retrofit`
 要先 `pip install -e .`；没装时 `python scripts/run_single.py ST_BASE --threads 8` 等价，参数相同。
-两次求解相减之前，在仓库根跑 `python _indtree/scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
+两次求解相减之前，在仓库根跑 `python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
 列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
 有一边没有 `resolved` 段（2026-09-27 之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是
 LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价不同、读的同一个输入文件摘要不同、线程数或
 MIPFocus 不同、有一边没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同、
 记不了提交号或求解时有未提交的改动只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
-这份脚本和本树 `scripts/` 下的出图脚本一样读本树 `results/`；仓库根 `scripts/` 那份读仓库根 `results/`。
+这份脚本和出图脚本一样读本树 `results/`（`scripts/_bootstrap.py` 的 `ROOT`）。
 
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |
 |---|---|---|---|---|---|---|
@@ -263,17 +269,19 @@ python scripts/plot_ind_fig3_water_coupling.py      # 水约束把什么提前�
 python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动员工业（附录）
 ```
 
-三个主图脚本开头都有 `assert_v9_tree()`：在仓库根跑会抛错而不是画出 35 汇的 v7 结果。
-这条断言不是防御性编程——两棵树里目录同名，而图注里"v9 管网"是写死的字符串。
+三个主图脚本开头都有 `assert_v9_tree()`：读到的结果不是 89 个汇就抛错，而不是画出 35 汇的 v7 结果
+（2026-09-28 之前脚本在仓库根跑就会读到后者）。这条断言不是防御性编程——两棵树里目录同名，而图注里的管网名（现为"v9.2 管网"）是写死的字符串。
 
 `plot_ind_fig1_joint_allocation.py` 与 `plot_ind_ed1_target_level.py` 要从情景登记表读 `IND_`
 的联合目标份额；ba967c1 之后它们在新代码下直接停下并说明原因（`_require_registered`）。
 重画这批旧图请在 `cf073be` 的工作副本里运行；`ST_` 版需要另行设计。
 
-输出在 `_indtree/results/figures/main/`，已归档到仓库根
+输出在 `_indtree/results/figures/main/`（ED1 在 `extended/`），已归档到仓库根
 `results/figures/v9.1/industry/`（含 README、数据与求解日志）。
-这三个脚本**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配，
-即不会被卷进 v9.1 主线的批量重绘——这是有意的，两条线的输入版本与模型都不同。
+这四个脚本都**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，正常运行也只拷本次画出的图，
+所以这几张旧图不会混进 `ST_` 的归档——这是有意的：管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，
+两条线的模型不同。两处例外：给了 `--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的
+全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
 
 ---
 

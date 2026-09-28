@@ -140,13 +140,13 @@ YEARS = [2030, 2040, 2050, 2060]
 # so this is the tightest the constraint gets and the year the 765 GW refers to.
 CEILING_YEAR = 2030
 
-# The solved pair: v9.1 official-quota solves (`_v91tree/scripts/run_single.py:383,385`), so
+# The solved pair: v9.1 official-quota solves (`a303f05:_v91tree/scripts/run_single.py:383,385`), so
 # there is no reservation share (see below).
 SOLVED = {"ssp126": "WA_cwatm_126_dry_oq", "ssp370": "WA_cwatm_370_dry_oq"}
 # Adaptation frozen. Not plotted -- it is a counterfactual, not part of the claim -- but its
 # unserved volume is printed, because it is the cleanest evidence that the ceiling is real.
 FROZEN = "WA_cwatm_126_dry_oq_noair"
-# Member the solves pin (`_v91tree/scripts/run_single.py:383`). It is a drying GCM, so it is marked in panel (a)
+# Member the solves pin (`a303f05:_v91tree/scripts/run_single.py:383`). It is a drying GCM, so it is marked in panel (a)
 # rather than left to look like the ensemble centre.
 SOLVED_MEMBER = "cwatm|gfdl-esm4|ssp126"
 

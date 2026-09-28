@@ -8,7 +8,7 @@
 列表用 `python -m coal_retrofit list`）。
 
 情景登记在仓库根 `scenarios/*.toml`（2026-09-27 之前是本文件里的字典）。求解树由情景的 `tree` 决定
-（`ST_` 系是 `_indtree/`），与从 `scripts/` 还是 `_indtree/scripts/` 启动无关。其余选项（`--set`、`--as`、
+（`ST_` 系是 `_indtree/`）。其余选项（`--set`、`--as`、
 `--tree`、`--force`、`--sol-dir`）照传给 `coal_retrofit.cli`，见那里的说明。2026-09-28 起已有同名结果时求解之前就拒绝，
 要覆盖加 `--force`；`ST_` 系的热启动两步由运行器自动做。
 

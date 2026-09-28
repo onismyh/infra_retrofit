@@ -19,9 +19,10 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from pathlib import Path
 
 import pandas as pd
+
+from _bootstrap import ROOT
 
 # Windows 控制台默认 GBK，报告里有 U+26A0 和中文行业名，不重设会在打印松弛告警时
 # 抛 UnicodeEncodeError —— 恰好把最该看见的那几行吃掉。
@@ -29,7 +30,6 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 SECTOR_ZH = {
     "steel_bf_bof": "钢铁(高炉-转炉)",
