@@ -193,21 +193,8 @@ def test_interval_is_absolute_when_the_bound_is_not_positive(check) -> None:
     assert "effect +1.0000e+08 元  certified [-1.0000e+08, +1.2000e+09] 元" in out
 
 
-def test_hardcoded_contrasts_only_warn(monkeypatch, tmp_path, capsys) -> None:
-    """不带 `--pair` 的写死对照表照旧（那批 v9 结果都早于 resolved 段）：旧结果只注明比不了，缺一边只记 warning；
-    两边都是 LP 松弛、有一边没有可用的解、没有 code，也只在 `--pair` 下判。"""
-    module = _load(monkeypatch)
-    _write_results(tmp_path)
-    failures: list[str] = []
-    warnings: list[str] = []
-    contrasts = [("old", "OLD", "MIP"), ("missing", "MIP", "NOPE"), ("lp", "LP", "LP_DRY"), ("nosol", "MIP", "NOSOL"),
-                 ("nocode", "MIP", "NOCODE")]
-    module.check_contrasts(failures, warnings, False, contrasts=contrasts, results=tmp_path)
-    assert failures == [] and warnings == ["missing: one side not solved yet"]
-    assert "比不了" in capsys.readouterr().out
-
-
-def test_results_only_with_pair(check) -> None:
+def test_pair_is_required(check, capsys) -> None:
+    """2026-09-28 起没有写死对照表的缺省模式：不给 `--pair` 是用法错误（退出码 2），只给 `--results` 也一样。"""
     with pytest.raises(SystemExit) as excinfo:
         check()
-    assert excinfo.value.code == 2
+    assert excinfo.value.code == 2 and "--pair" in capsys.readouterr().err

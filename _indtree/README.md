@@ -262,26 +262,15 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
 
 ### 图
 
-```bash
-python scripts/plot_ind_fig1_joint_allocation.py    # 联合减排分配
-python scripts/plot_ind_fig2_storage_allocation.py  # 封存空间归谁
-python scripts/plot_ind_fig3_water_coupling.py      # 水约束把什么提前了
-python scripts/plot_ind_ed1_target_level.py         # 目标水平多高才动员工业（附录）
-```
+`IND_` 系的四个出图脚本（`plot_ind_fig1_joint_allocation`、`plot_ind_fig2_storage_allocation`、
+`plot_ind_fig3_water_coupling`、`plot_ind_ed1_target_level`）2026-09-28 起不在当前版本：它们画的 `IND_` 情景已不在
+登记表。旧图在 `cf073be` 的工作副本里重画，脚本在那里的 `_indtree/scripts/`。`ST_` 版需要另行设计；`plot_ind_fig1`
+的面板 d 已改为用模型自己的函数算成本（`levelised_capture_cost_cny_per_t`：按 09-22 起的成本参数折成平准化值，只供出图
+比较，目标函数不用；扣再生蒸汽排放），做 `ST_` 版时可从 `a184984` 取回。
 
-三个主图脚本开头都有 `assert_v9_tree()`：读到的结果不是 89 个汇就抛错，而不是画出 35 汇的 v7 结果
-（2026-09-28 之前脚本在仓库根跑就会读到后者）。这条断言不是防御性编程——两棵树里目录同名，而图注里的管网名（现为"v9.2 管网"）是写死的字符串。
-
-`plot_ind_fig1_joint_allocation.py` 与 `plot_ind_ed1_target_level.py` 要从情景登记表读 `IND_`
-的联合目标份额；ba967c1 之后它们在新代码下直接停下并说明原因（`_require_registered`）。
-重画这批旧图请在 `cf073be` 的工作副本里运行；`ST_` 版需要另行设计。
-
-输出在 `_indtree/results/figures/main/`（ED1 在 `extended/`），已归档到仓库根
-`results/figures/v9.1/industry/`（含 README、数据与求解日志）。
-这四个脚本都**不匹配** `render_version.py` 的 `plot_fig*` / `plot_ed*` 通配：它不重跑这几张，正常运行也只拷本次画出的图，
-所以这几张旧图不会混进 `ST_` 的归档——这是有意的：管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，
-两条线的模型不同。两处例外：给了 `--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的
-全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
+本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图不会混进 `render_version.py` 的归档：它只拷本次画出的图。这是有意的：
+`IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。两处例外：给了
+`--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
 
 ---
 

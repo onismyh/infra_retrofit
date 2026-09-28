@@ -3,7 +3,8 @@
 This panel used to be Fig 2(c). It is a variance decomposition, which is Extended Data
 content by Nature convention: it tells a reviewer that the 20-member ensemble is doing work,
 it does not advance the paper's claim. Main Fig 2 now carries only the ceiling claim
-(`plot_fig2_constraint_response.py`); this script carries the attribution.
+(`plot_fig2_constraint_response.py`, 2026-09-28 起不在当前版本，v9.1 版见 `a303f05` 的 `_v91tree/scripts/`); this script
+carries the attribution.
 
 The logic is the one that was verified in place and is reproduced here unchanged, not
 re-derived:

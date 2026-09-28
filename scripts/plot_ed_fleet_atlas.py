@@ -35,7 +35,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 import ed_plant_data as EP
-from plot_style import BASIN_NAMES_ZH, MM, save_fig
+from plot_style import BASIN_NAMES_ZH, MAP_CRS, MM, apply_style, save_fig
 
 # One colour per constrained basin, colour-blind safe (Tol bright). Everything unconstrained is
 # grey: the figure's job is to show where the constraint lands, not to name nine basins.
@@ -55,9 +55,21 @@ def _sized(cap_gw: np.ndarray) -> np.ndarray:
     return 2.2 + 26.0 * cap_gw / np.nanmax(cap_gw)
 
 
+def _reproj(df: pd.DataFrame, lon_col: str, lat_col: str) -> pd.DataFrame:
+    """经纬度两列 -> MAP_CRS 下的点图层（GeoDataFrame）。原在 `plot_extended.py`，2026-09-28 随它删除挪到这里。"""
+    import geopandas as gpd
+    valid = df.dropna(subset=[lon_col, lat_col])
+    gdf = gpd.GeoDataFrame(
+        valid, geometry=gpd.points_from_xy(valid[lon_col], valid[lat_col]),
+        crs="EPSG:4326",
+    ).to_crs(MAP_CRS)
+    gdf["px"] = gdf.geometry.x
+    gdf["py"] = gdf.geometry.y
+    return gdf
+
+
 def panel_map(ax, fleet: pd.DataFrame) -> None:
     import geopandas as gpd
-    from plot_extended import _load_provinces, _reproj, _add_map_elements
     from plot_style import draw_china_basemap, add_scs_inset, mainland_extent
 
     # 省界 + 国界（国界图层含九段线，见 plot_style.load_country 的断言）
@@ -192,6 +204,9 @@ def main() -> None:
     ax_map = fig.add_axes([0.010, 0.055, 0.520, 0.880])
     ax_cool = fig.add_axes([0.605, 0.560, 0.375, 0.365])
     ax_age = fig.add_axes([0.605, 0.085, 0.375, 0.330])
+    # 建轴之后再套样式：原先是 panel_map 里导入 plot_extended 时顺带套上的（它 2026-09-28 删除），
+    # 挪到 main 开头三个轴就按新样式建，刻度线宽从 0.8 变成 0.5，图与原先不同。
+    apply_style()
 
     panel_map(ax_map, fleet)
     panel_cooling(ax_cool, fleet)

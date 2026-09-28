@@ -15,23 +15,19 @@ so no run before this campaign pinned it. Observed thread counts across
 runs that were differenced against each other: 32, 14, 12, 9, 8.
 
 WHAT THIS CHECKS. `solver_provenance._run_provenance` now stamps every result JSON with the model
-fingerprint, its dimensions, the thread parameter and the seed. This script reads them back
-and answers two questions no figure could previously ask:
-
-  1. seed replicates -- MUST agree on fingerprint. Disagreement means they are replicates of
-     different models, and any floor measured from them is a version artefact, not degeneracy.
-  2. any contrast -- MAY differ in fingerprint when the scenario legitimately changes the
-     model (a different availability file, a different supply multiplier), but the thread
-     count must still be pinned and equal, or the comparison inherits solver nondeterminism
-     on top of the physics.
+fingerprint, its dimensions, the thread parameter and the seed. This script reads them back for
+one contrast (`--pair A B`): the two runs MAY differ in fingerprint when the scenario legitimately
+changes the model (a different availability file, a different supply multiplier), but the thread
+count must still be pinned and equal, or the comparison inherits solver nondeterminism on top of
+the physics.
 
 Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 
 2026-09-27 起 result.json 带 `resolved` 段（全部参数、求解树、运行选项、`COAL_RETROFIT_*` 环境变量），每组对照
 另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
-`--pair A B` 只核这两次求解，不跑下面写死的 v9 seed 族与对照表；缺一边、任一边没有 `resolved` 段（2026-09-27
-之前落盘，参数与环境变量都核不了）、两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
-本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录（只配 `--pair`）。
+`--pair A B` 核这两次求解：缺一边、任一边没有 `resolved` 段（2026-09-27 之前落盘，参数与环境变量都核不了）、
+两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
+本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录。
 
 2026-09-28 起（求解流程进情景定义）又加了几条：
 - 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`）；没有这个键（旧结果）或记的
@@ -42,9 +38,11 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
   （`resolved.input_files` 不同）与只有一边有的只列出。任一边没有 `resolved.code`（这之前落盘，跨 PR #11 连续 hub
   掺烧等式的模型改动分不出来）记 failure；提交号不同、求解时有未提交的改动、记不了提交号，只告警。
 
-    python scripts/check_run_provenance.py
-    python scripts/check_run_provenance.py --strict   # also fail on unpinned threads
+2026-09-28 起 `--pair` 必填：写死 v9 seed 族与对照表的缺省模式（`SEED_FAMILIES`、`LEGACY_BUILD`、`CONTRASTS`）
+随 v9 / v9.1 的图一起删除，删之前的版本在 `6917c9c`。
+
     python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq
+    python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq --strict   # also fail on unpinned threads
 """
 from __future__ import annotations
 
@@ -60,46 +58,8 @@ from coal_retrofit.scenarios import diff_resolved
 
 RESULTS = ROOT / "results"
 
-# Families whose members must be bit-identical models. Anything differing only by the Gurobi
-# seed belongs here; a mismatch inside a family is a hard failure.
-SEED_FAMILIES = {
-    "WA_cwatm_126_dry_wd085": ["WA_cwatm_126_dry_wd085",
-                               "WA_cwatm_126_dry_wd085_seed2",
-                               "WA_cwatm_126_dry_wd085_seed3",
-                               "WA_cwatm_126_dry_wd085_seed4",
-                               "WA_cwatm_126_dry_wd085_seed5",
-                               "WA_cwatm_126_dry_wd085_seed6"],
-    "WA_cwatm_126_dry": ["WA_cwatm_126_dry",
-                         "WA_cwatm_126_dry_seed2",
-                         "WA_cwatm_126_dry_seed3",
-                         "WA_cwatm_126_dry_seed4"],
-}
-
-# Contrasts the figures actually draw. These MAY differ in fingerprint -- the scenario changes
-# the model on purpose -- but they must share a pinned thread count.
-# Non-water scenarios that ALSO build the water network and were left on the pre-08-17
-# build by stage 1. BASE is the one that matters most: it appears in a main-figure contrast
-# and is the BASE_DIR every Extended Data figure reads.
-LEGACY_BUILD = (
-    "BASE", "BASE_zero", "BASE_neg", "WA_grid_200km",
-    "RQ3_ccs_only", "RQ3_no_ammonia", "RQ3_no_biomass", "RQ3_no_ccs", "RQ3_retire_only",
-)
-
-CONTRASTS = [
-    ("Fig 3 accounted", "BASE", "WA_cwatm_126_dry"),
-    ("Fig 3 reserved", "WA_cwatm_126_dry", "WA_cwatm_126_dry_wd085"),
-    ("Fig 3 climate", "WA_cwatm_126_dry_wd085", "WA_cwatm_370_dry_wd085"),
-    ("Fig 5 frozen", "WA_cwatm_126_dry_wd085", "WA_cwatm_126_dry_wd085_noair_capfree"),
-    ("Fig 5 bind wgap126", "WA_wgap_126_dry", "WA_wgap_126_dry_wd085"),
-    ("Fig 5 bind wgap370", "WA_wgap_370_dry", "WA_wgap_370_dry_wd085"),
-    ("capfree pair", "WA_cwatm_126_dry_capfree", "WA_cwatm_126_dry_wd085_capfree"),
-    ("biomass realism", "WA_cwatm_126_dry_bio015", "WA_cwatm_126_dry_wd085_bio015"),
-]
-
 FIELDS = ("fingerprint", "num_vars", "num_constrs", "num_nonzeros",
           "threads_param", "threads_pinned", "seed", "mip_focus")
-
-D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704, 8: 2.847}
 
 # `resolved.env` 记下求解时所有 COAL_RETROFIT_* 环境变量。运行器的三个兼容开关只看设没设（按非空判断；热启动的
 # .sol 路径按情景不同）；WRITE_SOL 只决定写不写 .sol，不比；其余（MIPFOCUS、GUROBI_SEED 等）按原值列差，
@@ -201,41 +161,6 @@ def describe(name, row):
             f"nz {row['num_nonzeros']}  threads {row['threads_param']}  seed {row['seed']}")
 
 
-def check_seed_families(failures, warnings):
-    print("=" * 96)
-    print("seed families -- members MUST share a model fingerprint")
-    print("=" * 96)
-    for family, members in SEED_FAMILIES.items():
-        rows = {name: load(name) for name in members}
-        present = {n: r for n, r in rows.items() if r is not None}
-        print()
-        print(f"  {family}   ({len(present)}/{len(members)} solved)")
-        for name in members:
-            print(describe(name, rows[name]))
-        prints = {r["fingerprint"] for r in present.values() if r["fingerprint"] is not None}
-        if len(prints) > 1:
-            failures.append(f"{family}: seed replicates span {len(prints)} model fingerprints "
-                            f"{sorted(prints)} -- any floor from them is a version artefact")
-        threads = {r["threads_param"] for r in present.values()
-                   if r["threads_param"] is not None}
-        if len(threads) > 1:
-            failures.append(f"{family}: seed replicates ran on {sorted(threads)} threads -- "
-                            f"Gurobi is deterministic only at a fixed thread count, so the "
-                            f"spread mixes thread nondeterminism into the seed effect")
-        seeds = [r["seed"] for r in present.values() if r["seed"] is not None]
-        if len(seeds) != len(set(seeds)):
-            warnings.append(f"{family}: duplicate seeds {sorted(seeds)} -- a repeated seed "
-                            f"measures nothing, Gurobi reproduces it exactly")
-        if len(present) >= 2:
-            objectives = [r["objective"] for r in present.values()]
-            spread = 100.0 * (max(objectives) - min(objectives)) / min(objectives)
-            d2 = D2.get(len(objectives), 3.078)
-            sigma = spread / d2
-            print(f"    -> raw objective range {spread:.4f}% over n = {len(objectives)}; "
-                  f"sigma ~ {sigma:.4f}% (range / d2); 95% envelope on a DIFFERENCE of two "
-                  f"such runs = {1.96 * (2 ** 0.5) * sigma:.4f}%")
-
-
 def lower_bound(row):
     """下界：result.json 记的 ObjBound（`objective_bound_cny`）。没有这个键（旧结果）或值为空时按 gap 反推：Gurobi 的
     gap = |ObjBound − ObjVal| / |ObjVal|，最小化时 ObjBound ≤ ObjVal，所以 LB = INC − gap·|INC|。"""
@@ -283,12 +208,11 @@ def describe_digests(label, names, a, b, failures):
     return [f"    -> 输入摘要 {same} 项相同" + (f"，另有 {len(lines)} 项：" if lines else ""), *lines]
 
 
-def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RESULTS, require_both=False):
-    """*require_both*（`--pair`）时缺一边、任一边没有 `resolved` 或 `resolved.code`、两边都是 LP 松弛、任一边没有可用的解、
-    输入摘要不同，都记 failure；写死的对照表照旧：缺一边只记 warning，没有 `resolved` 只注明比不了。"""
+def check_contrasts(failures, warnings, strict, contrasts, results=RESULTS):
+    """缺一边、任一边没有 `resolved` 或 `resolved.code`、两边都是 LP 松弛、任一边没有可用的解、输入摘要不同，都记 failure。"""
     print()
     print("=" * 96)
-    print("published contrasts -- fingerprints may differ, the thread pin may not")
+    print("--pair contrast -- fingerprints may differ, the thread pin may not")
     print("=" * 96)
     for label, base, variant in contrasts:
         a, b = load(base, results), load(variant, results)
@@ -297,36 +221,32 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
         print(describe(base, a))
         print(describe(variant, b))
         if a is None or b is None:
-            if require_both:
-                missing = "、".join(name for name, row in ((base, a), (variant, b)) if row is None)
-                failures.append(f"{label}: {results} 下没有 {missing} 的结果")
-            else:
-                warnings.append(f"{label}: one side not solved yet")
+            missing = "、".join(name for name, row in ((base, a), (variant, b)) if row is None)
+            failures.append(f"{label}: {results} 下没有 {missing} 的结果")
             continue
         before = len(failures)
         for line in describe_params(label, (base, variant), a, b, failures, warnings):
             print(line)
         unchecked = [name for name, row in ((base, a), (variant, b)) if row["resolved"] is None]
-        if require_both and unchecked:
+        if unchecked:
             failures.append(f"{label}: {'、'.join(unchecked)} 没有 resolved 段（2026-09-27 之前落盘），"
                             f"参数与环境变量都核不了，重解后再比")
-        if require_both:
-            for line in describe_digests(label, (base, variant), a, b, failures):
-                print(line)
-            uncoded = [name for name, row in ((base, a), (variant, b))
-                       if row["resolved"] is not None and "code" not in row["resolved"]]
-            if uncoded:
-                failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（加这一项之前落盘）："
-                                f"是不是在 PR #11（连续 hub 掺烧等式，模型改动）之后求解的核不了，重解后再比")
-            # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
-            if _lp_relaxed(a) and _lp_relaxed(b):
-                failures.append(f"{label}: 两边都是 LP 松弛的解（整数变量改成了连续变量），"
-                                f"只是下界，不能拿来相减")
-            for name, row in ((base, a), (variant, b)):
-                objective = row["objective"]
-                if not isinstance(objective, (int, float)) or not math.isfinite(objective):
-                    failures.append(f"{label}: {name} 没有可用的解（目标函数是 {objective!r}：求解状态不可接受，"
-                                    f"结果表是补零的），不能拿来相减")
+        for line in describe_digests(label, (base, variant), a, b, failures):
+            print(line)
+        uncoded = [name for name, row in ((base, a), (variant, b))
+                   if row["resolved"] is not None and "code" not in row["resolved"]]
+        if uncoded:
+            failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（加这一项之前落盘）："
+                            f"是不是在 PR #11（连续 hub 掺烧等式，模型改动）之后求解的核不了，重解后再比")
+        # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
+        if _lp_relaxed(a) and _lp_relaxed(b):
+            failures.append(f"{label}: 两边都是 LP 松弛的解（整数变量改成了连续变量），"
+                            f"只是下界，不能拿来相减")
+        for name, row in ((base, a), (variant, b)):
+            objective = row["objective"]
+            if not isinstance(objective, (int, float)) or not math.isfinite(objective):
+                failures.append(f"{label}: {name} 没有可用的解（目标函数是 {objective!r}：求解状态不可接受，"
+                                f"结果表是补零的），不能拿来相减")
         if a["fingerprint"] is None or b["fingerprint"] is None:
             warnings.append(f"{label}: at least one side has no provenance, so comparability "
                             f"cannot be checked")
@@ -360,50 +280,21 @@ def check_contrasts(failures, warnings, strict, contrasts=CONTRASTS, results=RES
                       f"（对照的目标函数或下界不是正数，不给相对区间）  -> {verdict}")
 
 
-def check_legacy(warnings):
-    """Report scenarios still carrying no provenance stamp, i.e. still on an older build."""
-    print()
-    print("=" * 96)
-    print("scenarios that build the water network but predate the provenance stamp")
-    print("=" * 96)
-    stale = []
-    for name in LEGACY_BUILD:
-        row = load(name)
-        if row is None:
-            print(f"    {name:44s} NOT SOLVED")
-            continue
-        print(describe(name, row))
-        if row["fingerprint"] is None:
-            stale.append(name)
-    if stale:
-        warnings.append(f"{len(stale)} scenario(s) still on a pre-provenance build "
-                        f"({', '.join(stale)}); every Extended Data figure reads BASE, and "
-                        f"Fig 3's first contrast differences BASE against a re-solved run")
-
-
 def main():
     parser = argparse.ArgumentParser(description="Check run comparability")
     parser.add_argument("--strict", action="store_true",
                         help="also fail when a compared run left Threads at 0 (auto)")
-    parser.add_argument("--pair", nargs=2, metavar=("A", "B"),
-                        help="只核这两次求解（结果名），不跑写死的 v9 seed 族与对照表；缺一边、没有 resolved 段或"
+    parser.add_argument("--pair", nargs=2, metavar=("A", "B"), required=True,
+                        help="核这两次求解（结果名）；缺一边、没有 resolved 段或"
                              " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价不同、"
                              "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、记不了提交号、有未提交的改动只告警")
     parser.add_argument("--results", type=Path, default=None,
-                        help="--pair 读哪个结果目录（缺省：_indtree/results/）")
+                        help="读哪个结果目录（缺省：_indtree/results/）")
     args = parser.parse_args()
-    if args.results is not None and not args.pair:
-        parser.error("--results 只配 --pair 用")
     failures, warnings = [], []
-    if args.pair:
-        results = args.results if args.results is not None else RESULTS
-        print(f"结果目录：{results}")
-        check_contrasts(failures, warnings, args.strict, contrasts=[("pair", *args.pair)],
-                        results=results, require_both=True)
-    else:
-        check_seed_families(failures, warnings)
-        check_contrasts(failures, warnings, args.strict)
-        check_legacy(warnings)
+    results = args.results if args.results is not None else RESULTS
+    print(f"结果目录：{results}")
+    check_contrasts(failures, warnings, args.strict, contrasts=[("pair", *args.pair)], results=results)
     print()
     print("=" * 96)
     if warnings:
