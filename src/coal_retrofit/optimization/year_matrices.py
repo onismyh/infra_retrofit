@@ -120,7 +120,7 @@ def _build_year_matrices(
     edges = _edge_matrices(prepared, assumptions, state)
 
     coal_price_per_plant = plant["coal_price_per_plant"]
-    coal_savings_per_gj = coal_price_per_plant * biomass_flow_scale  # 缩放后 CNY/TJ
+    coal_savings_per_gj = coal_price_per_plant * biomass_flow_scale  # 缩放后 CNY/PJ
     # 掺氨替代的煤，CNY / 缩放 kg NH3：LHV x 煤价。氨列的 baseline_net 按全煤热耗计费，没有此项会为没烧的煤付钱。
     coal_savings_per_kg_nh3 = (
         coal_price_per_plant * float(assumptions.nh3_lhv_gj_per_kg) * float(ammonia_data.get("ammonia_flow_scale", 1.0))

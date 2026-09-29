@@ -117,10 +117,11 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > `industry_output_index_times_cn60.csv` 两个文件入了库，其余输入只在作者本机。入库的这一份与 `a303f05` 的仓库根
 > `inputs/` 逐文件比过：只有上面三个网络文件不同，其余（含 `ST_CP_BASE` 要读的 `sector_targets_none.csv`）都相同；
 > 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图。
+> 2026-09-29（PR #19）删去两张没有读者的连接表 `biomass_supply_links.csv`、`ammonia_supply_links.csv`（按 150 km 生成，优化器读入时按 200 km 现建），`89f8205` 里还在。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
-生物质与氨的供给曲线和连接表。
+生物质与氨的供给曲线。
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
@@ -140,7 +141,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
 Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep._prepare_plants`
 经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错；`plot_style` 的底图（`load_country` /
-`load_map_provinces`）与 `map_tht.layers()` 都读 `ROOT / "data"`（`plot_candidate_network` 直接读 `data/ChinaMap/`），缺它直接报错，
+`load_map_provinces`）与 `map_tht.layers()` 都读 `ROOT / "data"`，缺它直接报错，
 所以所有地图脚本都跑不了；
 `plot_style.load_basins` 另外返回 None：`slide_multiflow_joint` 对它有分支（但先在 `map_tht` 底图处停下），
 `plot_fig1_water_footprint` 在 `assign_basin(...).values` 处（返回 None 后 `.values` 抛 AttributeError）、

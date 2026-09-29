@@ -29,7 +29,7 @@ BIOMASS_GJ_PER_TONNE = 15.0
 BIOMASS_COST_BASE = 20.0
 BIOMASS_COST_LOW = 18.0
 BIOMASS_COST_HIGH = 26.0
-BIOMASS_MATCH_BUFFER_KM = 150.0
+BIOMASS_MATCH_BUFFER_KM = 150.0  # 只写进供给曲线的 buffer_km 列，模型不读；资源链路半径是 resource_match_radius_km（200 km）
 BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 
 NH3_H2_RATIO = 0.176
@@ -77,7 +77,7 @@ WATER_EXTRACTABLE_FRACTION = 0.20  # 天然径流的 20% 可取用于工业冷�
 
 # 求解器单位缩放：缩小系数范围，提高数值稳定性
 # 流量变量用缩放后的单位；成本相应调整
-BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 TJ 而非 GJ（÷1e6）
+BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 PJ 而非 GJ（÷1e6）
 AMMONIA_FLOW_SCALE = 1e6   # 求解器流量变量用 kt 而非 kg（÷1e6）
 WATER_FLOW_SCALE = 1e6     # 求解器流量变量用 Mm³ 而非 m³（÷1e6）
 

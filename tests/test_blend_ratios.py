@@ -316,6 +316,7 @@ def test_plot_style_residual_refuses_tables_without_ratio_columns(monkeypatch) -
         "retirement_year": 2060, "baseline_emissions_mt": 10.0, "annual_generation_mwh": 5.0e6,
         "share_unabated": 0.0, "share_ccs": 0.0, "share_biomass": 1.0, "share_beccs": 0.0,
         "share_ammonia": 0.0, "share_retire": 0.0,
+        "already_air_share": 0.0, "air_cooled_share": 0.0,
         "biomass_blend_level": float(_three_hubs()["level_b"][0]), "ammonia_blend_level": 0.0,
     }])
     with pytest.raises(ValueError, match="blend_ratio"):

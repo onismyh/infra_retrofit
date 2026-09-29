@@ -275,7 +275,7 @@ def _build_plant_cost_table(
         # 减排量取约束本身的表达式，含效率比、CF 提升、全部惩罚燃料与连续 hub 下的掺烧份额。
         # 此前是近似式：未减排部分按基线排放计、不含惩罚燃料，掺烧比例按档位换算（连续 hub 下换算错）。
         carbon_cost = carbon_price * 1e6 * (e - float(plant_reduction_mt[p])) if carbon_price > 0 else 0.0
-        # 节煤（coal_savings_per_gj 已缩放为 CNY/TJ；biomass_use_gj 是未缩放的 GJ）
+        # 节煤（coal_savings_per_gj 已缩放为 CNY/PJ；biomass_use_gj 是未缩放的 GJ）
         _bio_scale = float(year_data.biomass_flow_scale)
         _cspg = year_data.coal_savings_per_gj
         _cspg_val = float(_cspg[p]) if hasattr(_cspg, '__getitem__') and not isinstance(_cspg, (int, float)) else float(_cspg)

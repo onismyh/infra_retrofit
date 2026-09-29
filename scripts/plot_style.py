@@ -2,8 +2,8 @@
 
 Import this module at the top of any plotting script to ensure consistent:
 - Font sizes, families, and weights
-- Color palettes (colorblind-safe)
-- Panel labels (a), (b), (c), (d)
+- Color palettes (thesis.ipynb colours, CLAUDE.md §3.3)
+- Panel labels a, b, c (bold, no parentheses)
 - Legend style
 - Axis formatting
 - Save function with dual PDF+PNG output
@@ -38,7 +38,7 @@ PATENT_FIGURES_DIR = FIGURES_DIR / "patent"
 MM = 1 / 25.4  # mm to inches
 DOUBLE_COL = (183 * MM, 89 * MM * 1.4)         # ~(7.2, 4.9) for double-column
 
-# ── Color palette (colorblind-safe, Tol bright) ─────────────────────────────
+# ── Color palette (CLAUDE.md §3.3) ──────────────────────────────────────────
 # 同族同色系，深端 = 带 CCS，浅端 = 不带 CCS。蒸馏自 thesis.ipynb 的配色逻辑
 # （Coal w/ CCS #636363 vs w/o #969696；Biomass w/ CCS #31A354 vs w/o #74C476），
 # 见 .claude/CLAUDE.md §3.3。取代原先的 Tol bright 系。
@@ -344,6 +344,7 @@ def add_scs_inset(fig, ax_main, draw=None, root=None,
     inset.set_xlabel("")
     inset.set_ylabel("")
     for side in inset.spines.values():
+        side.set_visible(True)   # apply_style() 关了上、右轴线；小图要完整方框（同 map_tht）
         side.set_linewidth(0.4)
         side.set_edgecolor("#888888")
     return inset
@@ -469,22 +470,24 @@ def panel_label_inside(ax, letter: str, x: float = 0.03, y: float = 0.97,
             bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none", alpha=0.8))
 
 
-def save_fig(fig, name: str, subdir: str = ""):
+def save_fig(fig, name: str, subdir: str = "", out_dir=None):
     """Save figure as PDF + PNG with publication naming.
     
     Args:
         fig: matplotlib figure object
         name: figure filename (without extension)
         subdir: subdirectory under figures/ ("main", "extended", "patent", or "" for root)
+        out_dir: 直接给输出目录，给了就不看 subdir（输入诊断图写 `_indtree/inputs/figures/`）
     """
-    if subdir == "main":
-        out_dir = MAIN_FIGURES_DIR
-    elif subdir == "extended":
-        out_dir = EXTENDED_FIGURES_DIR
-    elif subdir == "patent":
-        out_dir = PATENT_FIGURES_DIR
-    else:
-        out_dir = FIGURES_DIR
+    if out_dir is None:
+        if subdir == "main":
+            out_dir = MAIN_FIGURES_DIR
+        elif subdir == "extended":
+            out_dir = EXTENDED_FIGURES_DIR
+        elif subdir == "patent":
+            out_dir = PATENT_FIGURES_DIR
+        else:
+            out_dir = FIGURES_DIR
     
     out_dir.mkdir(parents=True, exist_ok=True)
     # WIDTH GUARD, SELF-CORRECTING, WITH A CULPRIT WHEN IT CANNOT CORRECT. bbox_inches='tight'
@@ -550,7 +553,7 @@ def save_fig(fig, name: str, subdir: str = ""):
               "\"减去\"。不要为一个字符加 fallback 字体栈——那会让同一个符号在有无 SimHei 的"
               "机器上落到不同字形。")
     plt.close(fig)
-    print(f"  [ok] {name} -> {subdir or 'root'}/")
+    print(f"  [ok] {name} -> {out_dir}/")
 
 
 # ── Model-consistent emission accounting ───────────────────────────────────────
@@ -559,7 +562,7 @@ def save_fig(fig, name: str, subdir: str = ""):
 # chosen blend levels, and efficiency-penalty fuel emissions. Using stylized
 # per-pathway factors (e.g. ccs -> 0.10) contradicts the model and is forbidden
 # in figure scripts. All parameters below are the scenario defaults shared by
-# every experiment in scripts/run_single.py (none of them override these).
+# every scenario in scenarios/st.toml (none of them override these).
 def _plot_accounting_params():
     from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 
@@ -644,19 +647,10 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     # plant aggregate, so the reconstruction below assumes it is uniform across a plant's
     # active pathways. That assumption is exact at 2030 (identity above holds to 0.01 Mt) and
     # is the tightest available from the written outputs.
-    # THE 24-COLUMN VINTAGE HAS NO COOLING COLUMNS, AND FOR IT THE TERM IS ZERO BY
-    # CONSTRUCTION -- that build has no wet-to-dry conversion variable at all, so no unit can
-    # incur a backpressure penalty. Falling back to zero is therefore correct rather than
-    # merely convenient, but it is done explicitly: a silent 0.0 would let a 24-column run be
-    # differenced against a 26-column one with no sign that the two describe different feasible
-    # sets -- exactly the cross-version differencing CLAUDE.md 二.6 forbids.
-    _air_cols = ("already_air_share", "air_cooled_share")
-    if all(c in d.columns for c in _air_cols):
-        still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
-        air = d["air_cooled_share"].to_numpy(dtype=float)
-    else:
-        still_wet = np.zeros(len(d), dtype=float)
-        air = np.zeros(len(d), dtype=float)
+    # 两列空冷列与上面检查过的 `*_blend_ratio` 列在同一处写出（`optimization/results_plant.py`），
+    # 能走到这里的表都带着它们。
+    still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
+    air = d["air_cooled_share"].to_numpy(dtype=float)
     s_retire = d["share_retire"].to_numpy(dtype=float)
     pen_air_ratio = (
         float(assumptions.air_retrofit_efficiency_penalty_pp)
