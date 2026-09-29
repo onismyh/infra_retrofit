@@ -141,6 +141,10 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    任何档位上（`Σ_l z ≤ s`，实现说明 §9.8）；PR #11 合入之后才是现行口径。result.json 有 `resolved.code` 的记了求解时的
    提交号（`commit`，`dirty` 标有无未提交的改动），按提交号判断（`commit` 为空的记不了提交号，同样按落盘时间判断）；
    没有 `resolved.code` 的按落盘时间与合并提交的时间判断，`check_run_provenance.py --pair` 对它判不过。
+8. **方法论文档与代码同步（作者要求 2026-09-29）。** `docs/方法论.md` 按代码实际实现写，逐条给 `文件:行`。
+   凡改动算法（变量、约束、目标函数、求解流程）、参数（`OptimizationAssumptions` / `OptimizationScenario` 的缺省值、
+   `constants*.py`、输入表口径）或情景（`scenarios/st.toml`）的 PR，**必须在同一 PR 里同步修改 `docs/方法论.md`** 的对应条目
+   与行号引用，并把文首的基准提交号更新为该 PR 的基础提交；代码里没有的东西不写进去。
 
 ---
 
