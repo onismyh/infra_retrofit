@@ -565,4 +565,3 @@ def h2_route_opex_delta_cny_per_t(sector: str, h2_intensity_t_per_t: float, disc
     hydrogen_at_ref = float(h2_intensity_t_per_t) * 1000.0 * float(price_ref)
     own_cost_at_ref = float(premium_ref) - h2_route_annual_capital_cny_per_t(sector, discount_rate)
     return own_cost_at_ref - hydrogen_at_ref
-

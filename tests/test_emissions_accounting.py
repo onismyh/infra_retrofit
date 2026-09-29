@@ -11,7 +11,7 @@ def test_beccs_net_reduction_adds_capture_and_blend() -> None:
     assert math.isclose(reduction_fraction("beccs", 0.9, 0.25), 1.15)
 
 
-def test_unabated_pathway_has_no_reduction_or_capture() -> None:
+def test_unabated_reduces_nothing_and_retire_reduces_all() -> None:
     assert "unabated" in PATHWAYS
     assert reduction_fraction("unabated", 0.9, 0.5) == 0.0
     assert reduction_fraction("retire", 0.9, 0.5) == 1.0

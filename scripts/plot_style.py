@@ -553,18 +553,6 @@ def save_fig(fig, name: str, subdir: str = ""):
     print(f"  [ok] {name} -> {subdir or 'root'}/")
 
 
-def pathway_legend(ax, ncol: int = 6, loc: str = "upper center",
-                   bbox: tuple = (0.5, 1.12), exclude: list | None = None):
-    """Add consistent pathway legend to axis."""
-    from matplotlib.patches import Patch
-    exclude = exclude or []
-    handles = [Patch(facecolor=PATHWAY_COLORS[pw], edgecolor="white",
-                     linewidth=0.3, label=PATHWAY_LABELS[pw])
-               for pw in PATHWAY_ORDER if pw not in exclude]
-    ax.legend(handles=handles, ncol=ncol, loc=loc,
-              bbox_to_anchor=bbox, fontsize=7)
-
-
 # ── Model-consistent emission accounting ───────────────────────────────────────
 # Residual emissions must reproduce the solver's accounting exactly:
 # per-pathway generation (retrofit CF boost), rebuilt-plant efficiency ratio,
@@ -661,7 +649,7 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     # incur a backpressure penalty. Falling back to zero is therefore correct rather than
     # merely convenient, but it is done explicitly: a silent 0.0 would let a 24-column run be
     # differenced against a 26-column one with no sign that the two describe different feasible
-    # sets, which is exactly the failure this module's `scenario_validity` gate exists to catch.
+    # sets -- exactly the cross-version differencing CLAUDE.md 二.6 forbids.
     _air_cols = ("already_air_share", "air_cooled_share")
     if all(c in d.columns for c in _air_cols):
         still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
@@ -690,13 +678,6 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
         + air_penalty_mt
     )
     return float(residual.sum())
-
-
-def baseline_emissions_mt(plant_detail_year: "pd.DataFrame") -> float:
-    """Total baseline (unabated) emissions (Mt) for one scenario-year."""
-    if plant_detail_year.empty:
-        return float("nan")
-    return float(plant_detail_year["baseline_emissions_mt"].astype(float).sum())
 
 
 # ── Level-1 water-resource regions ────────────────────────────────────────────

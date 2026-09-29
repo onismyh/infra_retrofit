@@ -137,8 +137,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 换句话说：被换掉的是**管网与汇**，被保留的是**源与水**，两者在输入侧没有交叉依赖。
 
 `data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
-新克隆要自己建一次：Windows `mklink /J _indtree\data data`，Linux / macOS `ln -s ../data _indtree/data`；
-没有它，`plot_style` 的底图与流域图层（`ROOT / "data"`）读不到。
+新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
+Linux / macOS `ln -s ../data _indtree/data`；没有它，`plot_style` 的底图（`load_country` / `load_map_provinces`，`ROOT / "data"`）
+直接报错，流域图层（`load_basins`）静默返回 None、图上不画。
 
 ---
 

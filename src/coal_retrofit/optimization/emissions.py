@@ -27,4 +27,3 @@ def reduction_fraction(
     if pathway_name == "ammonia":
         return float(ammonia_blend)
     raise KeyError(pathway)
-

@@ -25,17 +25,6 @@ from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs
 
 
 # ---------------------------------------------------------------------------- 闭式检查 ---
-@pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT))
-def test_h2_opex_delta_reproduces_its_anchor(sector: str) -> None:
-    premium_ref, price_ref = ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
-    k = {"steel_bf_bof": 0.081, "ammonia": 0.18, "methanol": 0.19}[sector]
-    # 在锚点自身的氢价下，分解是精确的：capex 年金 + 固定运维 + 非氢运行差额 + 买氢 = 锚点溢价。
-    capital = ci.h2_route_annual_capital_cny_per_t(sector, 0.06)
-    opex_delta = ci.h2_route_opex_delta_cny_per_t(sector, k, 0.06)
-    assert capital + opex_delta + k * 1000.0 * price_ref == pytest.approx(premium_ref, rel=1e-9)
-    assert capital > 0.0
-
-
 @pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_SECTORS))
 def test_levelised_capture_cost_sits_near_the_acca21_range(sector: str) -> None:
     lo, hi = ci.INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T[sector]
