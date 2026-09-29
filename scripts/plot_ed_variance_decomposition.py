@@ -73,7 +73,7 @@ EXPECTED_MEMBERS = len(HYDROLOGY) * len(GCMS) * len(SSPS)
 # Runs used only to mark which basins actually ran short of water, so the reader can see that
 # the basins where model spread dominates are the basins that decide the answer.
 # 只覆盖 SSP1-2.6：登记表（scenarios/st.toml）里带水约束的情景只有这一个，SSP3-7.0 登记并求解之后再加一项。
-# 值是图注里的写法，图注只列实际读到结果的情景。
+# 值是图注里的写法（见 `binding_note`）。
 BINDING_RUNS = {"ST_WA_cwatm_126_dry_oq": "CWatM/GFDL-ESM4 SSP1-2.6 枯水期"}
 
 C126 = "#4477AA"
@@ -145,6 +145,17 @@ def binding_basins() -> tuple[list[str], list[str]]:
         codes |= set(water["node_id"].astype(str).str.rsplit("_", n=1).str[-1])
         used.append(scenario)
     return sorted(codes), used
+
+
+def binding_note(used: list[str], binding: list[str]) -> str:
+    """图注里讲 * 的那一句。没读到求解与读到了但没有流域缺水，图上都没有 *，要写明是哪一种。"""
+    if not used:
+        return f"未标 *：{'、'.join(BINDING_RUNS.values())}没有可用的求解结果。"
+    labels = "、".join(BINDING_RUNS[run] for run in used)
+    if not binding:
+        return (f"按 {labels}的求解，没有流域在任一规划年出现未满足需求（只超出流域用水总量控制指标的不算），"
+                f"所以图上没有 *。")
+    return f"* = 按 {labels}的求解，任一规划年出现未满足需求的流域（只超出流域用水总量控制指标的不算）。"
 
 
 # ── the decomposition ────────────────────────────────────────────────────────
@@ -308,7 +319,7 @@ def main() -> None:
     binding, used = binding_basins()
     print(f"  ensemble: {len(HYDROLOGY)} hydrology x {len(GCMS)} GCM x {len(SSPS)} SSP = "
           f"{EXPECTED_MEMBERS} members, saturated (one observation per cell)")
-    print(f"  basins with unserved demand in {', '.join(used) or 'no solved binding run'}: "
+    print(f"  basins with unserved demand in {', '.join(used) or 'no usable binding run'}: "
           f"{','.join(binding) or 'none'}")
 
     tables = {column: decomposition_table(avail, column) for column, _ in BASES}
@@ -330,10 +341,7 @@ def main() -> None:
         panel_label(ax, letter, x=-0.185, y=1.10)
 
     closure = pd.concat([t["SS closure %"] for t in tables.values()])
-    # 没读到任何求解时图上没有 *，不写明的话读者会当成没有流域缺水。
-    labels = "、".join(BINDING_RUNS[run] for run in used)
-    star = (f"* = 按 {labels}的求解标出存在未满足需求的流域。" if used
-            else f"未标 *：{'、'.join(BINDING_RUNS.values())}没有可用的求解结果。")
+    star = binding_note(used, binding)
     # Wrapped, not one long line: `savefig(bbox_inches="tight")` grows the canvas to whatever
     # the widest artist needs, so an unwrapped footnote silently widens the figure.
     note = (

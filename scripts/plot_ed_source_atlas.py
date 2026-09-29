@@ -27,8 +27,8 @@ individual coal hubs are much larger emitters (median 9.4 Mt, max 114.8) than in
 industrial plants (median 0.83, max 20.7), and industry's 3,269 Mt arrives as 2,552 small points
 rather than as a few large ones. That asymmetry is the reason the two behave differently under a
 per-basin cap, so it should be visible rather than normalised away.
-这一段的数是在 v9.1 的输入（`a303f05` 的 `_v91tree/inputs/`）上算的，按现在的算法重算一致；`_indtree/inputs/`
-入库后要在那一版上重核。
+这一段的数是在 v9.1 的输入（`a303f05` 的 `_v91tree/inputs/`）上算的，按现在的算法重算一致；在 `89f8205` 入库的
+`_indtree/inputs/` 上重算也一致（`plants.csv`、`industry_sources.csv` 与 v9.1 那两份逐字节相同）。
 
 STYLE follows 昊天 (Haotian Tang) 氢管网论文 EST, `GIS_layer/plot.ipynb` Figure 6B: pentagon
 markers, Dark2 palette, alpha 0.55, category legend at upper right with `frameon=False` and

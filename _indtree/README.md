@@ -113,7 +113,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 `_v9tree/`、`_v91tree/` 2026-09-28 移出当前版本，`a303f05` 里还在。
 
-> 2026-09-28 起本目录整个入库（提交 `89f8205`）；此前只有 `sector_targets_times_cn60.csv` 与
+> 2026-09-28 起 `inputs/` 整个入库（提交 `89f8205`）；此前只有 `sector_targets_times_cn60.csv` 与
 > `industry_output_index_times_cn60.csv` 两个文件入了库，其余输入只在作者本机。入库的这一份与 `a303f05` 的仓库根
 > `inputs/` 逐文件比过：只有上面三个网络文件不同，其余（含 `ST_CP_BASE` 要读的 `sector_targets_none.csv`）都相同；
 > 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图。
