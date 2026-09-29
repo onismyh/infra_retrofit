@@ -131,6 +131,20 @@
 > 其余源数据照旧不入库，其他层级名为 `data` 的目录（如 `results/figures/<版本>/data/` 的结果拷贝）照旧忽略。
 > `scripts/render_version.py` 去掉 SKIP（里面的两个脚本已删），通配（`plot_fig*` / `plot_ed*`）只匹配留下的出图脚本里的 5 个：
 > `plot_fig1_water_footprint` 与 4 个 `plot_ed_*`。
+>
+> 2026-09-29 起出图只留一套：仓库根 `scripts/plot_fig1_sources_sinks.py` … `plot_fig7_water.py` 七个脚本，一图一个，
+> 开头写图含义、读图注意、数据、自检与用法。图 1（煤电与工业排放源、封存汇）、图 2（候选管网）画输入；图 3（煤电改造路径）、
+> 图 4（工业路线）、图 5（部门排放对碳目标）、图 6（CO₂ 管网流量）、图 7（流域取水指标与空冷改造）画求解结果，
+> 缺省读 `ST_WA_cwatm_126_dry_oq`，`--scenario` 可换。结果图出图前先与模型的账对一遍（如逐厂各路径减排之和 = `reduction_mt`、
+> 捕集 = 封存、残余 − 部门上限 ≤ 目标缺口），对不上就报错、不出图。`--lang zh|en|both` 切换中英文（缺省两版都画，英文版文件名
+> 加 `_en`；中文 SimHei、英文 Arial，各自单字体，CLAUDE.md §3.1）。
+> 同日删去 11 个旧出图脚本（`plot_candidate_network`、`plot_fig1_water_footprint`、4 个 `plot_ed_*`、`ed_plant_data`、`map_tht`
+> 与 3 个 `ST_` 幻灯片脚本）、`tests/test_variance_decomposition_marks.py` 与 `_indtree/inputs/figures/` 里的候选管网图（改由图 2
+> 画到 `_indtree/results/figures/`），删之前的版本都在 `b708e09`。`plot_style.residual_emissions_mt` 随之删去：没有出图脚本调用它，
+> `tests/test_blend_ratios.py` 改为直接核对 `plant_detail.csv` 的逐厂 baseline − reduction 之和等于求解器的残余排放。
+> 底图：南海小图放在台湾以东的海面上（主图向东加宽，小图不压国土），主图南边裁到 17.5°N；地图上的图例压到国土就报错。
+> `scripts/render_version.py` 只运行 `plot_fig*`，只拷 `_indtree/results/figures/` 根目录下本次画出的图（子目录 `main/`、
+> `extended/` 里旧脚本画的图不拷）。模型、求解与结果表不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

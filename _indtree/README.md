@@ -96,14 +96,15 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 
 代码只有仓库根 `src/` 一份（2026-09-22 起），脚本只有仓库根 `scripts/` 一份（2026-09-28 起，此前本树有自己的 `scripts/`）。
 `scripts/_bootstrap.py` 里 `ROOT` 是本树根（输入构建、诊断与出图脚本用它读写本树 `inputs/`、`results/`），
-`REPO_ROOT` 是仓库根（图幅归档写仓库根 `results/figures/`），`SRC` 指向仓库根 `src/`。
+`REPO_ROOT` 是仓库根（图幅归档写仓库根 `results/figures/`，出图的底图读仓库根 `data/ChinaMapTHT/`），`SRC` 指向仓库根 `src/`。
 **`ROOT` 不能改成仓库根**：那样脚本读写的是仓库根的 `inputs/`、`results/`，不是求解用的这一套；
 `tests/test_scenarios.py` 核对它就是登记情景的 `tree`。
 2026-09-27 起求解不经 `ROOT`：仓库根 `scenarios/st.toml` 给 `ST_` 系登记了 `tree = "_indtree"`，
 求解读本树 `inputs/`、写本树 `results/`，从哪个目录启动都一样，树下没有 `inputs/` 就报错；
 万一用 `--tree` 指到了 v7 输入，`build_runtime_network` 会因"有源到不了任何汇"直接报错。
 
-`inputs/` 是 v7 输入（仓库根 `inputs/`，2026-09-28 删除，`a303f05` 里还在）的完整副本，**只替换三个网络文件**：
+`inputs/` 由 v7 输入（仓库根 `inputs/`，2026-09-28 删除，`a303f05` 里还在）复制而来，**只替换了三个网络文件**
+（此后删去的两张连接表见下方注）：
 
 ```
 pipeline_nodes.csv            612 -> 1052    2026-09-12 重建（此前 666，取自 _v9tree/inputs/）
@@ -116,7 +117,8 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 2026-09-28 起 `inputs/` 整个入库（提交 `89f8205`）；此前只有 `sector_targets_times_cn60.csv` 与
 > `industry_output_index_times_cn60.csv` 两个文件入了库，其余输入只在作者本机。入库的这一份与 `a303f05` 的仓库根
 > `inputs/` 逐文件比过：只有上面三个网络文件不同，其余（含 `ST_CP_BASE` 要读的 `sector_targets_none.csv`）都相同；
-> 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图。
+> 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图；2026-09-29 删去，候选管网图改由
+> `scripts/plot_fig2_candidate_network.py` 画到 `results/figures/`。
 > 2026-09-29（PR #19）删去两张没有读者的连接表 `biomass_supply_links.csv`、`ammonia_supply_links.csv`（按 150 km 生成，优化器读入时按 200 km 现建），`89f8205` 里还在。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
@@ -140,12 +142,8 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 `data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
 新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
 Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep._prepare_plants`
-经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错；`plot_style` 的底图（`load_country` /
-`load_map_provinces`）与 `map_tht.layers()` 都读 `ROOT / "data"`，缺它直接报错，
-所以所有地图脚本都跑不了；
-`plot_style.load_basins` 另外返回 None：`slide_multiflow_joint` 对它有分支（但先在 `map_tht` 底图处停下），
-`plot_fig1_water_footprint` 在 `assign_basin(...).values` 处（返回 None 后 `.values` 抛 AttributeError）、
-`plot_ed_source_atlas` 更早在 `diagnose_official_water_budget.fleet_water_by_basin` 读流域矢量时报错。
+经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错。
+出图不经它：2026-09-29 起 `plot_style.map_layer` 的底图直接读仓库根 `data/ChinaMapTHT/`（`REPO_ROOT`，已入库）。
 
 ---
 
@@ -272,13 +270,20 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
 
 `IND_` 系的四个出图脚本（`plot_ind_fig1_joint_allocation`、`plot_ind_fig2_storage_allocation`、
 `plot_ind_fig3_water_coupling`、`plot_ind_ed1_target_level`）2026-09-28 起不在当前版本：它们画的 `IND_` 情景已不在
-登记表。旧图在 `cf073be` 的工作副本里重画，脚本在那里的 `_indtree/scripts/`。`ST_` 版需要另行设计；`plot_ind_fig1`
+登记表。旧图在 `cf073be` 的工作副本里重画，脚本在那里的 `_indtree/scripts/`。`plot_ind_fig1`
 的面板 d 已改为用模型自己的函数算成本（`levelised_capture_cost_cny_per_t`：按 09-22 起的成本参数折成平准化值，只供出图
-比较，目标函数不用；扣再生蒸汽排放），做 `ST_` 版时可从 `a184984` 取回。
+比较，目标函数不用；扣再生蒸汽排放），`ST_` 系的新图（下一段）没有这一面板，要用时可从 `a184984` 取回。
 
-本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图不会混进 `render_version.py` 的归档：它只拷本次画出的图。这是有意的：
+2026-09-29 起出图只有仓库根 `scripts/plot_fig1_sources_sinks.py` … `plot_fig7_water.py` 七个脚本（一图一个，图含义、读图注意、
+数据与自检写在各脚本开头），写到本树 `results/figures/`：图 1、图 2 画输入（源与汇、候选管网），图 3–7 画求解结果（煤电改造路径、
+工业路线、部门排放对碳目标、CO₂ 管网、流域取水与空冷），缺省读 `ST_WA_cwatm_126_dry_oq`，`--scenario` 可换；
+`--lang zh|en|both` 缺省两版都画，英文版文件名加 `_en`。
+
+本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图（子目录 `main/`、`extended/`）不会混进 `render_version.py` 的归档：
+它只运行上面七个脚本，只拷 `figures/` 根目录下本次画出的图。这是有意的：
 `IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。两处例外：给了
-`--skip-plots` 时不画图，目录里的图全拷，这几张也会进去；本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
+`--skip-plots` 时不画图，根目录下的图全拷，2026-09-29 之前的脚本画在根目录的旧图（如 `fig1_water_footprint`）也会进去；
+本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
 
 ---
 
