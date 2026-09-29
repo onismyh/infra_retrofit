@@ -119,7 +119,12 @@ def coal_sources() -> pd.DataFrame:
 
 
 def industry_sources() -> pd.DataFrame:
-    """2 552 个在模型范围内的工业点源。"""
+    """2 552 个在模型范围内的工业点源。
+
+    只按部门筛（`SECTOR_ORDER`），含 8 个西藏水泥源（合计 6.95 Mt/yr）。西藏不参与减排：建管网时
+    `builders/network_branches.EXCLUDED_PROVINCES` 把它们连同管段一起去掉，优化侧读 hub 表时用同一张排除表
+    （`optimization/industry_inputs.py`），所以模型里没有这 8 个点。这张图画的是数据里的全部点源，不改筛选。
+    """
     frame = pd.read_csv(INPUTS / "industry_sources.csv")
     return frame[frame["sector"].isin(SECTOR_ORDER)].copy()
 

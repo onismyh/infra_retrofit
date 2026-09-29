@@ -136,7 +136,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 换句话说：被换掉的是**管网与汇**，被保留的是**源与水**，两者在输入侧没有交叉依赖。
 
-`data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。
+`data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
+新克隆要自己建一次：Windows `mklink /J _indtree\data data`，Linux / macOS `ln -s ../data _indtree/data`；
+没有它，`plot_style` 的底图与流域图层（`ROOT / "data"`）读不到。
 
 ---
 

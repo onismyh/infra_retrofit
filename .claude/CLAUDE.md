@@ -436,6 +436,9 @@ with warnings.catch_warnings():
 
 ## 五、图幅版本管理
 
+> **现状（2026-09-28 起）**：图幅版本目录 `results/figures/v9/`、`v9.1/` 已移出当前版本（`a303f05` 里还在），
+> 当前出图写到 `_indtree/results/figures/`（`plot_style.FIGURES_DIR`），还没有新的版本目录。下面的规则在再建版本目录时适用。
+
 `results/figures/v1 … v8/`，每个版本目录必须有 `README.md`，写明：
 
 1. 这批图基于哪个**输入版本**（汇的个数、候选边条数）与哪些**已求解情景**；

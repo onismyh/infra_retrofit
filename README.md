@@ -295,9 +295,10 @@
 
 - 长流程钢的氢路线减排比例 0.85 → 0.95（`constants_industry.py:366-370`）。仓库根 `inputs/industry_hubs.csv` 的 80 个长流程
   hub 共排放 1 690.7 Mt CO₂/yr（2030 年产量指数 1.0），全部转氢时的减排量从 1 437 升到 1 606 Mt/yr，每吨减排分摊的路线成本
-  降 10.5%（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。`scripts/` 与 `_indtree/scripts/` 下的
+  降 10.5%（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。当时 `scripts/` 与 `_indtree/scripts/` 下的
   `plot_ind_fig1_joint_allocation.py` 也读这个常量，但它画的 `IND_` 情景已不在登记表，脚本在 `_require_registered` 处停下；
-  按脚本的提示到 cf073be 的副本里重画，用的是那里的 0.85，不受这次改动影响。toy 没有长流程 hub，模型逐字节不变；
+  这个脚本 2026-09-28 已随旧线脚本删除（§0 的 2026-09-28 条），`IND_` 图在 cf073be 的副本里重画，用的是那里的 0.85，
+  不受这次改动影响。toy 没有长流程 hub，模型逐字节不变；
   `tests/test_h2_route_abatement.py` 覆盖（不求解）。
 - 合成岛年金寿命 20 → 30 年（`constants.NH3_HB_CAPEX_LIFETIME_YEARS`）。6% 时年金 0.0763 → 0.0636 USD/kg；仓库根 `inputs/ammonia_supply_curve.csv`
   里模型用到的 2030、2040、2050、2060 四个规划年（30 704 行），节点出厂氨价比 §0.1 (e) 之后（6%、20 年）的中位数低 2.2%
