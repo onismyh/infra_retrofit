@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from typing import Final
 
-from .constants import DEFAULT_DISCOUNT_RATE
 
 # --- 部门键 ------------------------------------------------------------------------------
 SECTOR_STEEL_BF: Final = "steel_bf_bof"
@@ -136,17 +135,6 @@ SECTOR_HAS_H2_ROUTE: Final[dict[str, bool]] = {
     SECTOR_METHANOL: True,      # 绿氢调节煤制甲醇的 H/C 比
     SECTOR_REFINERY: True,      # 绿氢替代厂内 SMR/副产氢
     SECTOR_COAL_CHEM: True,     # 绿氢替代合成气变换所制的氢
-}
-
-# 各点源表 `H2_DMD` 列的确切含义。它们都是"若该厂可由 H2 替代的需求全部由氢满足，
-# 所需的氢量"，但可替代的量因部门而异，所以掺烧档位必须对照正确的基数来解读。
-H2_DEMAND_BASIS: Final[dict[str, str]] = {
-    SECTOR_STEEL_BF: "full_h2_dri",          # 0.081 t H2 / t 粗钢
-    SECTOR_CEMENT: "fuel_heat_equivalent",   # 不使用：没有氢路线
-    SECTOR_AMMONIA: "stoichiometric_feed",   # 0.178 t H2 / t NH3
-    SECTOR_METHANOL: "stoichiometric_feed",
-    SECTOR_REFINERY: "current_h2_use",       # 原油加工量的 ~1.5%（按质量）
-    SECTOR_COAL_CHEM: "stoichiometric_feed",
 }
 
 
@@ -447,7 +435,6 @@ INDUSTRY_H2_USES_ADVANCED_QUOTA: Final[bool] = True
 # 一致的——但按工业全面替代所需的 103 Mt/yr 氢计，它是 1.0-2.3e9 m3/yr，即 10-23
 # 亿 m3，是流域 K 全部被执行余量的 5-11 倍。以后无论怎么补上，它都属于供给节点，
 # 而且两类用氢方必须同时计费。
-INDUSTRY_ELECTROLYSIS_WATER_L_PER_KG_H2: Final[tuple[float, float]] = (10.0, 22.0)
 
 
 def capital_recovery_factor(rate: float, life_years: int) -> float:
@@ -544,7 +531,7 @@ def h2_route_annual_capital_cny_per_t(sector: str, discount_rate: float) -> floa
     """氢路线的 capex 年金加固定运维，单位为每吨产品每年的 CNY。
 
     即锚点分解时作为资本从 `premium_ref` 中扣除的部分。注意：求解器里 capex 按能力存量增量
-    一次计入、在 `max` 之外，固定运维属于年度项、在 `max` 之内；见 `h2_premium_cny_per_t`。
+    一次计入、在 `max` 之外，固定运维属于年度项、在 `max` 之内；见 `add_industry_year`。
     """
     capex = h2_route_capex_cny_per_t_yr(sector)
     crf = capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)
@@ -579,34 +566,3 @@ def h2_route_opex_delta_cny_per_t(sector: str, h2_intensity_t_per_t: float, disc
     own_cost_at_ref = float(premium_ref) - h2_route_annual_capital_cny_per_t(sector, discount_rate)
     return own_cost_at_ref - hydrogen_at_ref
 
-
-def h2_premium_cny_per_t(
-    sector: str,
-    h2_price_cny_per_kg: float,
-    h2_intensity_t_per_t: float,
-    discount_rate: float = DEFAULT_DISCOUNT_RATE,
-    multiplier: float = 1.0,
-) -> float:
-    """给定氢价下氢路线的平准化净溢价，单位为每吨产品的 CNY。
-
-    只作报告（用于图的面板）；求解器对 capex 只计一次，并按链路买氢。结构与求解器相同，
-    只是把 capex 折成年金：capex 年金 + max(固定运维 + opex 差额 + 氢, 0)。其中的 max 就是
-    `add_industry_year` 所施加的下限（目标计入 max(0, 含固定运维的年度成本 + 买氢)），capex 在
-    它之外：无论氢变得多便宜，转换都不可能比继续运行现有路线已沉没的资产更便宜，而新
-    路线的资本总是要付的。
-
-    Args:
-        sector: `INDUSTRY_SECTORS` 之一，且其 `SECTOR_HAS_H2_ROUTE` 条目为 true。
-        h2_price_cny_per_kg: 所计价年份的绿氢到厂价。
-        h2_intensity_t_per_t: 该 hub 每吨产品所需 H2 的吨数。
-        discount_rate: 情景贴现率，用于 capex 年金。
-        multiplier: 情景的 `industry_h2_cost_multiplier`，只乘路线 capex（年金与固定运维随之）；
-            在锚点参考价下（地板不起作用时）溢价为
-            `premium_ref + (multiplier - 1) x capex x (CRF + 固定运维比例)`。
-    """
-    capex = h2_route_capex_cny_per_t_yr(sector) * float(multiplier)
-    annuity = capex * capital_recovery_factor(discount_rate, INDUSTRY_H2_LIFETIME_YEARS)
-    fixed_om = capex * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION
-    opex_delta = h2_route_opex_delta_cny_per_t(sector, h2_intensity_t_per_t, discount_rate)
-    hydrogen = float(h2_intensity_t_per_t) * 1000.0 * float(h2_price_cny_per_kg)
-    return annuity + max(fixed_om + opex_delta + hydrogen, 0.0)

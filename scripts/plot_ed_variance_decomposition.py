@@ -33,7 +33,6 @@ Usage:  python scripts/plot_ed_variance_decomposition.py
 from __future__ import annotations
 
 import sys
-import textwrap
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")

@@ -26,24 +26,14 @@ from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs
 
 # ---------------------------------------------------------------------------- 闭式检查 ---
 @pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT))
-def test_h2_premium_reproduces_its_anchor_and_floors_at_capital(sector: str) -> None:
+def test_h2_opex_delta_reproduces_its_anchor(sector: str) -> None:
     premium_ref, price_ref = ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
     k = {"steel_bf_bof": 0.081, "ammonia": 0.18, "methanol": 0.19}[sector]
-    # 在锚点自身的氢价下，分解是精确的。
-    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06) == pytest.approx(premium_ref, rel=1e-9)
-    # 氢免费也不能把溢价压到 capex 年金以下（求解器把固定运维放在带地板的年度项之内，
-    # capex 一次计入、在其外）。
-    floor = ci.h2_route_capex_cny_per_t_yr(sector) * ci.capital_recovery_factor(0.06, ci.INDUSTRY_H2_LIFETIME_YEARS)
-    assert ci.h2_premium_cny_per_t(sector, 0.0, k, 0.06) == pytest.approx(floor, rel=1e-9)
-    assert floor > 0.0
-    # 对氢价单调。
-    assert ci.h2_premium_cny_per_t(sector, 30.0, k, 0.06) >= ci.h2_premium_cny_per_t(sector, 10.0, k, 0.06)
-    # 成本乘数只乘路线 capex（年金与固定运维随之）：在锚点价格下溢价多出 0.3 x capex x (CRF + 固定运维比例)，
-    # 且在任何价格下乘数越高都不会更便宜（这个旋钮不得反向）。
+    # 在锚点自身的氢价下，分解是精确的：capex 年金 + 固定运维 + 非氢运行差额 + 买氢 = 锚点溢价。
     capital = ci.h2_route_annual_capital_cny_per_t(sector, 0.06)
-    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06, 1.3) == pytest.approx(premium_ref + 0.3 * capital, rel=1e-9)
-    for price in (0.0, 8.0, 12.4, 20.0, 35.0):
-        assert ci.h2_premium_cny_per_t(sector, price, k, 0.06, 1.2) >= ci.h2_premium_cny_per_t(sector, price, k, 0.06)
+    opex_delta = ci.h2_route_opex_delta_cny_per_t(sector, k, 0.06)
+    assert capital + opex_delta + k * 1000.0 * price_ref == pytest.approx(premium_ref, rel=1e-9)
+    assert capital > 0.0
 
 
 @pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_SECTORS))

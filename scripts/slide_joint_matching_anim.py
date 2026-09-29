@@ -32,9 +32,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import map_tht as M                                        # noqa: E402
 from _bootstrap import REPO_ROOT, ROOT                     # noqa: E402
-from plot_style import (                                   # noqa: E402
-    PATHWAY_COLORS, apply_style, to_map_xy,
-)
+from plot_style import apply_style, to_map_xy            # noqa: E402
 
 TREE = ROOT
 INP, RES = TREE / "inputs", TREE / "results"

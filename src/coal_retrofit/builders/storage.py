@@ -17,9 +17,8 @@ logger = logging.getLogger(__name__)
 
 # 弥合盆地内部的小间隙（5 km 分辨率下 2 个像素 = 10 km）
 _DILATION_PIXELS = 2
-# 丢弃同时低于两个阈值的噪声连通域
+# 丢弃储量低于阈值的噪声连通域
 _MIN_STORAGE_MT = 10.0
-_MIN_INJECTIVITY_MTPA = 0.1
 
 
 def _extract_storage_nodes(

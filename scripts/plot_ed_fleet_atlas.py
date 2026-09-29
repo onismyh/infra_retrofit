@@ -32,7 +32,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 
 import ed_plant_data as EP
 from plot_style import BASIN_NAMES_ZH, MAP_CRS, MM, apply_style, save_fig
@@ -69,7 +68,6 @@ def _reproj(df: pd.DataFrame, lon_col: str, lat_col: str) -> pd.DataFrame:
 
 
 def panel_map(ax, fleet: pd.DataFrame) -> None:
-    import geopandas as gpd
     from plot_style import draw_china_basemap, add_scs_inset, mainland_extent
 
     # 省界 + 国界（国界图层含九段线，见 plot_style.load_country 的断言）
