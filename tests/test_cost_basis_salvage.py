@@ -4,8 +4,8 @@
 允许至多低 10%）；CRF 与年金互为倒数；`industry_year_data` 把 capex、固定运维、能耗分开计价，并核对捕集蒸汽的
 直接排放与氢路线的可用性；残值辅助函数 `remaining_fraction` 按直线法、`horizon_end_year` 取最后一个区间的期末。
 第二组求解煤电 toy 模型，检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；
-其中一条收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。第二组要 Gurobi，在 `_solve` 里
-`importorskip`。
+其中一条收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账；另一条关掉残值开关，核对表里没有残值行，
+且两次目标值只差残值抵扣一项。第二组要 Gurobi，在 `_solve` 里 `importorskip`。
 """
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert data.capacity_mt_per_share[:, UNABATED].sum() == 0.0
 
 
-# ---------------------------------------------------------------------- 求解器：残值 ---
+# -------------------------------------------------------------------- 残值：闭式检查 ---
 def test_remaining_fraction_is_straight_line() -> None:
     assert remaining_fraction(2050, 20, 2060) == pytest.approx(0.5)
     assert remaining_fraction(2040, 20, 2060) == pytest.approx(0.0)
@@ -128,6 +128,7 @@ def test_horizon_end_year_uses_last_interval() -> None:
     ]) == 2090
 
 
+# ---------------------------------------------------------------------- 求解器：残值 ---
 def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1.0, 1.0)):
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     years = (2030, 2040, 2050)
