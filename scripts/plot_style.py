@@ -2,8 +2,8 @@
 
 Import this module at the top of any plotting script to ensure consistent:
 - Font sizes, families, and weights
-- Color palettes (colorblind-safe)
-- Panel labels (a), (b), (c), (d)
+- Color palettes (thesis.ipynb colours, CLAUDE.md §3.3)
+- Panel labels a, b, c (bold, no parentheses)
 - Legend style
 - Axis formatting
 - Save function with dual PDF+PNG output
@@ -38,7 +38,7 @@ PATENT_FIGURES_DIR = FIGURES_DIR / "patent"
 MM = 1 / 25.4  # mm to inches
 DOUBLE_COL = (183 * MM, 89 * MM * 1.4)         # ~(7.2, 4.9) for double-column
 
-# ── Color palette (colorblind-safe, Tol bright) ─────────────────────────────
+# ── Color palette (CLAUDE.md §3.3) ──────────────────────────────────────────
 # 同族同色系，深端 = 带 CCS，浅端 = 不带 CCS。蒸馏自 thesis.ipynb 的配色逻辑
 # （Coal w/ CCS #636363 vs w/o #969696；Biomass w/ CCS #31A354 vs w/o #74C476），
 # 见 .claude/CLAUDE.md §3.3。取代原先的 Tol bright 系。
@@ -559,7 +559,7 @@ def save_fig(fig, name: str, subdir: str = ""):
 # chosen blend levels, and efficiency-penalty fuel emissions. Using stylized
 # per-pathway factors (e.g. ccs -> 0.10) contradicts the model and is forbidden
 # in figure scripts. All parameters below are the scenario defaults shared by
-# every experiment in scripts/run_single.py (none of them override these).
+# every scenario in scenarios/st.toml (none of them override these).
 def _plot_accounting_params():
     from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 

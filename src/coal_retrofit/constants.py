@@ -77,7 +77,7 @@ WATER_EXTRACTABLE_FRACTION = 0.20  # 天然径流的 20% 可取用于工业冷�
 
 # 求解器单位缩放：缩小系数范围，提高数值稳定性
 # 流量变量用缩放后的单位；成本相应调整
-BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 TJ 而非 GJ（÷1e6）
+BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 PJ 而非 GJ（÷1e6）
 AMMONIA_FLOW_SCALE = 1e6   # 求解器流量变量用 kt 而非 kg（÷1e6）
 WATER_FLOW_SCALE = 1e6     # 求解器流量变量用 Mm³ 而非 m³（÷1e6）
 
