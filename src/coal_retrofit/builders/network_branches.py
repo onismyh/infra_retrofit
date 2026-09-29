@@ -166,7 +166,7 @@ def load_storage_hubs(paths: ProjectPaths) -> pd.DataFrame:
 
 
 def load_industry_hubs(paths: ProjectPaths) -> pd.DataFrame:
-    """工业点源，剔除 EXCLUDED_PROVINCES；索引列 industry_index 由行序生成。"""
+    """工业 hub 表（`industry_hubs.csv`），剔除 EXCLUDED_PROVINCES；索引列 industry_index 由行序生成。"""
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
         return pd.DataFrame(columns=["hub_id", "industry_index", "lon", "lat", "province",

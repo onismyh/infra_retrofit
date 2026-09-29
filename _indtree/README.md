@@ -138,11 +138,12 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 `data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
 新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
-Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep` / `industry_inputs`
+Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep._prepare_plants`
 经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错；`plot_style` 的底图（`load_country` /
-`load_map_provinces`，`ROOT / "data"`）也报错；`plot_style.load_basins` 返回 None，除 `slide_multiflow_joint` 跳过流域层外，
-其余用到流域的出图脚本都会报错（`plot_fig1_water_footprint` 在 `assign_basin` 处；`plot_ed_source_atlas` 更早，在经
-`diagnose_official_water_budget.fleet_water_by_basin` 读流域矢量时）。
+`load_map_provinces`）与 `map_tht.layers()` 都读 `ROOT / "data"`，缺它直接报错，所以所有地图脚本都跑不了；
+`plot_style.load_basins` 另外返回 None：`slide_multiflow_joint` 对它有分支（但先在 `map_tht` 底图处停下），
+`plot_fig1_water_footprint` 在 `assign_basin(...).values` 处（返回 None 后 `.values` 抛 AttributeError）、
+`plot_ed_source_atlas` 更早在 `diagnose_official_water_budget.fleet_water_by_basin` 读流域矢量时报错。
 
 ---
 

@@ -1,10 +1,11 @@
 """2026-09-22 的成本口径：显式 capex + 固定运维 + 能耗，并在期末计残值。
 
-分两组。第一组是闭式检查：隐含的捕集成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，允许至多
-低 10%），CRF 与年金互为倒数，`industry_year_data` 把 capex、固定运维、能耗分开计价。第二组求解煤电 toy 模型，
-检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条
-收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。第二组要 Gurobi，在 `_solve` 里
-`importorskip`，第一组没有 Gurobi 也照跑。
+分两组。第一组不要 Gurobi，都是闭式检查：隐含的捕集成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，
+允许至多低 10%）；CRF 与年金互为倒数；`industry_year_data` 把 capex、固定运维、能耗分开计价，并核对捕集蒸汽的
+直接排放与氢路线的可用性；残值辅助函数 `remaining_fraction` 按直线法、`horizon_end_year` 取最后一个区间的期末。
+第二组求解煤电 toy 模型，检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；
+其中一条收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。第二组要 Gurobi，在 `_solve` 里
+`importorskip`。
 """
 from __future__ import annotations
 
