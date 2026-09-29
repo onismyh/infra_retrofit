@@ -72,7 +72,9 @@ EXPECTED_MEMBERS = len(HYDROLOGY) * len(GCMS) * len(SSPS)
 
 # Runs used only to mark which basins actually ran short of water, so the reader can see that
 # the basins where model spread dominates are the basins that decide the answer.
-BINDING_RUNS = ["WA_cwatm_126_dry_oq", "WA_cwatm_370_dry_oq"]
+# 只覆盖 SSP1-2.6：登记表（scenarios/st.toml）里带水约束的情景只有这一个，SSP3-7.0 登记并求解之后再加一项。
+# 值是图注里的写法（见 `binding_note`）。
+BINDING_RUNS = {"ST_WA_cwatm_126_dry_oq": "CWatM/GFDL-ESM4 SSP1-2.6 枯水期"}
 
 C126 = "#4477AA"
 C370 = "#CC3311"
@@ -118,12 +120,22 @@ def load_availability() -> pd.DataFrame:
     return frame
 
 
-def binding_basins() -> list[str]:
-    """Basins with unserved water demand in the solved binding runs."""
+def binding_basins() -> tuple[list[str], list[str]]:
+    """Basins with unserved water demand in the solved binding runs, and the runs actually read.
+
+    没求解（没有 `plant_detail.csv`）与旧格式（缺空冷两列）各自提示后跳过：两者都不等于"没有流域缺水"，
+    所以同时返回读到的情景，图注据此写明标记来自哪些求解，一个都没读到时写明未标。
+    """
     codes: set[str] = set()
+    used: list[str] = []
     for scenario in BINDING_RUNS:
+        detail = RESULTS_DIR / scenario / "plant_detail.csv"
+        if not detail.exists():
+            print(f"  [skip] {scenario}: no solved result ({detail} missing), not used for binding marks")
+            continue
         if not has_air_columns(scenario):
-            print(f"  [skip] {scenario}: stale 24-column vintage, not used for binding marks")
+            print(f"  [skip] {scenario}: old format, plant_detail.csv lacks air_cooled_share / "
+                  f"already_air_share, not used for binding marks")
             continue
         path = RESULTS_DIR / scenario / "slack_detail.csv"
         if not path.exists():
@@ -131,7 +143,19 @@ def binding_basins() -> list[str]:
         slack = pd.read_csv(path)
         water = slack[(slack["constraint_type"] == "water_supply") & (slack["slack_value"] > 1.0)]
         codes |= set(water["node_id"].astype(str).str.rsplit("_", n=1).str[-1])
-    return sorted(codes)
+        used.append(scenario)
+    return sorted(codes), used
+
+
+def binding_note(used: list[str], binding: list[str]) -> str:
+    """图注里讲 * 的那一句。没读到求解与读到了但没有流域缺水，图上都没有 *，要写明是哪一种。"""
+    if not used:
+        return f"未标 *：{'、'.join(BINDING_RUNS.values())}没有可用的求解结果。"
+    labels = "、".join(BINDING_RUNS[run] for run in used)
+    if not binding:
+        return (f"按 {labels}的求解，没有流域在任一规划年出现未满足需求（只超出流域用水总量控制指标的不算），"
+                f"所以图上没有 *。")
+    return f"* = 按 {labels}的求解，任一规划年出现未满足需求的流域（只超出流域用水总量控制指标的不算）。"
 
 
 # ── the decomposition ────────────────────────────────────────────────────────
@@ -292,10 +316,10 @@ def draw_basis(ax, ax_delta, table: pd.DataFrame, binding: list[str], title: str
 def main() -> None:
     print("Extended Data - variance decomposition of basin water availability")
     avail = load_availability()
-    binding = binding_basins()
+    binding, used = binding_basins()
     print(f"  ensemble: {len(HYDROLOGY)} hydrology x {len(GCMS)} GCM x {len(SSPS)} SSP = "
           f"{EXPECTED_MEMBERS} members, saturated (one observation per cell)")
-    print(f"  basins with unserved demand in the solved binding runs: "
+    print(f"  basins with unserved demand in {', '.join(used) or 'no usable binding run'}: "
           f"{','.join(binding) or 'none'}")
 
     tables = {column: decomposition_table(avail, column) for column, _ in BASES}
@@ -317,6 +341,7 @@ def main() -> None:
         panel_label(ax, letter, x=-0.185, y=1.10)
 
     closure = pd.concat([t["SS closure %"] for t in tables.values()])
+    star = binding_note(used, binding)
     # Wrapped, not one long line: `savefig(bbox_inches="tight")` grows the canvas to whatever
     # the widest artist needs, so an unwrapped footnote silently widens the figure.
     note = (
@@ -324,7 +349,7 @@ def main() -> None:
         f"因此七个分量对总平方和闭合（最小 {closure.min():.1f}%，最大 {closure.max():.1f}%）。"
         f"SSP 变化在每个（水文模型，GCM）组合内配对；须线跨过零意味着 "
         f"{len(HYDROLOGY) * len(GCMS)} 个配对在气候信号的符号上不一致。"
-        f"* = 在起约束的求解中存在未满足需求的流域。面板 a 是可供水量约束真正作用的口径；"
+        f"{star}面板 a 是可供水量约束真正作用的口径；"
         f"面板 b 之所以也画出来，是因为水—能源文献多数使用它，而主结论必须在两种口径下都成立。"
     )
     fig.text(0.01, 0.005, cjk_fill(note, width=175), fontsize=5.3, color="#555555",

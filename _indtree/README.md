@@ -113,11 +113,10 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 `_v9tree/`、`_v91tree/` 2026-09-28 移出当前版本，`a303f05` 里还在。
 
-> ⚠ 截至 2026-09-22，本目录只有 `sector_targets_times_cn60.csv` 与 `industry_output_index_times_cn60.csv`
-> 两个文件入了库，重建后的管网等其余输入只在作者本机。它们是 `ST_` 系重解的前提，应一并入库。
-> `ST_CP_BASE` 还需要 `sector_targets_none.csv`：ba967c1 只把它加到了仓库根 `inputs/`，那份已随仓库根 `inputs/`
-> 删除，用 `git restore --source=a303f05 -- inputs/sector_targets_none.csv` 取出后挪进本目录
-> （不要用 `git show … >` 落盘，PowerShell 的 `>` 会改编码）。
+> 2026-09-28 起 `inputs/` 整个入库（提交 `89f8205`）；此前只有 `sector_targets_times_cn60.csv` 与
+> `industry_output_index_times_cn60.csv` 两个文件入了库，其余输入只在作者本机。入库的这一份与 `a303f05` 的仓库根
+> `inputs/` 逐文件比过：只有上面三个网络文件不同，其余（含 `ST_CP_BASE` 要读的 `sector_targets_none.csv`）都相同；
+> 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
