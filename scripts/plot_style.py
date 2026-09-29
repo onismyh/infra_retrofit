@@ -644,19 +644,10 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     # plant aggregate, so the reconstruction below assumes it is uniform across a plant's
     # active pathways. That assumption is exact at 2030 (identity above holds to 0.01 Mt) and
     # is the tightest available from the written outputs.
-    # THE 24-COLUMN VINTAGE HAS NO COOLING COLUMNS, AND FOR IT THE TERM IS ZERO BY
-    # CONSTRUCTION -- that build has no wet-to-dry conversion variable at all, so no unit can
-    # incur a backpressure penalty. Falling back to zero is therefore correct rather than
-    # merely convenient, but it is done explicitly: a silent 0.0 would let a 24-column run be
-    # differenced against a 26-column one with no sign that the two describe different feasible
-    # sets -- exactly the cross-version differencing CLAUDE.md 二.6 forbids.
-    _air_cols = ("already_air_share", "air_cooled_share")
-    if all(c in d.columns for c in _air_cols):
-        still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
-        air = d["air_cooled_share"].to_numpy(dtype=float)
-    else:
-        still_wet = np.zeros(len(d), dtype=float)
-        air = np.zeros(len(d), dtype=float)
+    # 两列空冷列与上面检查过的 `*_blend_ratio` 列在同一处写出（`optimization/results_plant.py`），
+    # 能走到这里的表都带着它们。
+    still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
+    air = d["air_cooled_share"].to_numpy(dtype=float)
     s_retire = d["share_retire"].to_numpy(dtype=float)
     pen_air_ratio = (
         float(assumptions.air_retrofit_efficiency_penalty_pp)

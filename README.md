@@ -514,9 +514,7 @@ flowchart TD
     D --> J["inputs/pipeline_nodes.csv"]
     D --> K["inputs/pipeline_candidate_edges.csv"]
     E --> L["inputs/biomass_supply_curve.csv"]
-    E --> M["inputs/biomass_supply_links_<hub>.csv"]
     E --> N["inputs/ammonia_supply_curve.csv"]
-    E --> O["inputs/ammonia_supply_links_<hub>.csv"]
     F --> P["inputs/water_scenarios.csv"]
     F --> Q["inputs/water_base.csv"]
     F --> R["inputs/water_nodes.csv"]
@@ -528,9 +526,7 @@ flowchart TD
     J --> S
     K --> S
     L --> S
-    M --> S
     N --> S
-    O --> S
     P --> S
     Q --> S
     R --> S
@@ -656,9 +652,6 @@ flowchart TD
 输出：
 
 - [biomass_supply_curve.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_curve.csv)
-- [biomass_supply_links_100.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_100.csv)
-- [biomass_supply_links_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_200.csv)
-- [biomass_supply_links_300.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_300.csv)
 
 当前 README 应特别说明的研究边界：
 
@@ -694,9 +687,6 @@ flowchart TD
 输出：
 
 - [ammonia_supply_curve.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_curve.csv)
-- [ammonia_supply_links_100.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_100.csv)
-- [ammonia_supply_links_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_200.csv)
-- [ammonia_supply_links_300.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_300.csv)
 
 关键点：
 

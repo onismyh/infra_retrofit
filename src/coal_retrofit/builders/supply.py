@@ -129,22 +129,6 @@ def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFram
     return repriced
 
 
-def _haversine_distances_km(
-    origin_lon: float,
-    origin_lat: float,
-    target_lons: np.ndarray,
-    target_lats: np.ndarray,
-) -> np.ndarray:
-    origin_lon_rad = np.radians(origin_lon)
-    origin_lat_rad = np.radians(origin_lat)
-    target_lons_rad = np.radians(target_lons.astype(np.float64))
-    target_lats_rad = np.radians(target_lats.astype(np.float64))
-    delta_lon = target_lons_rad - origin_lon_rad
-    delta_lat = target_lats_rad - origin_lat_rad
-    a = np.sin(delta_lat / 2.0) ** 2 + np.cos(origin_lat_rad) * np.cos(target_lats_rad) * np.sin(delta_lon / 2.0) ** 2
-    return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
-
-
 def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp")
     biomass_tif = paths.find_data_file("bioenergy_s3_AFE_abandon.tif")
@@ -236,75 +220,6 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             "year_basis",
         ]
     ].sort_values("biomass_node_id").reset_index(drop=True)
-
-
-def build_biomass_link_dataframe(
-    paths: ProjectPaths,
-    biomass_nodes: pd.DataFrame,
-) -> pd.DataFrame:
-    plants = pd.read_csv(paths.inputs_dir / "plants.csv").copy()
-    plant_count = len(plants)
-    node_lons = biomass_nodes["longitude"].astype(float).to_numpy()
-    node_lats = biomass_nodes["latitude"].astype(float).to_numpy()
-    rows: list[dict[str, object]] = []
-
-    for plant in plants.itertuples(index=False):
-        distances_km = _haversine_distances_km(
-            float(plant.centroid_longitude),
-            float(plant.centroid_latitude),
-            node_lons,
-            node_lats,
-        )
-        matched_indices = np.flatnonzero(distances_km <= BIOMASS_MATCH_BUFFER_KM)
-        if matched_indices.size == 0:
-            continue
-        ranked_indices = matched_indices[np.argsort(distances_km[matched_indices])]
-        for rank, node_idx in enumerate(ranked_indices, start=1):
-            node = biomass_nodes.iloc[int(node_idx)]
-            rows.append(
-                {
-                    "plant_count": plant_count,
-                    "plant_id": str(plant.plant_id),
-                    "plant_index": int(plant.plant_index),
-                    "plant_province_name": str(plant.province_mode),
-                    "biomass_node_id": str(node["biomass_node_id"]),
-                    "biomass_node_province_name": str(node["province_name"]),
-                    "distance_km": round(float(distances_km[node_idx]), 3),
-                    "distance_rank": rank,
-                    "base_cost_cny_per_gj": float(node["base_cost_cny_per_gj"]),
-                    "low_cost_cny_per_gj": float(node["low_cost_cny_per_gj"]),
-                    "high_cost_cny_per_gj": float(node["high_cost_cny_per_gj"]),
-                    "base_delivered_cost_cny_per_gj": float(node["base_cost_cny_per_gj"]),
-                    "match_rule": "plant_buffer_intersects_biomass_node",
-                    "buffer_km": BIOMASS_MATCH_BUFFER_KM,
-                    "source": str(node["source"]),
-                    "year_basis": str(node["year_basis"]),
-                }
-            )
-
-    columns = [
-        "plant_count",
-        "plant_id",
-        "plant_index",
-        "plant_province_name",
-        "biomass_node_id",
-        "biomass_node_province_name",
-        "distance_km",
-        "distance_rank",
-        "base_cost_cny_per_gj",
-        "low_cost_cny_per_gj",
-        "high_cost_cny_per_gj",
-        "base_delivered_cost_cny_per_gj",
-        "match_rule",
-        "buffer_km",
-        "source",
-        "year_basis",
-    ]
-    if not rows:
-        return pd.DataFrame(columns=columns)
-    return pd.DataFrame(rows, columns=columns).sort_values(
-        ["plant_id", "distance_km", "biomass_node_id"]
-    ).reset_index(drop=True)
 
 
 def parse_h2_name(name: str) -> tuple[str, str] | None:
@@ -518,83 +433,9 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     ].reset_index(drop=True)
 
 
-def build_ammonia_link_dataframe(
-    paths: ProjectPaths,
-    ammonia_nodes: pd.DataFrame,
-) -> pd.DataFrame:
-    plants = pd.read_csv(paths.inputs_dir / "plants.csv").copy()
-    plant_count = len(plants)
-    rows: list[dict[str, object]] = []
-    for year, year_nodes in ammonia_nodes.groupby("year", sort=True):
-        if year_nodes.empty:
-            continue
-        year_nodes = year_nodes.reset_index(drop=True)
-        node_lons = year_nodes["longitude"].astype(float).to_numpy()
-        node_lats = year_nodes["latitude"].astype(float).to_numpy()
-        buffer_km = float(year_nodes["buffer_km"].iloc[0]) if "buffer_km" in year_nodes.columns else BIOMASS_MATCH_BUFFER_KM
-        for plant in plants.itertuples(index=False):
-            distances_km = _haversine_distances_km(
-                float(plant.centroid_longitude),
-                float(plant.centroid_latitude),
-                node_lons,
-                node_lats,
-            )
-            matched_indices = np.flatnonzero(distances_km <= buffer_km)
-            if matched_indices.size == 0:
-                continue
-            ranked_indices = matched_indices[np.argsort(distances_km[matched_indices])]
-            for rank, node_idx in enumerate(ranked_indices, start=1):
-                node = year_nodes.iloc[int(node_idx)]
-                rows.append(
-                    {
-                        "plant_count": plant_count,
-                        "year": int(year),
-                        "plant_id": str(plant.plant_id),
-                        "plant_index": int(plant.plant_index),
-                        "plant_province_name": str(plant.province_mode),
-                        "ammonia_node_id": str(node["ammonia_node_id"]),
-                        "ammonia_node_province_name": str(node["province_name"]),
-                        "distance_km": round(float(distances_km[node_idx]), 3),
-                        "distance_rank": rank,
-                        "base_cost_usd_per_kg": float(node["nh3_cost_lb_usd_per_kg"]),
-                        "source": str(node["source"]),
-                        "year_basis": str(node["year_basis"]),
-                        "match_rule": "plant_buffer_intersects_ammonia_node",
-                        "competition_scope": "shared_ammonia_node",
-                        "buffer_km": buffer_km,
-                    }
-                )
-    columns = [
-        "plant_count",
-        "year",
-        "plant_id",
-        "plant_index",
-        "plant_province_name",
-        "ammonia_node_id",
-        "ammonia_node_province_name",
-        "distance_km",
-        "distance_rank",
-        "base_cost_usd_per_kg",
-        "source",
-        "year_basis",
-        "match_rule",
-        "competition_scope",
-        "buffer_km",
-    ]
-    if not rows:
-        return pd.DataFrame(columns=columns)
-    return pd.DataFrame(rows, columns=columns).sort_values(
-        ["year", "plant_id", "distance_km", "ammonia_node_id"]
-    ).reset_index(drop=True)
-
-
 def write_supply_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame]:
     biomass_nodes = build_biomass_supply_dataframe(paths)
     ammonia_nodes = build_ammonia_supply_dataframe(paths)
     write_csv(biomass_nodes, paths.inputs_dir / "biomass_supply_curve.csv")
-    biomass_links = build_biomass_link_dataframe(paths, biomass_nodes)
-    ammonia_links = build_ammonia_link_dataframe(paths, ammonia_nodes)
-    write_csv(biomass_links, paths.inputs_dir / "biomass_supply_links.csv")
-    write_csv(ammonia_links, paths.inputs_dir / "ammonia_supply_links.csv")
     write_csv(ammonia_nodes, paths.inputs_dir / "ammonia_supply_curve.csv")
     return biomass_nodes, ammonia_nodes
