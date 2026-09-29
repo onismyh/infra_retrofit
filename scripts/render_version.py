@@ -11,11 +11,11 @@ v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维�
 1. 给了 `--freeze-tag` 时，把版本目录里**已有的** PDF/PNG 挪到 <version>/frozen_<tag>/ ——它们画自另一套输入
    （v9 原图来自已丢失的 103 汇求解树），不能与新求解的图并排放在同一目录里
    （CLAUDE.md §二.6 / §五：不同输入版本不得混用）。只在树里真有新图时才挪。
-2. 逐个运行 scripts/plot_fig*.py 与 plot_ed*.py（脚本经 `_bootstrap.ROOT` 读求解树的 inputs/results，
-   工作目录也设为求解树），输出与退出码记入 <version>/render.log，
+2. 逐个运行 scripts/plot_fig*.py（缺省参数：中英两版、主情景；脚本经 `_bootstrap.ROOT` 读求解树的
+   inputs/results，工作目录也设为求解树），输出与退出码记入 <version>/render.log，
    失败的照样记下来——README 里"哪些图不能画"直接从这里抄。
-3. 把 <tree>/results/figures/{main,extended,根目录} 里第 2 步画出的 PDF/PNG（按修改时间判断；
-   上一轮留下的旧图不拷，包括已删脚本如 `plot_ind_*` 画的）拷到 <version>/{figures,extended}/；
+3. 把 <tree>/results/figures/ 里第 2 步画出的 PDF/PNG（按修改时间判断；上一轮留下的旧图不拷，
+   子目录 main/、extended/ 里旧脚本画的图也不拷）拷到 <version>/figures/；
    `--skip-plots` 时不画图，目录里的图全拷。
 4. 把 <tree>/results/<scen>/*.csv、<scen>.json、求解日志与输入指纹拷到 <version>/data/，
    图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
@@ -35,8 +35,7 @@ from _bootstrap import REPO_ROOT, ROOT
 
 
 def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, float]]:
-    scripts = sorted(p for p in (REPO_ROOT / "scripts").glob("plot_*.py")
-                     if p.name.startswith("plot_fig") or p.name.startswith("plot_ed"))
+    scripts = sorted((REPO_ROOT / "scripts").glob("plot_fig*.py"))
     rows = []
     with log_path.open("w", encoding="utf-8") as log:
         for script in scripts:
@@ -56,18 +55,14 @@ def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, 
     return rows
 
 
-def tree_figures(tree: Path, since: float | None) -> list[tuple[Path, str]]:
-    """<tree>/results/figures 下的 PDF/PNG；给了 since 就只要这之后写出的（本次运行画的）。"""
+def tree_figures(tree: Path, since: float | None) -> list[Path]:
+    """<tree>/results/figures/ 下（不含子目录）的 PDF/PNG；给了 since 就只要这之后写出的（本次运行画的）。"""
     src = tree / "results" / "figures"
-    out = []
-    for sub, target in (("main", "figures"), ("", "figures"), ("extended", "extended")):
-        d = src / sub if sub else src
-        if not d.is_dir():
-            continue
-        out += [(f, target) for f in d.iterdir()
-                if f.is_file() and f.suffix.lower() in (".png", ".pdf")
-                and (since is None or f.stat().st_mtime >= since)]
-    return out
+    if not src.is_dir():
+        return []
+    return [f for f in src.iterdir()
+            if f.is_file() and f.suffix.lower() in (".png", ".pdf")
+            and (since is None or f.stat().st_mtime >= since)]
 
 
 def freeze_old(dest: Path, tag: str) -> int:
@@ -86,10 +81,10 @@ def freeze_old(dest: Path, tag: str) -> int:
     return n
 
 
-def copy_figures(figs: list[tuple[Path, str]], dest: Path) -> int:
-    for f, target in figs:
-        (dest / target).mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, dest / target / f.name)
+def copy_figures(figs: list[Path], dest: Path) -> int:
+    (dest / "figures").mkdir(parents=True, exist_ok=True)
+    for f in figs:
+        shutil.copy2(f, dest / "figures" / f.name)
     return len(figs)
 
 

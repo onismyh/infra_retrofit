@@ -148,36 +148,38 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
 
 ---
 
-## 三、绘图规范（顶刊标准，全中文）
+## 三、绘图规范（顶刊标准，中文版为主，另出英文版）
 
 风格与色系蒸馏自 `D:\6. Transfer\China-TIMES2.0\thesis.ipynb`。
 
 ### 3.1 字体与 rcParams
 
-字体与 `thesis.ipynb` **完全一致，全仓库唯一一套，不允许任何脚本自行覆盖**。
-thesis.ipynb 的原文就两行：
+中文版字体与 `thesis.ipynb` **完全一致（SimHei）**，英文版用 **Arial**；两种语言各自单字体，
+**全仓库唯一一套，不允许任何脚本自行覆盖**。thesis.ipynb 的原文就两行：
 
 ```python
 plt.rcParams['font.family'] = ["SimHei"]
 plt.rcParams['axes.unicode_minus'] = False
 ```
 
-本仓库把它落在 `scripts/plot_style.py` 的 `apply_style()` 里，其余脚本一律
-`from plot_style import apply_style` 后调用，**不要再写 `font.family`**：
+本仓库把它落在 `scripts/plot_style.py` 的 `apply_style(lang)` 里（`FONTS = {"zh": "SimHei", "en": "Arial"}`），
+出图脚本一律 `from plot_style import apply_style` 后按语言调用，**不要再写 `font.family`**：
 
 ```python
 plt.rcParams.update({
-    "font.family": "SimHei",       # 单字体，不配 fallback 栈
+    "font.family": FONTS[lang],    # 单字体，不配 fallback 栈
     "axes.unicode_minus": False,
-    "font.size": 8,
     "mathtext.default": "regular",
+    "font.size": 7,
 })
 ```
 
-> 已完成迁移：`plot_style.py` 及另外 15 个自设字体的脚本（`plot_candidate_network`、
-> `plot_spatial`、`plot_results`、`plot_sensitivity_tornado`、`visualize_*`、
-> `draw_patent_figures*` 等）已全部从 Arial / Microsoft YaHei / sans-serif 栈改为 SimHei。
-> 新脚本若再写 `"font.family": "Arial"`，就是破坏全局一致性。
+出图脚本都带 `--lang zh|en|both`（缺省两版都出），英文版文件名加 `_en`。两版只差字体与文字：共用名词的中英对照在
+`plot_style.LABELS`，各图专有的文字在各脚本顶部的 `TEXT`。面板标号 a b c 两版都用 Arial 加粗，是单字体规则唯一的例外：
+SimHei 只有一个字重，`fontweight="bold"` 落到它上面会被静默忽略。
+
+> 现状（2026-09-29 起）：出图脚本只剩 `scripts/plot_fig1_*.py` … `plot_fig7_*.py` 七个，都经 `apply_style(lang)` 取字体。
+> 新脚本若自写 `"font.family"`，就是破坏全局一致性。
 
 **不配 fallback 栈是有意的**：一旦允许 `["SimHei", ..., "Arial"]` 这类回退，
 同一个符号在有无 SimHei 的机器上会落到不同字形，图就不再是同一张图。
@@ -254,9 +256,9 @@ NPG = ['#E64B35', '#4DBBD5', '#00A087', '#3C5488', '#F39B7F',
 | EOR 封存 | `#9ECAE1` | Blues 浅端 |
 | 取水 / 耗水 | `#6BAED6` / `#08519C` | Blues |
 
-> 迁移说明：`plot_style.py` 现有的 `PATHWAY_COLORS` 是 Tol bright 系
-> （`#4477AA`/`#228833`/`#CCBB44`…），与上表不一致。**新图一律用上表**；
-> 老图重绘时一并替换，不要两套并存。
+> 现状（2026-09-29 起）：`plot_style.PATHWAY_COLORS` 即上表（模型没有掺氨 + CCS 路径，表里那一行不用）；工业路线
+> `ROUTE_COLORS` 沿用同一逻辑（灰 = 未改造、深灰 = CCS、紫 = 氢路线）；部门色 `SECTOR_COLORS` 取 NPG，同一大类同一族
+> （钢铁红、水泥绿、化工棕，煤电灰），避开蓝色——蓝色留给水与封存。
 
 **(3) 连续 / 分段 —— 显式 BoundaryNorm，不要用默认连续色带**
 
@@ -285,7 +287,7 @@ cmap = ListedColormap(colors)
 ## 四、地图绘制规范
 
 方法蒸馏自 `D:\6. Transfer\数据-昊天\氢管网论文EST\给晋辉\GIS_layer\plot.ipynb`。
-本仓库 `scripts/plot_candidate_network.py` 已按此实现，可直接抄。
+本仓库 `scripts/plot_style.py` 的底图函数已按此实现，地图（图 1、2、6）都直接调用。
 
 ### 4.1 投影：EPSG:2380（强制）
 
@@ -303,21 +305,18 @@ gdf = gdf.to_crs(TARGET_CRS)
 
 ### 4.2 九段线（强制出现）
 
-**出图底图自 2026-09-12 起统一为 `data/ChinaMapTHT/`**（唐昊天 GIS_layer/plot.ipynb 那一套，
-`plot_style.py` 与 `map_tht.py` 共用）：
+**出图底图自 2026-09-12 起统一为 `data/ChinaMapTHT/`**（唐昊天 GIS_layer/plot.ipynb 那一套，由 `plot_style.map_layer()`
+从仓库根 `data/ChinaMapTHT/` 读）：
 
-| 函数 | 数据 | 内容 |
+| 图层 | 数据 | 内容 |
 |---|---|---|
-| `load_map_provinces()` | `中华人民共和国.json`（2023 版，含台湾与港澳） | 省界，已剔除 adcode = `100000_JD` 的九段线要素 |
-| `load_dash_line()` | 同上，adcode = `100000_JD` | **九段线**，单独一层，主图和小图都要画 |
-| `load_country()` | `china_country_proj.shp` | 国界：单要素、1 260 个部件，南到 3.83°N |
-| `country_main()` | `load_country()` 中面积 ≥ 1 000 km² 的部件 | 只有大陆、台湾、海南三块，主图用 |
+| `map_layer("provinces")` | `中华人民共和国.json`（2023 版，含台湾与港澳） | 省界，已剔除 adcode = `100000_JD` 的九段线要素 |
+| `map_layer("dash")` | 同上，adcode = `100000_JD` | **九段线**，单独一层，主图和小图都要画 |
+| `map_layer("country")` | `china_country_proj.shp` | 国界：单要素、1 260 个部件，南到 3.83°N |
+| `map_layer("country_main")` | `country` 中面积 ≥ 1 000 km² 的部件 | 只有大陆、台湾、海南三块，主图用 |
 
-> ⚠️ `load_country()` 为兼容旧调用给每行补了 `GBCODE = 61010`，**这一列不再有旧 `boundary.shp`
-> 的语义**：`country[country["GBCODE"].isin(COUNTRY_GBCODES)]` 选中的是整层 1 260 个部件，
-> 包括 1 257 个小岛（中位 1.1 km²），主图上就是东南海岸一圈黑毛刺。
-> **主图画 `country_main()` + `load_dash_line()`，整层只在南海小图里画**；
-> `draw_china_basemap(islands=False / True)` 已按此实现。
+> ⚠️ 国界层整层有 1 257 个小岛部件（中位 1.1 km²），画在主图上就是东南海岸一圈黑毛刺。
+> **主图画 `country_main` + `dash`，整层只在南海小图里画**；`draw_china_basemap(islands=False / True)` 已按此实现。
 
 旧的 `data/ChinaMap/boundary.shp` / `provinces.shp` 不再用于出图，但 **builders 仍在读**
 （海岸线距离用 GBCODE 26*，西藏剔除与省份归属用 `provinces.shp`），不得删除。
@@ -339,75 +338,52 @@ gdf = gdf.to_crs(TARGET_CRS)
 直接用 `plot_style` 的封装，不要各图自己拼图层：
 
 ```python
-from plot_style import draw_china_basemap, mainland_extent, add_scs_inset, to_map_xy
+from plot_style import add_scs_inset, check_off_land, draw_china_basemap, mainland_extent, to_map_xy
 
-draw_china_basemap(ax, facecolor="#F7F8F9")   # 省界 0.20 + 国界/九段线 0.75
+draw_china_basemap(ax)                        # 省界 0.20 + 国界/九段线 0.75，省份填浅灰 LAND
 x, y = to_map_xy(lon, lat)                    # 散点/折线坐标 -> EPSG:2380
-mainland_extent(ax)                           # 范围裁到 17°N，见下方说明
-add_scs_inset(ax.get_figure(), ax, draw=业务图层回调)
+mainland_extent(ax)                           # 范围：南边裁到 17.5°N，见下方说明
+add_scs_inset(ax, draw=业务图层回调)          # 南海小图，放在台湾以东（§4.3）
+check_off_land(ax, legend)                    # 图例压到国土就报错
 ```
 
-`load_country()`（南界须在 5°N 以南）与 `load_dash_line()`（`100000_JD` 要素须存在）内含断言，
+`map_layer("country")`（南界须在 5°N 以南）与 `map_layer("dash")`（`100000_JD` 要素须存在）内含断言，
 换底图后九段线静默消失会直接抛异常。
 
 > **`provinces.shp` 自身延伸到 6.32°N**（含南海要素），所以 `provinces.total_bounds`
 > 给出的是 6.3–53.6°N 的画框，比大陆高出近 280 km。英文图看不出来（那片什么都不画），
-> 补上九段线后大陆就被压扁到画面上半部。`mainland_extent()` 把南边裁到 17°N
-> （海南最南 18.15°N，完整保留），九段线主体交给小图 —— 这正是小图必需的原因。
+> 补上九段线后大陆就被压扁到画面上半部。上表的省界层（`中华人民共和国.json`）同样南到 6.3°N。`mainland_extent()`
+> 把南边裁到 17.5°N、南边不留白（在中央经线上量：海南最南 18.15°N，完整保留；西沙最北 17.12°N 与 16°N 附近的两段
+> 九段线落在底边以外 30 km 以上，底边不露碎片），九段线主体与南海岛礁交给小图 —— 这正是小图必需的原因。
 
 备用独立图层（EPSG:4326，10 条 LineString）：
 `D:\6. Transfer\PhD_tht\GIS_layer\china-shapefiles\china_nine_dotted_line.shp`
 
 ### 4.3 主图 + 南海小图的标准骨架
 
-```python
-from shapely.geometry import Point
-
-# 四个定位点：[主图西南, 主图东北, 南海小图西南, 南海小图东北]
-BOUND_LONLAT = [(80, 15), (150, 50), (106.5, 2.8), (123, 24.5)]
-bound = gpd.GeoDataFrame(
-    geometry=[Point(x, y) for x, y in BOUND_LONLAT], crs="EPSG:4326"
-).to_crs(TARGET_CRS).geometry
-
-provinces = gpd.read_file(ROOT / "data" / "ChinaMap" / "provinces.shp").to_crs(TARGET_CRS)
-
-def draw_basemap(ax):
-    provinces.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.2, zorder=0)
-    country.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.75, zorder=1)
-
-fig = plt.figure(figsize=(8, 8))
-ax = fig.add_subplot(1, 1, 1)
-draw_basemap(ax)
-# ... 业务图层 zorder >= 2 ...
-ax.set_axis_off()
-ax.set_xlim(bound[0].x, bound[1].x)
-ax.set_ylim(bound[0].y, bound[1].y)
-
-# 南海小图：与主图同底图、同业务图层、同色标，只换 xlim/ylim
-ax_child = fig.add_axes([0.72, 0.25, 0.25, 0.2])
-draw_basemap(ax_child)
-# ... 重画一遍业务图层 ...
-ax_child.set_xlim(bound[2].x, bound[3].x)
-ax_child.set_ylim(bound[2].y, bound[3].y)
-ax_child.set_xticks([]); ax_child.set_yticks([])
-ax_child.set_title(""); ax_child.set_xlabel(""); ax_child.set_ylabel("")
-```
-
-小图也可用 `inset_axes` 定位（多面板时更稳）：
+地图脚本都用 `plot_style` 的封装，不再各自拼图层与定位点（图 2 `plot_fig2_candidate_network.py` 就是范例）：
 
 ```python
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-ax_child = inset_axes(ax, width="30%", height="30%", loc="lower left",
-                      bbox_to_anchor=(0.75, 0.05, 1, 1),
-                      bbox_transform=ax.transAxes, borderpad=0)
+fig = plt.figure(figsize=(183 * MM, 143 * MM))
+ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
+draw_china_basemap(ax)
+layers(ax)                                         # 业务图层，zorder >= 2
+mainland_extent(ax)                                # 主图范围，关坐标轴
+add_scs_inset(ax, draw=lambda a: layers(a, 0.6))   # 小图：同底图、同业务图层、同尺寸律，只换范围
+check_off_land(ax, ax.legend(handles=..., **MAP_LEGEND))
+save_fig(fig, "fig2_candidate_network", lang)
 ```
+
+南海小图（106.5–123°E、2.8–24.5°N）放在主图右下角、台湾以东的海面上，高为主图的 26%。省界四至的东界（抚远）
+离台湾只有 490 km，放不下小图，`add_scs_inset` 先把主图东界往东扩到"小图这一带陆地的最东点 + 间距 + 小图宽"，
+小图不压台湾与沿海；在 `mainland_extent` 之后调用。
 
 ### 4.4 图层与线宽约定
 
 | 图层 | facecolor | edgecolor | linewidth | zorder |
 |---|---|---|---|---|
-| 省界 `load_map_provinces()` | none | black | 0.20 | 0 |
-| 国界 `country_main()`（小图用整层）+ 九段线 `load_dash_line()` | none | black | 0.75 | 1 |
+| 省界 `map_layer("provinces")` | none（`draw_china_basemap` 另铺浅灰 LAND） | black | 0.20 | 0–1 |
+| 国界 `country_main`（小图用整层 `country`）+ 九段线 `dash` | none | black | 0.75 | 1.5–1.6 |
 | 流域 / 分区填充 | 浅色 | none | — | 1 |
 | 管网 / 流量线 | — | 按情景 | `np.sqrt(flow)/scale` | 2–3 |
 | 源点 / 汇点 | 按类别 | white | 0.3 | 4+ |
@@ -421,20 +397,15 @@ ax_child = inset_axes(ax, width="30%", height="30%", loc="lower left",
 `ax.set_axis_off()`，无经纬网格，无标题（标题放面板标号或图注）；
 存 PDF/SVG 矢量 + PNG 300 dpi。
 
-### 4.6 出图前自检（三条，缺一不可）
+### 4.6 出图前自检（缺一不可，`save_fig` 与底图函数里都已实现）
 
-```python
-import warnings
-with warnings.catch_warnings():
-    warnings.simplefilter("error", UserWarning)   # 缺字警告直接抛异常，别让方框混进 PDF
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-```
-
-1. **缺字**：按上面把 glyph 警告升级为异常。
-2. **九段线**：图上画了 `load_dash_line()`（空层会在函数内抛错），主图国界用 `country_main()`，
+1. **缺字**：`save_fig` 先写临时文件并收集缺字警告，有就删掉临时文件、报错，已有的同名图不动，别让方框混进 PDF。
+2. **九段线**：`draw_china_basemap` 画了 `map_layer("dash")`（缺要素会在读图层时抛错），主图国界用 `country_main`，
    不要再按 `GBCODE` 选国界层（§4.2）。
-3. **图幅宽度**：`save_fig` 内的宽度守卫必须通过；被撑宽通常是 `pad_inches`
+3. **图幅宽度与字号**：`save_fig` 的宽度守卫（≤ 183 mm）与字号检查（≥ 5 pt）必须通过；被撑宽通常是 `pad_inches`
    或画到轴外的 artist 造成的，先降 pad，仍超宽再查具体 artist。
+4. **不压国土**：南海小图不压台湾与沿海（`add_scs_inset` 按陆地最东点放）；地图上的图例、文字框过 `check_off_land`，
+   压到大陆、台湾、海南就报错。
 
 ---
 
