@@ -291,6 +291,8 @@ def main():
     parser.add_argument("--results", type=Path, default=None,
                         help="读哪个结果目录（缺省：_indtree/results/）")
     args = parser.parse_args()
+    if args.pair[0] == args.pair[1]:
+        parser.error(f"--pair 的两边是同一个结果 {args.pair[0]!r}，没有可比的")
     failures, warnings = [], []
     results = args.results if args.results is not None else RESULTS
     print(f"结果目录：{results}")

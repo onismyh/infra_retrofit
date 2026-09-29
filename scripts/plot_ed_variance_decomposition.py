@@ -146,7 +146,7 @@ def binding_basins() -> tuple[list[str], list[str]]:
     return sorted(codes), used
 
 
-def binding_note(used: list[str], binding: list[str]) -> str:
+def binding_note(*, used: list[str], binding: list[str]) -> str:
     """图注里讲 * 的那一句。没读到求解与读到了但没有流域缺水，图上都没有 *，要写明是哪一种。"""
     if not used:
         return f"未标 *：{'、'.join(BINDING_RUNS.values())}没有可用的求解结果。"
@@ -340,7 +340,7 @@ def main() -> None:
         panel_label(ax, letter, x=-0.185, y=1.10)
 
     closure = pd.concat([t["SS closure %"] for t in tables.values()])
-    star = binding_note(used, binding)
+    star = binding_note(used=used, binding=binding)
     # Wrapped, not one long line: `savefig(bbox_inches="tight")` grows the canvas to whatever
     # the widest artist needs, so an unwrapped footnote silently widens the figure.
     note = (
