@@ -45,7 +45,7 @@ def test_binding_basins_tells_unsolved_from_old_format(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """三份结果：没求解、旧格式（缺空冷两列）、现格式。前两种各自提示后跳过，只有现格式的进标记与读到的情景；
-    标记只取 `water_supply` 松弛大于 1 m3 的流域（节点编号末段是流域代码；正好 1 m3 的不算），流域上限的松弛不算。"""
+    标记只取 `water_supply` 松弛大于 1 m3 的流域（节点编号末段是流域代码；正好 1 m3 的不算），流域上限与生物质供给的松弛不算。"""
     module = _load(monkeypatch)
     monkeypatch.setattr(module, "RESULTS_DIR", tmp_path)
     monkeypatch.setattr(module, "BINDING_RUNS", {"UNSOLVED": "未求解", "OLD": "旧格式", "NEW": "现格式"})
@@ -55,10 +55,10 @@ def test_binding_basins_tells_unsolved_from_old_format(
     pd.DataFrame({"plant_id": ["P1"], "year": [2030], "air_cooled_share": [0.0], "already_air_share": [0.0]}).to_csv(
         tmp_path / "NEW" / "plant_detail.csv", index=False)
     pd.DataFrame({
-        "year": [2030, 2030, 2060, 2060],
-        "constraint_type": ["water_supply", "water_supply", "water_supply", "water_basin_quota"],
-        "node_id": ["WC_0101_0202_H", "WC_0303_0404_K", "WC_0505_0606_A", "J"],
-        "slack_value": [5.0, 1.0, 1.5, 100.0],
+        "year": [2030, 2030, 2060, 2060, 2060],
+        "constraint_type": ["water_supply", "water_supply", "water_supply", "water_basin_quota", "biomass_supply"],
+        "node_id": ["WC_0101_0202_H", "WC_0303_0404_K", "WC_0505_0606_A", "J", "BM_0707_C"],
+        "slack_value": [5.0, 1.0, 1.01, 100.0, 50.0],
     }).to_csv(tmp_path / "NEW" / "slack_detail.csv", index=False)
 
     assert module.binding_basins() == (["A", "H"], ["NEW"])
@@ -73,8 +73,10 @@ def test_binding_note_says_why_there_is_no_star(monkeypatch: pytest.MonkeyPatch)
     读到了的只列读到的情景。"""
     module = _load(monkeypatch)
     monkeypatch.setattr(module, "BINDING_RUNS", {"R1": "甲", "R2": "乙"})
-    assert module.binding_note(["R2"], ["A", "H"]) == (
+    assert module.binding_note(used=["R2"], binding=["A", "H"]) == (
         "* = 按 乙的求解，任一规划年出现未满足需求的流域（只超出流域用水总量控制指标的不算）。")
-    assert module.binding_note(["R1", "R2"], []) == (
+    assert module.binding_note(used=["R1", "R2"], binding=[]) == (
         "按 甲、乙的求解，没有流域在任一规划年出现未满足需求（只超出流域用水总量控制指标的不算），所以图上没有 *。")
-    assert module.binding_note([], []) == "未标 *：甲、乙没有可用的求解结果。"
+    assert module.binding_note(used=["R1"], binding=[]) == (
+        "按 甲的求解，没有流域在任一规划年出现未满足需求（只超出流域用水总量控制指标的不算），所以图上没有 *。")
+    assert module.binding_note(used=[], binding=[]) == "未标 *：甲、乙没有可用的求解结果。"

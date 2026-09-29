@@ -86,8 +86,7 @@ PROVINCE_WATER_CAP_1E8_M3: Final[dict[str, tuple[float, float, float]]] = {
     "宁夏": (73.00, 73.27, 87.93),
     "新疆": (515.60, 515.97, 526.74),
 }
-# 文件自身给出的合计；31 行恰好复现这些合计，残差为零。
-PROVINCE_CAP_NATIONAL_1E8_M3: Final[dict[int, float]] = {2015: 6350.0, 2020: 6700.0, 2030: 7000.0}
+# 31 行合计恰为附件1 自身给出的 6350 / 6700 / 7000 亿（三年零残差）。
 
 # 香港、澳门、台湾在附件1 中没有上限，在 `inputs/plants.csv` 中也没有煤电 hub。
 PROVINCES_WITHOUT_CAP: Final[frozenset[str]] = frozenset({"香港", "澳门", "台湾"})
@@ -122,7 +121,7 @@ BASIN_WITHDRAWAL_2025_1E8_M3: Final[dict[str, dict[str, float]]] = {
     "K": {"domestic": 24.8, "industry": 19.4, "thermal_once_through": 0.0,
           "agriculture": 645.4, "ecology": 39.4, "total": 729.0},
 }
-BASIN_WITHDRAWAL_2025_NATIONAL_1E8_M3: Final[float] = 5944.5
+# 九个流域合计 5944.5 亿，即公报的全国用水总量。
 
 # 全国直流火(核)电冷却用水量，亿 m3/yr——模型直流冷却取水的标定目标（见
 # `builders/water_quota.once_through_calibration`）。只含淡水：公报写明用水量
@@ -145,18 +144,6 @@ BASIN_NAMES_ZH: Final[dict[str, str]] = {
 #    现行规划把它修订为 332.8亿；地下水另设上限 123.7亿。
 # --------------------------------------------------------------------------------------
 YELLOW_RIVER_CONSUMPTION_CAP_1E8_M3: Final[float] = 332.8
-YELLOW_RIVER_CONSUMPTION_CAP_1987_1E8_M3: Final[float] = 370.0
-YELLOW_RIVER_GROUNDWATER_CAP_1E8_M3: Final[float] = 123.7
-
-# --------------------------------------------------------------------------------------
-# 4. 全国分部门耗水率，2025年中国水资源公报 用水消耗量一节。
-#    只公布全国数值——公报没有逐流域的耗水表。仅在交叉核对需要时用于口径之间的换算，
-#    绝不用于构建预算。
-# --------------------------------------------------------------------------------------
-NATIONAL_CONSUMPTION_RATIO: Final[dict[str, float]] = {
-    "agriculture": 0.669, "industry": 0.239, "domestic": 0.383, "ecology": 0.593,
-}
-NATIONAL_CONSUMPTION_RATIO_ALL: Final[float] = 0.550
 
 
 def province_cap(province: str, year: int) -> float:

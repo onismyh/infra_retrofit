@@ -2,7 +2,7 @@
 
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
-路径份额换算（`results_plant._blend_ratios`）；`blend_level_to_ratio` 只认整数档位；`plot_style` 的
+路径份额换算（`results_plant._blend_ratios`）；`plot_style` 的
 残余排放只认比例列，没有就报错；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
 （只开 BECCS 的生物质用量、独热档位对照、`plot_style` 残余排放与求解器对拍、成本表碳成本与目标函数对拍、
 掺氨用量）需要 Gurobi，其余不依赖。
@@ -25,7 +25,6 @@ from coal_retrofit.optimization._shared import (
     _year_objective_weight,
 )
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.emissions import blend_level_to_ratio
 from coal_retrofit.optimization.results_plant import (
     _blend_ratios,
     _build_pathway_table,
@@ -91,18 +90,6 @@ def test_effective_ratio_is_sum_beta_z_over_the_pathway_share() -> None:
     near[0, BIO] = near[0, BECCS] = near[0, AMM] = 2e-6
     clipped = _blend_ratios(near, np.array([5e-6]), np.array([-1e-7]), np.array([5e-6]), **levels)
     assert (clipped["biomass"][0], clipped["beccs"][0], clipped["ammonia"][0]) == (max(LEVELS_B), 0.0, max(LEVELS_A))
-
-
-def test_blend_level_to_ratio_reads_integer_levels_only() -> None:
-    assert blend_level_to_ratio(None, LEVELS_B) == 0.0
-    assert blend_level_to_ratio(0.0, LEVELS_B) == 0.0
-    assert blend_level_to_ratio(2.0, LEVELS_B) == 0.25
-    assert blend_level_to_ratio(5.0 + 5e-5, LEVELS_B) == 1.0  # 二元档位的整数容差之内
-    # hub 0 的下标恰为整数，按档位只能读成第 2 档：这正是它不能用于连续 hub 的原因。
-    assert blend_level_to_ratio(_three_hubs()["level_b"][0], LEVELS_B) == 0.25
-    for bad in (2.5, 2.8, 6.0, -1.0):
-        with pytest.raises(ValueError, match="blend_ratio"):
-            blend_level_to_ratio(bad, LEVELS_B)
 
 
 def test_detail_and_pathway_tables_use_the_effective_ratios() -> None:
@@ -268,8 +255,8 @@ def ammonia_continuous(tmp_path_factory):
 @pytest.mark.parametrize(
     ("pathway", "power_caps"), [("beccs", {2050: 0.0, 2060: 0.0}), ("ammonia", {2050: 0.75, 2060: 0.6})],
 )
-def test_one_hot_levels_give_the_ratio_blend_level_to_ratio_reads(tmp_path, pathway, power_caps) -> None:
-    """独热档位（`hub_decisions_continuous=False`）下档位下标是整数，按档位读出的比例与 Σβ·z ÷ 份额相同。"""
+def test_one_hot_levels_give_the_ratio_of_the_selected_level(tmp_path, pathway, power_caps) -> None:
+    """独热档位（`hub_decisions_continuous=False`）下档位下标是整数，所选档位的比例与 Σβ·z ÷ 份额相同。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     _, _, _, solution = _solve_blend_toy(tmp_path, _ONLY[pathway], power_caps, continuous=False)
     level_key, levels = ("blend_level_b", LEVELS_B) if pathway == "beccs" else ("blend_level_a", LEVELS_A)
@@ -279,7 +266,9 @@ def test_one_hot_levels_give_the_ratio_blend_level_to_ratio_reads(tmp_path, path
             ys["share"], ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             biomass_levels=LEVELS_B, ammonia_levels=LEVELS_A,
         )
-        by_level = blend_level_to_ratio(float(ys[level_key][0]), levels)
+        level = float(ys[level_key][0])
+        assert level == pytest.approx(round(level), abs=1e-4) and 1 <= round(level) <= len(levels)
+        by_level = levels[round(level) - 1]
         assert float(ratios[pathway][0]) == pytest.approx(by_level, abs=1e-6)
         # 截断会盖住偏大的 Σβ·z（toy 的掺氨解正好在最高档）：未截断的商也要等于按档位读出的比例。
         raw = float(ys[f"{pathway}_blend_x_share"][0]) / float(ys["share"][0, PATHWAY_INDEX[pathway]])

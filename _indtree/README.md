@@ -59,7 +59,7 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 重建后的规则（`builders/network.py`、`builders/network_branches.py`）：
 
 1. 工业点源与煤电、封存汇一起进入节点表，一起做 Delaunay 三角剖分；
-2. 西藏不参与减排：点源在装载时剔除（4 个水泥点源），穿越西藏的新建候选边一律删除；
+2. 西藏不参与减排：hub 在装载时剔除（4 个水泥 hub，即 `industry_sources.csv` 的 8 个点源），穿越西藏的新建候选边一律删除；
 3. 去交叉的优先级仍是"既有管廊 > 接入支线 > 三角剖分"，但同优先级内改为**短边优先**
    （原来按建表顺序，长边先占位会把一整片短边挤掉：保留边 1 224 → 1 269）；
 4. 连通性修复不再回填"当初因相交被删的边"（回填等于把交叉放回图上，实测 136 条、
@@ -136,7 +136,15 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 换句话说：被换掉的是**管网与汇**，被保留的是**源与水**，两者在输入侧没有交叉依赖。
 
-`data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。
+`data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
+新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
+Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep._prepare_plants`
+经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错；`plot_style` 的底图（`load_country` /
+`load_map_provinces`）与 `map_tht.layers()` 都读 `ROOT / "data"`（`plot_candidate_network` 直接读 `data/ChinaMap/`），缺它直接报错，
+所以所有地图脚本都跑不了；
+`plot_style.load_basins` 另外返回 None：`slide_multiflow_joint` 对它有分支（但先在 `map_tht` 底图处停下），
+`plot_fig1_water_footprint` 在 `assign_basin(...).values` 处（返回 None 后 `.values` 抛 AttributeError）、
+`plot_ed_source_atlas` 更早在 `diagnose_official_water_budget.fleet_water_by_basin` 读流域矢量时报错。
 
 ---
 

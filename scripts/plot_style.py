@@ -11,24 +11,20 @@ Import this module at the top of any plotting script to ensure consistent:
 Usage:
     from plot_style import *
     apply_style()
-    fig, ax = plt.subplots(figsize=SINGLE_COL)
+    fig, ax = plt.subplots(figsize=DOUBLE_COL)
     ...
     panel_label(ax, "a")
     save_fig(fig, "main_fig1_pathway_allocation")
 """
 from __future__ import annotations
 
-import re
 import warnings
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
-from functools import lru_cache
-from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 from _bootstrap import ROOT  # 数据树 _indtree/
@@ -40,16 +36,7 @@ PATENT_FIGURES_DIR = FIGURES_DIR / "patent"
 
 # ── Figure sizes (Nature Energy: single=89mm, double=183mm) ─────────────────
 MM = 1 / 25.4  # mm to inches
-SINGLE_COL = (89 * MM * 2, 89 * MM * 1.6)    # ~(7.0, 5.6) for single-column
 DOUBLE_COL = (183 * MM, 89 * MM * 1.4)         # ~(7.2, 4.9) for double-column
-HALF_PAGE  = (183 * MM, 183 * MM * 0.65)       # ~(7.2, 4.7) for half-page
-FULL_PAGE  = (183 * MM, 240 * MM)               # ~(7.2, 9.4) for full page
-SMALL      = (3.5, 2.8)
-MEDIUM     = (7.0, 3.5)
-WIDE       = (7.0, 5.0)
-TALL       = (6.0, 7.0)
-MAP_SINGLE = (5.5, 5.5)
-MAP_DOUBLE = (7.0, 4.5)
 
 # ── Color palette (colorblind-safe, Tol bright) ─────────────────────────────
 # 同族同色系，深端 = 带 CCS，浅端 = 不带 CCS。蒸馏自 thesis.ipynb 的配色逻辑
@@ -75,49 +62,7 @@ PATHWAY_LABELS = {
     "ammonia": "掺氨",
     "hydrogen": "掺氢",
 }
-# 非路径类的固定色，供各图统一引用
-AIR_COOLING_C = "#CC3311"   # 空冷改造（强调红）
-DSA_C, EOR_C  = "#3182BD", "#9ECAE1"   # 深部咸水层 / EOR 封存
-WITHDRAW_C, CONSUME_C = "#6BAED6", "#08519C"   # 取水 / 耗水
 PATHWAY_ORDER = ["unabated", "biomass", "ccs", "beccs", "ammonia", "retire"]
-
-SCENARIO_COLORS = {"low": "#4477AA", "base": "#666666", "high": "#CC3311"}
-DIVERGING = {"neg": "#0077BB", "pos": "#CC3311"}
-
-# Region grouping (6 regions)
-REGIONS = {
-    "North":         ["Inner Mongolia", "Shanxi", "Shandong", "Hebei", "Henan", "Beijing", "Tianjin"],
-    "Northeast":     ["Heilongjiang", "Jilin", "Liaoning"],
-    "East":          ["Jiangsu", "Zhejiang", "Anhui", "Jiangxi", "Fujian", "Shanghai"],
-    "South-Central": ["Hubei", "Hunan", "Guangdong", "Guangxi", "Hainan"],
-    "Southwest":     ["Chongqing", "Sichuan", "Guizhou", "Yunnan"],
-    "Northwest":     ["Shaanxi", "Gansu", "Qinghai", "Ningxia", "Xinjiang"],
-}
-
-# Chinese → English province name mapping
-CN_TO_EN = {
-    "安徽省": "Anhui", "北京市": "Beijing", "重庆市": "Chongqing",
-    "福建省": "Fujian", "甘肃省": "Gansu", "广东省": "Guangdong",
-    "广西壮族自治区": "Guangxi", "贵州省": "Guizhou", "海南省": "Hainan",
-    "河北省": "Hebei", "黑龙江省": "Heilongjiang", "河南省": "Henan",
-    "湖北省": "Hubei", "湖南省": "Hunan", "内蒙古自治区": "Inner Mongolia",
-    "江苏省": "Jiangsu", "江西省": "Jiangxi", "吉林省": "Jilin",
-    "辽宁省": "Liaoning", "宁夏回族自治区": "Ningxia", "青海省": "Qinghai",
-    "陕西省": "Shaanxi", "山东省": "Shandong", "上海市": "Shanghai",
-    "山西省": "Shanxi", "四川省": "Sichuan", "天津市": "Tianjin",
-    "西藏自治区": "Tibet", "新疆维吾尔自治区": "Xinjiang",
-    "新疆维吾尔族自治区": "Xinjiang", "云南省": "Yunnan", "浙江省": "Zhejiang",
-    # Carry no coal plants, but they are in the province shapefile and reach the map
-    # labels; without them the raw Chinese falls through and Arial renders tofu boxes.
-    "台湾省": "Taiwan", "香港特别行政区": "Hong Kong", "澳门特别行政区": "Macao",
-}
-EN_TO_CN = {v: k for k, v in CN_TO_EN.items()}
-# 出图一律用中文省名，去掉行政后缀，图上更紧凑。
-# 用正则而不是链式 replace：EN_TO_CN 里新疆有"维吾尔自治区"和"维吾尔族自治区"两种写法，
-# 链式 replace 只命中一种，另一种会漏出"新疆维吾尔族"这样的半截名字。
-_PROV_SUFFIX = re.compile(r"(省|市|特别行政区|(壮族|回族|维吾尔族?)?自治区)$")
-PROV_ZH = {en: _PROV_SUFFIX.sub("", cn) for en, cn in EN_TO_CN.items()}
-
 
 # ── 字体：模块级生效，不依赖 apply_style() ──────────────────────────────────
 # 九个 ED 脚本只 import MM/save_fig，从不调用 apply_style()。英文时代这没问题，
@@ -189,7 +134,6 @@ def apply_style():
 
 # ── 中国底图：投影、九段线、南海小图（见 .claude/CLAUDE.md §4.1-4.3）────────────
 MAP_CRS = "EPSG:2380"          # Xian 1980 / 3-degree Gauss-Kruger CM 105E，单位 m
-NINE_DASH_GBCODE = 26100       # boundary.shp 里九段线要素的 GBCODE
 # [主图西南, 主图东北, 南海小图西南, 南海小图东北]，经纬度
 BOUND_LONLAT = [(80.0, 15.0), (150.0, 50.0), (106.5, 2.8), (123.0, 24.5)]
 
@@ -284,7 +228,6 @@ def to_map_xy(lon, lat, root=None):
 
 # boundary.shp 的 GBCODE 语义（要素数与经纬度范围实测，见 scratchpad/fix_basemap_layers.py）
 COUNTRY_GBCODES = (61010, 26100)   # 国界+海岸线，九段线
-ISLAND_GBCODES = (26010, 26080)    # 旧 boundary.shp 的语义，已无读者
 PROV_EDGE = "black"                # 昊天的画法：省界黑色细线，不再用浅灰 #C6CDD4
 
 
@@ -321,7 +264,7 @@ def country_main(root=None):
 
 def draw_china_basemap(ax, root=None, province_lw: float = 0.20,
                        country_lw: float = 0.75, facecolor: str = "none",
-                       islands: bool = False, island_lw: float = 0.18):
+                       islands: bool = False):
     """省界 + 国界（含九段线）。线宽与 zorder 见 CLAUDE.md §4.4。
 
     默认不画岛礁。boundary.shp 里 26010 + 26080 共 1 035 条岛屿轮廓，在 183 mm 幅面上
@@ -345,14 +288,6 @@ def draw_china_basemap(ax, root=None, province_lw: float = 0.20,
     load_dash_line(root).plot(ax=ax, facecolor="none", edgecolor="black",
                               linewidth=country_lw, zorder=1.6)
     return prov, country
-
-
-def set_main_extent(ax, root=None):
-    """主图范围 = BOUND_LONLAT 的前两点。"""
-    b = map_bounds(root)
-    ax.set_xlim(b[0].x, b[1].x)
-    ax.set_ylim(b[0].y, b[1].y)
-    ax.set_aspect("equal")
 
 
 def mainland_extent(ax, root=None, pad: float = 0.02, south_lat: float = 17.0):
@@ -397,7 +332,7 @@ def add_scs_inset(fig, ax_main, draw=None, root=None,
         inset = fig.add_axes(rect)
     # islands=True：这个尺度上南海岛礁是内容，不是噪点
     draw_china_basemap(inset, root, province_lw=0.15, country_lw=0.55,
-                       facecolor="#F7F8F9", islands=True, island_lw=0.25)
+                       facecolor="#F7F8F9", islands=True)
     if draw is not None:
         draw(inset)
     inset.set_xlim(b[2].x, b[3].x)
@@ -618,58 +553,6 @@ def save_fig(fig, name: str, subdir: str = ""):
     print(f"  [ok] {name} -> {subdir or 'root'}/")
 
 
-def pathway_legend(ax, ncol: int = 6, loc: str = "upper center",
-                   bbox: tuple = (0.5, 1.12), exclude: list | None = None):
-    """Add consistent pathway legend to axis."""
-    from matplotlib.patches import Patch
-    exclude = exclude or []
-    handles = [Patch(facecolor=PATHWAY_COLORS[pw], edgecolor="white",
-                     linewidth=0.3, label=PATHWAY_LABELS[pw])
-               for pw in PATHWAY_ORDER if pw not in exclude]
-    ax.legend(handles=handles, ncol=ncol, loc=loc,
-              bbox_to_anchor=bbox, fontsize=7)
-
-
-def clean_shares(shares: dict) -> dict:
-    """Round pathway shares below 0.1% to zero and renormalise. DO NOT USE IN A FIGURE.
-
-    Kept only because older scripts import it. Zeroing a small share and renormalising
-    the rest changes every other number on the panel to hide one that is merely small,
-    which is the practice `experiment_results_clean.json` was rejected for. None of the
-    five main figures or the Extended Data set calls it; if a new figure needs it, the
-    right fix is to plot the small share, not to erase it.
-    """
-    cleaned = {k: (v if v >= 0.001 else 0.0) for k, v in shares.items()}
-    total = sum(cleaned.values())
-    if total > 0:
-        cleaned = {k: v / total for k, v in cleaned.items()}
-    return cleaned
-
-
-def format_pct(ax, axis: str = "y"):
-    """Format axis as percentage."""
-    if axis == "y":
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0f}%"))
-    else:
-        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0f}%"))
-
-
-def format_bcny(ax, axis: str = "x"):
-    """Format axis as billion CNY."""
-    fmt = mticker.FuncFormatter(lambda x, _: f"{x:,.0f}")
-    if axis == "x":
-        ax.xaxis.set_major_formatter(fmt)
-    else:
-        ax.yaxis.set_major_formatter(fmt)
-
-
-def annotate_value(ax, x, y, text: str, fontsize: float = 6,
-                   color: str = "black", ha: str = "left", va: str = "center",
-                   **kwargs):
-    """Consistent value annotation on plots."""
-    ax.text(x, y, text, fontsize=fontsize, color=color, ha=ha, va=va, **kwargs)
-
-
 # ── Model-consistent emission accounting ───────────────────────────────────────
 # Residual emissions must reproduce the solver's accounting exactly:
 # per-pathway generation (retrofit CF boost), rebuilt-plant efficiency ratio,
@@ -692,8 +575,6 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     returns NaN.
     Mirrors the residual expression in optimization/constraints.py.
     """
-    import pandas as pd  # local import to keep module import light
-
     d = plant_detail_year
     if d.empty:
         return float("nan")
@@ -768,7 +649,7 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     # incur a backpressure penalty. Falling back to zero is therefore correct rather than
     # merely convenient, but it is done explicitly: a silent 0.0 would let a 24-column run be
     # differenced against a 26-column one with no sign that the two describe different feasible
-    # sets, which is exactly the failure this module's `scenario_validity` gate exists to catch.
+    # sets -- exactly the cross-version differencing CLAUDE.md 二.6 forbids.
     _air_cols = ("already_air_share", "air_cooled_share")
     if all(c in d.columns for c in _air_cols):
         still_wet = 1.0 - d["already_air_share"].to_numpy(dtype=float)
@@ -799,285 +680,12 @@ def residual_emissions_mt(plant_detail_year: "pd.DataFrame", year: int) -> float
     return float(residual.sum())
 
 
-# Runs solved before 2026-08-18 06:55 read the superseded per-cell-minimum dry-season table.
-# They carry no input digest, so mtime is the only signal available for them.
-INPUT_REBUILD_EPOCH = 1787050500.0  # 2026-08-18 06:55 local, when water_availability.csv was rebuilt
-
-
-def input_vintage(name: str):
-    """Which water-input vintage a solved run was produced on.
-
-    WHY THIS EXISTS, AND WHY THE OTHER GUARDS COULD NOT CATCH IT. The dry-season correction
-    changed every value in `dry_season_water_m3_per_year` and not one column name, variable
-    count or constraint count. A corrected run and a superseded run therefore agree on model
-    fingerprint, dimensions, thread pin and seed -- every field `same_model_runs` compares --
-    while solving different problems. Three main figures were rendered with the two mixed.
-
-    The proof is a dominance violation between a restriction and its own relaxation:
-        WA_cwatm_126_dry_wd085          retirement cap 0.15   incumbent 14.14216e12
-        WA_cwatm_126_dry_wd085_capfree  retirement cap 0.50   BOUND     14.55719e12
-    Relaxing a constraint cannot raise the dual bound above the restricted primal. It did,
-    because the two runs were solved against different water.
-
-    Returns the digest string when the run carries one, else 'pre-digest:<current|superseded>'
-    inferred from mtime, else None.
-    """
-    import json as _json
-    path = RESULTS_DIR / f"{name}.json"
-    if not path.exists():
-        return None
-    try:
-        q = _json.loads(path.read_text(encoding="utf-8")).get("solver_quality", {})
-    except (ValueError, OSError):
-        return None
-    digest = q.get("digest_water_availability")
-    if digest:
-        return digest
-    return _vintage_by_water_content(name)
-
-
-def _water_signature(name: str):
-    """The water right-hand side a run was actually solved against, as (year -> available).
-
-    Read from the run's own `resource_use.csv`, so it reflects what the solver saw rather than
-    what the input file says today.
-    """
-    path = RESULTS_DIR / name / "resource_use.csv"
-    if not path.exists():
-        return None
-    try:
-        frame = pd.read_csv(path, usecols=["resource_type", "year", "available"])
-    except (ValueError, OSError):
-        return None
-    water = frame[frame["resource_type"] == "water"]
-    if water.empty:
-        return None
-    return water.groupby("year")["available"].sum().sort_index()
-
-
-def _vintage_by_water_content(name: str):
-    """Vintage for a run solved before the digest existed, by VERIFICATION not by mtime.
-
-    WHY THIS REPLACED AN MTIME TEST. The first version of this guard labelled a digest-less run
-    `pre-digest:current` whenever its result file was newer than the input rebuild. That is a
-    guess about provenance, and it made the guard both too weak and too loud: too weak because
-    a superseded run re-serialised for any reason would read as current, and too loud because a
-    genuinely current run compared against a digested one reported a false vintage mix -- which
-    is exactly what Figs 4 and 5 were reporting.
-
-    The replacement is a direct test. Gurobi's fingerprint is sensitive to the water RHS (the
-    superseded `..._seed5` carries 0xbe7b31c2 against its family's 0xbf2f6de), so runs on
-    different bases really are different models; and two runs of the same hydrology member on
-    the same basis must agree EXACTLY on `available`. So: a digest-less run inherits the digest
-    of any digested run whose water right-hand side it matches to the bit. Measured, this
-    separates cleanly -- matching pairs differ by 0.000e+00 and the known-superseded run by
-    1.6e-01 -- so there is no tolerance to tune.
-
-    Falls back to the mtime inference, tagged `unverified`, only when no digested run shares the
-    member (nothing to verify against).
-    """
-    mine = _water_signature(name)
-    if mine is not None:
-        for other, digest in _digested_runs().items():
-            theirs = _water_signature(other)
-            if theirs is None:
-                continue
-            years = mine.index.intersection(theirs.index)
-            if len(years) and np.array_equal(mine[years].to_numpy(), theirs[years].to_numpy()):
-                return digest
-    stamp = (RESULTS_DIR / f"{name}.json").stat().st_mtime
-    return ("pre-digest:current-unverified" if stamp > INPUT_REBUILD_EPOCH
-            else "pre-digest:superseded")
-
-
-@lru_cache(maxsize=1)
-def _digested_runs() -> dict:
-    """Every run that carries an explicit input digest, as name -> digest."""
-    import json as _json
-    out = {}
-    for path in sorted(RESULTS_DIR.glob("*.json")):
-        try:
-            payload = _json.loads(path.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            continue
-        if not isinstance(payload, dict):   # results/ also holds list-shaped summaries
-            continue
-        digest = (payload.get("solver_quality") or {}).get("digest_water_availability")
-        if digest:
-            out[path.stem] = digest
-    return out
-
-
-def assert_same_vintage(names, context: str = "", fatal: bool = False) -> bool:
-    """Refuse to place runs from different water-input vintages on one axis.
-
-    Returns True when every named run agrees. Prints a loud warning otherwise, and raises when
-    `fatal` is set. This is the check that would have stopped Figs 2, 3 and 5 being rendered
-    with corrected and superseded runs differenced against each other.
-    """
-    seen = {}
-    for n in names:
-        v = input_vintage(n)
-        if v is not None:
-            seen.setdefault(v, []).append(n)
-    if len(seen) <= 1:
-        return True
-    print(f"  [VINTAGE] {context or 'this figure'} mixes {len(seen)} water-input vintages:")
-    for v, runs in sorted(seen.items()):
-        print(f"      {v:26s} {', '.join(sorted(runs))}")
-    print("      Differences across this boundary are NOT comparable: the dry-season")
-    print("      right-hand side changed by a median +20.9% and by 2.25x in the Hai.")
-    if fatal:
-        raise SystemExit("refusing to draw a mixed-vintage contrast")
-    return False
-
-
-def same_model_runs(names, quiet: bool = False) -> list:
-    """Filter a candidate seed family down to runs that share the FIRST one's model.
-
-    A degeneracy floor is only a degeneracy floor if the model, the parameters and the
-    feasible set are bit-identical across the replicates and only the search path differs. If
-    one member was solved on a different build or different inputs, the spread it contributes
-    is a VERSION DIFFERENCE, and using it as a null both inflates the floor and buries a real
-    effect underneath it.
-
-    This has already happened twice in this study. In v3 the treatment carried 632,446 columns
-    and fingerprint 0xb8630838 while its three 'seed replicates' carried 632,442 and
-    0xbe7b31c2 -- four water-supply-link variables that existed in one model and not the
-    other -- and the 0.249% reported as solver degeneracy was that difference. In v5 the
-    dry-season correction re-solved the reference before its replicates, and the resulting
-    mixed-basis floor came out at 81 GW on a conversion channel whose true seed floor is 14.
-
-    Gurobi is also deterministic only for a fixed (model, parameters, THREAD COUNT), so the
-    thread pin and MIPFocus are checked alongside the fingerprint.
-    """
-    import json as _json
-    def _prov(name):
-        path = RESULTS_DIR / f"{name}.json"
-        if not path.exists():
-            return None
-        try:
-            q = _json.loads(path.read_text(encoding="utf-8")).get("solver_quality", {})
-        except (ValueError, OSError):
-            return None
-        # AN ABSENT FIELD IS NOT A DIFFERENCE WHEN THE DEFAULT IS KNOWN. `mip_focus` was added
-        # to the provenance stamp mid-campaign, so a run solved before that carries None while
-        # an otherwise identical run solved after carries 0 -- and 0 is exactly what None
-        # means, because the stamp then read an environment variable that was unset. Comparing
-        # the raw values rejected three true replicates of the same model (identical fingerprint
-        # 0xbf2f6de, identical 632,442 columns and 240,918 rows, threads pinned at 8) and left
-        # a family of one, which silently disabled the degeneracy floor entirely.
-        # The stamp now reads MIPFocus back from the model (`_run_provenance`), so a run with the
-        # variable unset records 1, the `_new_gurobi_model` default. An old None/0 stamp records
-        # the environment variable (unset, or set to 0), not the value the model ran at, so a
-        # None/0 stamp and a 1 stamp still compare as different on purpose: they come from two
-        # stamp versions, and a seed family must not straddle them.
-        return (q.get("fingerprint"), q.get("num_vars"), q.get("num_constrs"),
-                q.get("threads_param"), int(q.get("mip_focus") or 0))
-    present = [n for n in names if (RESULTS_DIR / f"{n}.json").exists()]
-    if not present:
-        return []
-    ref = _prov(present[0])
-    if ref is None or ref[0] is None:
-        if not quiet:
-            print(f"  [floor] {present[0]} has no provenance stamp; cannot verify that its"
-                  f" replicates are the same model -- floor NOT gated")
-        return present
-    kept, dropped = [], []
-    for n in present:
-        (kept if _prov(n) == ref else dropped).append(n)
-    if dropped and not quiet:
-        print(f"  [floor] dropped {len(dropped)} run(s) from the seed family -- different"
-              f" model, parameters or thread pin, so their spread is a version"
-              f" difference and not degeneracy: {', '.join(dropped)}")
-    return kept
-
-
-MAX_SLACK_SHARE = 0.01  # a solution leaning >1% on ghost resources is not a physical result
-
-
-def scenario_validity(name: str, results_dir=None) -> dict:
-    """Check whether a solved scenario is safe to plot.
-
-    Two failure modes have shipped into figures before and must be caught here rather
-    than in each plotting script:
-      * `RQ3_retire_only` solves `infeasible_or_unbounded` with a NaN objective and all
-        shares zero — plotted, it looks like "retirement alone reaches zero emissions".
-      * `RQ3_ccs_only` reports `optimal` but 89% of its objective is the slack penalty,
-        i.e. the model bought phantom biomass/ammonia/water at 5e9 CNY per unit.
-
-    Returns {'ok': bool, 'reason': str, 'slack_share': float, 'statuses': [...]}.
-    """
-    import json
-    import math
-
-    base = Path(results_dir) if results_dir is not None else RESULTS_DIR
-    path = base / f"{name}.json"
-    if not path.exists():
-        return {"ok": False, "reason": "missing results file", "slack_share": float("nan"), "statuses": []}
-    with open(path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    years = payload.get("years", {})
-    statuses = sorted({str(y.get("status", "?")) for y in years.values() if isinstance(y, dict)})
-    objective = payload.get("global_objective_cny", float("nan"))
-    if not isinstance(objective, (int, float)) or math.isnan(objective):
-        return {"ok": False, "reason": "objective is NaN", "slack_share": float("nan"), "statuses": statuses}
-    bad_status = [s for s in statuses if s != "optimal"]
-    if bad_status:
-        return {"ok": False, "reason": f"solver status {','.join(bad_status)}", "slack_share": float("nan"), "statuses": statuses}
-    slack = sum(
-        float(y.get("cost_breakdown", {}).get("slack_penalty", 0.0))
-        for y in years.values()
-        if isinstance(y, dict)
-    )
-    slack_share = slack / objective if objective else float("nan")
-    if slack_share > MAX_SLACK_SHARE:
-        return {"ok": False, "reason": f"slack penalty is {slack_share:.0%} of the objective",
-                "slack_share": slack_share, "statuses": statuses}
-    return {"ok": True, "reason": "", "slack_share": slack_share, "statuses": statuses}
-
-
-def require_valid_scenarios(names, results_dir=None, warn: bool = True) -> list[str]:
-    """Filter a scenario list down to the ones that are physically meaningful."""
-    keep = []
-    for name in names:
-        verdict = scenario_validity(name, results_dir)
-        if verdict["ok"]:
-            keep.append(name)
-        elif warn:
-            print(f"  [skip] {name}: {verdict['reason']}")
-    return keep
-
-
-def baseline_emissions_mt(plant_detail_year: "pd.DataFrame") -> float:
-    """Total baseline (unabated) emissions (Mt) for one scenario-year."""
-    if plant_detail_year.empty:
-        return float("nan")
-    return float(plant_detail_year["baseline_emissions_mt"].astype(float).sum())
-
-
 # ── Level-1 water-resource regions ────────────────────────────────────────────
 # Water is a basin quantity: the Yellow River crosses nine provinces and the Hai five, so a
 # provincial cut of a water result mixes together catchments that cannot share water. The
 # availability budget is built per basin (see `builders.water`), and every water figure
 # should aggregate on the same unit the constraint acts on.
 
-BASIN_NAMES_EN = {
-    "A": "Northeast Rivers",
-    "C": "Hai River",
-    "D": "Yellow River",
-    "E": "Huai River",
-    "F": "Yangtze River",
-    "G": "Southeast Rivers",
-    "H": "Pearl River",
-    "J": "Southwest Rivers",
-    "K": "Northwest Interior",
-}
-# Third National Water Resources Survey and Evaluation, 1956-2016 mean, 10^8 m3/yr.
-BASIN_OFFICIAL_1E8_M3 = {
-    "A": 1952.6, "C": 327.6, "D": 702.8, "E": 928.3, "F": 9871.2,
-    "G": 2694.5, "H": 4758.6, "J": 5753.8, "K": 1310.1,
-}
 # North to south, so bar charts and small multiples read like the map.
 BASIN_NAMES_ZH = {
     "A": "松花江与辽河", "C": "海河", "D": "黄河", "E": "淮河", "F": "长江",
@@ -1119,68 +727,3 @@ def assign_basin(frame, lon_col: str = "centroid_longitude", lat_col: str = "cen
     joined = gpd.sjoin_nearest(points, basins[["code", "geometry"]], how="left")
     joined = joined[~joined.index.duplicated()]
     return joined["code"].astype(str)
-
-
-# =========================================================================================
-# 机组级结果聚合（多张图共用，定义只此一份）
-# =========================================================================================
-D2_FACTORS = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534}
-
-
-def hub_frame(scenario: str, year: int, results_dir=None):
-    """One scenario-year's 350 hubs, with basin code and the derived capacity columns.
-
-    LIVES HERE, NOT IN A FIGURE SCRIPT, because three figures read `air_gw` and the formula
-    is easy to get wrong in a way that does not look wrong. `air_cooled_share` is the retrofit
-    PROGRESS against the hub's still-wet capacity, not its total dry share; multiplying it by
-    total capacity folds the 248 GW that was built air-cooled into the "converted" number and
-    reports 2030 BASE as 153 GW instead of 45 GW.
-
-    Basin comes from `assign_basin` (nearest polygon, all 350 hubs) rather than "the basin of
-    the water node it withdraws most from", which covers only 338 -- 12 hubs withdraw nothing
-    in a given year. The two agree on 93.5% of the shared 338, and disagree only at divides.
-    """
-    import pandas as pd
-
-    root = RESULTS_DIR if results_dir is None else Path(results_dir)
-    p = pd.read_csv(root / scenario / "plant_detail.csv")
-    p = p[p["year"] == year].copy()
-    p["basin"] = assign_basin(p)
-    cap = p["capacity_mw"] / 1000.0
-    p["cap_gw"] = cap
-    p["air_gw"] = cap * (1.0 - p["already_air_share"]) * p["air_cooled_share"]
-    p["ret_gw"] = p["share_retire"] * cap
-    p["ccs_gw"] = p["share_ccs"] * cap
-    p["beccs_gw"] = p["share_beccs"] * cap
-    p["bio_gw"] = p["share_biomass"] * cap
-    p["wat_e8"] = p["water_use_m3"] / 1e8
-    return p
-
-
-def national(scenario: str, year: int, results_dir=None) -> dict:
-    """Fleet totals for one scenario-year, on the columns every water figure reports."""
-    p = hub_frame(scenario, year, results_dir)
-    return {
-        "空冷改造容量": float(p["air_gw"].sum()),
-        "取水量": float(p["wat_e8"].sum()),
-        "退役容量": float(p["ret_gw"].sum()),
-        "捕集量": float(p["captured_mt"].sum()),
-        "CCS 容量": float(p["ccs_gw"].sum()),
-        "BECCS 容量": float(p["beccs_gw"].sum()),
-        "生物质容量": float(p["bio_gw"].sum()),
-    }
-
-
-def degeneracy_floor(values) -> float:
-    """1.96*sqrt(2)*range/d2(k) -- the spread a seed family alone can produce.
-
-    CLAUDE.md 二.4: a difference that does not clear this is NOT an effect, and must be
-    reported as 未分辨 rather than as zero. k is the number of replicates.
-    """
-    import math
-
-    values = list(values)
-    k = len(values)
-    if k < 2:
-        return float("nan")
-    return 1.96 * math.sqrt(2.0) * (max(values) - min(values)) / D2_FACTORS[k]

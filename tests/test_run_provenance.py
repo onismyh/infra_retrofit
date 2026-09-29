@@ -50,6 +50,7 @@ RESULTS = {
     "LP_DRY": _result({"COAL_RETROFIT_LP_RELAX": "1"}, objective=3.9e12, mip_gap=None, water_season="dry"),
     "NOSOL": _result({}, objective=float("nan"), mip_gap=None),  # 求解状态不可接受：目标函数写成 NaN，结果表补零
     "OLD": _result(None),
+    "OLD2": _result(None),
     "NOCODE": _result({}, code=None),
     "OTHER_COMMIT": _result({}, code={"commit": "b" * 40, "dirty": False}),
     "DIRTY": _result({}, code={"commit": "a" * 40, "dirty": True}),
@@ -129,7 +130,7 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
         ("AUTO", "MIP", "只有 AUTO 热启动了"),
         ("OLD", "LP", "OLD 没有 resolved 段"),  # 旧结果核不了参数与环境变量：不放行
         ("MIP", "OLD", "OLD 没有 resolved 段"),  # 两个位置都要查
-        ("OLD", "OLD", "没有 resolved 段"),
+        ("OLD", "OLD2", "OLD、OLD2 没有 resolved 段"),  # 两边都缺：一条 failure 点名两边
         ("LP", "LP_DRY", "两边都是 LP 松弛"),  # 热启动第 1 步都没接上第 2 步：环境变量相同，也不能相减
         ("MIP", "NOSOL", "NOSOL 没有可用的解"),
         ("NOSOL", "MIP", "NOSOL 没有可用的解"),
@@ -144,6 +145,14 @@ def test_pair_fails(check, a: str, b: str, message: str) -> None:
     code, out = check("--pair", a, b)
     assert code == 1 and message in out
     assert "SIGN RESOLVED" not in out and "inside solver bounds" not in out  # 不能相减的一对不给判断
+
+
+def test_pair_refuses_the_same_result_twice(check, capsys) -> None:
+    """`--pair A A`：两边是同一个结果，没有可比的，argparse 直接报错退出（退出码 2），不进核对。"""
+    with pytest.raises(SystemExit) as info:
+        check("--pair", "OLD", "OLD")
+    assert info.value.code == 2
+    assert "--pair 的两边是同一个结果 'OLD'" in capsys.readouterr().err
 
 
 def test_pair_mip_lp_is_exactly_one_failure(check) -> None:

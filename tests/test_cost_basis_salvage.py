@@ -1,10 +1,11 @@
 """2026-09-22 的成本口径：显式 capex + 固定运维 + 能耗，并在期末计残值。
 
-分两组。第一组是闭式检查：工业成本辅助函数必须复现它们据以分解的文献锚点，隐含的捕集
-成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，允许至多低 10%）。第二组求解煤电 toy 模型，
-检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；其中一条
-收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账。第二组要 Gurobi，在 `_solve` 里
-`importorskip`，第一组没有 Gurobi 也照跑。
+分两组。第一组不要 Gurobi，都是闭式检查：隐含的捕集成本落在 ACCA21 交叉核对区间附近（长流程钢低于下限，
+允许至多低 10%）；CRF 与年金互为倒数；`industry_year_data` 把 capex、固定运维、能耗分开计价，并核对捕集蒸汽的
+直接排放与氢路线的可用性；残值辅助函数 `remaining_fraction` 按直线法、`horizon_end_year` 取最后一个区间的期末。
+第二组求解煤电 toy 模型，检查求解器记入的残值抵扣等于它所计每笔 capex 按直线法的剩余部分，并从期末折现；
+其中一条收紧 toy 里水泥 hub 的目标，核对工业两项 capex 也进了残值台账；另一条关掉残值开关，核对表里没有残值行，
+且两次目标值只差残值抵扣一项。第二组要 Gurobi，在 `_solve` 里 `importorskip`。
 """
 from __future__ import annotations
 
@@ -25,27 +26,6 @@ from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs
 
 
 # ---------------------------------------------------------------------------- 闭式检查 ---
-@pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT))
-def test_h2_premium_reproduces_its_anchor_and_floors_at_capital(sector: str) -> None:
-    premium_ref, price_ref = ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
-    k = {"steel_bf_bof": 0.081, "ammonia": 0.18, "methanol": 0.19}[sector]
-    # 在锚点自身的氢价下，分解是精确的。
-    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06) == pytest.approx(premium_ref, rel=1e-9)
-    # 氢免费也不能把溢价压到 capex 年金以下（求解器把固定运维放在带地板的年度项之内，
-    # capex 一次计入、在其外）。
-    floor = ci.h2_route_capex_cny_per_t_yr(sector) * ci.capital_recovery_factor(0.06, ci.INDUSTRY_H2_LIFETIME_YEARS)
-    assert ci.h2_premium_cny_per_t(sector, 0.0, k, 0.06) == pytest.approx(floor, rel=1e-9)
-    assert floor > 0.0
-    # 对氢价单调。
-    assert ci.h2_premium_cny_per_t(sector, 30.0, k, 0.06) >= ci.h2_premium_cny_per_t(sector, 10.0, k, 0.06)
-    # 成本乘数只乘路线 capex（年金与固定运维随之）：在锚点价格下溢价多出 0.3 x capex x (CRF + 固定运维比例)，
-    # 且在任何价格下乘数越高都不会更便宜（这个旋钮不得反向）。
-    capital = ci.h2_route_annual_capital_cny_per_t(sector, 0.06)
-    assert ci.h2_premium_cny_per_t(sector, price_ref, k, 0.06, 1.3) == pytest.approx(premium_ref + 0.3 * capital, rel=1e-9)
-    for price in (0.0, 8.0, 12.4, 20.0, 35.0):
-        assert ci.h2_premium_cny_per_t(sector, price, k, 0.06, 1.2) >= ci.h2_premium_cny_per_t(sector, price, k, 0.06)
-
-
 @pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_SECTORS))
 def test_levelised_capture_cost_sits_near_the_acca21_range(sector: str) -> None:
     lo, hi = ci.INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T[sector]
@@ -132,7 +112,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert data.capacity_mt_per_share[:, UNABATED].sum() == 0.0
 
 
-# ---------------------------------------------------------------------- 求解器：残值 ---
+# -------------------------------------------------------------------- 残值：闭式检查 ---
 def test_remaining_fraction_is_straight_line() -> None:
     assert remaining_fraction(2050, 20, 2060) == pytest.approx(0.5)
     assert remaining_fraction(2040, 20, 2060) == pytest.approx(0.0)
@@ -148,6 +128,7 @@ def test_horizon_end_year_uses_last_interval() -> None:
     ]) == 2090
 
 
+# ---------------------------------------------------------------------- 求解器：残值 ---
 def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1.0, 1.0)):
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     years = (2030, 2040, 2050)

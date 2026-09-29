@@ -15,7 +15,7 @@ STORAGE_BRANCH_EDGE_CLASS = "corridor_to_storage_branch"
 # 工业点源走和煤电完全相同的接入规则（同一 edge_class -> 同一 capex 乘子），
 # 唯一的区别是它们以前只在求解时挂进来，因此没有参加三角剖分与去交叉。
 INDUSTRY_BRANCH_EDGE_CLASS = PLANT_BRANCH_EDGE_CLASS
-# 西藏不参与减排：4 个水泥点源（合计 6.95 Mt/yr）连同它们带出的备选管段一起去掉。
+# 西藏不参与减排：4 个水泥 hub（`industry_sources.csv` 的 8 个点源，合计 6.95 Mt/yr）连同它们带出的备选管段一起去掉。
 EXCLUDED_PROVINCES = {"xizang", "tibet", "西藏", "西藏自治区"}
 
 _PROVINCE_STOPWORDS = {
@@ -166,7 +166,7 @@ def load_storage_hubs(paths: ProjectPaths) -> pd.DataFrame:
 
 
 def load_industry_hubs(paths: ProjectPaths) -> pd.DataFrame:
-    """工业点源，剔除 EXCLUDED_PROVINCES；索引列 industry_index 由行序生成。"""
+    """工业 hub 表（`industry_hubs.csv`），剔除 EXCLUDED_PROVINCES；索引列 industry_index 由行序生成。"""
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
         return pd.DataFrame(columns=["hub_id", "industry_index", "lon", "lat", "province",

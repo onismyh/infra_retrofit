@@ -91,7 +91,7 @@ def test_digest_covers_the_files_that_were_read(tmp_path) -> None:
     # 只摘读了的文件：无水约束时没有流域指标，求解不读的 water_supply_links 也不在内。
     assert set(a) == {"input_dir"} | {f"digest_{key}" for key in _input_files(paths_a, scenario)}
     assert "digest_water_basin_caps" not in a and "digest_water_links" not in a
-    # `plot_style.input_vintage` 靠它判断两次求解是否用的同一份水。
+    # `check_run_provenance.py --pair` 靠它判断两次求解是否用的同一份水。
     assert a["digest_water_availability"] is not None
     # 缺的文件记 None，不报错。
     (paths_a.inputs_dir / "storage_hubs.csv").unlink()

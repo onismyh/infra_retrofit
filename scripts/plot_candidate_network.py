@@ -10,13 +10,10 @@ Output: inputs/figures/candidate_network.png + .pdf
 """
 from __future__ import annotations
 
-import sys
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
