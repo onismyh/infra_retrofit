@@ -2,13 +2,11 @@
 
 底图、字体与南海小图都走 `plot_style`（CLAUDE.md §3、§4）：EPSG:2380，省界 0.20，国界与九段线 0.75，
 主图裁到 17°N，九段线主体在南海小图里；字体由 `apply_style()` 统一设置，本脚本不自设。
-无坐标轴、无网格、无标题，各类的条数写在图例里。
+无坐标轴、无网格、无标题，各类的条数写在图例里；存图走 `save_fig`（缺字拒绝出图、宽度守卫，§4.6）。
 
 输出：_indtree/inputs/figures/candidate_network.png + .pdf
 """
 from __future__ import annotations
-
-import warnings
 
 import matplotlib
 matplotlib.use("Agg")
@@ -19,15 +17,15 @@ import pandas as pd
 from shapely import wkt as shapely_wkt
 
 from _bootstrap import ROOT
-from plot_style import MM, add_scs_inset, apply_style, draw_china_basemap, mainland_extent, to_map_xy
+from plot_style import MM, add_scs_inset, apply_style, draw_china_basemap, mainland_extent, save_fig, to_map_xy
 
-# 离散类别用 CLAUDE.md §3.3 的 NPG 色；煤电与封存汇沿用路径色表（燃煤 #636363，DSA 封存 #3182BD）。
+# 离散类别用 CLAUDE.md §3.3 的 NPG 色；煤电厂址与 plot_ed_source_atlas 同色，封存汇按 §3.3 分 DSA / EOR。
 C_GAS, C_OIL, C_BRANCH, C_DIRECT = "#E64B35", "#7E6148", "#8491B4", "#F39B7F"
 C_TRI_SOURCE_SINK, C_TRI_OTHER = "#4DBBD5", "#B09C85"
-C_PLANT, C_INDUSTRY, C_STORAGE = "#636363", "#00A087", "#3182BD"
+C_PLANT, C_INDUSTRY, C_DSA, C_EOR = "#636363", "#00A087", "#3182BD", "#9ECAE1"
 
 
-def _edge_xy(edge: pd.Series, coord: dict) -> tuple | None:
+def _edge_xy(edge: pd.Series, coord: dict) -> tuple:
     """边的 EPSG:2380 坐标：有 WKT 折线的用折线，否则连两端节点。"""
     wkt_str = edge.get("geometry_wkt", "")
     if pd.notna(wkt_str) and str(wkt_str).startswith("LINESTRING"):
@@ -35,7 +33,7 @@ def _edge_xy(edge: pd.Series, coord: dict) -> tuple | None:
         return to_map_xy(lon, lat)
     f, t = coord.get(edge["from_node_id"]), coord.get(edge["to_node_id"])
     if f is None or t is None:
-        return None
+        raise RuntimeError(f"边 {edge['edge_id']} 的端点不在节点表里，图上会少画而图例照算")
     return (f[0], t[0]), (f[1], t[1])
 
 
@@ -48,7 +46,12 @@ def main() -> None:
     coord = dict(zip(nodes["node_id"], zip(nodes["x"], nodes["y"])))
     plants = nodes[nodes["node_type"] == "plant"]
     industry = nodes[nodes["node_type"] == "industry_hub"]
-    storage = nodes[nodes["node_type"] == "storage_hub"]
+    storage = nodes[nodes["node_type"] == "storage_hub"].merge(
+        pd.read_csv(ROOT / "inputs" / "storage_hubs.csv", usecols=["storage_hub_id", "storage_type"]),
+        on="storage_hub_id", how="left", validate="one_to_one",
+    )
+    if not storage["storage_type"].isin(["dsa", "eor"]).all():
+        raise RuntimeError("封存汇的 storage_type 只应是 dsa 或 eor（CLAUDE.md §1.3 两类分开）")
 
     # 2026-09-12 起工业源也进了节点表，源汇之间的三角化边两端可以是煤电厂址或工业源。
     sources = set(plants["node_id"]) | set(industry["node_id"])
@@ -69,28 +72,28 @@ def main() -> None:
     ]
     drawn = sum(len(frame) for frame, *_ in groups)
     if drawn != len(edges):
-        raise RuntimeError(f"{len(edges) - drawn} 条边的 edge_class 不在图例里")
+        raise RuntimeError(f"{len(edges) - drawn} 条边没有归入任何图例类（edge_class 或 corridor_type 不认识）")
     lines = [[_edge_xy(e, coord) for _, e in frame.iterrows()] for frame, *_ in groups]
     points = [(plants, C_PLANT, "o", 5, 4, "煤电厂址"), (industry, C_INDUSTRY, "s", 5, 4, "工业源"),
-              (storage, C_STORAGE, "D", 18, 5, "封存汇")]
+              (storage[storage["storage_type"] == "dsa"], C_DSA, "D", 18, 5, "深部咸水层封存汇"),
+              (storage[storage["storage_type"] == "eor"], C_EOR, "D", 18, 5, "驱油封存汇")]
 
     def draw_layers(ax) -> None:
         for (_, colour, lw, alpha, ls, z, _), xys in zip(groups, lines):
             for xy in xys:
-                if xy is not None:
-                    ax.plot(*xy, color=colour, linewidth=lw, alpha=alpha, linestyle=ls,
-                            solid_capstyle="round", zorder=z)
+                ax.plot(*xy, color=colour, linewidth=lw, alpha=alpha, linestyle=ls,
+                        solid_capstyle="round", zorder=z)
         for frame, colour, marker, size, z, _ in points:
             ax.scatter(frame["x"], frame["y"], s=size, c=colour, marker=marker,
                        edgecolors="white", linewidths=0.3, zorder=z)
 
     fig = plt.figure(figsize=(183 * MM, 150 * MM))
-    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+    ax = fig.add_axes((0.0, 0.0, 1.0, 1.0))
     draw_china_basemap(ax, facecolor="#F7F8F9")
     draw_layers(ax)
     for _, row in storage.iterrows():
         ax.annotate(str(row["storage_hub_id"]), xy=(row["x"], row["y"]), xytext=(2, 2),
-                    textcoords="offset points", fontsize=5, color=C_STORAGE, zorder=6)
+                    textcoords="offset points", fontsize=5, color=C_DSA, zorder=6)
     mainland_extent(ax)
     ax.set_axis_off()
     add_scs_inset(fig, ax, draw=draw_layers)
@@ -104,14 +107,7 @@ def main() -> None:
     ax.legend(handles=handles, loc="lower left", fontsize=6, frameon=False,
               title=f"候选边共 {len(edges)} 条", title_fontsize=6)
 
-    out_dir = ROOT / "inputs" / "figures"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", UserWarning)  # 缺字警告直接抛异常（CLAUDE.md §4.6）
-        for ext in ("png", "pdf"):
-            fig.savefig(out_dir / f"candidate_network.{ext}", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved to {out_dir / 'candidate_network.png'}")
+    save_fig(fig, "candidate_network", out_dir=ROOT / "inputs" / "figures")
 
 
 if __name__ == "__main__":

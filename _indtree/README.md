@@ -117,10 +117,11 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > `industry_output_index_times_cn60.csv` 两个文件入了库，其余输入只在作者本机。入库的这一份与 `a303f05` 的仓库根
 > `inputs/` 逐文件比过：只有上面三个网络文件不同，其余（含 `ST_CP_BASE` 要读的 `sector_targets_none.csv`）都相同；
 > 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图。
+> 2026-09-29（PR #19）删去两张没有读者的连接表 `biomass_supply_links.csv`、`ammonia_supply_links.csv`（按 150 km 生成，优化器读入时按 200 km 现建），`89f8205` 里还在。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
-生物质与氨的供给曲线和连接表。
+生物质与氨的供给曲线。
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 

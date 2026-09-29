@@ -344,6 +344,7 @@ def add_scs_inset(fig, ax_main, draw=None, root=None,
     inset.set_xlabel("")
     inset.set_ylabel("")
     for side in inset.spines.values():
+        side.set_visible(True)   # apply_style() 关了上、右轴线；小图要完整方框（同 map_tht）
         side.set_linewidth(0.4)
         side.set_edgecolor("#888888")
     return inset
@@ -469,22 +470,24 @@ def panel_label_inside(ax, letter: str, x: float = 0.03, y: float = 0.97,
             bbox=dict(boxstyle="square,pad=0.1", fc="white", ec="none", alpha=0.8))
 
 
-def save_fig(fig, name: str, subdir: str = ""):
+def save_fig(fig, name: str, subdir: str = "", out_dir=None):
     """Save figure as PDF + PNG with publication naming.
     
     Args:
         fig: matplotlib figure object
         name: figure filename (without extension)
         subdir: subdirectory under figures/ ("main", "extended", "patent", or "" for root)
+        out_dir: 直接给输出目录，给了就不看 subdir（输入诊断图写 `_indtree/inputs/figures/`）
     """
-    if subdir == "main":
-        out_dir = MAIN_FIGURES_DIR
-    elif subdir == "extended":
-        out_dir = EXTENDED_FIGURES_DIR
-    elif subdir == "patent":
-        out_dir = PATENT_FIGURES_DIR
-    else:
-        out_dir = FIGURES_DIR
+    if out_dir is None:
+        if subdir == "main":
+            out_dir = MAIN_FIGURES_DIR
+        elif subdir == "extended":
+            out_dir = EXTENDED_FIGURES_DIR
+        elif subdir == "patent":
+            out_dir = PATENT_FIGURES_DIR
+        else:
+            out_dir = FIGURES_DIR
     
     out_dir.mkdir(parents=True, exist_ok=True)
     # WIDTH GUARD, SELF-CORRECTING, WITH A CULPRIT WHEN IT CANNOT CORRECT. bbox_inches='tight'
@@ -550,7 +553,7 @@ def save_fig(fig, name: str, subdir: str = ""):
               "\"减去\"。不要为一个字符加 fallback 字体栈——那会让同一个符号在有无 SimHei 的"
               "机器上落到不同字形。")
     plt.close(fig)
-    print(f"  [ok] {name} -> {subdir or 'root'}/")
+    print(f"  [ok] {name} -> {out_dir}/")
 
 
 # ── Model-consistent emission accounting ───────────────────────────────────────
