@@ -1,0 +1,803 @@
+{
+  "schema_version": "1.0",
+  "review_date": "2026-09-30",
+  "scope": "独占工业参数证据；仅文档无运行代码变更",
+  "median_rules": [
+    "区间作为一个观察，不拆端点",
+    "同项目或同研究簇去重",
+    "规范分级值不求文献样本中位",
+    "成本年/地区/设备范围/分母/压力边界匹配后才给可实施中位"
+  ],
+  "sources": {
+    "ieaghg_2013": {
+      "title": "Iron and Steel CCS Study, IEAGHG 2013/04",
+      "year": 2013,
+      "url": "https://ieaghg.org/publications/2013-04%20Iron%20and%20Steel%20CCS%20Study%20(Techno-Economics%20Integrated%20Steel%20Mill).pdf",
+      "cluster": "ieaghg_steel_2013"
+    },
+    "conch_2018": {
+      "title": "海螺水泥窑碳捕集纯化项目的来龙去脉",
+      "year": 2018,
+      "url": "https://www.chinaconch.com/wxzx/mtjj/202512/t20251224_45747.html",
+      "cluster": "baimashan_50000"
+    },
+    "qingzhou_2023": {
+      "title": "青州中联20万吨CCUS项目，山东广电原采访",
+      "year": 2023,
+      "url": "https://sdxw.iqilu.com/share/YS0yMS0xNDg2NDc1OQ%3D%3D.html",
+      "cluster": "qingzhou_200000"
+    },
+    "rizhao_2025": {
+      "title": "日照钢铁碳捕集利用项目环评第一次公示",
+      "year": 2025,
+      "url": "https://www.rizhaosteel.com/hbxxgk/1008.htm",
+      "cluster": "rizhao_180000"
+    },
+    "baogang_2022": {
+      "title": "中国能源报2022-07-04第10版包钢CCUS项目",
+      "year": 2022,
+      "url": "https://paper.people.com.cn/zgnyb/html/2022-07/04/content_25927465.htm",
+      "cluster": "baogang_500000"
+    },
+    "cemcap_p1": {
+      "title": "Comparison of Technologies for CO2 Capture from Cement Production Part1",
+      "year": 2019,
+      "doi": "10.3390/en12030559",
+      "url": "https://res.mdpi.com/energies/energies-12-00559/article_deploy/energies-12-00559.pdf",
+      "cluster": "cemcap_2019"
+    },
+    "cemcap_p2": {
+      "title": "Comparison of Technologies for CO2 Capture from Cement Production Part2",
+      "year": 2019,
+      "doi": "10.3390/en12030542",
+      "url": "https://research-portal.uu.nl/ws/files/236327125/energies-12-00542.pdf",
+      "cluster": "cemcap_2019"
+    },
+    "npc_2019": {
+      "title": "Meeting the Dual Challenge Chapter2 CCUS Supply Chains and Economics",
+      "year": 2019,
+      "file_revision": "2021-03-05",
+      "url": "https://dualchallenge.npc.org/documents/CCUS-Chap_2-030521.pdf",
+      "cluster": "npc_2019_expert_model"
+    },
+    "dea_2024": {
+      "title": "Technology Data for Carbon Capture Transport and Storage",
+      "year": 2024,
+      "file_revision": "2024-04",
+      "url": "https://ens.dk/media/4258/download",
+      "cluster": "dea_cowi_2024"
+    },
+    "vogl_2018": {
+      "title": "Assessment of hydrogen direct reduction for fossil-free steelmaking",
+      "year": 2018,
+      "doi": "10.1016/j.jclepro.2018.08.279",
+      "url": "https://www.p-plus.nl/resources/articlefiles/Staal-van-waterstof.pdf",
+      "cluster": "vogl_2018"
+    },
+    "baosteel_2022": {
+      "title": "宝钢气候行动报告",
+      "year": 2022,
+      "url": "https://res.baowugroup.com/attach/2022/06/24/41eb7f023c464e5da4e00f853a01b15c.pdf",
+      "cluster": "baosteel_million_t_dri",
+      "verification": "搜索索引核原句，PDF页图待复核"
+    },
+    "rmi_nh3_2024": {
+      "title": "绿氨报告RMI/CPCIF",
+      "year": 2024,
+      "url": "https://rmi.org.cn/wp-content/uploads/2024/11/1231%E7%BB%BF%E6%B0%A8%E6%8A%A5%E5%91%8A.pdf",
+      "cluster": "rmi_nh3_2024"
+    },
+    "sinopec_meoh_2026": {
+      "title": "中国石化CO2加氢制甲醇技术经济报道",
+      "year": 2026,
+      "url": "https://www.sinopecnews.com.cn/xnews/content/2026-04/21/content_7146418.html",
+      "cluster": "sinopec_e_meoh_2026"
+    },
+    "wang_2025_si": {
+      "title": "Long-term transformation in China steel sector for CCS deployment SI",
+      "year": 2025,
+      "doi": "10.1038/s41467-025-59205-3",
+      "url": "https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fs41467-025-59205-3/MediaObjects/41467_2025_59205_MOESM1_ESM.pdf",
+      "cluster": "wang_2025_yang_2020_lca"
+    },
+    "fujian_2026": {
+      "title": "福建省2026水效指南",
+      "year": 2026,
+      "url": "https://gxt.fujian.gov.cn/zwgk/zfxxgk/fdzdgknr/gzdt/202601/P020260106642339923147.pdf",
+      "cluster": "gbt18916_8_2025"
+    },
+    "beijing_quota_2024": {
+      "title": "北京市行业用水定额汇编2024",
+      "year": 2024,
+      "url": "https://swj.beijing.gov.cn/zwgk/jcgk/swfggzgfxwjcazqyj/202409/P020240923578582861109.pdf",
+      "cluster": "national_water_standards"
+    },
+    "wuhan_quota_2025": {
+      "title": "武汉水效指标",
+      "year": 2025,
+      "url": "https://fgw.wuhan.gov.cn/zfxxgk/zfxxgk_1/qtzdgkwj/202507/P020250815407653042237.pdf",
+      "cluster": "gbt18916_2_2022"
+    },
+    "chongqing_2026": {
+      "title": "重庆2025企业先进水效公示",
+      "year": 2026,
+      "url": "https://slj.cq.gov.cn/zwgk_250/zfxxgkml/tzgg/202603/t20260316_15531237.html",
+      "cluster": "chongqing_real_plants_2025"
+    }
+  },
+  "observations": [
+    {
+      "id": "capture_capex_baimashan",
+      "source_id": "conch_2018",
+      "parameter": "ccs_capex",
+      "location": "正文2018-11-16",
+      "raw_value": {
+        "investment": 5000,
+        "annual_capacity": 5
+      },
+      "raw_unit": "万元;万吨CO2/yr",
+      "normalized_value": 1000,
+      "normalized_unit": "CNY/(tCO2/yr)",
+      "value_kind": "scalar",
+      "boundary": "化学吸收+食品/工业级液体提纯储罐",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "没有管输压力/捕集岛拆分，宽边界国内工程代理"
+    },
+    {
+      "id": "capture_capex_qingzhou",
+      "source_id": "qingzhou_2023",
+      "parameter": "ccs_capex",
+      "location": "2023-07-06采访",
+      "raw_value": {
+        "investment": 2.56,
+        "annual_capacity": 20
+      },
+      "raw_unit": "亿元;万吨CO2/yr",
+      "normalized_value": 1280,
+      "normalized_unit": "CNY/(tCO2/yr)",
+      "value_kind": "scalar",
+      "boundary": "制氧+全氧燃烧自富集+提纯",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "与胺法不同；2022计划1.98亿同项目去重"
+    },
+    {
+      "id": "capture_capex_rizhao",
+      "source_id": "rizhao_2025",
+      "parameter": "ccs_capex",
+      "location": "公司环评第一次公示2025-08-12",
+      "raw_value": {
+        "investment": 13468,
+        "annual_capacity": 18
+      },
+      "raw_unit": "万元;万吨CO2/yr",
+      "normalized_value": 748.2222222222222,
+      "normalized_unit": "CNY/(tCO2/yr)",
+      "value_kind": "scalar",
+      "boundary": "捕集+除尘+循环冷却水",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "未明确产品交付压力和建成最终价；与水泥不同行业"
+    },
+    {
+      "id": "capture_capex_baogang",
+      "source_id": "baogang_2022",
+      "parameter": "ccs_capex",
+      "location": "中国能源报第10版",
+      "raw_value": {
+        "investment": 6.14,
+        "annual_capacity": 50
+      },
+      "raw_unit": "亿元;万吨CO2/yr",
+      "normalized_value": 1228,
+      "normalized_unit": "CNY/(tCO2/yr)",
+      "value_kind": "scalar",
+      "boundary": "捕集利用封存全产业链",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "整链未拆分"
+    },
+    {
+      "id": "capture_capex_ieaghg2a",
+      "source_id": "ieaghg_2013",
+      "parameter": "ccs_capex",
+      "location": "Table5 p15/PDFp19;Table6 p16/PDFp20",
+      "raw_value": {
+        "investment": 679,
+        "annual_captured": 4972525
+      },
+      "raw_unit": "MUSD2010;tCO2/yr",
+      "normalized_value": 136.5503441410551,
+      "normalized_unit": "USD2010/(tCO2/yr)",
+      "value_kind": "scalar",
+      "boundary": "捕集含15%预备费；110bara；蒸汽电厂扩建单列",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "西欧新建设备包和2010价格，未进行中国地区/价格年调整"
+    },
+    {
+      "id": "steam_ieaghg",
+      "source_id": "ieaghg_2013",
+      "parameter": "ccs_steam",
+      "location": "报告p9/PDFp13",
+      "raw_value": 2.3,
+      "raw_unit": "GJ/tCO2",
+      "normalized_value": 2.3,
+      "normalized_unit": "GJ/tCO2",
+      "value_kind": "scalar",
+      "boundary": "加压氧气高炉顶煤气MDEA/Pz",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不能与常压水泥MEA合组"
+    },
+    {
+      "id": "steam_cemcap",
+      "source_id": "cemcap_p1",
+      "parameter": "ccs_steam",
+      "location": "Table7 PDFp14",
+      "raw_value": [
+        3.76,
+        3.8
+      ],
+      "raw_unit": "MJ/kgCO2",
+      "normalized_value": [
+        3.76,
+        3.8
+      ],
+      "normalized_unit": "GJ/tCO2",
+      "value_kind": "interval",
+      "boundary": "水泥MEA低/中漏风工况",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "一个研究区间不拆端点；技术不同于2030先进溶剂"
+    },
+    {
+      "id": "electric_cemcap",
+      "source_id": "cemcap_p1",
+      "parameter": "ccs_electric",
+      "location": "Table7 PDFp14",
+      "raw_value": [
+        0.521,
+        0.549
+      ],
+      "raw_unit": "MJ/kgCO2",
+      "normalized_value": [
+        144.72222222222223,
+        152.5
+      ],
+      "normalized_unit": "kWh/tCO2",
+      "value_kind": "interval",
+      "boundary": "水泥MEA包括110bar压缩",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "与钢铁进料不同；一个研究两工况只一区间"
+    },
+    {
+      "id": "solvent_cemcap",
+      "source_id": "cemcap_p1",
+      "parameter": "ccs_consumable",
+      "location": "Table7 PDFp14",
+      "raw_value": 0.001,
+      "raw_unit": "kgMEA/kgCO2",
+      "normalized_value": 1,
+      "normalized_unit": "kgMEA/tCO2",
+      "value_kind": "scalar",
+      "boundary": "MEA补充；另NaOH1kg/t",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "只有物耗，缺同价格年完整耗材包"
+    },
+    {
+      "id": "fom_cemcap",
+      "source_id": "cemcap_p2",
+      "parameter": "ccs_fom",
+      "location": "section3.1.2",
+      "raw_value": {
+        "maintenance": 2.5,
+        "insurance_tax": 2.0,
+        "staff": 20,
+        "staff_salary": 60000
+      },
+      "raw_unit": "%TPC/yr;人;EUR/人/yr",
+      "normalized_value": null,
+      "normalized_unit": "需要设备包资本及劳动分项",
+      "value_kind": "scalar",
+      "boundary": "维修+保险税+劳动+行政支持",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不是单一2.5%FOM"
+    },
+    {
+      "id": "life_cemcap",
+      "source_id": "cemcap_p2",
+      "parameter": "ccs_life",
+      "location": "Table5",
+      "raw_value": 25,
+      "raw_unit": "yr",
+      "normalized_value": 25,
+      "normalized_unit": "yr",
+      "value_kind": "scalar",
+      "boundary": "经济评价年限",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "与技术寿命区分"
+    },
+    {
+      "id": "fom_ieaghg_allplant",
+      "source_id": "ieaghg_2013",
+      "parameter": "fom",
+      "location": "Table6 p16;Table7 p17",
+      "raw_value": {
+        "maintenance": 141.996,
+        "plant_capex": 3928,
+        "fixed_om": 422.72
+      },
+      "raw_unit": "MUSD",
+      "normalized_value": 0.036149694501018334,
+      "normalized_unit": "fraction/yr",
+      "value_kind": "scalar",
+      "boundary": "全钢厂维修/全厂资本；总fixedOM另422.72",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不是捕集岛或氢路线FOM"
+    },
+    {
+      "id": "compression_dea",
+      "source_id": "dea_2024",
+      "parameter": "ccs_highpurity_electric",
+      "location": "导论i.3.1 Table4 PDFp27",
+      "raw_value": 0.1,
+      "raw_unit": "MWh/tCO2",
+      "normalized_value": 100,
+      "normalized_unit": "kWh/tCO2",
+      "value_kind": "scalar",
+      "boundary": "压缩1→150bara、脱水<50ppm；8级中冷30°C；范围90–120",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "单源中心可用；NPC压力入口未公开不可强建压力匹配中位"
+    },
+    {
+      "id": "compression_npc",
+      "source_id": "npc_2019",
+      "parameter": "ccs_highpurity_electric",
+      "location": "p2-17,p2-19;Table2-6 p2-20",
+      "raw_value": 0.1,
+      "raw_unit": "MWh/tCO2",
+      "normalized_value": 100,
+      "normalized_unit": "kWh/tCO2",
+      "value_kind": "scalar",
+      "boundary": ">95%CO2只脱水压缩至超临界；氨燃气0；未给入口/出口压力",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "操作边界可匹配DEA，但具体压力未核；仅佐证不是严格同压力中位"
+    },
+    {
+      "id": "fom_npc",
+      "source_id": "npc_2019",
+      "parameter": "ccs_fom",
+      "location": "Table2-5 p2-19",
+      "raw_value": {
+        "ammonia": 5,
+        "steel": 5,
+        "cement": 7
+      },
+      "raw_unit": "%CAPEX/yr",
+      "normalized_value": {
+        "ammonia": 0.05,
+        "steel": 0.05,
+        "cement": 0.07
+      },
+      "normalized_unit": "fraction/yr",
+      "value_kind": "scalar",
+      "boundary": "固定+半变动+非能源变动O&M，包括化学品水",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不是pureFOM；另加耗材需排查双计"
+    },
+    {
+      "id": "life_npc",
+      "source_id": "npc_2019",
+      "parameter": "ccs_life",
+      "location": "Table2-4 p2-18;Table2-7 p2-21",
+      "raw_value": 20,
+      "raw_unit": "yr",
+      "normalized_value": 20,
+      "normalized_unit": "yr",
+      "value_kind": "scalar",
+      "boundary": "经济成本评价20-Year Life",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不是实测技术寿命"
+    },
+    {
+      "id": "h2capex_vogl",
+      "source_id": "vogl_2018",
+      "parameter": "h2_capex",
+      "location": "section3.3 p741/PDFp6",
+      "raw_value": {
+        "shaft": 230,
+        "eaf": 184,
+        "electrolyser": 160
+      },
+      "raw_unit": "EUR/(tliquidsteel/yr)",
+      "normalized_value": 414,
+      "normalized_unit": "EUR/(tliquidsteel/yr)",
+      "value_kind": "scalar",
+      "boundary": "H2竖炉+EAF不含电解槽、铸轧、球团制备；2030技术",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "缺中国同设备包；不能直接对粗钢投资中位"
+    },
+    {
+      "id": "h2capex_baosteel",
+      "source_id": "baosteel_2022",
+      "parameter": "h2_capex",
+      "location": "p40–41（索引原句）",
+      "raw_value": {
+        "investment": 18.9,
+        "capacity": 100
+      },
+      "raw_unit": "亿元;万吨DRI/yr",
+      "normalized_value": 1890,
+      "normalized_unit": "CNY/(tDRI/yr)",
+      "value_kind": "scalar",
+      "boundary": "百万吨竖炉；仅tDRI，不含完整EAF路线",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "分母不同，需物料收率与设备包转换"
+    },
+    {
+      "id": "h2om_vogl",
+      "source_id": "vogl_2018",
+      "parameter": "h2_fom",
+      "location": "p739/PDFp4",
+      "raw_value": 3,
+      "raw_unit": "%capex/yr",
+      "normalized_value": 0.03,
+      "normalized_unit": "fraction/yr",
+      "value_kind": "scalar",
+      "boundary": "O&M含耐火材料，劳动另53.2EUR/t",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "与模型FOM是否包含耗材/劳动未对应"
+    },
+    {
+      "id": "h2life_vogl",
+      "source_id": "vogl_2018",
+      "parameter": "h2_life",
+      "location": "p739/PDFp4",
+      "raw_value": {
+        "shaft_eaf": 20,
+        "electrolyser": 10
+      },
+      "raw_unit": "yr",
+      "normalized_value": 20,
+      "normalized_unit": "yr",
+      "value_kind": "scalar",
+      "boundary": "竖炉EAF寿命20，电解槽10",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "只能支持钢设备包，不能泛化氨甲醇"
+    },
+    {
+      "id": "h2demand_vogl",
+      "source_id": "vogl_2018",
+      "parameter": "h2_net_steel",
+      "location": "p739/PDFp4",
+      "raw_value": 51,
+      "raw_unit": "kg/tliquidsteel",
+      "normalized_value": 51,
+      "normalized_unit": "kg/tliquidsteel",
+      "value_kind": "scalar",
+      "boundary": "纯HBI、不计氢损失、剩余氢循环",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "可能与代码81总供气量边界不同，待点源定义"
+    },
+    {
+      "id": "h2abatement_vogl",
+      "source_id": "vogl_2018",
+      "parameter": "h2_abatement_steel",
+      "location": "section3.2",
+      "raw_value": {
+        "route": 53,
+        "baseline": 1870
+      },
+      "raw_unit": "kgCO2/tliquidsteel",
+      "normalized_value": 0.9716577540106952,
+      "normalized_unit": "fraction",
+      "value_kind": "scalar",
+      "boundary": "直接+石灰等；可再生电力假设",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "点源钢基准1800不是1870；不与生命周期百分比合组"
+    },
+    {
+      "id": "h2demand_rmi_nh3",
+      "source_id": "rmi_nh3_2024",
+      "parameter": "h2_net_ammonia",
+      "location": "p12图7",
+      "raw_value": 190,
+      "raw_unit": "kgH2/tNH3",
+      "normalized_value": 190,
+      "normalized_unit": "kgH2/tNH3",
+      "value_kind": "scalar",
+      "boundary": "成本斜率含生产损失；理想离网3905h",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "与理论177.6/代码180不同定义"
+    },
+    {
+      "id": "premium_nh3_rmi",
+      "source_id": "rmi_nh3_2024",
+      "parameter": "h2_premium_ammonia",
+      "location": "p12图7",
+      "raw_value": {
+        "green": [
+          2920,
+          4600
+        ],
+        "grey": [
+          2200,
+          2500
+        ],
+        "h2_price": [
+          12,
+          20
+        ]
+      },
+      "raw_unit": "CNY/tNH3;CNY/kgH2",
+      "normalized_value": null,
+      "normalized_unit": "CNY/tNH3",
+      "value_kind": "paired_model_range",
+      "boundary": "理想离网无储能储氢；绿3905h对灰8000h",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "端点氢价/原料灰价组合未逐一成对，不制造区间溢价样本"
+    },
+    {
+      "id": "premium_meoh_sinopec",
+      "source_id": "sinopec_meoh_2026",
+      "parameter": "h2_premium_methanol",
+      "location": "正文2026-04-21",
+      "raw_value": {
+        "green": [
+          4500,
+          5500
+        ],
+        "fossil": 2000,
+        "h2_price": [
+          15,
+          18
+        ]
+      },
+      "raw_unit": "CNY/tMeOH;CNY/kgH2",
+      "normalized_value": {
+        "premium": [
+          2500,
+          3500
+        ]
+      },
+      "normalized_unit": "CNY/tMeOH",
+      "value_kind": "interval",
+      "boundary": "CO2加氢e-methanol",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不能匹配绿氢耦合煤制甲醇路线"
+    },
+    {
+      "id": "water_wang",
+      "source_id": "wang_2025_si",
+      "parameter": "ccs_water",
+      "location": "Table9 PDFp15;Note5 PDFp41–42",
+      "raw_value": [
+        2.25,
+        3.47
+      ],
+      "raw_unit": "m3/tCO2",
+      "normalized_value": [
+        2.25,
+        3.47
+      ],
+      "normalized_unit": "m3/tCO2",
+      "value_kind": "interval",
+      "boundary": "water consumption、蒸发、追溯LCA文献",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不是厂内取水；1.65现引用误引不能用2.86直接替换"
+    },
+    {
+      "id": "water_cemcap_process",
+      "source_id": "cemcap_p1",
+      "parameter": "ccs_water",
+      "location": "Table7 PDFp14",
+      "raw_value": [
+        0.473,
+        0.528
+      ],
+      "raw_unit": "kgwater/kgCO2",
+      "normalized_value": [
+        0.473,
+        0.528
+      ],
+      "normalized_unit": "m3/tCO2",
+      "value_kind": "interval",
+      "boundary": "只工艺补水；不含冷却补水",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "不能填全部附加取水；与耗水LCA不同"
+    },
+    {
+      "id": "water_nh3_standard",
+      "source_id": "fujian_2026",
+      "parameter": "water_quota_nh3",
+      "location": "PDFp25",
+      "raw_value": {
+        "coal": [
+          12,
+          8
+        ],
+        "gas": [
+          9,
+          5.5
+        ],
+        "anthracite": [
+          11,
+          7.5
+        ]
+      },
+      "raw_unit": "m3/tNH3",
+      "normalized_value": {
+        "coal": [
+          12,
+          8
+        ],
+        "gas": [
+          9,
+          5.5
+        ],
+        "anthracite": [
+          11,
+          7.5
+        ]
+      },
+      "normalized_unit": "m3/tNH3",
+      "value_kind": "normative_mapping",
+      "boundary": "GB/T18916.8-2025既有/新改扩建企业取水",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "规范数值不是随机观察，不求中位"
+    },
+    {
+      "id": "water_cement_standard",
+      "source_id": "beijing_quota_2024",
+      "parameter": "water_quota_cement",
+      "location": "序号18",
+      "raw_value": {
+        "existing": 0.51,
+        "new_expanded": 0.225,
+        "advanced": 0.165
+      },
+      "raw_unit": "m3/tclinker",
+      "normalized_value": {
+        "existing": 0.51,
+        "new_expanded": 0.225,
+        "advanced": 0.165
+      },
+      "normalized_unit": "m3/tclinker",
+      "value_kind": "normative_mapping",
+      "boundary": "GB/T18916.62-2022三级取水",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "规范不求中位；代码advanced当前实际新改扩建"
+    },
+    {
+      "id": "water_meoh_standard",
+      "source_id": "beijing_quota_2024",
+      "parameter": "water_quota_meoh",
+      "location": "PDFp26序号56",
+      "raw_value": {
+        "existing": 15,
+        "new_expanded": 11,
+        "advanced": 9
+      },
+      "raw_unit": "m3/tmethanol",
+      "normalized_value": {
+        "existing": 15,
+        "new_expanded": 11,
+        "advanced": 9
+      },
+      "normalized_unit": "m3/tmethanol",
+      "value_kind": "normative_mapping",
+      "boundary": "GB/T18916.35-2018煤制甲醇",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "规范不求中位；不覆盖气头等"
+    },
+    {
+      "id": "water_eaf_standard",
+      "source_id": "wuhan_quota_2025",
+      "parameter": "water_quota_eaf",
+      "location": "PDFp79",
+      "raw_value": {
+        "steelmaking": [
+          1.74,
+          0.55
+        ],
+        "bars": [
+          0.7,
+          0.34
+        ]
+      },
+      "raw_unit": "m3/tcrude; m3/tfinished",
+      "normalized_value": null,
+      "normalized_unit": "需要粗钢到棒材成材率",
+      "value_kind": "normative_mapping",
+      "boundary": "炼钢与轧钢工序的分母不同",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "直接求和2.44/.89默认成材率1；不能当完整厂区样本"
+    },
+    {
+      "id": "water_real_liangping_conch",
+      "source_id": "chongqing_2026",
+      "parameter": "water_real_advanced_clinker",
+      "location": "2025企业公示行",
+      "raw_value": {
+        "production": 1394428,
+        "withdrawal": 211700
+      },
+      "raw_unit": "tclinker;m3",
+      "normalized_value": 0.15181852343756724,
+      "normalized_unit": "m3/tclinker",
+      "value_kind": "scalar",
+      "boundary": "2025独立企业实际取水/熟料",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "可组成真实先进厂观察中位，但非全国存量模型或捕集附加取水"
+    },
+    {
+      "id": "water_real_dongfangxiwang",
+      "source_id": "chongqing_2026",
+      "parameter": "water_real_advanced_clinker",
+      "location": "2025企业公示行",
+      "raw_value": {
+        "production": 7712629,
+        "withdrawal": 1107011
+      },
+      "raw_unit": "tclinker;m3",
+      "normalized_value": 0.1435322508057888,
+      "normalized_unit": "m3/tclinker",
+      "value_kind": "scalar",
+      "boundary": "2025独立企业实际取水/熟料",
+      "include_in_current_parameter_median": false,
+      "exclusion_reason": "可组成真实先进厂观察中位，但非全国存量模型或捕集附加取水"
+    }
+  ],
+  "median_groups": [
+    {
+      "id": "high_purity_compression_pressure_matched",
+      "observations": [
+        "compression_dea",
+        "compression_npc"
+      ],
+      "n_independent_publications": 2,
+      "n_pressure_matched": 1,
+      "median": null,
+      "status": "未建立严格压力匹配多源中位",
+      "candidate": 100,
+      "unit": "kWh/tCO2",
+      "candidate_basis": "DEA明确1→150bara脱水压缩单源中心；NPC同操作佐证，未给压力"
+    },
+    {
+      "id": "cement_capture_china_broad_proxy",
+      "observations": [
+        "capture_capex_baimashan",
+        "capture_capex_qingzhou"
+      ],
+      "n_projects": 2,
+      "descriptive_median": 1140,
+      "unit": "CNY/(tCO2/yr)",
+      "approved_model_median": null,
+      "status": "技术与交付不同，仅宽边界工程代理，不能视为同设备包中位"
+    },
+    {
+      "id": "real_advanced_clinker_withdrawal_2025",
+      "observations": [
+        "water_real_liangping_conch",
+        "water_real_dongfangxiwang"
+      ],
+      "n_plants": 2,
+      "median": 0.14767538712167802,
+      "unit": "m3/tclinker",
+      "status": "同年同地区官方实测先进厂取水；可比描述性中位，不用于替换全国存量定额"
+    }
+  ],
+  "recommendations": [
+    {
+      "parameter": "NH3/MeOH高浓度CO2压缩脱水电耗",
+      "current": 110,
+      "candidate": 100,
+      "unit": "kWh/tCO2",
+      "evidence_level": "B1单源明确设备边界+独立操作佐证",
+      "condition": "仅已分离高纯CO2、1→150bara；不是整厂排放全流股；数值变更需主Agent按研究假设批准流程处理"
+    },
+    {
+      "parameter": "捕集附加取水",
+      "current": 1.65,
+      "candidate": null,
+      "unit": "m3/tCO2",
+      "evidence_level": "D当前引用不支持",
+      "action": "保留待核假设，删除1.60–1.69/1.65来自Wang2025的错误说明；不替换为耗水中点2.86"
+    }
+  ]
+}

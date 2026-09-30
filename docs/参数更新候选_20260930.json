@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "review_date": "2026-09-30",
+  "status": "awaiting_required_plan_approval",
+  "applied": false,
+  "code_baseline": "8312c8bc4c86d5a8f19dc3cc10d6b4e8f2b42b19",
+  "first_batch": [
+    {
+      "id": "coal_ccs_extra_fuel_path",
+      "file": "src/coal_retrofit/optimization/scenario.py",
+      "field": "ccs_energy_penalty_ratio_by_year",
+      "years": [
+        2030,
+        2040,
+        2050,
+        2060
+      ],
+      "old": [
+        0.15,
+        0.1054,
+        0.0899,
+        0.075
+      ],
+      "source_output_loss": [
+        0.222,
+        0.156,
+        0.133,
+        0.111
+      ],
+      "proposed": [
+        0.2853470437017995,
+        0.1848341232227488,
+        0.15340253748558247,
+        0.12485939257592801
+      ],
+      "unit": "extra_fuel/base_fuel",
+      "method": "p/(1-p)",
+      "n_independent_sources": 1,
+      "is_multi_source_median": false,
+      "source": {
+        "doi": "10.1038/s41467-025-57559-2",
+        "local": "reference/41467_2025_57559_MOESM1_ESM.pdf",
+        "locator": "SI PDF pp20–21 Table7"
+      },
+      "assumptions": [
+        "原出力损失按相同燃料投入定义",
+        "固定电量近似按燃料线性扩展恢复",
+        "适用于现行CCS/BECCS额外燃料项"
+      ],
+      "effects": [
+        "额外燃料成本",
+        "残余CO2",
+        "物理捕集CO2"
+      ],
+      "requires_plan_approval": true
+    }
+  ],
+  "conditional_candidates": [
+    {
+      "id": "high_purity_ccs_electricity",
+      "old": 110,
+      "proposed": 100,
+      "unit": "kWh/tCO2",
+      "source": "DEA2024 PDFp27 Table4; NPC2019 pp2-19–2-20佐证",
+      "median": false,
+      "status": "hold_pending_process_stream_scope",
+      "reason": "DEA1→150bara含脱水压缩；NPC压力未公开；不能泛用全厂CO2"
+    },
+    {
+      "id": "coal_ccs_fom",
+      "old": 0.05,
+      "proposed": 0.05433715220949264,
+      "unit": "CAPEX/yr",
+      "source": "An2025 SI Table7 2030",
+      "median": false,
+      "status": "single_source_sensitivity_only"
+    },
+    {
+      "id": "storage_cost",
+      "old": 32,
+      "proposed": 35,
+      "unit": "CNY/tCO2",
+      "source": "An2025 SI Table7 5USD/t×7",
+      "median": false,
+      "status": "price_year_and_boundary_pending"
+    },
+    {
+      "id": "green_h2_2030_cap",
+      "old": 6.5,
+      "proposed": 5,
+      "unit": "Mt/yr",
+      "source": "中国氢能联盟2025 3.5–6.5产量区间",
+      "median": false,
+      "status": "single_source_range_midpoint_sensitivity_only"
+    }
+  ],
+  "median_groups": [
+    {
+      "id": "capture_design_fraction",
+      "values": [
+        0.9,
+        0.9
+      ],
+      "n": 2,
+      "median": 0.9,
+      "independent_clusters": [
+        "An2025_model_assumption",
+        "Jinjie_150kt_pilot_design"
+      ],
+      "status": "conditional_design_fraction_only",
+      "excluded": [
+        "Taizhou >0.9 is lower bound"
+      ],
+      "not_applicable_to": "whole_plant_annual_net_abatement"
+    },
+    {
+      "id": "real_advanced_clinker_water_2025",
+      "values": [
+        0.15181852343756724,
+        0.1435322508057888
+      ],
+      "n": 2,
+      "median": 0.14767538712167802,
+      "unit": "m3/tclinker",
+      "source": "https://slj.cq.gov.cn/zwgk_250/zfxxgkml/tzgg/202603/t20260316_15531237.html",
+      "independent_clusters": [
+        "Liangping_Conch",
+        "Dongfang_Xiwang"
+      ],
+      "status": "descriptive_benchmark_only",
+      "apply_to_model": false
+    }
+  ]
+}

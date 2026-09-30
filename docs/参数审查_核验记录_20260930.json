@@ -1,0 +1,115 @@
+{
+  "review_date": "2026-09-30",
+  "scope": "documentation_and_evidence_only",
+  "code_baseline": "8312c8bc4c86d5a8f19dc3cc10d6b4e8f2b42b19",
+  "checks": {
+    "code_inventory": {
+      "rows": 191,
+      "optimization_assumptions": 74,
+      "optimization_scenario": 41,
+      "constant_declarations": 76,
+      "status": "pass",
+      "note": "声明包含标识/映射/设置，非独立经验参数"
+    },
+    "observation_files": [
+      {
+        "file": "参数审查_煤电证据_20260930_observations.json",
+        "sources": 19,
+        "observations": 23,
+        "duplicate_ids": 0,
+        "unknown_source_refs": 0
+      },
+      {
+        "file": "参数审查_工业证据_20260930_observations.json",
+        "sources": 18,
+        "observations": 33,
+        "duplicate_ids": 0,
+        "unknown_source_refs": 0
+      }
+    ],
+    "additional_source_verification": {
+      "source": "NETL2023 ammonia combustion report PDFp13",
+      "nh3_lhv_mj_per_kg": 18.6,
+      "method": "original-page rendering and visual inspection",
+      "screenshot": "参数审查_煤电证据_20260930_assets/NETL2023_page13.png"
+    },
+    "proposed_numeric_conversion": "p/(1-p) independently recomputed; absolute error <1e-12",
+    "median_recomputation": "statistics.median agrees; absolute error <1e-12",
+    "method_equations": {
+      "before": 35,
+      "after": 35,
+      "unchanged": true,
+      "changed": []
+    },
+    "local_markdown_links": {
+      "status": "pass",
+      "checked": "方法论、工业溯源、全部参数审查Markdown的相对文件链接；网络可达性不包含在此项"
+    },
+    "input_csv_rows": {
+      "plants": 350,
+      "plants_unit": 3623,
+      "industry_sources": 2552,
+      "industry_hubs": 390,
+      "loaded_industry_hubs_excluding_tibet": 386,
+      "storage_hubs": 89,
+      "pipeline_nodes": 1052,
+      "pipeline_candidate_edges": 1559,
+      "biomass_supply_curve": 13949,
+      "ammonia_supply_curve": 61408,
+      "water_nodes": 373,
+      "water_availability": 29840,
+      "water_supply_links": 1569,
+      "water_basin_caps": 36
+    },
+    "cli_show_st_base": {
+      "status": "pass",
+      "command": "python -m coal_retrofit show ST_BASE",
+      "exit_code": 0,
+      "resolved_threads": 8,
+      "resolved_mip_gap": 0.03,
+      "warm_start": "lp_relax",
+      "note": "解析检查，非求解"
+    },
+    "git_diff_check": {
+      "status": "pass",
+      "command": "git diff --check",
+      "note": "已存在文件的换行转换警告不构成错误"
+    },
+    "runtime_diff": {
+      "status": "no_changes",
+      "paths": [
+        "src",
+        "scenarios",
+        "_indtree/inputs"
+      ]
+    }
+  },
+  "integration_review": {
+    "date": "2026-09-30",
+    "target_branch": "feature/industrial-sectors",
+    "remote_target_commit": "8312c8bc4c86d5a8f19dc3cc10d6b4e8f2b42b19",
+    "full_test_suite": {
+      "command": "python -m pytest",
+      "exit_code": 0,
+      "passed": 199,
+      "warnings": 1,
+      "duration_seconds": 25.06,
+      "warning_kind": "shapely.geos dependency deprecation"
+    },
+    "parameter_table_format": {
+      "columns": 7,
+      "source_definitions": 57,
+      "used_source_ids": 55,
+      "source_anchor_and_local_link_checks": "pass",
+      "range_midpoint_calculations": "pass"
+    }
+  },
+  "not_run": [
+    "Gurobi solve"
+  ],
+  "runtime_parameters_applied": false,
+  "requires_plan_approval_for": "first_batch coal_ccs_extra_fuel_path",
+  "unrelated_dirty_files": "preserved",
+  "committed": false,
+  "pushed": false
+}
