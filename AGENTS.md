@@ -18,7 +18,7 @@ The first command installs the package in editable mode with the test runner; `p
 
 ## Coding Style & Naming Conventions
 
-Follow PEP 8 with four-space indentation. Use `snake_case` for functions, variables, and modules; `PascalCase` for classes; and `UPPER_SNAKE_CASE` for constants. Add explicit type hints to functions and prefer immutable `@dataclass(frozen=True)` value objects. Keep reusable logic in the package rather than scripts, avoid mutable defaults and bare `except`, and use logging instead of debug `print()` calls. No repository-wide formatter or linter is currently configured.
+Follow PEP 8 with four-space indentation. Use `snake_case` for functions, variables, and modules; `PascalCase` for classes; and `UPPER_SNAKE_CASE` for constants. Add explicit type hints to functions and prefer immutable `@dataclass(frozen=True)` value objects. Keep reusable logic in the package rather than scripts, avoid mutable defaults and bare `except`, and use logging instead of debug `print()` calls. Ruff lint rules are configured in `pyproject.toml`; use `python -m ruff check` for relevant paths when Ruff is available. No repository-wide formatter or type-check command is specified here.
 
 ## Testing Guidelines
 
@@ -31,3 +31,13 @@ Use Conventional Commits consistently, for example `fix(optimization): correct B
 ## Security & Data Hygiene
 
 Never commit Gurobi licenses, API keys, credentials, or local environment files. Avoid silently replacing raw datasets; document provenance and regeneration steps. Inspect staged files carefully because the current `.gitignore` is minimal.
+
+## Agent Workflow and Approval
+
+Project approval requirements are defined in `.claude/CLAUDE.md` §〇. Read that section before applying an implementation workflow. Initial plan approval is required only for substantial project changes, such as architectural changes, cross-module refactors, material changes to model algorithms or research assumptions, bulk replacement of input data, or result-format changes affecting compatibility. Read-only checks, creating or switching development branches, documentation edits, and small local fixes may proceed directly within the user's request; judge scope by impact rather than file or line counts alone. Routine adjustments within that scope do not require renewed approval; obtain plan approval if the task expands into a substantial project change. Pre-commit diff approval remains required. Skills must not override project approval gates or add plan-approval gates for routine work or already-approved, unchanged work.
+
+An approval covers the same user-requested task, scope, plan, and unchanged artifact across follow-up messages and context compaction. Necessary implementation steps, checks, and continuation within that approval do not require repeated confirmation. A generic instruction to continue does not approve an unseen commit diff or a distinct required approval stage.
+
+Questions block only dependent work. Continue authorized independent work and explain the precise missing input or approval. Distinguish implementation finished, verification passed, awaiting required approval, and externally delivered; do not claim an unperformed check or external action succeeded.
+
+For optional preferences, state a reasonable default and continue after a reasonable response window. Required input and explicit approval remain pending: silence, timeout, or a preselected answer is not consent. Report unrelated issues without modifying them. Use one primary skill workflow and load supporting skills only for distinct needs.
