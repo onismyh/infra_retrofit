@@ -81,7 +81,7 @@ def prepare_industry(
 
     Raises:
         FileNotFoundError: `industry_hubs.csv` 还没有构建。
-        ValueError: 有 hub 所属的行业在本模块里没有参数。
+        ValueError: 有 hub 所属的行业在本模块里没有参数，或铭牌产能、产量缺失或不为正。
     """
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
@@ -105,6 +105,13 @@ def prepare_industry(
     unknown = sorted(set(hubs["sector"].astype(str)) - set(INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR))
     if unknown:
         raise ValueError(f"no capture capex sourced for sector(s) {unknown}; refusing to guess")
+    # 能力按铭牌产能定规模，铭牌系数 = 铭牌 ÷ 现状产量（`industry_matrices`）：铭牌或产量缺失、不为正时算不出来。
+    no_nameplate = ~(hubs["capacity_kt_per_year"].astype(float) > 0.0) | ~(hubs["production_kt_per_year"].astype(float) > 0.0)
+    if bool(no_nameplate.any()):
+        raise ValueError(
+            f"hub(s) {sorted(hubs.loc[no_nameplate, 'hub_id'].astype(str))} need a positive capacity_kt_per_year and "
+            "production_kt_per_year; route capacity is sized by nameplate / production"
+        )
     hubs["target_group"] = hubs["sector"].astype(str).map(SECTOR_TARGET_GROUP)
     if hubs["target_group"].isna().any():
         raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")

@@ -1,4 +1,4 @@
-"""多期联合 MILP 的编排：建索引 → 逐年变量与约束 → 跨期约束 → 容量与成本 → 残值 → 求解 → 提取。
+"""多期联合 MILP 的编排：建索引 → 逐年变量与约束 → 跨期约束与分代能力 → 容量与成本 → 残值 → 求解 → 提取。
 
 各步的实现在 `model_index` / `model_year` / `model_linking` / `model_costs` / `salvage` /
 `solver_extract`；本文件只负责顺序与求解器参数。变量与约束的创建顺序决定 Gurobi 指纹，
@@ -24,7 +24,7 @@ from ._shared import (
 )
 from .model_costs import add_year_costs
 from .model_index import build_model_index
-from .model_linking import add_capacity_constraints, add_inter_period_constraints
+from .model_linking import add_capacity_constraints, add_capacity_vintages, add_inter_period_constraints
 from .model_year import add_year_block
 from .salvage import _add_salvage_credit
 from .scenario import OptimizationAssumptions, OptimizationScenario
@@ -84,6 +84,7 @@ def _solve_joint_multi_period(
     add_inter_period_constraints(
         model, year_payloads, scenario, idx.plant_count, idx.edge_count, len(prepared.industry.hubs),
     )
+    add_capacity_vintages(model, year_payloads, assumptions)
 
     first_year_data = year_payloads[0].year_data
     edge_base_stock = np.asarray(first_year_data.edge_base_stock_mtpa, dtype=np.float64)

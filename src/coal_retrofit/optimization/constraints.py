@@ -311,8 +311,8 @@ def _add_plant_path_constraints(
     allow_air = bool(year_data.allow_air_cooling_retrofit) and year_data.air_water_intensity is not None
     air_share = model.addMVar((plant_count, pathway_count), lb=0.0, ub=1.0, name=f"air_share{sfx}")
     # 已装存量：capex 按历史最高值计费，已改造 hub 的空冷份额在某一期下降、
-    # 下一期回升时不会重复计费。与 CCS 的 `retrofit_installed` 是同一手法；
-    # 没有它，空冷凝汽器可能被付两次钱。
+    # 下一期回升时不会重复计费；没有它，空冷凝汽器可能被付两次钱。存量不到期（CCS 捕集岛
+    # 2026-09-30 前也是这一手法，此后按建设年分代、到寿命退出，`vintage`）。
     air_installed = model.addMVar(plant_count, lb=0.0, ub=1.0, name=f"air_installed{sfx}")
     if not allow_air:
         model.addConstr(air_share == 0.0, name=f"air_share_off{sfx}")

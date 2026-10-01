@@ -257,16 +257,16 @@ def _build_plant_cost_table(
     prev_share_values: np.ndarray | None = None,
     *,
     plant_reduction_mt: np.ndarray,
-    retrofit_installed: np.ndarray,
-    prev_retrofit_installed: np.ndarray | None = None,
+    retrofit_new: np.ndarray,
+    ccs_om_by_plant: np.ndarray,
     capex_pathway_indices: tuple[int, ...],
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
-    未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产计在新增退役份额上，
-    CCS 改造 CAPEX 计在已装存量（历史最高份额）的增量上，并含学习曲线成本系数——
-    上一年的份额 / 已装值须经 prev_share_values / prev_retrofit_installed 传入
-    （首年为 None）。碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。
+    未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产计在新增退役份额上（上一年的份额经
+    prev_share_values 传入，首年为 None），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
+    曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。
+    碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。
     """
     plants = prepared.plants
     n = len(plants)
@@ -274,7 +274,7 @@ def _build_plant_cost_table(
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
     carbon_price = float(year_data.carbon_price)
     retire_idx = PATHWAY_INDEX["retire"]
-    # 改造存量的系数（只有捕集岛一列，见 `model_year._add_retrofit_stock`）。
+    # 本年建成的捕集岛的系数（只有一列，见 `model_year._add_retrofit_new`）。
     stock_coeff = year_data.retrofit_stock_capex
 
     rows: list[dict[str, object]] = []
@@ -302,21 +302,15 @@ def _build_plant_cost_table(
         incr_om = sum(float(year_data.fixed_cost_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         # 能耗惩罚
         energy_pen = sum(float(year_data.energy_penalty_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
-        # CCS 运维
-        ccs_om = sum(float(year_data.ccs_om_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        # 捕集岛固定运维：在役且在用的捕集岛 x 建设年单价，取求解器的值
+        ccs_om = float(ccs_om_by_plant[p])
         # 搁浅资产（与模型一致：计在新增退役份额上）
         prev_retire = float(prev_share_values[p, retire_idx]) if prev_share_values is not None else 0.0
         stranded = float(year_data.stranded_per_plant[p]) * max(0.0, float(share[retire_idx]) - prev_retire)
-        # CCS 改造 CAPEX（与模型一致：计在已装捕集岛存量的增量上，即 ccs + beccs 的历史最高份额；
-        # coeff 已含学习系数）。
-        ccs_capex = 0.0
-        for j, _k in enumerate(capex_pathway_indices):
-            coeff = float(stock_coeff[p, j])
-            if coeff <= 0:
-                continue
-            inst = float(retrofit_installed[p, j])
-            prev_inst = float(prev_retrofit_installed[p, j]) if prev_retrofit_installed is not None else 0.0
-            ccs_capex += coeff * max(0.0, inst - prev_inst)
+        # CCS 改造 CAPEX（与模型一致：本年单价 x 本年新建的捕集岛；coeff 已含学习系数）。
+        ccs_capex = sum(
+            float(stock_coeff[p, j]) * float(retrofit_new[p, j]) for j in range(len(capex_pathway_indices))
+        )
 
         rows.append({
             "year": year,

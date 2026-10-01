@@ -33,7 +33,7 @@ def _cement_hubs(root, provinces: list[str]) -> ProjectPaths:
     pd.DataFrame({
         "hub_id": [f"C{i}" for i in range(n)], "sector": ["cement"] * n, "province": provinces,
         "longitude": [112.0] * n, "latitude": [37.0] * n,
-        "production_kt_per_year": [1000.0] * n, "co2_mt_per_year": [0.8] * n,
+        "capacity_kt_per_year": [1000.0] * n, "production_kt_per_year": [1000.0] * n, "co2_mt_per_year": [0.8] * n,
         "process_co2_mt_per_year": [0.5] * n, "h2_demand_kt_per_year": [0.0] * n,
         "water_m3_per_year": [1.0e6] * n,
     }).to_csv(paths.inputs_dir / "industry_hubs.csv", index=False)

@@ -1,10 +1,12 @@
-"""跨期约束（不可逆性、单调性）与逐年管网/封存容量约束。"""
+"""跨期约束（不可逆性、单调性、分代能力的在役与退出）与逐年管网/封存容量约束。"""
 from __future__ import annotations
 
 import numpy as np
 
 from ._shared import PATHWAY_INDEX, SolveState, gp
+from .model_industry import add_industry_capacity
 from .scenario import OptimizationAssumptions, OptimizationScenario
+from .vintage import add_vintage_stock
 from .year_types import YearPayload
 
 
@@ -50,7 +52,7 @@ def add_inter_period_constraints(
         )
 
     # 退役单调：退了不能重启。捕集份额锁定：捕集岛投运后持续运行，份额只能通过退役离开捕集路径
-    # （2026-09-10 前只有 capex 存量单调，运行份额可零成本归零）。
+    # （2026-09-10 前只有 capex 存量单调，运行份额可零成本归零）。捕集岛到寿命退出后份额仍锁定，得重建。
     retire_idx = PATHWAY_INDEX["retire"]
     ccs_idx, beccs_idx = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     if len(year_payloads) > 1:
@@ -106,17 +108,32 @@ def add_inter_period_constraints(
                 name=f"rebuild_irreversible_{yr_sfx}",
             )
 
-    # 改造存量单调：已装捕集岛（CCS 与 BECCS 共用）不可逆。
-    if len(year_payloads) > 1:
-        for yi in range(1, len(year_payloads)):
-            ri_curr = year_payloads[yi].retrofit_installed
-            ri_prev = year_payloads[yi - 1].retrofit_installed
-            yr_sfx = str(year_payloads[yi].year)
-            for j in range(ri_curr.shape[1]):
-                model.addConstrs(
-                    (ri_curr[p, j] >= ri_prev[p, j] for p in range(plant_count)),
-                    name=f"retrofit_stock_mono_{j}_{yr_sfx}",
-                )
+
+def add_capacity_vintages(
+    model, year_payloads: list[YearPayload], assumptions: OptimizationAssumptions
+) -> None:
+    """三类改造能力按建设年分代（`vintage.add_vintage_stock`）：在役 >= 当年所需、到寿命退出、固定运维按建设年的单价。
+
+    - 煤电捕集岛（CCS 与 BECCS 共用，占装机的份额）：所需 = share_ccs + share_beccs，寿命 `ccs_retrofit_lifetime_years`；
+    - 工业捕集能力与氢路线能力：`model_industry.add_industry_capacity`。
+    结果写到各 payload 的 `ccs_island`、`industry_ccs`、`industry_h2`，供成本与结果提取。
+    """
+    years = [int(payload.year) for payload in year_payloads]
+    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
+    plant_count = int(year_payloads[0].share.shape[0])
+    islands = add_vintage_stock(
+        model, "ccs_island", years,
+        new=[payload.retrofit_new[:, 0] for payload in year_payloads],
+        required=[
+            [payload.share[p, ccs_k] + payload.share[p, beccs_k] for p in range(plant_count)]
+            for payload in year_payloads
+        ],
+        life=int(assumptions.ccs_retrofit_lifetime_years),
+        om_unit=[np.asarray(payload.year_data.retrofit_stock_om, dtype=np.float64)[:, 0] for payload in year_payloads],
+    )
+    industry_ccs, industry_h2 = add_industry_capacity(model, years, [payload.industry for payload in year_payloads])
+    for payload, island, ccs, h2 in zip(year_payloads, islands, industry_ccs, industry_h2, strict=True):
+        payload.ccs_island, payload.industry_ccs, payload.industry_h2 = island, ccs, h2
 
 
 def add_capacity_constraints(

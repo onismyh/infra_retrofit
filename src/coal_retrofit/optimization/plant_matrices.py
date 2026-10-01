@@ -18,7 +18,7 @@ def _plant_operating_matrices(
     assumptions: OptimizationAssumptions,
     year: int,
 ) -> dict[str, Any]:
-    """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex 与运维、搁浅资产。"""
+    """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex、搁浅资产。"""
     # 本年利用小时：`annual_generation_mwh` 是当前省级统计，按情景小时轨迹逐年缩放，
     # 发电、基线排放与每 MWh 成本同步移动。
     fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
@@ -118,19 +118,7 @@ def _plant_operating_matrices(
     ], dtype=np.float64)
     capacity_mw = prepared.plants["total_capacity_mw"].astype(float).to_numpy()
     ccs_retrofit_capex_matrix = capacity_mw[:, None] * ccs_capex_per_mw[None, :]
-
-    # CCS 固定运维 = ccs_om_fraction x 学习后 capex（含成本乘子，随 capex 走），按改造容量 MW 计
-    # （An et al. 2025 SI Table 7），不按 MWh。2026-09-23 前固定运维不乘 `ccs_cost_multiplier`。
-    capture_island_om_per_mw = capture_island_capex_per_mw * assumptions.ccs_om_fraction
-    ccs_om_per_mw = np.array([
-        0.0,
-        0.0,
-        capture_island_om_per_mw,
-        0.0,
-        capture_island_om_per_mw,
-        0.0,
-    ], dtype=np.float64)
-    ccs_om_matrix = capacity_mw[:, None] * ccs_om_per_mw[None, :]
+    # 捕集岛的固定运维（ccs_om_fraction x 这笔 capex，每年）在 `year_matrices` 里随 capex 系数一起给。
 
     fixed_cost_matrix = generation_cost_basis * pathway_fixed_costs[None, :]
 
@@ -168,7 +156,6 @@ def _plant_operating_matrices(
         "beccs_penalty_emissions_coeff_per_level": beccs_penalty_emissions_coeff_per_level,
         "beccs_penalty_captured_coeff_per_level": beccs_penalty_captured_coeff_per_level,
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
-        "ccs_om_matrix": ccs_om_matrix,
         "baseline_net_matrix": baseline_net_matrix,
         "stranded_per_plant": stranded_per_plant,
     }

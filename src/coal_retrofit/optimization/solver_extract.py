@@ -11,9 +11,10 @@ from ._shared import (
     _var_scalar_value,
     _var_value,
 )
+from .industry_matrices import CCS, H2
 from .model_index import ModelIndex
 from .scenario import PATHWAYS
-from .year_types import YearPayload, YearSolution
+from .year_types import GrbExpr, YearPayload, YearSolution
 
 
 def empty_year_solutions(
@@ -43,10 +44,14 @@ def empty_year_solutions(
             "air_installed": np.zeros(plant_count),
             "blend_level_b": np.zeros(plant_count),
             "blend_level_a": np.zeros(plant_count),
-            "retrofit_installed": np.zeros((plant_count, len(idx.capex_pathway_indices))),
+            "retrofit_new": np.zeros((plant_count, len(idx.capex_pathway_indices))),
+            "retrofit_alive": np.zeros(plant_count),
+            "ccs_om_by_plant": np.zeros(plant_count),
             "pipe_count": np.zeros((edge_count, len(p.year_data.pipe_tiers_mtpa))),
             "industry_share": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
+            "industry_new_capacity_mt": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
             "industry_capacity_mt": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
+            "industry_ccs_om_by_hub": np.zeros(hub_count),
             "industry_h2_flow_kg": np.zeros(0),
             "plant_reduction_mt": np.zeros(plant_count),
             "biomass_blend_x_share": np.zeros(plant_count),
@@ -94,6 +99,11 @@ def extract_year_solutions(
         _wat_s = float(year_data.water_flow_scale)
         _bio_s = float(year_data.biomass_flow_scale)
         industry = payload.industry
+        island, industry_ccs, industry_h2 = payload.ccs_island, payload.industry_ccs, payload.industry_h2
+        assert island is not None and industry_ccs is not None and industry_h2 is not None
+        industry_alive = np.zeros((hub_count, len(INDUSTRY_ROUTES)))
+        industry_alive[:, CCS] = _values(industry_ccs.alive)
+        industry_alive[:, H2] = _values(industry_h2.alive)
         year_solutions[year] = {
             "status": status,
             "objective_cny": _expr_value(payload.objective_expr) * _COST_SCALE,
@@ -116,10 +126,14 @@ def extract_year_solutions(
             "air_installed": _var_value(payload.air_installed, plant_count),
             "blend_level_b": _var_value(payload.blend_level_b, plant_count),
             "blend_level_a": _var_value(payload.blend_level_a, plant_count),
-            "retrofit_installed": _var_value(payload.retrofit_installed, (plant_count, len(idx.capex_pathway_indices))),
+            "retrofit_new": _var_value(payload.retrofit_new, (plant_count, len(idx.capex_pathway_indices))),
+            "retrofit_alive": _values(island.alive),
+            "ccs_om_by_plant": _values(island.fixed_om),
             "pipe_count": _var_value(payload.pipe_count, (edge_count, len(year_data.pipe_tiers_mtpa))),
             "industry_share": _var_value(industry.share, (hub_count, len(INDUSTRY_ROUTES))),
-            "industry_capacity_mt": _var_value(industry.capacity_mt, (hub_count, len(INDUSTRY_ROUTES))),
+            "industry_new_capacity_mt": _var_value(industry.new_capacity_mt, (hub_count, len(INDUSTRY_ROUTES))),
+            "industry_capacity_mt": industry_alive,
+            "industry_ccs_om_by_hub": _values(industry_ccs.fixed_om),
             "industry_h2_flow_kg": _var_value(industry.h2_flow_kg, int(industry.h2_flow_kg.shape[0])) * _amm_s,
             # 逐厂减排量直接取约束自身的表达式，报告不必从 share 反推。
             "plant_reduction_mt": np.array(
@@ -157,3 +171,8 @@ def extract_year_solutions(
             "year_data": year_data,
         }
     return year_solutions
+
+
+def _values(exprs: list[GrbExpr]) -> np.ndarray:
+    """分代能力（`vintage.StockYear`）逐单元表达式的解值；常数 0.0 读作 0。"""
+    return np.array([_expr_value(expr) for expr in exprs], dtype=np.float64)

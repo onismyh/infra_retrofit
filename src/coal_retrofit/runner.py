@@ -148,12 +148,10 @@ def solve(
     industry_detail_tables = []
     sanity_tables = []
     prev_share_values = None
-    prev_retrofit_installed = None
 
     state_track = initial_state(prepared)
 
     year_summaries = {}
-    prev_industry_capacity = None
     new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
@@ -249,9 +247,9 @@ def solve(
         industry_detail_tables.append(_build_industry_detail_table(
             prepared, year, year_data.industry, ys["industry_share"],
             h2_flow_kg=ys["industry_h2_flow_kg"], year_data=year_data,
-            capacity_mt=ys["industry_capacity_mt"], prev_capacity_mt=prev_industry_capacity,
+            capacity_mt=ys["industry_capacity_mt"], new_capacity_mt=ys["industry_new_capacity_mt"],
+            ccs_fixed_om_cny=ys["industry_ccs_om_by_hub"],
         ))
-        prev_industry_capacity = ys["industry_capacity_mt"]
         biomass_flow_tables.append(_build_biomass_flow_table(prepared, year, ys["biomass_flow_gj"]))
         ammonia_flow_tables.append(_build_ammonia_flow_table(year_data, year, ys["ammonia_flow_kg"], prepared.plants))
         water_flow_tables.append(_build_water_flow_table(year_data, year, ys["water_flow_m3"], prepared.plants))
@@ -261,15 +259,14 @@ def solve(
             prepared, year, year_data, share, ys["biomass_use_gj"],
             prev_share_values=prev_share_values,
             plant_reduction_mt=ys["plant_reduction_mt"],
-            retrofit_installed=ys["retrofit_installed"],
-            prev_retrofit_installed=prev_retrofit_installed,
+            retrofit_new=ys["retrofit_new"],
+            ccs_om_by_plant=ys["ccs_om_by_plant"],
             capex_pathway_indices=solution["capex_pathway_indices"],
         ))
 
         new_cap_by_year[year] = ys["new_cap_mtpa"]
         state_track.remaining_storage_mt = np.maximum(0.0, state_track.remaining_storage_mt - ys["storage_use_mtpa"] * interval_years)
         prev_share_values = share
-        prev_retrofit_installed = ys["retrofit_installed"]
 
     # 写 CSV
     out_dir = paths.root / "results" / name

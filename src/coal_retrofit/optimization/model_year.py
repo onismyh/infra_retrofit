@@ -91,7 +91,7 @@ def add_year_block(
         model, share, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
     )
     model.addConstrs((share[plant_idx, :].sum() == 1.0 for plant_idx in range(plant_count)), name=f"share_sum_{year_suffix}")
-    retrofit_installed = _add_retrofit_stock(model, share, plant_count, year_suffix)
+    retrofit_new = _add_retrofit_new(model, plant_count, year_suffix)
     _add_expiry_rules(model, share, rebuild, idx.retirement_years, year, plant_count, year_suffix)
 
     # --- CO2 管网节点平衡；工业捕集在 hub 自己的节点进入同一张图，所以工业年块建在两段之间 ---
@@ -141,7 +141,7 @@ def add_year_block(
         add_cap=add_cap,
         pipe_count=pipe_count,
         rebuild=rebuild,
-        retrofit_installed=retrofit_installed,
+        retrofit_new=retrofit_new,
         new_cap_mtpa=new_cap_mtpa,
         biomass_flow_gj=biomass_flow_gj,
         ammonia_flow_kg=ammonia_flow_kg,
@@ -178,23 +178,16 @@ def add_year_block(
     )
 
 
-def _add_retrofit_stock(model, share: GrbMVar, plant_count: int, year_suffix: str) -> GrbMVar:
-    """改造存量（一次性 capex 的计费基数），一列：捕集岛 >= share_ccs + share_beccs，按 CCS capex 计价。
+def _add_retrofit_new(model, plant_count: int, year_suffix: str) -> GrbMVar:
+    """本年新建的捕集岛（占装机的份额），一列，按 CCS capex 计价（系数在 `YearData.retrofit_stock_capex`）。
 
     BECCS 的捕集岛就是 CCS 捕集岛，CCS↔BECCS 切换只为捕集岛付一次钱；BECCS 的生物质改造走掺烧档位
     capex（2026-09-23 前另有一列 BECCS 增量按 (BECCS - CCS) capex 计价，与档位 capex 重复，已删除）。
-    存量只设下界（跨期单调在 `model_linking`），capex 计在存量增量上，份额暂时下降不会重复触发。
-    capex 系数在 `YearData.retrofit_stock_capex`。
+    在役捕集岛 >= share_ccs + share_beccs、到寿命退出、固定运维按建设年的单价，这些约束要用到往年的新建量，
+    在所有年块建完后加（`model_linking.add_capacity_vintages`）。2026-09-30 前是一个跨期单调、永不退出的存量，
+    capex 计在它的增量上。
     """
-    ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
-    retrofit_installed = model.addMVar(
-        (plant_count, 1), lb=0.0, name=f"retrofit_installed_{year_suffix}"
-    )
-    model.addConstrs(
-        (retrofit_installed[p, 0] >= share[p, ccs_k] + share[p, beccs_k] for p in range(plant_count)),
-        name=f"retrofit_installed_lb_capture_{year_suffix}",
-    )
-    return retrofit_installed
+    return model.addMVar((plant_count, 1), lb=0.0, name=f"retrofit_new_{year_suffix}")
 
 
 def _add_expiry_rules(
