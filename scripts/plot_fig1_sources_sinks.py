@@ -1,9 +1,9 @@
 """图 1  排放源与封存汇（输入）
 
 图含义：
-  a  地图：进模型的全部煤电厂址（圆点）与工业 hub（菱形，颜色按部门，与 b 同色），点面积与现状 CO2 排放成正比，
-     煤电与工业用同一尺度；封存汇（方块）按类型分深部咸水层与驱油封存，只标位置，不按容量缩放
-     （容量跨四个数量级，按面积画会让驱油汇看不见）。
+  a  地图：进模型的全部煤电厂址（圆点）与工业 hub（菱形，颜色按部门，与 b 同色），点面积随现状 CO2 排放线性增大
+     （有下限，小点才看得见），煤电与工业用同一尺度、同值同面积；封存汇（方块）按类型分深部咸水层与驱油封存，
+     只标位置，不按容量缩放（容量跨四个数量级，按面积画会让驱油汇看不见）。
   b  各部门现状排放合计（Mt CO2/yr），括号里是源的个数。
 读图注意：排放是现状值（煤电 = 装机 × 分省利用小时 × 排放因子，工业取 industry_hubs.csv），不是求解结果；
           规划年的排放会按利用小时轨迹与产量指数缩放。
@@ -30,13 +30,13 @@ from plot_style import (
 
 NAME = "fig1_sources_sinks"
 TEXT = {
-    "zh": {"xlabel": f"现状排放（{MT_CO2_YR}）", "size": "点面积 $\\propto$ 排放（" + MT_CO2_YR + "）",
+    "zh": {"xlabel": f"现状排放（{MT_CO2_YR}）", "size": "点面积随排放线性增大（" + MT_CO2_YR + "）",
            "count": "{name}（{n}）", "industry": "工业 hub"},
-    "en": {"xlabel": f"Current emissions ({MT_CO2_YR})", "size": "Area $\\propto$ emissions (" + MT_CO2_YR + ")",
+    "en": {"xlabel": f"Current emissions ({MT_CO2_YR})", "size": "Area grows linearly with emissions (" + MT_CO2_YR + ")",
            "count": "{name} ({n})", "industry": "Industrial hubs"},
 }
 SIZE_TICKS = (1.0, 10.0, 50.0)
-SMAX = 70.0                  # 最大点的面积（pt²），煤电最大 hub 约 115 Mt
+SMAX = 70.0                  # 排放最大的源（煤电与工业合在一起取最大）的点面积，pt²
 
 
 def load() -> dict[str, pd.DataFrame]:
@@ -81,8 +81,9 @@ def draw(data: dict[str, pd.DataFrame], lang: str):
     def layers(ax, k: float = 1.0) -> None:
         for sector in SECTOR_ORDER:            # 煤电先画、压在下面，工业小点在上
             part = sources[sources["sector"] == sector]
-            ax.scatter(part["x"], part["y"], s=area_scale(part["co2_mt"], vmax, smax=SMAX) * k,
-                       c=SECTOR_COLORS[sector], marker=MARKERS["coal" if sector == "coal" else "industry"],
+            marker = MARKERS["coal" if sector == "coal" else "industry"]
+            ax.scatter(part["x"], part["y"], s=area_scale(part["co2_mt"], vmax, smax=SMAX, marker=marker) * k,
+                       c=SECTOR_COLORS[sector], marker=marker,
                        alpha=0.8, edgecolors="white", linewidths=0.25 * k, zorder=3)
         for kind, colour in SINK_COLORS.items():
             part = sinks[sinks["storage_type"] == kind]

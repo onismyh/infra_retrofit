@@ -1,14 +1,15 @@
 """图 6  CO2 管网与封存（求解结果）
 
 图含义：两个规划年（缺省 2040 与 2060）的 CO2 捕集、输送与封存。蓝线是有流量的管段，线宽 ∝ √年流量（正反两向
-  之和）；灰色圆点是有捕集的煤电厂址，菱形是有捕集的工业 hub（颜色按部门，同图 1），面积 ∝ 捕集量；方块是有注入的
-  封存汇（深蓝深部咸水层、浅蓝驱油封存），面积 ∝ 注入量。两年用同一尺度，左上角是当年封存总量。
+  之和，细管段有下限）；灰色圆点是有捕集的煤电厂址，菱形是有捕集的工业 hub（颜色按部门，同图 1），面积随捕集量
+  线性增大；方块是有注入的封存汇（深蓝深部咸水层、浅蓝驱油封存），面积随注入量线性增大。点面积有下限，同值的
+  圆点、菱形、方块面积相同。两年用同一尺度，左上角是当年封存总量。
 读图注意：画的是年流量，不是建成的管道能力；管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）
   按两端直线画。
 数据：_indtree/results/<情景>/network_edges.csv、plant_detail.csv、industry_detail.csv、storage_utilization.csv，
   _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
-  封存汇类型只有 dsa / eor。
+  封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）。
 输出：_indtree/results/figures/fig6_co2_network{,_en}.{pdf,png}
 用法：python scripts/plot_fig6_co2_network.py [--scenario 情景] [--years 2040 2060] [--lang zh|en|both]
 """
@@ -91,6 +92,9 @@ def check(data: dict[str, pd.DataFrame], years: tuple[int, ...]) -> None:
         raise ValueError(f"结果里没有 {missing} 年（有 {available}），用 --years 指定")
     if not data["sinks"]["storage_type"].isin(list(SINK_COLORS)).all():
         raise ValueError("自检不通过：封存汇类型只应是 dsa / eor（CLAUDE.md §1.3），不出图")
+    unknown = set(data["industry"]["sector"]) - set(SECTOR_ORDER[1:])
+    if unknown:
+        raise ValueError(f"自检不通过：部门 {sorted(unknown)} 不在 SECTOR_ORDER 里，图上会漏画，不出图")
     for year in years:
         captured = (data["plants"].loc[data["plants"]["year"] == year, "captured_mt"].sum()
                     + data["industry"].loc[data["industry"]["year"] == year, "captured_mt"].sum())
@@ -124,18 +128,19 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
                                          linewidths=width(layer["edges"]["edge_flow_mtpa"]) * k,
                                          capstyle="round", joinstyle="round", alpha=0.9, zorder=3))
         px, py = to_map_xy(layer["plants"]["centroid_longitude"], layer["plants"]["centroid_latitude"])
-        ax.scatter(px, py, s=area_scale(layer["plants"]["captured_mt"], smax, smax=SMAX) * k, c=SECTOR_COLORS["coal"],
-                   marker=MARKERS["coal"], edgecolors="white", linewidths=0.3 * k, zorder=4)
+        ax.scatter(px, py, s=area_scale(layer["plants"]["captured_mt"], smax, smax=SMAX, marker=MARKERS["coal"]) * k,
+                   c=SECTOR_COLORS["coal"], marker=MARKERS["coal"], edgecolors="white", linewidths=0.3 * k, zorder=4)
         for sector in SECTOR_ORDER[1:]:
             part = layer["industry"][layer["industry"]["sector"] == sector]
             ix, iy = to_map_xy(part["longitude"], part["latitude"])
-            ax.scatter(ix, iy, s=area_scale(part["captured_mt"], smax, smax=SMAX) * k, c=SECTOR_COLORS[sector],
-                       marker=MARKERS["industry"], edgecolors="white", linewidths=0.3 * k, zorder=4)
+            ax.scatter(ix, iy, s=area_scale(part["captured_mt"], smax, smax=SMAX, marker=MARKERS["industry"]) * k,
+                       c=SECTOR_COLORS[sector], marker=MARKERS["industry"], edgecolors="white", linewidths=0.3 * k,
+                       zorder=4)
         for kind, colour in SINK_COLORS.items():
             part = layer["storage"][layer["storage"]["storage_type"] == kind]
             sx, sy = to_map_xy(part["longitude"], part["latitude"])
-            ax.scatter(sx, sy, s=area_scale(part["storage_use_mtpa"], smax, smax=SMAX) * k, c=colour,
-                       marker=MARKERS["sink"], edgecolors="#08519C", linewidths=0.4 * k, zorder=5)
+            ax.scatter(sx, sy, s=area_scale(part["storage_use_mtpa"], smax, smax=SMAX, marker=MARKERS["sink"]) * k,
+                       c=colour, marker=MARKERS["sink"], edgecolors="#08519C", linewidths=0.4 * k, zorder=5)
 
     fig = plt.figure(figsize=(183 * MM, 85 * MM))
     for i, year in enumerate(years):

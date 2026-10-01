@@ -14,9 +14,9 @@ v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维�
 2. 逐个运行 scripts/plot_fig*.py（缺省参数：中英两版、主情景；脚本经 `_bootstrap.ROOT` 读求解树的
    inputs/results，工作目录也设为求解树），输出与退出码记入 <version>/render.log，
    失败的照样记下来——README 里"哪些图不能画"直接从这里抄。
-3. 把 <tree>/results/figures/ 里第 2 步画出的 PDF/PNG（按修改时间判断；上一轮留下的旧图不拷，
-   子目录 main/、extended/ 里旧脚本画的图也不拷）拷到 <version>/figures/；
-   `--skip-plots` 时不画图，目录里的图全拷。
+3. 把 <tree>/results/figures/ 根目录下第 2 步画出的 PDF/PNG（按修改时间判断；上一轮留下的旧图不拷，
+   子目录 main/、extended/ 里旧脚本画的图与 save_fig 没删掉的临时文件 .*.tmp.* 也不拷）拷到 <version>/figures/；
+   `--skip-plots` 时不画图，根目录下的图全拷（子目录照旧不拷）。
 4. 把 <tree>/results/<scen>/*.csv、<scen>.json、求解日志与输入指纹拷到 <version>/data/，
    图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
 
@@ -46,7 +46,10 @@ def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, 
                                       errors="replace", timeout=timeout)
                 code, out = proc.returncode, proc.stdout + proc.stderr
             except subprocess.TimeoutExpired as exc:
-                code, out = -9, f"TIMEOUT after {timeout}s\n{exc.stdout or ''}{exc.stderr or ''}"
+                # 超时时抓到的输出不管 text=True 都是 bytes，解码后再写日志，否则日志里是 b'...'
+                partial = "".join(p.decode("utf-8", errors="replace") if isinstance(p, bytes) else (p or "")
+                                  for p in (exc.stdout, exc.stderr))
+                code, out = -9, f"TIMEOUT after {timeout}s\n{partial}"
             dt = time.time() - t0
             rows.append((script.name, code, dt))
             log.write(f"===== {script.name} exit={code} {dt:.0f}s =====\n{out}\n")
@@ -56,12 +59,13 @@ def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, 
 
 
 def tree_figures(tree: Path, since: float | None) -> list[Path]:
-    """<tree>/results/figures/ 下（不含子目录）的 PDF/PNG；给了 since 就只要这之后写出的（本次运行画的）。"""
+    """<tree>/results/figures/ 下（不含子目录）的 PDF/PNG；给了 since 就只要这之后写出的（本次运行画的）。
+    以 "." 开头的是 save_fig 的临时文件（出图中断时可能留下），不收。"""
     src = tree / "results" / "figures"
     if not src.is_dir():
         return []
     return [f for f in src.iterdir()
-            if f.is_file() and f.suffix.lower() in (".png", ".pdf")
+            if f.is_file() and f.suffix.lower() in (".png", ".pdf") and not f.name.startswith(".")
             and (since is None or f.stat().st_mtime >= since)]
 
 

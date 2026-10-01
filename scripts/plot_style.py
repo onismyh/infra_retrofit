@@ -1,7 +1,7 @@
 """全仓库唯一一套绘图样式与工具（CLAUDE.md §三、§四）。
 
 出图脚本 `scripts/plot_fig*.py` 都从这里取：字体与版式（`apply_style`）、配色（§3.3）、中英对照（`labels`）、
-中国底图（EPSG:2380、九段线、南海小图）、读求解结果（`read_result`）、存图（`save_fig`：字号、图宽、缺字三道检查）。
+中国底图（EPSG:2380、九段线、南海小图）、读求解结果（`read_result`）、存图（`save_fig`：字体、字号、图宽、缺字四道检查）。
 各图脚本不自设字体、不自带色表。
 
     from plot_style import apply_style, figure_cli, langs, save_fig
@@ -128,8 +128,11 @@ GROUP_COLORS = {"power": "#636363", "steel": "#E64B35", "cement": "#00A087", "ch
 SINK_COLORS = {"dsa": "#3182BD", "eor": "#9ECAE1"}   # 深部咸水层、驱油封存
 PIPE_COLOR = "#3182BD"                               # CO2 管网与 DSA 同色（§3.3 Blues 深端）
 AIR_COLOR = "#CC3311"                                # 空冷改造
+OVER_COLOR = "#A50F15"                               # 超上限、超指标（Reds 深端，与空冷的强调红分开）
 # 标记：煤电圆、工业菱形、封存汇方块，各图一致。
 MARKERS = {"coal": "o", "industry": "D", "sink": "s"}
+# 散点的 s 对圆点是外接正方形的面积（圆面积 π/4·s），对方块、菱形就是图形面积：乘 π/4 才与同值的圆点等面积。
+MARKER_AREA = {"o": 1.0, "D": np.pi / 4, "s": np.pi / 4}
 
 # ── 中英对照 ─────────────────────────────────────────────────────────────────────
 # 各图共用的名词放这里，各图专有的文字放在各脚本顶部的 TEXT 里。流域中文名取模型自己的常量。
@@ -172,7 +175,8 @@ def labels(lang: str) -> dict[str, dict[str, str]]:
 # ── 命令行与读结果 ───────────────────────────────────────────────────────────────
 def figure_cli(doc: str | None, *, scenario: bool = True) -> argparse.ArgumentParser:
     """出图脚本的统一参数：--lang zh|en|both（缺省两版都出），结果图另有 --scenario。"""
-    parser = argparse.ArgumentParser(description=(doc or "").strip().splitlines()[0],
+    lines = (doc or "").strip().splitlines()
+    parser = argparse.ArgumentParser(description=lines[0] if lines else None,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--lang", choices=("zh", "en", "both"), default="both",
                         help="出中文版、英文版或两版（缺省 both；英文版文件名加 _en）")
@@ -233,7 +237,7 @@ MAP_DIR = "ChinaMapTHT"
 PROV_FILE = "中华人民共和国.json"
 COUNTRY_FILE = "china_country_proj.shp"
 DASH_ADCODE = "100000_JD"    # GeoJSON 里单独成要素的九段线
-ISLAND_MIN_AREA_KM2 = 1000.0  # 主图国界只留大陆、台湾、海南三块（次大的岛只有 490 km2）
+ISLAND_MIN_AREA_KM2 = 1000.0  # 主图国界只留大陆、台湾、海南三块（次大的岛只有 458 km2）
 _MAP_CACHE: dict = {}
 
 
@@ -253,7 +257,8 @@ def map_layer(name: str):
     - "provinces"：`中华人民共和国.json`（2023 版，含台湾与港澳）的省界，已剔除 adcode = 100000_JD 的九段线要素；
     - "dash"：同一文件里 adcode = 100000_JD 的九段线，主图和小图都要画；
     - "country"：`china_country_proj.shp` 国界，单要素、1 260 个部件，南到 3.83°N，只在南海小图里整层画；
-    - "country_main"：国界中面积 ≥ 1 000 km² 的部件，只有大陆、台湾、海南三块，主图用。
+    - "country_main"：国界中面积 ≥ 1 000 km² 的部件，只有大陆、台湾、海南三块，主图用。面积在 shp 原生的
+      Albers 等积投影下算（§4.1：不在 EPSG:2380 下算面积）。
     """
     import geopandas as gpd
 
@@ -267,9 +272,9 @@ def map_layer(name: str):
                                    f"{country.total_bounds[1]:.2f}N")
             _MAP_CACHE[name] = country.to_crs(MAP_CRS)
         elif name == "country_main":
-            c = map_layer("country")
-            parts = [g for g in c.geometry.iloc[0].geoms if g.area / 1e6 >= ISLAND_MIN_AREA_KM2]
-            _MAP_CACHE[name] = gpd.GeoDataFrame(geometry=parts, crs=c.crs)
+            native = gpd.read_file(base / COUNTRY_FILE)
+            parts = [g for g in native.geometry.iloc[0].geoms if g.area / 1e6 >= ISLAND_MIN_AREA_KM2]
+            _MAP_CACHE[name] = gpd.GeoDataFrame(geometry=parts, crs=native.crs).to_crs(MAP_CRS)
         else:
             layer = gpd.read_file(base / PROV_FILE).to_crs(MAP_CRS)
             is_dash = layer["adcode"].astype(str) == DASH_ADCODE
@@ -299,8 +304,8 @@ def draw_china_basemap(ax, *, facecolor: str = LAND, islands: bool = False,
 def mainland_extent(ax, *, south_lat: float = 17.5, pad: float = 0.02) -> None:
     """主图范围：省界四至，南边裁到 17.5°N（南边不留白）。
 
-    省界层含南海要素，四至南到 6.3°N，直接用会把大陆压到画面上半部；九段线主体与南海岛礁交给南海小图，
-    这正是小图必需的原因（§4.2）。17.5°N 在中央经线上量：海南（最南 18.15°N）完整保留、离底边 77 km；
+    省界层含南海要素（海南省要素含南沙），四至南到 3.8°N，直接用会把大陆压到画面上半部；
+    九段线主体与南海岛礁交给南海小图，这正是小图必需的原因（§4.2）。17.5°N 在中央经线上量：海南（最南 18.15°N）完整保留、离底边 77 km；
     西沙（最北 17.12°N）与 16°N 附近的两段九段线离底边 30 km 以上，主图底边不会露出碎片。
     """
     x0, _, x1, y1 = map_layer("provinces").total_bounds
@@ -353,6 +358,7 @@ def check_off_land(ax, *artists) -> None:
     """地图上的图例不许压到国土（大陆、台湾、海南）：按画出来的外框查，压到就报错，不出图。"""
     from shapely.geometry import box
 
+    ax.apply_aspect()          # 等比例的轴画之前才定下外框，先定下来，数据坐标换算才与出图一致
     renderer = ax.figure.canvas.get_renderer()
     to_data = ax.transData.inverted()
     for artist in artists:
@@ -431,16 +437,17 @@ def legend_patches(keys, colors: dict[str, str], names: dict[str, str]) -> list[
     return [Patch(facecolor=colors[k], edgecolor="none", label=names[k]) for k in keys]
 
 
-def area_scale(values, vmax: float, *, smin: float = 1.5, smax: float = 42.0) -> np.ndarray:
-    """散点面积（pt²）与数值成正比，加一个下限让小点看得见；各图的尺寸图例用同一函数。"""
+def area_scale(values, vmax: float, *, smin: float = 1.5, smax: float = 42.0, marker: str = "o") -> np.ndarray:
+    """散点的 s（pt²）= 下限 *smin* + 与数值成正比的一项：下限让小点看得见，所以面积随数值线性增大、不成正比。
+    按 `MARKER_AREA` 换算形状，同值的圆点、菱形、方块面积相同。各图的尺寸图例用同一函数。"""
     v = np.clip(np.asarray(values, dtype=float) / max(float(vmax), 1e-12), 0.0, 1.0)
-    return smin + (smax - smin) * v
+    return (smin + (smax - smin) * v) * MARKER_AREA[marker]
 
 
 def size_legend(values, vmax: float, marker: str, color: str, fmt: str = "{:g}",
                 smax: float = 42.0) -> list[Line2D]:
     """尺寸图例：按代表值另建句柄，不直接拿数据点当图例（§4.4）；*smax* 与画点时一致。"""
-    sizes = area_scale(values, vmax, smax=smax)
+    sizes = area_scale(values, vmax, smax=smax, marker=marker)
     return [Line2D([], [], marker=marker, linestyle="none", markersize=float(np.sqrt(s)),
                    markerfacecolor=color, markeredgecolor="white", markeredgewidth=0.3,
                    label=fmt.format(v)) for v, s in zip(values, sizes)]
@@ -452,6 +459,23 @@ def _relative(path: Path) -> str:
         return str(path.resolve().relative_to(REPO_ROOT.resolve()))
     except ValueError:
         return str(path)
+
+
+def _check_fonts(fig, stem: str) -> None:
+    """单字体规则（§3.1）：图里文字用的字体本机没有时，matplotlib 会静默换成 DejaVu Sans 照常出图，这里报错。"""
+    from matplotlib import font_manager
+
+    families = {family for t in fig.findobj(Text) if t.get_visible() and t.get_text().strip()
+                for family in t.get_fontproperties().get_family()}
+    missing = []
+    for family in sorted(families):
+        try:
+            font_manager.findfont(font_manager.FontProperties(family=[family]), fallback_to_default=False)
+        except ValueError:
+            missing.append(family)
+    if missing:
+        raise RuntimeError(f"{stem}：本机没有字体 {missing}，matplotlib 会静默换成别的字体照常出图，已拒绝出图"
+                           "（中文 SimHei、英文与面板标号 Arial）")
 
 
 def _check_font_sizes(fig, stem: str) -> None:
@@ -477,11 +501,12 @@ def _check_width(fig, stem: str) -> float:
 def save_fig(fig, name: str, lang: str = "zh", out_dir: Path | None = None) -> list[Path]:
     """存 PDF + PNG（300 dpi），英文版文件名加 `_en`；缺省写到 `_indtree/results/figures/`。
 
-    先查字号与图宽，再写临时文件并收集缺字警告：缺字（SimHei / Arial 没有的字符会画成方框）就删掉临时文件、
-    报错，已有的同名图不动；都通过才换上正式文件名。
+    先查字体（本机没有就报错，不静默换字体）、字号与图宽，再写临时文件并收集缺字警告：缺字（SimHei / Arial
+    没有的字符会画成方框）就删掉临时文件、报错，已有的同名图不动；都通过才换上正式文件名。
     """
     out_dir = FIGURES_DIR if out_dir is None else Path(out_dir)
     stem = name if lang == "zh" else f"{name}_en"
+    _check_fonts(fig, stem)
     out_dir.mkdir(parents=True, exist_ok=True)
     _check_font_sizes(fig, stem)
     width_mm = _check_width(fig, stem)
