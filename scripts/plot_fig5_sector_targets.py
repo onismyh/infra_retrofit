@@ -7,7 +7,8 @@
   （constants_industry.SECTOR_TARGET_GROUP）。超过上限的部分由带罚项的目标缺口变量承担，即该组目标没达到。
   结果里只记了上限的比例，2030 年的基线要从 2030 年的结果里取，所以 2030 必须是规划年，否则脚本报错。
 数据：_indtree/results/<情景>/plant_detail.csv、industry_detail.csv，_indtree/results/<情景>.json。
-自检：各组逐年的残余与冻结技术排放 = result.json 记的值；残余 − 上限 ≤ 目标缺口（模型约束）。
+自检：各组逐年的残余与冻结技术排放 = result.json 记的值；目标缺口 = max(0, 残余 − 上限)（模型约束 残余 − 缺口 ≤ 上限，
+  缺口带罚项取到最小），上限算高、算低都对不上。
 输出：_indtree/results/figures/fig5_sector_targets{,_en}.{pdf,png}
 用法：python scripts/plot_fig5_sector_targets.py [--scenario 情景] [--lang zh|en|both]
 """
@@ -22,11 +23,12 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from coal_retrofit.constants_industry import POWER_TARGET_GROUP
 from plot_style import (
-    AIR_COLOR, GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR,
+    GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR, OVER_COLOR,
     apply_style, check_close, figure_cli, fmt_number, labels, langs, read_result, read_result_json, save_fig,
 )
+
+from coal_retrofit.constants_industry import POWER_TARGET_GROUP  # 在 plot_style 之后：它经 _bootstrap 把 src/ 加进路径
 
 NAME = "fig5_sector_targets"
 BASE_YEAR = 2030             # 部门上限按各组 2030 年冻结技术排放的比例给
@@ -83,10 +85,11 @@ def check(data: dict, table: pd.DataFrame) -> None:
     industry_base = industry.groupby("year")["baseline"].sum()
     check_close("工业冻结技术排放合计应等于 result.json 的 industry.baseline_mt", industry_base,
                 [years[str(y)]["industry"]["baseline_mt"] for y in industry_base.index], atol=1e-6)
-    excess = table["residual"] - table["cap"] - table["shortfall"] - (1e-4 + 1e-7 * table["cap"].abs())
-    if (excess > 0).any():
-        worst = table.iloc[int(np.argmax(excess.to_numpy()))]
-        raise ValueError(f"自检不通过：{worst['group']} {worst['year']} 年残余 − 上限 大于目标缺口，上限算错了"
+    # 缺口带罚项，最优解里恰是残余超出上限的部分，所以两侧都查：只查"残余 − 上限 ≤ 缺口"的话，上限算高了查不出来。
+    gap = (table["shortfall"] - np.maximum(0.0, table["residual"] - table["cap"])).abs()
+    if (gap > 1e-4 + 1e-7 * table["cap"].abs()).any():
+        worst = table.iloc[int(np.argmax(gap.to_numpy()))]
+        raise ValueError(f"自检不通过：{worst['group']} {worst['year']} 年目标缺口不等于残余超出上限的部分，上限算错了"
                          "（模型约束 residual − shortfall ≤ cap），不出图")
 
 
@@ -106,7 +109,7 @@ def draw(table: pd.DataFrame, lang: str):
         for xi, residual, over in zip(x, part["residual"], (part["residual"] - part["cap"]).to_numpy()):
             if over > 1e-3:           # 标在残余排放柱顶，超上限的量
                 ax.annotate(text["over"].format(v=fmt_number(over)), (xi, residual), xytext=(0, 2),
-                            textcoords="offset points", ha="center", va="bottom", fontsize=5.5, color=AIR_COLOR)
+                            textcoords="offset points", ha="center", va="bottom", fontsize=5.5, color=OVER_COLOR)
         ax.set_ylim(0, top * 1.15)
         ax.set_xticks(x, [str(y) for y in part["year"]])
         ax.tick_params(axis="x", length=0)

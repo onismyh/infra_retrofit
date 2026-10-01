@@ -1,16 +1,18 @@
 """图 7  流域取水指标与空冷改造（求解结果）
 
 图含义：
-  a  各流域各规划年的取水指标利用率 = 煤电与工业的取水 ÷ 流域余量（官方用水总量控制指标扣掉非电用水，
-     model_resources.add_basin_withdrawal_cap）。红格（> 100%）表示模型动用了带罚项的松弛、该流域指标没守住；
+  a  各流域各规划年的取水指标利用率 = 煤电与工业的取水 ÷ 流域余量。流域余量 = 用水总量控制指标 −（生活 + 农业
+     + 生态 + 非电工业）+ 已建模工业的现状取水（builders/water_quota.write_basin_caps），约束见
+     model_resources.add_basin_withdrawal_cap。深红格（> 100%）表示模型动用了带罚项的松弛、该流域指标没守住；
      "无余量"是余量 ≤ 0 而仍有取水的流域。本情景没启用流域上限时 a 只写一行说明。
-  b  各规划年湿冷改空冷的容量（GW）= 装机 × 空冷份额（air_cooled_share）× 仍湿冷的比例（1 − already_air_share），
-     逐厂相加；已是空冷的部分不重复计（plant_matrices._air_cooling_matrices）。
-读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 的空冷份额是
-  各路径之和，其中退役路径上的一份在已装存量以内对用水与成本都没有作用、模型可以任取，后期年份的数字可能含已退役的改造。
-数据：_indtree/results/<情景>/resource_use.csv、plant_detail.csv。
-自检：利用率 = 取水 ÷ 余量（余量为正时，与结果表的 utilization 列一致）；流域代码都在 BASIN_ORDER 里；
-  空冷份额与已空冷比例都在 [0, 1]。
+  b  各规划年当年以空冷运行的改造容量（GW）= 装机 × 空冷运行份额（air_operating_share）× 仍湿冷的比例
+     （1 − already_air_share），逐厂相加；已是空冷的部分不重复计（plant_matrices._air_cooling_matrices）。
+读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
+  空冷容量，不是累计改造量：退役路径上的空冷份额不计入；已建成的空冷存量（plant_detail.csv 的 air_installed_share，
+  只增不减，含此后退役的容量）这里不画。
+数据：_indtree/results/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
+自检：各流域超出余量的取水 = slack_detail.csv 记的该流域松弛（没超的流域没有松弛），两边各算各的；流域代码都在
+  BASIN_ORDER 里；空冷运行份额与已空冷比例都在 [0, 1]。
 输出：_indtree/results/figures/fig7_water{,_en}.{pdf,png}
 用法：python scripts/plot_fig7_water.py [--scenario 情景] [--lang zh|en|both]
 """
@@ -23,27 +25,33 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 from plot_style import (
-    AIR_COLOR, BASIN_ORDER, INK, MM, MUTED,
+    AIR_COLOR, BASIN_ORDER, INK, MM, MUTED, OVER_COLOR,
     apply_style, check_close, figure_cli, figure_label, fmt_number, labels, langs, read_result, save_fig,
 )
 
 NAME = "fig7_water"
 OVER = 1.0 + 1e-4            # 利用率高于它算超指标（约束取紧时求解器给出的是 1 ± 容差）
-# 利用率分档（上界）与颜色：四档蓝色由浅到深，超指标与无余量用红色（CLAUDE.md §3.3 取水 Blues、强调红）。
+# 利用率分档（上界）与颜色：四档蓝色由浅到深，超指标与无余量用深红（CLAUDE.md §3.3 取水 Blues；强调红留给 b 的空冷）。
 CLASS_EDGES = (0.5, 0.8, 0.95, OVER)
-CLASS_COLORS = ("#DEEBF7", "#9ECAE1", "#4292C6", "#08519C", AIR_COLOR)
+CLASS_COLORS = ("#DEEBF7", "#9ECAE1", "#4292C6", "#08519C", OVER_COLOR)
+# 中文版不用 ≤、–、—：SimHei 有没有这几个字没核实过（缺字时 save_fig 拒绝出图），≤ 走 mathtext，区间与缺值用连字符。
 TEXT = {
-    "zh": {"classes": ("≤ 50%", "50–80%", "80–95%", "95–100%", "> 100% 或无余量"), "none": "无余量",
-           "off": "本情景没有启用流域取水上限", "b": "湿冷改空冷的容量（GW）", "a_title": "流域取水指标利用率"},
-    "en": {"classes": ("≤ 50%", "50–80%", "80–95%", "95–100%", "> 100% or no quota"), "none": "no quota",
-           "off": "Basin withdrawal caps are off in this scenario", "b": "Wet-to-air converted capacity (GW)",
+    "zh": {"classes": ("$\\leq$ 50%", "50-80%", "80-95%", "95-100%", "> 100% 或无余量"), "none": "无余量", "nan": "-",
+           "off": "本情景没有启用流域取水上限", "b": "当年以空冷运行的改造容量（GW）", "a_title": "流域取水指标利用率"},
+    "en": {"classes": ("≤ 50%", "50–80%", "80–95%", "95–100%", "> 100% or no quota"), "none": "no quota", "nan": "—",
+           "off": "Basin withdrawal caps are off in this scenario", "b": "Retrofitted capacity running air-cooled (GW)",
            "a_title": "Utilisation of basin withdrawal quotas"},
 }
 
 
 def load(scenario: str) -> dict[str, pd.DataFrame]:
     resource = read_result(scenario, "resource_use")
+    try:
+        slack = read_result(scenario, "slack_detail")
+    except pd.errors.EmptyDataError:     # 一个松弛都没有时这张表是空文件
+        slack = pd.DataFrame(columns=["year", "constraint_type", "node_id", "slack_value"])
     return {"basins": resource[resource["resource_type"] == "water_basin_quota"].astype({"region": str}),
+            "slack": slack[slack["constraint_type"] == "water_basin_quota"],
             "plants": read_result(scenario, "plant_detail")}
 
 
@@ -58,21 +66,38 @@ def utilization(basins: pd.DataFrame) -> pd.DataFrame:
 
 
 def converted_gw(plants: pd.DataFrame) -> pd.Series:
-    """年 -> 湿冷改空冷的容量（GW）。"""
-    gw = plants["capacity_mw"] * plants["air_cooled_share"] * (1.0 - plants["already_air_share"]) / 1000.0
+    """年 -> 当年以空冷运行的改造容量（GW）。"""
+    gw = plants["capacity_mw"] * plants["air_operating_share"] * (1.0 - plants["already_air_share"]) / 1000.0
     return gw.groupby(plants["year"]).sum()
 
 
+def cell_label(value: float, text: dict) -> str:
+    """a 的格子里写的字。超了指标但四舍五入是 100% 的写成 >100%，免得与守住的格子看不出分别。"""
+    if np.isnan(value):
+        return text["nan"]
+    if np.isinf(value):
+        return text["none"]
+    if OVER < value < 1.005:
+        return ">100%"
+    return f"{value * 100:.0f}%"
+
+
 def check(data: dict[str, pd.DataFrame]) -> None:
-    basins, plants = data["basins"], data["plants"]
+    basins, plants, slack = data["basins"], data["plants"], data["slack"]
+    if "air_operating_share" not in plants.columns:
+        raise ValueError("自检不通过：plant_detail.csv 没有 air_operating_share 列（2026-09-30 之前落盘，那时的"
+                         " air_cooled_share 含退役路径上可任取的份额），重解后再画")
     unknown = set(basins["region"]) - set(BASIN_ORDER)
     if unknown:
         raise ValueError(f"自检不通过：流域代码 {sorted(unknown)} 不在 BASIN_ORDER 里，不出图")
-    positive = basins[basins["available"] > 0]
-    check_close("利用率应等于 取水 ÷ 余量", positive["used"] / positive["available"], positive["utilization"],
-                atol=1e-9)
-    for col in ("air_cooled_share", "already_air_share"):
-        if not plants[col].between(-1e-9, 1 + 1e-9).all():
+    # 模型约束 取水 ≤ 余量 + 松弛，松弛带罚项取到最小：超出余量的取水就是该流域的松弛（slack_detail 只记正值）。
+    booked = {(int(y), str(code)): float(v)
+              for y, code, v in zip(slack["year"], slack["node_id"], slack["slack_value"])}
+    check_close("超出流域余量的取水应等于 slack_detail.csv 的流域松弛",
+                (basins["used"] - basins["available"]).clip(lower=0.0),
+                [booked.get((int(y), code), 0.0) for y, code in zip(basins["year"], basins["region"])], atol=10.0)
+    for col in ("air_operating_share", "already_air_share"):
+        if not plants[col].between(-1e-6, 1 + 1e-6).all():
             raise ValueError(f"自检不通过：plant_detail.{col} 超出 [0, 1]，不出图")
 
 
@@ -90,8 +115,7 @@ def draw(data: dict[str, pd.DataFrame], lang: str):
         ax.imshow(classes, cmap=ListedColormap(CLASS_COLORS), vmin=-0.5, vmax=len(CLASS_COLORS) - 0.5,
                   aspect="auto", interpolation="none")
         for (i, j), value in np.ndenumerate(table.to_numpy(float)):
-            label = "—" if np.isnan(value) else text["none"] if np.isinf(value) else f"{value * 100:.0f}%"
-            ax.text(j, i, label, ha="center", va="center", fontsize=6,
+            ax.text(j, i, cell_label(value, text), ha="center", va="center", fontsize=6,
                     color="white" if classes[i, j] >= 2 else INK)
         ax.set_xticks(range(table.shape[1]), [str(y) for y in table.columns])
         ax.set_yticks(range(table.shape[0]), [lab["basin"][b] for b in table.index])
