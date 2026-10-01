@@ -1,7 +1,8 @@
 """节点可用量 = max(生态余量, 存量) x water_multiplier（`water_access._water_available_by_node`），不求解。
 
 生态余量 = 径流_n x 0.20 − 流域耗水 x 径流_n / 流域径流（耗水按节点径流份额摊）；存量 = 归到该节点的煤电不改造
-同年耗水，每个 hub 只归它最近的节点（`distance_rank` 为 1）。数取得让 B1 的两个节点余量为负、B2 的为正。
+同年耗水，每个 hub 只归它最近的节点（`distance_rank` 为 1）。数取得让 B1 的两个节点余量为负、B2 的为正。两张表
+另有别的成员、别的年份的干扰行（数放大 100 倍），径流或耗水取错成员、年份，结果就会变。
 """
 from __future__ import annotations
 
@@ -11,11 +12,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from coal_retrofit.optimization.data_prep import _prepare_basin_use
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.water_access import _water_available_by_node
+from coal_retrofit.paths import ProjectPaths
 
 MEMBER = "toy|gcm|ssp126"
 YEAR = 2050
+# 干扰行：(成员, 年份, 放大倍数)；同一 family 里 MEMBER 按 id 排第一。
+ROWS = ((MEMBER, YEAR, 1.0), ("toy|gcm|ssp370", YEAR, 100.0), (MEMBER, 2030, 100.0))
 # 节点 -> (流域, 全年径流, 枯水期径流, 偏差因子)，m3/yr
 NODES = {"W1": ("B1", 6.0e7, 2.0e7, 0.5), "W2": ("B1", 4.0e7, 1.0e7, 0.5), "W3": ("B2", 1.0e8, 5.0e7, 2.0)}
 # 流域 -> (生活, 灌溉, 枯水期生活, 枯水期灌溉)，m3/yr
@@ -26,17 +31,20 @@ BASELINE = np.array([4.0e6, 1.0e6])
 
 
 def _prepared(use: dict = USE, links: tuple = LINKS) -> SimpleNamespace:
+    """`use` 只换所选成员、所选年份的耗水行；干扰行总是两个流域都有。"""
     availability = pd.DataFrame([
-        {"water_node_id": node, "planning_year": YEAR, "scenario_family": "baseline", "scenario_id": MEMBER,
-         "basin_code": basin, "available_water_m3_per_year": annual, "dry_season_water_m3_per_year": dry,
+        {"water_node_id": node, "planning_year": year, "scenario_family": "baseline", "scenario_id": member,
+         "basin_code": basin, "available_water_m3_per_year": annual * k, "dry_season_water_m3_per_year": dry * k,
          "bias_factor": bias}
+        for member, year, k in ROWS
         for node, (basin, annual, dry, bias) in NODES.items()
     ])
     basin_use = pd.DataFrame([
-        {"scenario_id": MEMBER, "planning_year": YEAR, "basin_code": basin, "domestic_m3_per_year": u[0],
-         "irrigation_m3_per_year": u[1], "dry_season_domestic_m3_per_year": u[2],
-         "dry_season_irrigation_m3_per_year": u[3]}
-        for basin, u in use.items()
+        {"scenario_id": member, "planning_year": year, "basin_code": basin, "domestic_m3_per_year": u[0] * k,
+         "irrigation_m3_per_year": u[1] * k, "dry_season_domestic_m3_per_year": u[2] * k,
+         "dry_season_irrigation_m3_per_year": u[3] * k}
+        for member, year, k in ROWS
+        for basin, u in (use if k == 1.0 else USE).items()
     ])
     return SimpleNamespace(
         water_availability=availability,
@@ -47,9 +55,9 @@ def _prepared(use: dict = USE, links: tuple = LINKS) -> SimpleNamespace:
 
 
 def _available(prepared=None, season: str = "annual", multiplier: float = 1.0, bias: bool = True,
-               baseline: np.ndarray = BASELINE, order=("W1", "W2", "W3")) -> np.ndarray:
+               baseline: np.ndarray = BASELINE, order=("W1", "W2", "W3"), member: str = MEMBER) -> np.ndarray:
     scenario = OptimizationScenario(
-        experiment_id="T", description="toy", water_mode="grid_supply", water_scenario_id=MEMBER,
+        experiment_id="T", description="toy", water_mode="grid_supply", water_scenario_id=member,
         water_season=season, water_multiplier=multiplier,
     )
     assumptions = OptimizationAssumptions(apply_bias_correction=bias)
@@ -61,6 +69,8 @@ def test_residual_spreads_basin_use_by_runoff_share_and_keeps_existing_use() -> 
     # B1：径流 1e8，耗水 2.5e7；W1 = 1.2e7 − 2.5e7 x 0.6 = −3e6，W2 = 8e6 − 2.5e7 x 0.4 = −2e6，都取存量。
     # B2：W3 = 2e7 − 3e6 = 1.7e7。
     assert _available() == pytest.approx([4.0e6, 1.0e6, 1.7e7])
+    # 不指定成员时取 family 里按 id 排第一的成员（MEMBER），耗水跟着它取，结果相同。
+    assert _available(member="") == pytest.approx([4.0e6, 1.0e6, 1.7e7])
     # P1 的第二近节点是 W3，存量不算在 W3 上：P1 不改造耗水 2e7 高于 W3 的余量，W3 仍取余量。
     assert _available(baseline=np.array([2.0e7, 1.0e6])) == pytest.approx([2.0e7, 1.0e6, 1.7e7])
     # 没有煤电的节点余量为负时取 0；输出按 `nodes` 的顺序排。
@@ -95,3 +105,19 @@ def test_missing_use_rows_or_season_column_raise() -> None:
     # 缺枯水期列时报错，不退回全年值。
     with pytest.raises(ValueError, match="dry_season_water_m3_per_year"):
         _available(prepared, season="dry")
+
+
+def test_basin_use_table_with_empty_values_or_duplicate_keys_raises(tmp_path) -> None:
+    """读入时就拦下：空值求和会被当成 0（等于不扣），重复的 (成员, 年, 流域) 在扣减时对不上。"""
+    scenario = OptimizationScenario(experiment_id="T", description="toy", water_mode="grid_supply")
+    paths = ProjectPaths(tmp_path)
+    paths.inputs_dir.mkdir()
+    table = _prepared().water_basin_use
+    table.to_csv(paths.inputs_dir / "water_basin_use.csv", index=False)
+    assert len(_prepare_basin_use(paths, scenario)) == len(table)
+    empty = table.copy()
+    empty.loc[0, "dry_season_irrigation_m3_per_year"] = np.nan
+    for broken in (empty, pd.concat([table, table.iloc[:1]])):
+        broken.to_csv(paths.inputs_dir / "water_basin_use.csv", index=False)
+        with pytest.raises(ValueError, match="empty values or duplicate"):
+            _prepare_basin_use(paths, scenario)

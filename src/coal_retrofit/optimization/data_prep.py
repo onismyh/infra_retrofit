@@ -134,6 +134,9 @@ def _prepare_basin_use(paths: ProjectPaths, scenario: OptimizationScenario) -> p
     missing = set(_BASIN_USE_COLUMNS) - set(use.columns)
     if missing:
         raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    # 空值求和时会被当成 0（等于不扣），重复键在扣减时对不上：都报错。
+    if use[list(_BASIN_USE_COLUMNS[3:])].isna().any().any() or use.duplicated(list(_BASIN_USE_COLUMNS[:3])).any():
+        raise ValueError(f"{path} has empty values or duplicate (scenario_id, planning_year, basin_code) rows")
     return use
 
 
