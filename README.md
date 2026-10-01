@@ -101,7 +101,8 @@
 > `_v91tree/results/` 不在库里，本机那份拉取后原处不动（`.gitignore` 的规则保留）。`scripts/render_version.py` 去掉 `--tree`
 > （出图脚本只读 `_indtree`），`--version` 改为必填（原缺省 `v9`，
 > 会把 `_indtree` 的图拷进 v9 的归档）；只拷这次画出的图（`plot_ind_*` 也往 `_indtree/results/figures/` 存图，那些旧图
-> 不拷；`--skip-plots` 时不画图，目录里的图全拷，它们也会进去），`--freeze-tag` 缺省不挪旧图。
+> 不拷；`--skip-plots` 时不画图，目录里的图全拷，它们也会进去；2026-09-29 起只拷根目录，子目录里的这些旧图不再进去），
+> `--freeze-tag` 缺省不挪旧图。
 >
 > 2026-09-28 起 `scripts/` 只留 `ST_` 一条线用得上的 29 个脚本，删掉只服务 v9 / v9.1 / `IND_` 的 27 个（删之前的版本都在
 > `6917c9c` 的 `scripts/` 里）：
@@ -138,13 +139,27 @@
 > 缺省读 `ST_WA_cwatm_126_dry_oq`，`--scenario` 可换。结果图出图前先与模型的账对一遍（如逐厂各路径减排之和 = `reduction_mt`、
 > 捕集 = 封存、残余 − 部门上限 ≤ 目标缺口），对不上就报错、不出图。`--lang zh|en|both` 切换中英文（缺省两版都画，英文版文件名
 > 加 `_en`；中文 SimHei、英文 Arial，各自单字体，CLAUDE.md §3.1）。
-> 同日删去 11 个旧出图脚本（`plot_candidate_network`、`plot_fig1_water_footprint`、4 个 `plot_ed_*`、`ed_plant_data`、`map_tht`
-> 与 3 个 `ST_` 幻灯片脚本）、`tests/test_variance_decomposition_marks.py` 与 `_indtree/inputs/figures/` 里的候选管网图（改由图 2
+> 同日删去 9 个旧出图脚本（`plot_candidate_network`、`plot_fig1_water_footprint`、4 个 `plot_ed_*` 与 3 个 `ST_` 幻灯片脚本）、
+> 2 个出图辅助模块（`ed_plant_data`、`map_tht`）、`tests/test_variance_decomposition_marks.py` 与 `_indtree/inputs/figures/` 里的候选管网图（改由图 2
 > 画到 `_indtree/results/figures/`），删之前的版本都在 `b708e09`。`plot_style.residual_emissions_mt` 随之删去：没有出图脚本调用它，
 > `tests/test_blend_ratios.py` 改为直接核对 `plant_detail.csv` 的逐厂 baseline − reduction 之和等于求解器的残余排放。
 > 底图：南海小图放在台湾以东的海面上（主图向东加宽，小图不压国土），主图南边裁到 17.5°N；地图上的图例压到国土就报错。
 > `scripts/render_version.py` 只运行 `plot_fig*`，只拷 `_indtree/results/figures/` 根目录下本次画出的图（子目录 `main/`、
 > `extended/` 里旧脚本画的图不拷）。模型、求解与结果表不变。
+>
+> 2026-09-30 起结果表的逐路径拆分按约束逐项算（`optimization/results_plant._pathway_split`，照搬约束里的残余排放与捕集表达式）：
+> `pathway_shares.csv` 的 `abatement_mt` = 基线排放 × 份额 − 该路径的残余排放，`captured_mt` 是该路径的物理捕集量，逐厂相加
+> 即求解器的值，`sanity_checks.csv` 新增 `pathway_split_closure` 行核对。此前按经典减排比例拆、再缩放到逐厂合计，各路径的值
+> 与符号可能不对：CF 提升 1.15 下掺氨 10% 的份额净增排 3.5%，与 CCS 同厂时却按经典比例分到正的减排；捕集量按 CCS、BECCS
+> 的份额比例分摊。
+> `plant_detail.csv` 的 `air_cooled_share` 拆成 `air_operating_share`（当年在运行路径上以空冷运行的份额，不含退役路径上模型
+> 可任取的那份）与 `air_installed_share`（已建成的空冷存量，只增不减）。经典比例函数 `optimization/emissions.py` 随之删去。
+> 模型、目标值与逐厂合计不变；此前落盘的结果图 3、图 7 拒绝出图，重解后再画。09-29 条说的 `test_blend_ratios.py` 那条核对
+> 两边是同一对数组、永远成立，改为拆分结果与求解器的约束表达式对拍。
+> 同日按 PR #20 复核修出图：同值的圆点、菱形、方块面积相同（此前后两者大 4/π，约 27%）；`save_fig` 先查字体，缺 SimHei 或
+> Arial 就报错，不再静默换字体；图 5 不装包也能运行，上限自检改为两侧都查；图 7 的自检改为与 `slack_detail.csv` 的流域松弛
+> 对账，超指标改用深红 `OVER_COLOR`（强调红留给空冷）；图 6 遇到不认识的部门报错；`render_version.py` 不拷 `save_fig` 的临时
+> 文件。细节见各脚本文件头与 CLAUDE.md §3.3、§4.4、§4.6。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

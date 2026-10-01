@@ -217,6 +217,11 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > 份额可以有一部分改造了却不掺烧；实现说明 §9.8）。下表三个 hub 决策连续的情景都在此之前落盘，**不得与改后的求解相减**；
 > `*_inthub`（独热档位）的整数可行解不变，但 LP 松弛变紧、模型指纹变了，重解不复现旧的搜索路径（下表两个 `*_inthub`
 > 都是 10 h 时限停下、gap 4.22% / 12.1% 的解）。详见根 README §0。
+>
+> ⚠ **结果表拆分改正（2026-09-30）**：模型、目标值与厂合计减排不变。`pathway_shares.csv`、`province_pathways.csv` 的逐路径
+> 减排量与捕集量改为按约束逐项拆分，逐厂相加即求解器的值（PR #7 只改了掺烧比例的换算，拆分仍是经典比例再缩放，各路径的值与
+> 符号可能不对）；`plant_detail.csv` 的 `air_cooled_share` 拆成 `air_operating_share`、`air_installed_share`。下表的结果都在此之前
+> 落盘，图 3、图 7 拒绝出图，重解后再画。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

@@ -175,11 +175,12 @@ plt.rcParams.update({
 ```
 
 出图脚本都带 `--lang zh|en|both`（缺省两版都出），英文版文件名加 `_en`。两版只差字体与文字：共用名词的中英对照在
-`plot_style.LABELS`，各图专有的文字在各脚本顶部的 `TEXT`。面板标号 a b c 两版都用 Arial 加粗，是单字体规则唯一的例外：
+`plot_style.LABELS`，各图专有的文字在各脚本顶部的 `TEXT`（图 2 的边类名在 `EDGE_NAMES`）。面板标号 a b c 两版都用 Arial 加粗，是单字体规则唯一的例外：
 SimHei 只有一个字重，`fontweight="bold"` 落到它上面会被静默忽略。
 
 > 现状（2026-09-29 起）：出图脚本只剩 `scripts/plot_fig1_*.py` … `plot_fig7_*.py` 七个，都经 `apply_style(lang)` 取字体。
-> 新脚本若自写 `"font.family"`，就是破坏全局一致性。
+> 新脚本若自写 `"font.family"`，就是破坏全局一致性。2026-09-30 起 `save_fig` 先查图里用到的字体：本机缺 SimHei 或 Arial
+> （中文版的面板标号也用 Arial）就报错，不像 matplotlib 那样静默换成 DejaVu Sans 照常出图。
 
 **不配 fallback 栈是有意的**：一旦允许 `["SimHei", ..., "Arial"]` 这类回退，
 同一个符号在有无 SimHei 的机器上会落到不同字形，图就不再是同一张图。
@@ -256,9 +257,11 @@ NPG = ['#E64B35', '#4DBBD5', '#00A087', '#3C5488', '#F39B7F',
 | EOR 封存 | `#9ECAE1` | Blues 浅端 |
 | 取水 / 耗水 | `#6BAED6` / `#08519C` | Blues |
 
-> 现状（2026-09-29 起）：`plot_style.PATHWAY_COLORS` 即上表（模型没有掺氨 + CCS 路径，表里那一行不用）；工业路线
-> `ROUTE_COLORS` 沿用同一逻辑（灰 = 未改造、深灰 = CCS、紫 = 氢路线）；部门色 `SECTOR_COLORS` 取 NPG，同一大类同一族
-> （钢铁红、水泥绿、化工棕，煤电灰），避开蓝色——蓝色留给水与封存。
+> 现状（2026-09-30 起）：上表的煤电六行（未改造、CCS 改造、生物质、BECCS、掺氨、退役）在 `plot_style.PATHWAY_COLORS`；
+> 工业路线在 `ROUTE_COLORS`，沿用同一逻辑（灰 = 未改造、深灰 = CCS、紫 = 氢路线）；空冷在 `AIR_COLOR`；管网与两类封存在
+> `PIPE_COLOR`、`SINK_COLORS`；取水分档色写在图 7 脚本里。模型没有掺氨 + CCS、掺氢 + CCS 路径，表里这两行不用。
+> 超上限、超指标另用 `OVER_COLOR`（`#A50F15`，Reds 深端），不与空冷的强调红混用。部门色 `SECTOR_COLORS` 取 NPG，
+> 同一大类同一族（钢铁红、水泥绿、化工棕，煤电灰），避开蓝色——蓝色留给水与封存。
 
 **(3) 连续 / 分段 —— 显式 BoundaryNorm，不要用默认连续色带**
 
@@ -313,7 +316,7 @@ gdf = gdf.to_crs(TARGET_CRS)
 | `map_layer("provinces")` | `中华人民共和国.json`（2023 版，含台湾与港澳） | 省界，已剔除 adcode = `100000_JD` 的九段线要素 |
 | `map_layer("dash")` | 同上，adcode = `100000_JD` | **九段线**，单独一层，主图和小图都要画 |
 | `map_layer("country")` | `china_country_proj.shp` | 国界：单要素、1 260 个部件，南到 3.83°N |
-| `map_layer("country_main")` | `country` 中面积 ≥ 1 000 km² 的部件 | 只有大陆、台湾、海南三块，主图用 |
+| `map_layer("country_main")` | `country` 中面积 ≥ 1 000 km² 的部件（面积在 shp 原生的 Albers 等积投影下算，§4.1） | 只有大陆、台湾、海南三块，主图用 |
 
 > ⚠️ 国界层整层有 1 257 个小岛部件（中位 1.1 km²），画在主图上就是东南海岸一圈黑毛刺。
 > **主图画 `country_main` + `dash`，整层只在南海小图里画**；`draw_china_basemap(islands=False / True)` 已按此实现。
@@ -338,7 +341,8 @@ gdf = gdf.to_crs(TARGET_CRS)
 直接用 `plot_style` 的封装，不要各图自己拼图层：
 
 ```python
-from plot_style import add_scs_inset, check_off_land, draw_china_basemap, mainland_extent, to_map_xy
+from plot_style import (MAP_LEGEND, MM, add_scs_inset, check_off_land, draw_china_basemap, mainland_extent,
+                        save_fig, to_map_xy)
 
 draw_china_basemap(ax)                        # 省界 0.20 + 国界/九段线 0.75，省份填浅灰 LAND
 x, y = to_map_xy(lon, lat)                    # 散点/折线坐标 -> EPSG:2380
@@ -352,7 +356,7 @@ check_off_land(ax, legend)                    # 图例压到国土就报错
 
 > **`provinces.shp` 自身延伸到 6.32°N**（含南海要素），所以 `provinces.total_bounds`
 > 给出的是 6.3–53.6°N 的画框，比大陆高出近 280 km。英文图看不出来（那片什么都不画），
-> 补上九段线后大陆就被压扁到画面上半部。上表的省界层（`中华人民共和国.json`）同样南到 6.3°N。`mainland_extent()`
+> 补上九段线后大陆就被压扁到画面上半部。上表的省界层（`中华人民共和国.json`）南得更远，到 3.8°N（海南省要素含南沙）。`mainland_extent()`
 > 把南边裁到 17.5°N、南边不留白（在中央经线上量：海南最南 18.15°N，完整保留；西沙最北 17.12°N 与 16°N 附近的两段
 > 九段线落在底边以外 30 km 以上，底边不露碎片），九段线主体与南海岛礁交给小图 —— 这正是小图必需的原因。
 
@@ -386,11 +390,15 @@ save_fig(fig, "fig2_candidate_network", lang)
 | 国界 `country_main`（小图用整层 `country`）+ 九段线 `dash` | none | black | 0.75 | 1.5–1.6 |
 | 流域 / 分区填充 | 浅色 | none | — | 1 |
 | 管网 / 流量线 | — | 按情景 | `np.sqrt(flow)/scale` | 2–3 |
-| 源点 / 汇点 | 按类别 | white | 0.3 | 4+ |
+| 源点（煤电、工业） | 按类别 | white | 0.25–0.3 | 3–4 |
+| 汇点 | 按类型（§3.3 Blues） | `#08519C` | 0.3–0.4 | 4–5 |
+
+南海小图里省界 0.15、国界与九段线 0.5（`add_scs_inset`），业务图层的点与线按各图给的倍数（0.5–0.6）缩小。
 
 **流量线宽 = `sqrt(流量)/scale`**（面积正比于流量）。图例不能直接用数据线宽，
 必须用 `Line2D` 按代表值另建分档图例（如 `<0.5 / 0.5–1.0 / 1.0–2.0 / >2.0`），
-并在图例标题写清单位。
+并在图例标题写清单位。**点面积**用 `plot_style.area_scale`（下限 + 线性项，不是正比），按形状换算（`MARKER_AREA`），
+同值的圆点、菱形、方块面积相同；尺寸图例用同一换算的 `size_legend`。
 
 ### 4.5 地图输出
 
@@ -399,7 +407,8 @@ save_fig(fig, "fig2_candidate_network", lang)
 
 ### 4.6 出图前自检（缺一不可，`save_fig` 与底图函数里都已实现）
 
-1. **缺字**：`save_fig` 先写临时文件并收集缺字警告，有就删掉临时文件、报错，已有的同名图不动，别让方框混进 PDF。
+1. **字体与缺字**：`save_fig` 先查图里用到的字体本机有没有（缺了 matplotlib 会静默换字体），再写临时文件并收集缺字警告，
+   有就删掉临时文件、报错，已有的同名图不动，别让方框混进 PDF。
 2. **九段线**：`draw_china_basemap` 画了 `map_layer("dash")`（缺要素会在读图层时抛错），主图国界用 `country_main`，
    不要再按 `GBCODE` 选国界层（§4.2）。
 3. **图幅宽度与字号**：`save_fig` 的宽度守卫（≤ 183 mm）与字号检查（≥ 5 pt）必须通过；被撑宽通常是 `pad_inches`
