@@ -1,7 +1,7 @@
 """2026-09-23 模型改动 (a)–(d) 里不求解的测试，外加工业明细表的 capital 列，以及 2026-09-30 的分代在役判定与
 铭牌定规模（求解的分代测试在 `test_capacity_vintages.py`）。
 
-除明细表那条外，都从 `test_capex_stock_and_lifetimes.py` 挪来：那个文件在模块级 `importorskip("gurobipy")`，
+(a)–(d) 那几条从 `test_capex_stock_and_lifetimes.py` 挪来：那个文件在模块级 `importorskip("gurobipy")`，
 放在那里的测试在没有 Gurobi 的环境里会整体跳过（见 `test_discount_rate.py` 的说明）。煤电的两条
 借 toy 输入建逐年系数矩阵，建矩阵不用 Gurobi。
 """

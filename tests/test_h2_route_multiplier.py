@@ -69,8 +69,8 @@ def test_h2_route_capex_has_no_learning_curve() -> None:
 
 @pytest.mark.parametrize(("sector", "increase"), [("steel_bf_bof", 0.2516), ("ammonia", 0.1415), ("methanol", 0.0189)])
 def test_h2_multiplier_reach_at_the_anchor_price(sector: str, increase: float) -> None:
-    """锚点氢价下乘子取 2 只让平准化溢价增加 capex x (CRF + 固定运维比例)，即路线的年资本项：钢铁 25%、
-    合成氨 14%、甲醇 2%，即 scenario.py 字段注释与实现说明 §四.1 写的数。2026-09-23 前为 +100%。"""
+    """铭牌系数 ν = 1 的 hub 在锚点氢价下乘子取 2 只让平准化溢价增加 capex x (CRF + 固定运维比例)，即路线的
+    年资本项：钢铁 25%、合成氨 14%、甲醇 2%，即 scenario.py 字段注释与实现说明 §四.1 写的数。2026-09-23 前为 +100%。"""
     premium_ref, _ = ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
     rate = OptimizationScenario(experiment_id="T", description="toy").discount_rate
     assert ci.h2_route_annual_capital_cny_per_t(sector, rate) / premium_ref == pytest.approx(increase, abs=1e-4)
