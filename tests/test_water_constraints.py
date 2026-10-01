@@ -1,4 +1,5 @@
 """水约束在单厂 toy 上的两条规则：节点上限（环境流量规则，作用于耗水）与流域取水指标（分配规则，作用于取水）。
+流域上限逼出空冷改造，结果表的空冷列与含空冷背压的逐路径拆分也在这里核对。
 
 toy 没有流域面图层，也没有 plants.csv 的取水定额表；两处都在调用函数内部导入，
 所以直接替换模块属性即可（`monkeypatch` 在测试结束时还原）。
@@ -12,6 +13,7 @@ import pandas as pd
 import pytest
 
 if TYPE_CHECKING:
+    from coal_retrofit.optimization._shared import PreparedInputs
     from coal_retrofit.optimization.year_types import SolveResult
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
@@ -20,7 +22,7 @@ import coal_retrofit.builders.water as builders_water
 import coal_retrofit.builders.water_quota as builders_water_quota
 from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.paths import ProjectPaths
 from toy_inputs import YEARS, _write_targets, _write_toy_inputs
@@ -58,7 +60,9 @@ def _write_water_inputs(paths: ProjectPaths, basin_caps: bool) -> None:
         ).to_csv(paths.inputs_dir / "water_basin_caps.csv", index=False)
 
 
-def _solve(paths: ProjectPaths, experiment_id: str, **assumption_overrides) -> SolveResult:
+def _solve(
+    paths: ProjectPaths, experiment_id: str, **assumption_overrides
+) -> tuple[OptimizationScenario, PreparedInputs, SolveResult]:
     scenario = OptimizationScenario(
         experiment_id=experiment_id,
         description="toy",
@@ -80,7 +84,7 @@ def _solve(paths: ProjectPaths, experiment_id: str, **assumption_overrides) -> S
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
     )
-    return _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
+    return scenario, prepared, _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
 
 
 def _toy_paths(tmp_path, basin_caps: bool) -> ProjectPaths:
@@ -95,7 +99,7 @@ def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path, monkeypatch
     所以流经节点的水 = 可用量 + 松弛（缩放单位换回 m3 后仍成立）；厂用水另按耗水强度与解出的份额重算核对。
     流域指标不激活。"""
     monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
-    solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-NODE", apply_basin_cap=False)
+    _, _, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-NODE", apply_basin_cap=False)
     assert solution["status"] == "optimal"
     for year in YEARS:
         ys = solution["year_solutions"][year]
@@ -127,7 +131,7 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
     paths = _toy_paths(tmp_path, basin_caps=True)
 
-    capped = _solve(paths, "TEST-WATER-QUOTA")
+    _, _, capped = _solve(paths, "TEST-WATER-QUOTA")
     assert capped["status"] == "optimal"
     for year in YEARS:
         ys = capped["year_solutions"][year]
@@ -150,10 +154,46 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
         assert industry > 0.0
         assert float(ys["slacks"]["water_basin_use_m3"][0]) == pytest.approx(coal + industry, rel=1e-6)
 
-    env_only = _solve(paths, "TEST-WATER-ENVONLY", apply_basin_cap=False)
+    _, _, env_only = _solve(paths, "TEST-WATER-ENVONLY", apply_basin_cap=False)
     assert env_only["status"] == "optimal"
     for year in YEARS:
         year_data = env_only["year_solutions"][year]["year_data"]
         assert year_data.water_basin_membership is None
         assert year_data.water_basin_codes == []
     assert float(capped["objective_cny"]) > float(env_only["objective_cny"])
+
+
+def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -> None:
+    """流域上限绑定时 toy 电厂在运行路径上转空冷。明细表的空冷运行份额是运行路径上空冷份额之和，已装份额是空冷存量；
+    2060 年退役份额变大，已装存量（只增不减）高于运行份额。逐路径的减排量与捕集量含空冷背压的排放与捕集，逐厂相加
+    等于求解器的值。"""
+    from coal_retrofit.optimization.results_plant import _build_pathway_table, _build_plant_detail_table
+
+    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
+    scenario, prepared, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-AIR")
+    assert solution["status"] == "optimal"
+    operating = [k for k, pathway in enumerate(PATHWAYS) if pathway != "retire"]
+    for year in YEARS:
+        ys = solution["year_solutions"][year]
+        air_operating = float(ys["air_share"][0, operating].sum())
+        assert air_operating > 1e-3, "前提：流域上限逼出空冷"
+        detail = _build_plant_detail_table(
+            prepared, scenario, year, ys["share"], ys["captured_mt_by_plant"], ys["biomass_use_gj"],
+            ys["ammonia_use_kg"], ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"], ys["air_share"],
+            year_data=ys["year_data"], plant_reduction_mt=ys["plant_reduction_mt"],
+            biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
+            ammonia_blend_x_share=ys["ammonia_blend_x_share"], air_installed=ys["air_installed"],
+        )
+        assert float(detail["air_operating_share"].iloc[0]) == pytest.approx(air_operating, rel=1e-12)
+        assert float(detail["air_installed_share"].iloc[0]) == pytest.approx(float(ys["air_installed"][0]), rel=1e-12)
+        assert float(ys["air_installed"][0]) >= air_operating - 1e-6
+        pathways = _build_pathway_table(
+            prepared, scenario, year, ys["share"],
+            ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
+            year_data=ys["year_data"], air_share=ys["air_share"],
+        )
+        assert float(pathways["abatement_mt"].sum()) == pytest.approx(float(ys["plant_reduction_mt"][0]), rel=1e-6)
+        assert float(pathways["captured_mt"].sum()) == pytest.approx(float(ys["captured_mt_by_plant"][0]), rel=1e-6)
+    last = solution["year_solutions"][YEARS[-1]]
+    assert float(last["air_installed"][0]) > float(last["air_share"][0, operating].sum()) + 1e-3, "前提：末年运行份额低于已装存量"

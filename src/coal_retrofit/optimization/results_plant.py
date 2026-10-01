@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 
 from ._shared import PATHWAY_INDEX, PreparedInputs
-from .emissions import reduction_fraction
 from .scenario import PATHWAYS, OptimizationScenario
 from .year_types import YearData
 
@@ -46,67 +45,81 @@ def _blend_ratios(
     return out
 
 
+def _pathway_split(
+    scenario: OptimizationScenario,
+    year_data: YearData,
+    share_values: np.ndarray,
+    air_share: np.ndarray,
+    biomass_blend_x_share: np.ndarray,
+    beccs_blend_x_share: np.ndarray,
+    ammonia_blend_x_share: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """逐厂 x 路径的残余排放与物理捕集量（Mt），返回 (residual, captured)。
+
+    逐项照搬 `constraints._add_plant_path_constraints` 的 `residual_expr` 与 `captured_expr`：每一项记到它所乘的
+    份额（路径份额、该路径的 Σβ·z 或空冷份额）所在的路径上，按路径相加就是求解器的逐厂残余排放与捕集量。
+    """
+    s = np.asarray(share_values, dtype=np.float64)
+    air = np.asarray(air_share, dtype=np.float64)
+    e_op = np.asarray(year_data.emissions_operating_mt, dtype=np.float64)
+    e_rt = np.asarray(year_data.emissions_retrofit_mt, dtype=np.float64)
+    gen = np.asarray(year_data.generation_by_pathway, dtype=np.float64)
+    bio_xs = np.asarray(biomass_blend_x_share, dtype=np.float64)
+    beccs_xs = np.asarray(beccs_blend_x_share, dtype=np.float64)
+    amm_xs = np.asarray(ammonia_blend_x_share, dtype=np.float64)
+    eta = float(scenario.capture_rate)
+    un, ccs, bio, beccs, amm = (PATHWAY_INDEX[k] for k in ("unabated", "ccs", "biomass", "beccs", "ammonia"))
+
+    # 惩罚燃料：CCS 能耗惩罚按路径份额计，空冷背压按空冷份额计；捕集路径上按 1 − η 排放、按 η 捕集。
+    residual = year_data.ccs_penalty_emissions_matrix * s + year_data.air_penalty_emissions_matrix * air
+    captured = year_data.ccs_penalty_captured_matrix * s + year_data.air_penalty_captured_matrix * air
+    residual[:, un] += e_op * s[:, un]
+    residual[:, ccs] += e_rt * (1.0 - eta) * s[:, ccs]
+    # 掺烧替代的 E_rt·Σβz 不排放；掺烧惩罚燃料照样排放，BECCS 上只排 1 − η，η 被捕集。
+    residual[:, bio] += e_rt * (s[:, bio] - bio_xs) + year_data.biomass_penalty_emissions_coeff_per_level * gen[:, bio] * bio_xs
+    residual[:, beccs] += (
+        e_rt * ((1.0 - eta) * s[:, beccs] - beccs_xs)
+        + year_data.beccs_penalty_emissions_coeff_per_level * gen[:, beccs] * beccs_xs
+    )
+    residual[:, amm] += e_rt * (s[:, amm] - amm_xs)
+    captured[:, ccs] += e_rt * eta * s[:, ccs]
+    captured[:, beccs] += (
+        e_rt * eta * s[:, beccs] + year_data.beccs_penalty_captured_coeff_per_level * gen[:, beccs] * beccs_xs
+    )
+    return residual, captured
+
+
 def _build_pathway_table(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
     year: int,
     share_values: np.ndarray,
-    captured_mt_by_plant: np.ndarray,
     biomass_blend_x_share: np.ndarray,
     beccs_blend_x_share: np.ndarray,
     ammonia_blend_x_share: np.ndarray,
     year_data: YearData,
-    plant_reduction_mt: np.ndarray,
+    air_share: np.ndarray,
 ) -> pd.DataFrame:
-    """单年的逐厂 x 路径份额、发电量、排放与减排量。
+    """单年的逐厂 x 路径份额、发电量、基线排放、减排量与捕集量。
 
-    发电量与基线排放取 `year_data` 里该年的值（已套用利用小时轨迹）。`abatement_mt` 锚定到
-    求解器自己的逐厂减排量 `plant_reduction_mt`：经典的逐路径减排比例只决定一个厂在各路径之间
-    怎么拆分，厂合计则重新缩放到约束中的值，该值含 CF 提升与全部惩罚燃料。2026-09-10 之前
-    这一列是未锚定的经典公式，曾出现合计达到基线 111.7% 的情况。
-    拆分用的掺烧比例是各路径自己的有效比例（`_blend_ratios`）。此前按 `blend_level` 换算：连续 hub 下
-    非整数档位被原样当作比例（2.5 → 250%），几档的混合恰为整数时又被读成其中一档，拆分失真。
+    发电量与基线排放取 `year_data` 里该年的值（已套用利用小时轨迹），按份额分到各路径。`abatement_mt` 是
+    基线排放 × 份额 − 该路径的残余排放，`captured_mt` 是该路径的物理捕集量，都按约束逐项拆分（`_pathway_split`）：
+    按路径相加就是求解器的逐厂减排量与捕集量（`sanity_checks.csv` 的 `pathway_split_closure` 行核对）。
+    改造路径的发电量带 CF 提升（`retrofit_cf_boost`），低比例掺烧的减排可以为负，就是这条路径净增排。
+    此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）拆分、再缩放到求解器的逐厂合计：合计对，各路径的值与符号
+    可能不对；捕集量按 CCS 与 BECCS 的份额比例分摊。
     """
-    rows: list[dict[str, object]] = []
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
-    ratios = _blend_ratios(
-        share_values, biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share,
-        biomass_levels=scenario.biomass_blend_levels, ammonia_levels=scenario.ammonia_blend_levels,
+    residual, captured = _pathway_split(
+        scenario, year_data, share_values, air_share,
+        biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share,
     )
+    rows: list[dict[str, object]] = []
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
-        baseline_emissions_mt = float(em_year[plant_idx])
-        # 求解器给出的实际捕集量
-        actual_captured = float(captured_mt_by_plant[plant_idx])
-        bio_blend = float(ratios["biomass"][plant_idx])
-        beccs_blend = float(ratios["beccs"][plant_idx])
-        amm_blend = float(ratios["ammonia"][plant_idx])
-        classic = np.array([
-            baseline_emissions_mt
-            * reduction_fraction(
-                pathway, scenario.capture_rate, beccs_blend if pathway == "beccs" else bio_blend, amm_blend,
-            )
-            * float(share_values[plant_idx, path_idx])
-            for path_idx, pathway in enumerate(PATHWAYS)
-        ], dtype=np.float64)
-        classic_total = float(classic.sum())
-        if abs(classic_total) > 1e-9:
-            abatement = classic * (float(plant_reduction_mt[plant_idx]) / classic_total)
-        else:
-            # 按经典口径没有任何减排（全部未改造）：把求解器的值（此时是惩罚燃料修正量）
-            # 记到 unabated 列上，使合计正确。
-            abatement = np.zeros(len(PATHWAYS))
-            abatement[PATHWAY_INDEX["unabated"]] = float(plant_reduction_mt[plant_idx])
         for path_idx, pathway in enumerate(PATHWAYS):
             share = float(share_values[plant_idx, path_idx])
-            # 实际捕集量按份额比例分摊到 CCS/BECCS 路径
-            if pathway in ("ccs", "beccs"):
-                ccs_share = float(share_values[plant_idx, PATHWAY_INDEX["ccs"]])
-                beccs_share = float(share_values[plant_idx, PATHWAY_INDEX["beccs"]])
-                total_capture_share = ccs_share + beccs_share
-                captured_mt = actual_captured * (share / total_capture_share) if total_capture_share > 1e-12 else 0.0
-            else:
-                captured_mt = 0.0
+            baseline_mt = float(em_year[plant_idx]) * share
             rows.append(
                 {
                     "year": year,
@@ -115,9 +128,9 @@ def _build_pathway_table(
                     "pathway": pathway,
                     "share": share,
                     "annual_generation_mwh": float(gen_year[plant_idx]) * share,
-                    "baseline_emissions_mt": baseline_emissions_mt * share,
-                    "abatement_mt": float(abatement[path_idx]),
-                    "captured_mt": captured_mt,
+                    "baseline_emissions_mt": baseline_mt,
+                    "abatement_mt": baseline_mt - float(residual[plant_idx, path_idx]),
+                    "captured_mt": float(captured[plant_idx, path_idx]),
                     "enabled": scenario.path_enabled(pathway),
                 }
             )
@@ -158,9 +171,11 @@ def _build_plant_detail_table(
     biomass_blend_x_share: np.ndarray,
     beccs_blend_x_share: np.ndarray,
     ammonia_blend_x_share: np.ndarray,
+    air_installed: np.ndarray,
 ) -> pd.DataFrame:
-    """逐厂高分辨率明细：路径份额、资源用量、掺烧档位与有效掺烧比例、与封存汇的邻近程度。"""
+    """逐厂高分辨率明细：路径份额、资源用量、空冷份额、掺烧档位与有效掺烧比例、与封存汇的邻近程度。"""
     plants = prepared.plants
+    operating = [k for k, pathway in enumerate(PATHWAYS) if pathway != "retire"]
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
     em_year = np.asarray(year_data.emissions_mt, dtype=np.float64)
     ratios = _blend_ratios(
@@ -212,9 +227,12 @@ def _build_plant_detail_table(
             "biomass_use_gj": float(biomass_use_gj[p]),
             "ammonia_use_kg": float(ammonia_use_kg[p]),
             "water_use_m3": float(water_use_m3[p]),
-            # 本 hub 发电量中，转换后以空冷运行的比例。
-            # 该改造未启用或不值其 capex 时，各处都为零。
-            "air_cooled_share": float(air_share[p, :].sum()),
+            # 空冷两列都是仍湿冷那部分的转换进度，乘 1 − already_air_share 才是全厂份额；该改造未启用或不值其 capex 时为零。
+            # air_operating_share：当年在运行路径上以空冷运行的份额。退役路径上的空冷份额在已装存量以内对用水与成本
+            # 都没有作用、模型可以任取，不计入；此前的 `air_cooled_share` 是含它的各路径合计。
+            # air_installed_share：已建成的空冷存量（capex 计在它的增量上），只增不减，含此后退役的容量。
+            "air_operating_share": float(air_share[p, operating].sum()),
+            "air_installed_share": float(air_installed[p]),
             "already_air_share": float(plant.get("already_air_share", 0.0)),
             # 掺烧档位：Σ l·select。独热档位下是所选档位；连续 hub 下只是加权下标，不能换算成比例。
             "biomass_blend_level": float(blend_level_b[p]),

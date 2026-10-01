@@ -57,6 +57,9 @@ def _build_sanity_checks(
     slacks: SolveSlacks,
     pathways: pd.DataFrame,
     province_table: pd.DataFrame,
+    *,
+    plant_reduction_mt: np.ndarray,
+    captured_mt: np.ndarray,
 ) -> pd.DataFrame:
     total_generation = float(pathways["annual_generation_mwh"].sum())
     path_shares = pathways.groupby("pathway", as_index=False)["annual_generation_mwh"].sum()
@@ -66,6 +69,14 @@ def _build_sanity_checks(
         float(province_generation["annual_generation_mwh"].max() / province_generation["annual_generation_mwh"].sum())
         if not province_generation.empty and float(province_generation["annual_generation_mwh"].sum()) > 0
         else 0.0
+    )
+    # 逐路径的减排量与捕集量（`results_plant._pathway_split` 照搬约束）逐厂相加应等于求解器的值，对不上说明约束改了、
+    # 拆分没跟着改。差额除以该厂基线排放（不足 1 Mt 按 1 Mt）；容差取可行性容差 1e-6（份额合计为 1）的十倍。
+    by_plant = pathways.groupby("plant_id", sort=False)[["abatement_mt", "captured_mt", "baseline_emissions_mt"]].sum()
+    scale = np.maximum(by_plant["baseline_emissions_mt"].to_numpy(), 1.0)
+    split_gap = max(
+        float(np.max(np.abs(by_plant["abatement_mt"].to_numpy() - plant_reduction_mt) / scale, initial=0.0)),
+        float(np.max(np.abs(by_plant["captured_mt"].to_numpy() - captured_mt) / scale, initial=0.0)),
     )
     rows = [
         {"year": year, "check_name": "target_shortfall", "status": "fail" if slacks["target_shortfall_mt"] > 1e-6 else "pass", "metric": "mt", "value": slacks["target_shortfall_mt"], "threshold": 0.0, "detail": "Emission target slack should remain zero."},
@@ -87,6 +98,7 @@ def _build_sanity_checks(
         # 被突破，模型付了 big-M 而没有遵守。
         {"year": year, "check_name": "water_basin_quota_breach", "status": "warn" if float(np.sum(slacks.get("water_basin_slack_m3", np.zeros(0)))) > 1e-3 else "pass", "metric": "m3", "value": float(np.sum(slacks.get("water_basin_slack_m3", np.zeros(0)))), "threshold": 0.0, "detail": "Basin withdrawal should fit the official 用水总量控制指标 net of non-power use."},
         {"year": year, "check_name": "storage_or_network_stress", "status": "warn" if float(np.sum(slacks["injectivity_slack_mtpa"]) + np.sum(slacks["storage_slack_mt"]) + np.sum(slacks["edge_slack_mtpa"])) > 1e-6 else "pass", "metric": "aggregate_slack", "value": float(np.sum(slacks["injectivity_slack_mtpa"]) + np.sum(slacks["storage_slack_mt"]) + np.sum(slacks["edge_slack_mtpa"])), "threshold": 0.0, "detail": "Transport and storage slacks indicate infeasible corridor or sink assumptions."},
+        {"year": year, "check_name": "pathway_split_closure", "status": "warn" if split_gap > 1e-5 else "pass", "metric": "relative", "value": split_gap, "threshold": 1e-5, "detail": "Per-pathway abatement and capture should add up to the solver's plant totals."},
         {"year": year, "check_name": "single_route_lock_in", "status": "warn" if max_path_share > 0.80 else "pass", "metric": "share", "value": max_path_share, "threshold": 0.80, "detail": "A single route dominating the annual mix may indicate lock-in."},
         {"year": year, "check_name": "province_concentration", "status": "warn" if province_peak > 0.35 else "pass", "metric": "share", "value": province_peak, "threshold": 0.35, "detail": "A single province carrying too much of the result should be reviewed."},
     ]
