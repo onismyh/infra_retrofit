@@ -231,7 +231,7 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > （实现说明 §9.10）。下表的结果都在此之前落盘，**不得与改后的求解相减**，要用须重解。详见根 README §0。
 >
 > ⚠ **模型改动（2026-10-01，水节点余量）**：有水约束时节点可用量改为 max(径流 × 0.20 − 流域生活与灌溉耗水按节点径流份额
-> 摊到的量, 煤电不改造同年耗水) × `water_multiplier`（`docs/方法论.md` §7.2）。下表有水约束的两个情景
+> 摊到的量, 归到该节点的煤电不改造同年耗水) × `water_multiplier`，每个 hub 只归最近的节点（`docs/方法论.md` §7.2）。下表有水约束的两个情景
 > （`ST_WA_cwatm_126_dry_oq` 及其 `_inthub`）都在此之前落盘，**不得与改后的求解相减**；`ST_BASE`、`ST_CP_BASE` 没有水约束，
 > 不受这一项影响。详见根 README §0。
 

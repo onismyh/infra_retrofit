@@ -181,8 +181,9 @@
 > 2026-10-01 起水节点可用量扣生活与灌溉耗水（**模型改动**，作者决定 2026-10-01；`docs/方法论.md` §7.2）：
 > - 节点可用量 = max(径流 × 0.20 − 流域生活与灌溉耗水按节点径流份额摊到的量, 煤电存量) × `water_multiplier`
 >   （`optimization/water_access._water_available_by_node`）。0.20 是所有用户合计可耗用的份额，生活与灌溉先占；余量不够的节点
->   保留煤电存量（存量不增）：存量 = 各 hub 不改造同年的耗水，每个 hub 只归它最近的水节点。改造多耗的水（如加装捕集）
->   要靠空冷或同节点退役抵掉。此前节点可用量就是径流 × 0.20。
+>   保留煤电存量（存量不增）：存量 = 各 hub 不改造同年的耗水，每个 hub 只归它最近的水节点。hub 可从 200 km 内的各个
+>   节点取水，改造多耗的水（如加装捕集）要由这些节点的空余满足（空冷或退役腾出的水、余量高于存量的节点），不够的记在
+>   带罚的节点松弛上。此前节点可用量就是径流 × 0.20。
 > - 耗水取同一气候成员的 ISIMIP3b `2015soc-from-histsoc` 运行（CWatM 的灌溉 = 总耗水 − 生活 − 工业 − 畜牧，WaterGAP2-2e 读
 >   `pirruse`），按一级流域汇总，枯水期取与径流同一组三个月；不扣工业与畜牧，不做偏差校正。新输入
 >   `_indtree/inputs/water_basin_use.csv`（720 行，`scripts/build_water_use.py` 生成；耗水文件由 `scripts/download_isimip_water_use.py`
@@ -191,10 +192,11 @@
 >   都报错，不再退回全年值。`build_water_scenarios_dataframe` 只收 qtot 文件（此前同目录有耗水文件就会被当成成员而报错）。
 > - 头部成员枯水期 2050 年余量（10⁸ m³/yr）：海河 −190、黄河 −61、淮河 −454、长江 −202、珠江 −140，其余为正；它在长江、珠江
 >   是 20 个成员里最枯的，枯水期的负值几乎都来自 CWatM（逐流域、逐成员的表见 `docs/工业部门参数溯源.md` §七）。
->   `ST_WA_cwatm_126_dry_oq` 的节点可用量合计从 1 535 降到 343（2030 年，其中煤电存量 47），海河、黄河、淮河、长江、珠江的
+>   `ST_WA_cwatm_126_dry_oq` 的节点可用量合计从 1 535 降到 343（2030 年；机队不改造耗水合计 47），海河、黄河、淮河、长江、珠江的
 >   有煤电节点四个规划年都取存量。`scripts/diagnose_basin_water_budget.py` 改为读这两张表逐流域列余量（`--season annual|dry`）。
 > - 只影响有水约束的情景：此前落盘的 `ST_WA_cwatm_126_dry_oq` 不得与改后的求解相减，要用须重解（CLAUDE.md §二.7）；
->   `ST_BASE`、`ST_CP_BASE` 没有水约束，模型与输入摘要都不变。
+>   `ST_BASE`、`ST_CP_BASE` 没有水约束，模型与输入摘要都不变。旧结果没有 `digest_water_basin_use`，
+>   `check_run_provenance.py --pair` 对只有一边有的摘要只列出、不判不过，新旧结果要按 `resolved.code` 的提交号区分。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -207,10 +209,10 @@
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:190`（`_one_off_capex`）、`optimization/model_year.py:181`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:54-75`、`optimization/model_industry.py:177` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44-45`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:146`、`optimization/vintage.py:70-80`、`optimization/industry_matrices.py:184`、`:219-222` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:70-80`、`optimization/industry_matrices.py:184`、`:219-222` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:144-149` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:139` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`optimization/year_matrices.py:146`、`optimization/industry_matrices.py:177`、`:215` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:62`、`optimization/model_costs.py:61-85` |
 | 到寿命后 | 管道到 30 年、捕集岛到 20 年退出，可在原址重铺、重建（捕集岛 2026-09-30 起）；掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 

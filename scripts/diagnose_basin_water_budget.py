@@ -53,7 +53,8 @@ def main() -> None:
     shown = frame.round(0)
     shown["占可提取"] = (frame["占可提取"] * 100).round(0).astype(int).astype(str) + "%"
     print(shown.to_string())
-    print(f"\n合计余量 {frame['余量'].sum():.0f}；为负的流域：{[i for i, v in frame['余量'].items() if v < 0] or '无'}")
+    print(f"\n各流域余量的代数和 {frame['余量'].sum():.0f}（模型不跨流域抵扣，余量为负的节点取煤电存量）；"
+          f"为负的流域：{[i for i, v in frame['余量'].items() if v < 0] or '无'}")
 
 
 if __name__ == "__main__":

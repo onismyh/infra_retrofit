@@ -162,9 +162,9 @@ def test_node_limit_is_the_residual_when_it_exceeds_existing_use(tmp_path, monke
 
 
 def test_existing_use_cap_offsets_ccs_water_with_air_cooling(tmp_path, monkeypatch) -> None:
-    """存量不增的本意：余量为负时，CCS 多耗的水要靠空冷抵掉。给 toy 补上空冷耗水强度（湿冷 1.85、空冷 0.17，
-    带捕集 3.37 与 0.31 m3/MWh）后，CCS 路径转空冷，节点流量不超过不改造耗水、没有松弛；同一电厂在余量充足时
-    不转空冷、耗水高于不改造水平，目标值更低。只开生态流量。"""
+    """存量不增：toy 只有一个节点，余量为负时 CCS 多耗的水只能由本厂腾出（空冷，或每期至多 0.15 的自愿退役），否则记松弛。
+    本测试核对空冷：给 toy 补上空冷耗水强度（湿冷 1.85、空冷 0.17，带捕集 3.37 与 0.31 m3/MWh）后，CCS 路径转空冷，
+    节点流量不超过不改造耗水、没有松弛；同一电厂在余量充足时不转空冷、耗水高于不改造水平，目标值更低。只开生态流量。"""
     monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
 
     def solve(experiment_id: str, **water):
