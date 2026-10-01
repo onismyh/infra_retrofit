@@ -217,9 +217,9 @@ def solve(
 
         # 逐厂、逐边的结果表
         pw_table = _build_pathway_table(
-            prepared, scenario, year, share, ys["captured_mt_by_plant"],
+            prepared, scenario, year, share,
             ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
-            year_data=year_data, plant_reduction_mt=ys["plant_reduction_mt"],
+            year_data=year_data, air_share=ys["air_share"],
         )
         prov_table = _build_province_table(pw_table)
         pathway_tables.append(pw_table)
@@ -234,14 +234,17 @@ def solve(
         ))
         supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"]["water_basin_use_m3"]))
         cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"]))
-        sanity_tables.append(_build_sanity_checks(year, ys["slacks"], pw_table, prov_table))
+        sanity_tables.append(_build_sanity_checks(
+            year, ys["slacks"], pw_table, prov_table,
+            plant_reduction_mt=ys["plant_reduction_mt"], captured_mt=ys["captured_mt_by_plant"],
+        ))
         plant_detail_tables.append(_build_plant_detail_table(
             prepared, scenario, year, share,
             ys["captured_mt_by_plant"], ys["biomass_use_gj"], ys["ammonia_use_kg"],
             ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"],
             ys["air_share"], year_data=year_data, plant_reduction_mt=ys["plant_reduction_mt"],
             biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
-            ammonia_blend_x_share=ys["ammonia_blend_x_share"],
+            ammonia_blend_x_share=ys["ammonia_blend_x_share"], air_installed=ys["air_installed"],
         ))
         industry_detail_tables.append(_build_industry_detail_table(
             prepared, year, year_data.industry, ys["industry_share"],

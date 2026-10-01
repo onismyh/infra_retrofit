@@ -1,10 +1,10 @@
-"""连续 hub 下的掺烧比例换算与逐厂碳成本。
+"""连续 hub 下的掺烧比例换算、明细表的空冷运行份额、逐路径减排拆分与逐厂碳成本。
 
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
-路径份额换算（`results_plant._blend_ratios`）；结果表的残余排放（基线 − 逐厂减排量）与求解器一致；
-成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
-（只开 BECCS 的生物质用量、独热档位对照、结果表残余排放与求解器对拍、成本表碳成本与目标函数对拍、
+路径份额换算（`results_plant._blend_ratios`）；逐路径的减排量与捕集量按约束逐项拆分（`results_plant._pathway_split`），
+逐厂相加等于求解器的值；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
+（只开 BECCS 的生物质用量、独热档位对照、比例列与未截断的商、逐路径拆分与求解器对拍、成本表碳成本与目标函数对拍、
 掺氨用量）需要 Gurobi，其余不依赖。
 """
 from __future__ import annotations
@@ -24,11 +24,13 @@ from coal_retrofit.optimization._shared import (
     _year_objective_weight,
 )
 from coal_retrofit.optimization.data_prep import prepare_inputs
+from coal_retrofit.optimization.results import _build_sanity_checks
 from coal_retrofit.optimization.results_plant import (
     _blend_ratios,
     _build_pathway_table,
     _build_plant_cost_table,
     _build_plant_detail_table,
+    _build_province_table,
 )
 from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.year_types import YearData
@@ -91,21 +93,18 @@ def test_effective_ratio_is_sum_beta_z_over_the_pathway_share() -> None:
     assert (clipped["biomass"][0], clipped["beccs"][0], clipped["ammonia"][0]) == (max(LEVELS_B), 0.0, max(LEVELS_A))
 
 
-def test_detail_and_pathway_tables_use_the_effective_ratios() -> None:
+def test_detail_table_uses_the_effective_ratios() -> None:
     hubs = _three_hubs()
     n = len(hubs["share"])
-    prepared = _prepared(n)
-    emissions = np.full(n, 10.0)
-    year_data = cast(YearData, SimpleNamespace(generation=np.full(n, 5.0e6), emissions_mt=emissions))
-    reduction = np.array([3.0, 8.0, 2.5])
     zeros = np.zeros(n)
+    year_data = cast(YearData, SimpleNamespace(generation=np.full(n, 5.0e6), emissions_mt=np.full(n, 10.0)))
 
     detail = _build_plant_detail_table(
-        prepared, SCENARIO, 2040, hubs["share"], zeros, zeros, zeros, zeros,
+        _prepared(n), SCENARIO, 2040, hubs["share"], zeros, zeros, zeros, zeros,
         hubs["level_b"], hubs["level_a"], np.zeros((n, len(PATHWAYS))),
-        year_data=year_data, plant_reduction_mt=reduction,
+        year_data=year_data, plant_reduction_mt=np.array([3.0, 8.0, 2.5]),
         biomass_blend_x_share=hubs["bio_xs"], beccs_blend_x_share=hubs["beccs_xs"],
-        ammonia_blend_x_share=hubs["amm_xs"],
+        ammonia_blend_x_share=hubs["amm_xs"], air_installed=zeros,
     )
     np.testing.assert_allclose(detail["biomass_blend_ratio"], [0.30, 0.75, 0.0], rtol=1e-12)
     np.testing.assert_allclose(detail["beccs_blend_ratio"], [0.0, 0.25, 0.0], rtol=1e-12)
@@ -113,17 +112,75 @@ def test_detail_and_pathway_tables_use_the_effective_ratios() -> None:
     # 档位下标照原样保留（连续 hub 下是加权下标）。
     np.testing.assert_allclose(detail["biomass_blend_level"], hubs["level_b"], rtol=1e-12)
 
-    pathways = _build_pathway_table(
-        prepared, SCENARIO, 2040, hubs["share"], zeros,
-        hubs["bio_xs"], hubs["beccs_xs"], hubs["amm_xs"],
-        year_data=year_data, plant_reduction_mt=reduction,
+
+def test_detail_air_operating_share_leaves_out_the_retire_pathway() -> None:
+    """hub 2 掺氨 0.5 全转空冷，另有 0.3 的空冷份额落在退役路径上（已装存量以内，对用水与成本都没有作用，模型可任取）：
+    运行份额只计前者，已装份额照抄空冷存量。"""
+    hubs = _three_hubs()
+    n = len(hubs["share"])
+    zeros = np.zeros(n)
+    share = hubs["share"].copy()
+    share[2, PATHWAY_INDEX["unabated"]], share[2, PATHWAY_INDEX["retire"]] = 0.2, 0.3
+    air_share = np.zeros((n, len(PATHWAYS)))
+    air_share[2, AMM], air_share[2, PATHWAY_INDEX["retire"]] = 0.5, 0.3
+    year_data = cast(YearData, SimpleNamespace(generation=np.full(n, 5.0e6), emissions_mt=np.full(n, 10.0)))
+    detail = _build_plant_detail_table(
+        _prepared(n), SCENARIO, 2040, share, zeros, zeros, zeros, zeros,
+        hubs["level_b"], hubs["level_a"], air_share,
+        year_data=year_data, plant_reduction_mt=zeros,
+        biomass_blend_x_share=hubs["bio_xs"], beccs_blend_x_share=hubs["beccs_xs"],
+        ammonia_blend_x_share=hubs["amm_xs"], air_installed=np.array([0.0, 0.0, 0.8]),
     )
-    hub1 = pathways[pathways["plant_id"] == "P1"].set_index("pathway")["abatement_mt"]
-    # 厂合计锚定到求解器的减排量；生物质与 BECCS 按各自的比例拆分：
-    # 生物质 0.75 × 0.4 = 0.30，BECCS (0.90 + 0.25) × 0.6 = 0.69。此前把档位下标 2.8 当比例拆，生物质分到 1.12 / 3.34。
-    assert hub1.sum() == pytest.approx(8.0, rel=1e-12)
-    assert hub1["biomass"] == pytest.approx(8.0 * 0.30 / 0.99, rel=1e-12)
-    assert hub1["beccs"] == pytest.approx(8.0 * 0.69 / 0.99, rel=1e-12)
+    np.testing.assert_allclose(detail["air_operating_share"], [0.0, 0.0, 0.5], rtol=1e-12)
+    np.testing.assert_allclose(detail["air_installed_share"], [0.0, 0.0, 0.8], rtol=1e-12)
+
+
+def test_pathway_split_charges_each_term_to_its_own_pathway() -> None:
+    """两个 hub，基线排放各 10 Mt，改造路径的发电量带 CF 提升（按 11.5 Mt 计），η = 0.9。
+
+    hub 0：CCS、掺氨 10% 各一半。CCS 残余 11.5 × 0.1 × 0.5 = 0.575，减排 4.425；掺氨残余 11.5 × 0.9 × 0.5 = 5.175，
+    比它的基线份额 5 还多，减排 −0.175，即这条路径净增排。此前按经典比例（0.9、0.1）拆分再缩放到厂合计 4.25，
+    掺氨分到 +0.425，符号反了。
+    hub 1：生物质 0.4（Σβz = 0.3）、BECCS 0.6（Σβz = 0.15），惩罚项都记在 BECCS 或生物质上：
+    生物质残余 11.5 × (0.4 − 0.3) + 掺烧惩罚 0.03 = 1.18；BECCS 残余 11.5 × (0.1 × 0.6 − 0.15) + 掺烧惩罚 0.0075
+    + 空冷背压 0.1 × 0.2 + CCS 能耗惩罚 0.05 × 0.6 = −0.9775；BECCS 捕集 11.5 × 0.9 × 0.6 + 0.0675 + 0.9 × 0.2
+    + 0.45 × 0.6 = 6.7275。
+    """
+    n, bio, beccs, ccs = 2, BIO, BECCS, PATHWAY_INDEX["ccs"]
+    share = np.zeros((n, len(PATHWAYS)))
+    share[0, ccs] = share[0, AMM] = 0.5
+    share[1, bio], share[1, beccs] = 0.4, 0.6
+    air_share = np.zeros((n, len(PATHWAYS)))
+    air_share[1, beccs] = 0.2
+    penalty = {name: np.zeros((n, len(PATHWAYS))) for name in ("ccs_em", "ccs_cap", "air_em", "air_cap")}
+    penalty["ccs_em"][1, beccs], penalty["ccs_cap"][1, beccs] = 0.05, 0.45
+    penalty["air_em"][1, beccs], penalty["air_cap"][1, beccs] = 0.1, 0.9
+    year_data = cast(YearData, SimpleNamespace(
+        generation=np.full(n, 5.0e6), emissions_mt=np.full(n, 10.0), emissions_operating_mt=np.full(n, 10.0),
+        emissions_retrofit_mt=np.full(n, 11.5), generation_by_pathway=np.full((n, len(PATHWAYS)), 5.0e6),
+        ccs_penalty_emissions_matrix=penalty["ccs_em"], ccs_penalty_captured_matrix=penalty["ccs_cap"],
+        air_penalty_emissions_matrix=penalty["air_em"], air_penalty_captured_matrix=penalty["air_cap"],
+        biomass_penalty_emissions_coeff_per_level=np.full(n, 2e-8),
+        beccs_penalty_emissions_coeff_per_level=np.full(n, 1e-8),
+        beccs_penalty_captured_coeff_per_level=np.full(n, 9e-8),
+    ))
+    table = _build_pathway_table(
+        _prepared(n), SCENARIO, 2050, share, np.array([0.0, 0.3]), np.array([0.0, 0.15]), np.array([0.05, 0.0]),
+        year_data=year_data, air_share=air_share,
+    )
+    hub0 = table[table["plant_id"] == "P0"].set_index("pathway")
+    assert hub0.loc["ccs", "abatement_mt"] == pytest.approx(4.425, rel=1e-9)
+    assert hub0.loc["ammonia", "abatement_mt"] == pytest.approx(-0.175, rel=1e-9)
+    assert hub0.loc["ccs", "captured_mt"] == pytest.approx(11.5 * 0.9 * 0.5, rel=1e-9)
+    hub1 = table[table["plant_id"] == "P1"].set_index("pathway")
+    assert hub1.loc["biomass", "abatement_mt"] == pytest.approx(4.0 - 1.18, rel=1e-9)
+    assert hub1.loc["beccs", "abatement_mt"] == pytest.approx(6.0 + 0.9775, rel=1e-9)
+    assert hub1.loc["beccs", "captured_mt"] == pytest.approx(6.7275, rel=1e-9)
+    # 份额为零的路径没有减排也没有捕集；捕集只在 CCS、BECCS 上。
+    for hub in (hub0, hub1):
+        idle = hub[hub["share"] == 0.0]
+        assert (idle["abatement_mt"] == 0.0).all() and (idle["captured_mt"] == 0.0).all()
+        assert (hub.drop(index=["ccs", "beccs"])["captured_mt"] == 0.0).all()
 
 
 def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
@@ -251,6 +308,15 @@ def ammonia_continuous(tmp_path_factory):
     return _solve_blend_toy(tmp_path_factory.mktemp("ammonia"), _ONLY["ammonia"], {2050: 0.75, 2060: 0.6})
 
 
+@pytest.fixture(scope="module")
+def mixed_continuous(tmp_path_factory):
+    """连续 hub、除退役外全部路径开放、有碳价，电力上限 2050 年 0.45、2060 年 0.2。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    return _solve_blend_toy(
+        tmp_path_factory.mktemp("mixed"), ("retire",), {2050: 0.45, 2060: 0.2}, carbon=(300.0, 600.0),
+    )
+
+
 @pytest.mark.parametrize(
     ("pathway", "power_caps"), [("beccs", {2050: 0.0, 2060: 0.0}), ("ammonia", {2050: 0.75, 2060: 0.6})],
 )
@@ -274,9 +340,8 @@ def test_one_hot_levels_give_the_ratio_of_the_selected_level(tmp_path, pathway, 
         assert raw == pytest.approx(by_level, abs=1e-6)
 
 
-def test_plant_detail_residual_matches_the_solver(ammonia_continuous) -> None:
-    """结果表的残余排放（逐厂 baseline_emissions_mt − reduction_mt 之和）与求解器的残余排放一致，比例列等于未截断的商。
-    解取连续 hub，档位下标不是整数，按档位换算不出比例。"""
+def test_detail_ratio_is_the_unclipped_quotient(ammonia_continuous) -> None:
+    """连续 hub 下档位下标不是整数，按档位换算不出比例；明细表的比例列等于未截断的 Σβ·z ÷ 份额。"""
     scenario, _, prepared, solution = ammonia_continuous
     for year, ys in solution["year_solutions"].items():
         level = float(ys["blend_level_a"][0])
@@ -286,23 +351,42 @@ def test_plant_detail_residual_matches_the_solver(ammonia_continuous) -> None:
             ys["ammonia_use_kg"], ys["water_use_m3"], ys["blend_level_b"], ys["blend_level_a"], ys["air_share"],
             year_data=ys["year_data"], plant_reduction_mt=ys["plant_reduction_mt"],
             biomass_blend_x_share=ys["biomass_blend_x_share"], beccs_blend_x_share=ys["beccs_blend_x_share"],
-            ammonia_blend_x_share=ys["ammonia_blend_x_share"],
+            ammonia_blend_x_share=ys["ammonia_blend_x_share"], air_installed=ys["air_installed"],
         )
         # 解正好在氨的最高档：比例列要等于未截断的商，不能靠截断碰巧对上。
         raw = float(ys["ammonia_blend_x_share"][0]) / float(ys["share"][0, AMM])
         assert float(detail["ammonia_blend_ratio"].iloc[0]) == pytest.approx(raw, abs=1e-6)
-        model_residual = float(np.sum(ys["year_data"].emissions_mt - ys["plant_reduction_mt"]))
-        table_residual = float((detail["baseline_emissions_mt"] - detail["reduction_mt"]).sum())
-        assert table_residual == pytest.approx(model_residual, rel=1e-9)
 
 
-def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(tmp_path) -> None:
+@pytest.mark.parametrize("solved", ["ammonia_continuous", "mixed_continuous"])
+def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
+    """逐路径的减排量与捕集量逐厂相加，等于求解器的逐厂减排量与捕集量。拆分由份额、Σβ·z、空冷份额与 `year_data` 的
+    系数重算，求解器那边是约束表达式与捕集变量的取值，两边各算各的。合理性检查的 `pathway_split_closure` 行随之通过。"""
+    scenario, _, prepared, solution = request.getfixturevalue(solved)
+    captured_any = False
+    for year, ys in solution["year_solutions"].items():
+        pathways = _build_pathway_table(
+            prepared, scenario, year, ys["share"],
+            ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
+            year_data=ys["year_data"], air_share=ys["air_share"],
+        )
+        by_plant = pathways.groupby("plant_id", sort=False)[["abatement_mt", "captured_mt"]].sum()
+        np.testing.assert_allclose(by_plant["abatement_mt"], ys["plant_reduction_mt"], rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(by_plant["captured_mt"], ys["captured_mt_by_plant"], rtol=1e-6, atol=1e-9)
+        captured_any |= bool(np.any(ys["captured_mt_by_plant"] > 1e-6))
+        checks = _build_sanity_checks(
+            year, ys["slacks"], pathways, _build_province_table(pathways),
+            plant_reduction_mt=ys["plant_reduction_mt"], captured_mt=ys["captured_mt_by_plant"],
+        ).set_index("check_name")
+        assert checks.loc["pathway_split_closure", "status"] == "pass"
+    # 前提：混合 toy 至少有一年在捕集，否则捕集量的拆分没被测到。
+    assert captured_any or solved == "ammonia_continuous"
+
+
+def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(mixed_continuous) -> None:
     """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）。
     除退役外全部路径开放、连续 hub。"""
-    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
-    scenario, assumptions, prepared, solution = _solve_blend_toy(
-        tmp_path, ("retire",), {2050: 0.45, 2060: 0.2}, carbon=(300.0, 600.0),
-    )
+    scenario, assumptions, prepared, solution = mixed_continuous
     for year, ys in solution["year_solutions"].items():
         year_data = ys["year_data"]
         price = float(year_data.carbon_price)
