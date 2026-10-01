@@ -197,6 +197,10 @@
 > - 只影响有水约束的情景：此前落盘的 `ST_WA_cwatm_126_dry_oq` 不得与改后的求解相减，要用须重解（CLAUDE.md §二.7）；
 >   `ST_BASE`、`ST_CP_BASE` 没有水约束，模型与输入摘要都不变。旧结果没有 `digest_water_basin_use`，
 >   `check_run_provenance.py --pair` 对只有一边有的摘要只列出、不判不过，新旧结果要按 `resolved.code` 的提交号区分。
+>
+> 同日起 `resource_use.csv` 的 `utilization` 在可用量 ≤ 0 而有用量时记 inf（此前记 0，会把用了松弛的节点或超指标的流域读成
+> "没用"），与图 7 的"无余量"同一规则；没有用量，或无水约束时可用量为空，仍记 0。模型、求解与其余各列不变，旧结果不重算；
+> 新旧表按 `resolved.code` 的提交号区分。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -775,33 +779,42 @@ flowchart TD
 
 #### F. 水约束输入
 
-实现位置：
-[water.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/water.py)
+> 本小节 2026-10-01 按当前代码重写；当前求解树的输入在 `_indtree/inputs/`。
+
+实现位置：[builders/water.py](src/coal_retrofit/builders/water.py)（节点与径流）、
+[builders/water_quota.py](src/coal_retrofit/builders/water_quota.py)（流域取水指标）、
+[builders/water_use.py](src/coal_retrofit/builders/water_use.py)（流域生活与灌溉耗水）
 
 原始来源：
 
-- `data/water/*.nc`
+- `data/water/*.nc`：ISIMIP3b 中 CWatM 与 WaterGAP2-2e 的逐月 qtot 与潜在耗水，耗水文件由
+  [download_isimip_water_use.py](scripts/download_isimip_water_use.py) 下载
+- `data/water/*historical*qtot*.nc`：偏差校正的依据，每个水文模型 × GCM 组合一个，用其 1956–2014 年的流域径流对照
+  `constants.OFFICIAL_BASIN_WATER_1E8_M3`（1956–2016 年均值）；须与同组合的 qtot 文件同一网格，缺文件时该成员的校正因子
+  取 1.0、不报错。4 个新增 GCM 的 qtot 与 historical 由 [download_isimip_extra_gcms.py](scripts/download_isimip_extra_gcms.py)
+  下载，gfdl-esm4 的没有下载脚本
+- `data/ChinaBasins/basin_l1.gpkg`：水资源一级区（模型用 9 个，代码 A、C–H、J、K）
+- 用水总量控制指标（国办发〔2013〕2号 附件1）与 2025 年水资源公报，数值在
+  [constants_water_quota.py](src/coal_retrofit/constants_water_quota.py)
 
-处理逻辑：
+| 入口脚本 | 输出 | 内容 |
+|---|---|---|
+| [build_water_inputs.py](scripts/build_water_inputs.py) | `water_scenarios.csv` | 20 个气候成员（水文模型 × GCM × SSP）及各自的 qtot 文件 |
+| | `water_base.csv` | SSP1-2.6 的 10 个成员 × 4 个规划年；求解不读 |
+| | `water_nodes.csv` | 0.5° 格网粗化到 2°（`constants.WATER_COARSE_GRID_DEGREES`），只留全年径流（`available_water_m3_per_year`）在某个成员、某个规划年 > 0 的节点（现 373 个），带省份与一级流域 |
+| | `water_availability.csv` | 节点 × 成员 × 规划年的全年与枯水期径流（m³/yr），已作流域偏差校正，`bias_factor` 列供关掉校正时除回 |
+| | `water_supply_links.csv` | hub 到 200 km 内各节点的链路（现 1 569 条）；求解不读，`optimization/data_prep._prepare_water` 按同一规则现算 |
+| [build_water_basin_caps.py](scripts/build_water_basin_caps.py) | `water_basin_caps.csv` | 流域 × 规划年的用水总量指标余量（取水口径） |
+| [build_water_use.py](scripts/build_water_use.py) | `water_basin_use.csv` | 成员 × 规划年 × 流域的生活与灌溉耗水（720 行） |
 
-1. 解析水情景文件名，提取：
-   `hydrology / gcm / ssp / socioeconomics / variable / period`
-2. 形成情景清单：
-   [water_scenarios.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/water_scenarios.csv)
-3. 形成基准情景表：
-   [water_base.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/water_base.csv)
-4. 在中国范围内提取 0.5° 水文格网节点：
-   [water_nodes.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/water_nodes.csv)
-5. 按规划窗口计算各节点年度可用水量：
-   [water_availability.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/water_availability.csv)
-6. 为每个 hub 生成本地 water-node 可达边：
-   [water_supply_links_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/water_supply_links_200.csv)
+这里需要注意（详见 [方法论](docs/方法论.md) §7.1–7.3）：
 
-这里需要注意：
-
-- 当前水约束已经改成“grid water node + hub access link + shared node competition”
-- 需求侧水强度现在采用 `consumption` 口径，冷却方式按煤电 hub 的 `dominant_cooling_technology` 映射
-- 这仍然是厂址局地耗水 proxy，不是完整的流域调度模型
+- 节点层（生态流量，耗水口径）：节点可用量 = max(径流 × 0.20 − 生活与灌溉耗水按节点径流份额摊到的量,
+  归到该节点的煤电不改造同年耗水) × `water_multiplier`；hub 可从 200 km 内的各个节点取水，多个 hub 竞争同一节点。
+- 流域层（官方指标，取水口径）：煤电与工业取水按厂址所在流域汇总，不超过指标余量 × `water_multiplier`；
+  `apply_basin_cap=False` 时关掉。两层都带计罚的松弛（方法论式 (29)、(33)）；`water_mode="no_water"` 时两层都不加。
+- 煤电水强度由 `builders/plants.py` 逐机组按蒸汽参数与冷却方式查表（Wang 2023）、按装机加权到 hub；耗水进节点层，
+  取水进流域层，定额只用于水价。这仍是厂址局地的代理，不是完整的流域调度模型。
 
 ### 5.3 Phase A 总调度
 

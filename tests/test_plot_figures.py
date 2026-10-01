@@ -105,8 +105,9 @@ def test_fig6_mass_balance_and_legend_levels(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_fig7_utilization_and_converted_capacity(monkeypatch: pytest.MonkeyPatch) -> None:
-    """余量 ≤ 0 而仍有取水记为无余量（inf），不能按结果表的 0 读成"没用"；超出余量的取水要与 slack_detail 的流域松弛
-    对上；超了但四舍五入是 100% 的格子写 >100%；空冷量只算当年在运行、仍湿冷的部分。"""
+    """余量 ≤ 0 而仍有取水记为无余量（inf），按 used / available 重算、不读结果表的 utilization（旧结果表
+    在这里记 0，夹具即按旧表写）；超出余量的取水要与 slack_detail 的流域松弛对上；超了但四舍五入是 100% 的格子写 >100%；
+    空冷量只算当年在运行、仍湿冷的部分。"""
     fig7 = _load(monkeypatch, "plot_fig7_water")
     basins = pd.DataFrame({"year": 2030, "region": ["D", "C", "E"], "used": [9.0, 5.0e6, 0.0],
                            "available": [10.0, -1.0e6, 0.0], "utilization": [0.9, 0.0, 0.0]})

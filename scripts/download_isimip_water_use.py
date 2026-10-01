@@ -26,8 +26,11 @@ So irrigation consumption is taken directly from WaterGAP (`pirruse`) and derive
     pirruse = ptotuse - pdomuse - pinduse - pliveuse
 which is why CWatM needs four files per scenario and WaterGAP only two.
 
-Manufacturing/industrial consumption is deliberately NOT deducted: industry becomes an explicit
-decision agent in this model, so deducting it here as well would charge the same water twice.
+Manufacturing/industrial consumption is deliberately NOT deducted: the model's industrial hubs choose
+their routes, so their water is a decision variable charged to the basin withdrawal quota, not to the
+node limit. ISIMIP's industrial use is exogenous and covers those same plants, so deducting it here
+would count them once exogenously at the node and once by decision at the basin. The cost: industry
+outside the model is not deducted from the node limit either.
 Livestock (CWatM `pliveuse`) is not deducted either: only domestic and irrigation, the same pair
 for both hydrology models.
 

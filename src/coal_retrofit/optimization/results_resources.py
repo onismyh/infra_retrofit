@@ -83,7 +83,13 @@ def _build_supply_table(
         ignore_index=True,
         sort=False,
     )
-    output["utilization"] = np.where(output["available"] > 0, output["used"] / output["available"], 0.0)
+    # 可用量 ≤ 0 而用量 > 1e-6（用了松弛）记 inf，与图 7 的"无余量"同一规则（`scripts/plot_fig7_water.utilization`），
+    # 免得把超用读成"没用"；可用量 ≤ 0 而没有用量记 0。无水约束时节点没有上限、可用量为空，仍记 0。
+    used, available = output["used"].to_numpy(float), output["available"].to_numpy(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        output["utilization"] = np.where(
+            available > 0, used / available, np.where((available <= 0) & (used > 1e-6), np.inf, 0.0)
+        )
     return output
 
 
