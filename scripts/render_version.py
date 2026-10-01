@@ -46,7 +46,7 @@ def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, 
                                       errors="replace", timeout=timeout)
                 code, out = proc.returncode, proc.stdout + proc.stderr
             except subprocess.TimeoutExpired as exc:
-                # 超时时抓到的输出不管 text=True 都是 bytes，解码后再写日志，否则日志里是 b'...'
+                # 超时时抓到的输出在 POSIX 上不管 text=True 都是 bytes（Windows 上是 str），统一成 str 再写日志，否则日志里是 b'...'
                 partial = "".join(p.decode("utf-8", errors="replace") if isinstance(p, bytes) else (p or "")
                                   for p in (exc.stdout, exc.stderr))
                 code, out = -9, f"TIMEOUT after {timeout}s\n{partial}"

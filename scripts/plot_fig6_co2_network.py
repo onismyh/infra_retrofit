@@ -35,7 +35,7 @@ NAME = "fig6_co2_network"
 DEFAULT_YEARS = (2040, 2060)
 FLOW_MIN = 1e-3              # Mt/yr；流量、捕集、注入低于它不画（求解器容差量级）
 LW_MAX = 2.8                 # 最大流量管段的线宽（pt）
-SMAX = 40.0                  # 最大捕集 / 注入点的面积（pt²）
+SMAX = 40.0                  # 最大捕集 / 注入处圆点的 s（pt²，外接正方形面积）；画出的面积是 π/4·SMAX，各形状同值同面积
 TEXT = {
     "zh": {"total": "{year} 年封存 {v} ", "flow": "管段年流量（" + MT_CO2_YR + "）",
            "size": "捕集量 / 注入量（" + MT_CO2_YR + "）", "industry": "工业 hub"},

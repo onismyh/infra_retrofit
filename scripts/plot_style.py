@@ -289,7 +289,7 @@ def draw_china_basemap(ax, *, facecolor: str = LAND, islands: bool = False,
                        province_lw: float = 0.2, country_lw: float = 0.75) -> None:
     """省界 + 国界 + 九段线（线宽与 zorder 见 CLAUDE.md §4.4）。
 
-    主图只画大陆、台湾、海南三块国界：国界层另有 1 257 个小岛部件（中位 1.1 km2），在主图尺度上
+    主图只画大陆、台湾、海南三块国界：国界层另有 1 257 个小岛部件（中位 1.0 km2，等积投影下算），在主图尺度上
     每个都画不满一个像素，叠起来是东南海岸一圈黑毛刺。南海小图里 islands=True，岛礁在那个尺度上才是内容。
     """
     prov = map_layer("provinces")

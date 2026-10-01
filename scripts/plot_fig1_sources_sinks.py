@@ -36,7 +36,8 @@ TEXT = {
            "count": "{name} ({n})", "industry": "Industrial hubs"},
 }
 SIZE_TICKS = (1.0, 10.0, 50.0)
-SMAX = 70.0                  # 排放最大的源（煤电与工业合在一起取最大）的点面积，pt²
+SMAX = 70.0                  # 排放最大的源（煤电与工业合在一起取最大）处圆点的 s（pt²，外接正方形面积）；
+                             # 画出的面积是 π/4·SMAX，菱形按 MARKER_AREA 换算后同值同面积
 
 
 def load() -> dict[str, pd.DataFrame]:

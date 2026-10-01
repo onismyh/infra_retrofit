@@ -153,9 +153,9 @@
 > 与符号可能不对：CF 提升 1.15 下掺氨 10% 的份额净增排 3.5%，与 CCS 同厂时却按经典比例分到正的减排；捕集量按 CCS、BECCS
 > 的份额比例分摊。
 > `plant_detail.csv` 的 `air_cooled_share` 拆成 `air_operating_share`（当年在运行路径上以空冷运行的份额，不含退役路径上模型
-> 可任取的那份）与 `air_installed_share`（已建成的空冷存量，只增不减）。经典比例函数 `optimization/emissions.py` 随之删去。
-> 模型、目标值与逐厂合计不变；此前落盘的结果图 3、图 7 拒绝出图，重解后再画。09-29 条说的 `test_blend_ratios.py` 那条核对
-> 两边是同一对数组、永远成立，改为拆分结果与求解器的约束表达式对拍。
+> 可任取的那份）与 `air_installed_share`（已建成的空冷存量，只增不减；已全空冷的 hub 两列不保证为零，乘 1 − already_air_share 后为零）。
+> 经典比例函数 `optimization/emissions.py` 随之删去。模型、目标值与逐厂合计不变；此前落盘的结果图 3、图 7 拒绝出图，重解后再画。
+> 09-29 条说的 `test_blend_ratios.py` 那条核对两边是同一对数组、永远成立，改为拆分结果与求解器的约束表达式对拍。
 > 同日按 PR #20 复核修出图：同值的圆点、菱形、方块面积相同（此前后两者大 4/π，约 27%）；`save_fig` 先查字体，缺 SimHei 或
 > Arial 就报错，不再静默换字体；图 5 不装包也能运行，上限自检改为两侧都查；图 7 的自检改为与 `slack_detail.csv` 的流域松弛
 > 对账，超指标改用深红 `OVER_COLOR`（强调红留给空冷）；图 6 遇到不认识的部门报错；`render_version.py` 不拷 `save_fig` 的临时
