@@ -120,6 +120,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 另多一个 `figures/`，是 `scripts/plot_candidate_network.py` 画的候选管网图；2026-09-29 删去，候选管网图改由
 > `scripts/plot_fig2_candidate_network.py` 画到 `results/figures/`。
 > 2026-09-29（PR #19）删去两张没有读者的连接表 `biomass_supply_links.csv`、`ammonia_supply_links.csv`（按 150 km 生成，优化器读入时按 200 km 现建），`89f8205` 里还在。
+> 2026-10-01 起多一张 `water_basin_use.csv`（v7 输入里没有）：各气候成员、规划年、一级流域的生活与灌溉耗水，有水约束时
+> 节点可用量要扣（`docs/方法论.md` §7.2）；由 `scripts/build_water_use.py` 从 ISIMIP3b 耗水文件生成（下载见
+> `scripts/download_isimip_water_use.py`），其余水输入不重建。
 
 其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -226,6 +229,11 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > ⚠ **模型改动（2026-09-30，改造能力分代）**：煤电捕集岛、工业捕集能力与氢路线能力按建设年分代、到寿命退出（捕集 20 年、
 > 氢路线 25 年），份额仍在就得重建；捕集固定运维按建设年的单价、只付在役且在用的部分；工业能力按铭牌产能定规模
 > （实现说明 §9.10）。下表的结果都在此之前落盘，**不得与改后的求解相减**，要用须重解。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-01，水节点余量）**：有水约束时节点可用量改为 max(径流 × 0.20 − 流域生活与灌溉耗水按节点径流份额
+> 摊到的量, 煤电不改造同年耗水) × `water_multiplier`（`docs/方法论.md` §7.2）。下表有水约束的两个情景
+> （`ST_WA_cwatm_126_dry_oq` 及其 `_inthub`）都在此之前落盘，**不得与改后的求解相减**；`ST_BASE`、`ST_CP_BASE` 没有水约束，
+> 不受这一项影响。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

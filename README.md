@@ -177,6 +177,24 @@
 > 结果表列名不变，含义随之变：`plant_cost.csv` 的 `ccs_retrofit_capex_cny` 计本年新建（含到寿命重建）的捕集岛，`ccs_om_cny` 取求解器
 > 按分代算的固定运维；`industry_detail.csv` 的 `capacity_ccs_mt`、`capacity_h2_mt` 是在役能力（到寿命会降），`cost_capital_cny` 计本年
 > 新建能力，`cost_annual_cny` 含分代的捕集固定运维。改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
+>
+> 2026-10-01 起水节点可用量扣生活与灌溉耗水（**模型改动**，作者决定 2026-10-01；`docs/方法论.md` §7.2）：
+> - 节点可用量 = max(径流 × 0.20 − 流域生活与灌溉耗水按节点径流份额摊到的量, 煤电存量) × `water_multiplier`
+>   （`optimization/water_access._water_available_by_node`）。0.20 是所有用户合计可耗用的份额，生活与灌溉先占；余量不够的节点
+>   保留煤电存量（存量不增）：存量 = 各 hub 不改造同年的耗水，每个 hub 只归它最近的水节点。改造多耗的水（如加装捕集）
+>   要靠空冷或同节点退役抵掉。此前节点可用量就是径流 × 0.20。
+> - 耗水取同一气候成员的 ISIMIP3b `2015soc-from-histsoc` 运行（CWatM 的灌溉 = 总耗水 − 生活 − 工业 − 畜牧，WaterGAP2-2e 读
+>   `pirruse`），按一级流域汇总，枯水期取与径流同一组三个月；不扣工业与畜牧，不做偏差校正。新输入
+>   `_indtree/inputs/water_basin_use.csv`（720 行，`scripts/build_water_use.py` 生成；耗水文件由 `scripts/download_isimip_water_use.py`
+>   下载，已扩到 5 个 GCM）。`water_availability.csv` 不重建：枯水期窗口的选取抽成 `builders/water._basin_dry_window` 两表共用，
+>   重构前后在 6 个成员的真实文件上输出逐字节相同，20 个成员的窗口都复现已入库的枯水期径流。缺成员、缺流域或缺枯水期列
+>   都报错，不再退回全年值。`build_water_scenarios_dataframe` 只收 qtot 文件（此前同目录有耗水文件就会被当成成员而报错）。
+> - 头部成员枯水期 2050 年余量（10⁸ m³/yr）：海河 −190、黄河 −61、淮河 −454、长江 −202、珠江 −140，其余为正；它在长江、珠江
+>   是 20 个成员里最枯的，枯水期的负值几乎都来自 CWatM（逐流域、逐成员的表见 `docs/工业部门参数溯源.md` §七）。
+>   `ST_WA_cwatm_126_dry_oq` 的节点可用量合计从 1 535 降到 343（2030 年，其中煤电存量 47），海河、黄河、淮河、长江、珠江的
+>   有煤电节点四个规划年都取存量。`scripts/diagnose_basin_water_budget.py` 改为读这两张表逐流域列余量（`--season annual|dry`）。
+> - 只影响有水约束的情景：此前落盘的 `ST_WA_cwatm_126_dry_oq` 不得与改后的求解相减，要用须重解（CLAUDE.md §二.7）；
+>   `ST_BASE`、`ST_CP_BASE` 没有水约束，模型与输入摘要都不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
