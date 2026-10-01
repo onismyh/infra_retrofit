@@ -1,5 +1,5 @@
-# 源数据（20 GB 栅格 / netCDF）不入库，只放开仓库根 data/ 下求解与出图要读的三样：ChinaMapTHT/（地图底图）、
-# ChinaMap/（候选管网图；重建输入也读）、ChinaBasins/basin_l1.gpkg（开水约束的求解与出图）。
+# 源数据（20 GB 栅格 / netCDF）不入库，只放开仓库根 data/ 下出图、求解与重建输入要读的三样：ChinaMapTHT/（出图底图）、
+# ChinaMap/（重建输入时 builders 读省界与海岸线）、ChinaBasins/basin_l1.gpkg（开水约束的求解读）。
 # `data/` 一行照旧忽略任何一层名为 data 的目录（如 results/figures/<版本>/data/ 的结果拷贝），`!/data/` 一行只放开仓库根那一个。
 data/
 !/data/
