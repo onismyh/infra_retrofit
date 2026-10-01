@@ -9,7 +9,7 @@
      （1 − already_air_share），逐厂相加；已是空冷的部分不重复计（plant_matrices._air_cooling_matrices）。
 读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
   空冷容量，不是累计改造量：退役路径上的空冷份额不计入；已建成的空冷存量（plant_detail.csv 的 air_installed_share，
-  只增不减，含此后退役的容量）这里不画。
+  只增不减，含此后退役的容量；已全空冷的 hub 两列不保证为零，乘 1 − already_air_share 后为零）这里不画。
 数据：_indtree/results/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
 自检：各流域超出余量的取水 = slack_detail.csv 记的该流域松弛（没超的流域没有松弛），两边各算各的；流域代码都在
   BASIN_ORDER 里；空冷运行份额与已空冷比例都在 [0, 1]。
@@ -46,10 +46,7 @@ TEXT = {
 
 def load(scenario: str) -> dict[str, pd.DataFrame]:
     resource = read_result(scenario, "resource_use")
-    try:
-        slack = read_result(scenario, "slack_detail")
-    except pd.errors.EmptyDataError:     # 一个松弛都没有时这张表是空文件
-        slack = pd.DataFrame(columns=["year", "constraint_type", "node_id", "slack_value"])
+    slack = read_result(scenario, "slack_detail")      # 没有松弛时也带列名（只有表头）
     return {"basins": resource[resource["resource_type"] == "water_basin_quota"].astype({"region": str}),
             "slack": slack[slack["constraint_type"] == "water_basin_quota"],
             "plants": read_result(scenario, "plant_detail")}
@@ -91,11 +88,12 @@ def check(data: dict[str, pd.DataFrame]) -> None:
     if unknown:
         raise ValueError(f"自检不通过：流域代码 {sorted(unknown)} 不在 BASIN_ORDER 里，不出图")
     # 模型约束 取水 ≤ 余量 + 松弛，松弛带罚项取到最小：超出余量的取水就是该流域的松弛（slack_detail 只记正值）。
+    # 容差 1 000 m³：求解按百万 m³ 计、开了数值缩放，可行性误差换回 m³ 不止 1。
     booked = {(int(y), str(code)): float(v)
               for y, code, v in zip(slack["year"], slack["node_id"], slack["slack_value"])}
     check_close("超出流域余量的取水应等于 slack_detail.csv 的流域松弛",
                 (basins["used"] - basins["available"]).clip(lower=0.0),
-                [booked.get((int(y), code), 0.0) for y, code in zip(basins["year"], basins["region"])], atol=10.0)
+                [booked.get((int(y), code), 0.0) for y, code in zip(basins["year"], basins["region"])], atol=1e3)
     for col in ("air_operating_share", "already_air_share"):
         if not plants[col].between(-1e-6, 1 + 1e-6).all():
             raise ValueError(f"自检不通过：plant_detail.{col} 超出 [0, 1]，不出图")

@@ -23,12 +23,13 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+# 先导入 _bootstrap 把 src/ 加进路径：不装包也能导入 coal_retrofit，不依赖导入顺序。
+import _bootstrap  # noqa: F401
+from coal_retrofit.constants_industry import POWER_TARGET_GROUP
 from plot_style import (
     GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR, OVER_COLOR,
     apply_style, check_close, figure_cli, fmt_number, labels, langs, read_result, read_result_json, save_fig,
 )
-
-from coal_retrofit.constants_industry import POWER_TARGET_GROUP  # 在 plot_style 之后：它经 _bootstrap 把 src/ 加进路径
 
 NAME = "fig5_sector_targets"
 BASE_YEAR = 2030             # 部门上限按各组 2030 年冻结技术排放的比例给

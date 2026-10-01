@@ -129,10 +129,10 @@ def test_detail_air_operating_share_leaves_out_the_retire_pathway() -> None:
         hubs["level_b"], hubs["level_a"], air_share,
         year_data=year_data, plant_reduction_mt=zeros,
         biomass_blend_x_share=hubs["bio_xs"], beccs_blend_x_share=hubs["beccs_xs"],
-        ammonia_blend_x_share=hubs["amm_xs"], air_installed=np.array([0.0, 0.0, 0.8]),
+        ammonia_blend_x_share=hubs["amm_xs"], air_installed=np.array([0.0, 0.0, 0.9]),
     )
     np.testing.assert_allclose(detail["air_operating_share"], [0.0, 0.0, 0.5], rtol=1e-12)
-    np.testing.assert_allclose(detail["air_installed_share"], [0.0, 0.0, 0.8], rtol=1e-12)
+    np.testing.assert_allclose(detail["air_installed_share"], [0.0, 0.0, 0.9], rtol=1e-12)
 
 
 def test_pathway_split_charges_each_term_to_its_own_pathway() -> None:

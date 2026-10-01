@@ -318,7 +318,7 @@ gdf = gdf.to_crs(TARGET_CRS)
 | `map_layer("country")` | `china_country_proj.shp` | 国界：单要素、1 260 个部件，南到 3.83°N |
 | `map_layer("country_main")` | `country` 中面积 ≥ 1 000 km² 的部件（面积在 shp 原生的 Albers 等积投影下算，§4.1） | 只有大陆、台湾、海南三块，主图用 |
 
-> ⚠️ 国界层整层有 1 257 个小岛部件（中位 1.1 km²），画在主图上就是东南海岸一圈黑毛刺。
+> ⚠️ 国界层整层有 1 257 个小岛部件（中位 1.0 km²，等积投影下算），画在主图上就是东南海岸一圈黑毛刺。
 > **主图画 `country_main` + `dash`，整层只在南海小图里画**；`draw_china_basemap(islands=False / True)` 已按此实现。
 
 旧的 `data/ChinaMap/boundary.shp` / `provinces.shp` 不再用于出图，但 **builders 仍在读**
@@ -395,7 +395,7 @@ save_fig(fig, "fig2_candidate_network", lang)
 
 南海小图里省界 0.15、国界与九段线 0.5（`add_scs_inset`），业务图层的点与线按各图给的倍数（0.5–0.6）缩小。
 
-**流量线宽 = `sqrt(流量)/scale`**（面积正比于流量）。图例不能直接用数据线宽，
+**流量线宽 = `sqrt(流量)/scale`**（面积正比于流量；太细的管段设下限，图 6 为 0.35 pt）。图例不能直接用数据线宽，
 必须用 `Line2D` 按代表值另建分档图例（如 `<0.5 / 0.5–1.0 / 1.0–2.0 / >2.0`），
 并在图例标题写清单位。**点面积**用 `plot_style.area_scale`（下限 + 线性项，不是正比），按形状换算（`MARKER_AREA`），
 同值的圆点、菱形、方块面积相同；尺寸图例用同一换算的 `size_legend`。
