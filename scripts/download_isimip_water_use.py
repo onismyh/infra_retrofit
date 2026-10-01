@@ -6,13 +6,13 @@ Why this exists: `data/water/` holds only `qtot` (runoff). When this script was 
 `WATER_EXTRACTABLE_FRACTION x (1 - existing_withdrawal_share)` = 0.20 x 0.15, whose two factors
 are ALIASED — the solver sees only their product, so the study cannot say whether the
 environmental-flow standard or the allocation rule is what binds. Subtracting domestic and
-irrigation explicitly was meant to de-alias that. The knob was deleted on 2026-09-26: since v9.1
-the node limit is `qtot x 0.20` (environmental flow, on consumption) and the allocation rule is
-the official basin total-withdrawal quota (on withdrawal); see the water-budget comment in
-`optimization/scenario.py`. The subtraction itself is not wired into the solve yet
-(docs/工业部门参数溯源.md §六 item 1, §七); today only `ptotuse` from this script is used,
-as the province-to-basin split weight when building the official basin quotas
-(`builders/water_quota.py`).
+irrigation explicitly was meant to de-alias that. The knob was deleted on 2026-09-26. Since
+2026-10-01 the node limit is `max(qtot x 0.20 - domestic - irrigation, existing coal use)` (environmental
+flow, on consumption; `optimization/water_access._water_available_by_node`): `scripts/build_water_use.py`
+turns these files into the basin sums in `inputs/water_basin_use.csv`. The allocation rule is
+still the official basin total-withdrawal quota (on withdrawal); see the water-budget comment in
+`optimization/scenario.py`. `ptotuse` (cwatm, gfdl-esm4, ssp126) is also the province-to-basin
+split weight when building the official basin quotas (`builders/water_quota.py`).
 
 WHICH VARIABLES, AND WHY THESE ONES. The subtraction targets the node limit, which acts on
 CONSUMPTION, so what must be deducted is other users' consumption, not their withdrawal
@@ -28,6 +28,8 @@ which is why CWatM needs four files per scenario and WaterGAP only two.
 
 Manufacturing/industrial consumption is deliberately NOT deducted: industry becomes an explicit
 decision agent in this model, so deducting it here as well would charge the same water twice.
+Livestock (CWatM `pliveuse`) is not deducted either: only domestic and irrigation, the same pair
+for both hydrology models.
 
 Caveat to carry into the Methods: these are `2015soc-from-histsoc` runs, i.e. socioeconomic
 drivers are frozen at 2015. Domestic demand is therefore effectively constant through 2100;
@@ -48,7 +50,8 @@ import requests
 
 DEST = "data/water"
 BASE = "https://files.isimip.org/ISIMIP3b/OutputData/water_global"
-GCM = "gfdl-esm4"          # the headline GCM; extend when the other four are needed
+# Every GCM in `inputs/water_scenarios.csv`: each member's deduction comes from its own run.
+GCMS = ("gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll")
 SSPS = ("ssp126", "ssp370")
 NEEDED: dict[str, tuple[str, tuple[str, ...]]] = {
     "cwatm": ("CWatM", ("pdomuse", "pinduse", "pliveuse", "ptotuse")),
@@ -62,14 +65,15 @@ CONNECT_TIMEOUT = 30
 READ_TIMEOUT = 180
 
 
-def _basename(hydro: str, ssp: str, var: str) -> str:
-    return (f"{hydro}_{GCM}_w5e5_{ssp}_2015soc-from-histsoc_default_"
+def _basename(hydro: str, gcm: str, ssp: str, var: str) -> str:
+    return (f"{hydro}_{gcm}_w5e5_{ssp}_2015soc-from-histsoc_default_"
             f"{var}_global_monthly_2015_2100.nc")
 
 
 URLS: list[tuple[str, str]] = [
-    (_basename(h, ssp, var), f"{BASE}/{H}/{GCM}/future/{_basename(h, ssp, var)}")
+    (_basename(h, gcm, ssp, var), f"{BASE}/{H}/{gcm}/future/{_basename(h, gcm, ssp, var)}")
     for h, (H, variables) in NEEDED.items()
+    for gcm in GCMS
     for ssp in SSPS
     for var in variables
 ]

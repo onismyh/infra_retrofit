@@ -67,11 +67,12 @@ def parse_water_file(paths: ProjectPaths, filename: str) -> dict[str, object]:
 
 
 def build_water_scenarios_dataframe(paths: ProjectPaths) -> pd.DataFrame:
-    """只收情景成员。`historical` 运行与它们同在一个目录，但不是成员：
-    它们是 `basin_bias_factors` 估计各模型偏差时所对照的基准。"""
+    """只收情景成员，一个成员一个 qtot 文件。`historical` 运行与它们同在一个目录，但不是成员：
+    它们是 `basin_bias_factors` 估计各模型偏差时所对照的基准。同目录的耗水文件（`WATER_USE_VARIABLES`）
+    也匹配 `WATER_PATTERN`，按变量名排除。"""
     files = sorted(
         path.name for path in (paths.data_dir / "water").glob("*.nc")
-        if WATER_PATTERN.fullmatch(path.name)
+        if (match := WATER_PATTERN.fullmatch(path.name)) and match.group("variable") == "qtot"
     )
     if not files:
         raise FileNotFoundError(f"No scenario .nc files matching WATER_PATTERN in {paths.data_dir / 'water'}")
@@ -403,6 +404,39 @@ def basin_bias_factors(
     return factors
 
 
+def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
+    """逐个时间步的公历年份。"""
+    time_var = ds.variables["time"]
+    dates = netCDF4.num2date(time_var[:], time_var.units, getattr(time_var, "calendar", "standard"))
+    return np.array([int(dt.year) for dt in dates])
+
+
+def _annual_and_seasonal(window: np.ndarray, area_m2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """十年窗口逐月序列（kg m-2 s-1，从 1 月起）的逐网格年均水量与 12 个候选三个月窗口的年化水量，m3/yr。
+
+    第 m 个窗口是从第 m 个日历月（0 = 1 月）起的连续三个月，取多年月均的年循环。径流与耗水共用，
+    所以两者的枯水期是同一组月份。
+    """
+    # kg m-2 s-1 -> 每个网格的 m3/yr（水的密度 1000 kg m-3）
+    annual = np.nan_to_num(np.nanmean(window, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
+    months = np.arange(window.shape[0]) % 12
+    monthly_clim = np.stack(
+        [np.nan_to_num(np.nanmean(window[months == m], axis=0)) for m in range(12)]
+    )
+    rolling = np.stack([monthly_clim[np.arange(m, m + 3) % 12].mean(axis=0) for m in range(12)])
+    return annual, rolling * area_m2 * SECONDS_PER_YEAR / 1000.0
+
+
+def _basin_dry_window(rolling_volume: np.ndarray, cells: np.ndarray) -> tuple[int, float]:
+    """流域的枯水季：12 个候选三个月窗口中流域径流合计最小的那个，返回 (窗口序号, 年化水量 m3/yr)。
+
+    在流域合计上选，不逐网格选，理由见 `build_water_availability_dataframe` 里选取处的注释块。
+    """
+    basin_rolling = rolling_volume[:, cells].sum(axis=1)
+    dry = int(np.argmin(basin_rolling))
+    return dry, float(basin_rolling[dry])
+
+
 def build_water_availability_dataframe(
     paths: ProjectPaths,
     scenarios: pd.DataFrame,
@@ -429,9 +463,10 @@ def build_water_availability_dataframe(
     落在 0.34x 到 4.00x 之间，其中大部分是用省界切割 0.5 deg 网格造成的假象；按流域时
     离散范围为 0.74x-2.43x，而 `basin_bias_factors` 连这一点也消除了。
 
-    环境流量与存量取水不在这里施加：环境流量是求解时乘的可提取比例（`WATER_EXTRACTABLE_FRACTION`），
+    环境流量、其他用户耗水与存量取水都不在这里施加：环境流量是求解时乘的可提取比例（`WATER_EXTRACTABLE_FRACTION`），
+    生活与灌溉耗水求解时从节点余量里扣（`water_basin_use.csv`，由 `build_water_use_dataframe` 生成），
     存量取水在流域取水上限里扣除（`water_basin_caps.csv`，由 `scripts/build_water_basin_caps.py` 生成），
-    因此改这两项不必重建本表。
+    因此改这三项不必重建本表。
 
     同时生成年均列和枯水期列（最低的连续三个月，年化）：火电受限发生在低流量时段，
     而不是在年均水平上，且源数据是逐月的。
@@ -457,15 +492,7 @@ def build_water_availability_dataframe(
     for _, scenario_row in scenarios.iterrows():
         scenario_path = _resolve_source_path(paths, str(scenario_row["source"]))
         with netCDF4.Dataset(str(scenario_path), "r") as ds:
-            time_var = ds.variables["time"]
-            years = np.array(
-                [
-                    int(dt.year)
-                    for dt in netCDF4.num2date(
-                        time_var[:], time_var.units, getattr(time_var, "calendar", "standard")
-                    )
-                ]
-            )
+            years = _file_years(ds)
             if "qtot" not in ds.variables:
                 raise ValueError(
                     f"{scenario_path} has no 'qtot' variable; routed discharge ('dis') is not a "
@@ -493,17 +520,9 @@ def build_water_availability_dataframe(
                 if not mask.any():
                     continue
                 window = _clean_series(np.asarray(runoff_var[mask]), fill_value)
-                # kg m-2 s-1 -> 每个网格的 m3/yr（水的密度 1000 kg m-3）
-                annual = np.nan_to_num(np.nanmean(window, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
-                # 枯水期：气候态年循环中最低的连续 3 个日历月
-                months = np.arange(window.shape[0]) % 12
-                monthly_clim = np.stack(
-                    [np.nan_to_num(np.nanmean(window[months == m], axis=0)) for m in range(12)]
-                )
-                rolling = np.stack([monthly_clim[np.arange(m, m + 3) % 12].mean(axis=0) for m in range(12)])
-                # 12 个候选 3 个月窗口各自的每网格水量。流域的枯水季只选一次，
-                # 且是在流域总量上选——见下面的循环。
-                rolling_volume = rolling * area_m2 * SECONDS_PER_YEAR / 1000.0
+                # 枯水期：气候态年循环中最低的连续 3 个日历月。`rolling_volume` 是 12 个候选
+                # 3 个月窗口各自的每网格水量；流域的枯水季只选一次，且是在流域总量上选——见下面的循环。
+                annual, rolling_volume = _annual_and_seasonal(window, area_m2)
 
                 node_annual = annual[lat_indices, lon_indices]
 
@@ -529,8 +548,9 @@ def build_water_availability_dataframe(
                     # 逐网格的相位信息无论如何都保留不下来：往下四行，流域就坍缩成一个
                     # `dry_share`，再按年径流权重重新分配到节点，所以单个网格在哪个月
                     # 见底，在它被使用之后的下一条语句就被丢弃了。
-                    basin_rolling = rolling_volume[:, cells].sum(axis=1)
-                    dry_share = float(basin_rolling.min()) / modelled_annual if modelled_annual > 0 else 0.0
+                    # 耗水表（`build_water_use_dataframe`）取同一个窗口。
+                    _, dry_volume = _basin_dry_window(rolling_volume, cells)
+                    dry_share = dry_volume / modelled_annual if modelled_annual > 0 else 0.0
                     total_dry = total_annual * dry_share
                     weights = node_annual[members]
                     weight_sum = float(weights.sum())
