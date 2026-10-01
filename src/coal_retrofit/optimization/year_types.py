@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from .industry_matrices import IndustryYearData
     from .model_industry import IndustryPayload
+    from .vintage import StockYear
 
 # gurobipy 13 的存根把 MVar 的标量下标 `x[i, j]` 与 `x.sum()` 标成 MVar / MLinExpr，而 `quicksum`、
 # `LinExpr.__iadd__` 的存根只收 `float | Var | LinExpr`；运行时它们是 0 维对象，照常参与求和。
@@ -53,11 +54,12 @@ class YearData:
     beccs_penalty_emissions_coeff_per_level: np.ndarray
     beccs_penalty_captured_coeff_per_level: np.ndarray
     ccs_retrofit_capex_matrix: np.ndarray
-    ccs_om_matrix: np.ndarray
     baseline_net_matrix: np.ndarray
     stranded_per_plant: np.ndarray
-    # 改造存量的 capex 系数 (plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
+    # 本年建成的捕集岛 (plant_count, 1)：只有一列，按 CCS capex 计（见 `model_year`）。capex 是一次性的；
+    # 固定运维是它在役且在用的每一年都付的数，按本年（建设年）的单价（`vintage`）。
     retrofit_stock_capex: np.ndarray
+    retrofit_stock_om: np.ndarray
 
     # --- 价格、封存部署、部门上限 ---
     carbon_price: float
@@ -145,7 +147,7 @@ class YearPayload:
     add_cap: GrbMVar
     pipe_count: GrbMVar
     rebuild: GrbMVar
-    retrofit_installed: GrbMVar
+    retrofit_new: GrbMVar
     new_cap_mtpa: GrbMVar
     biomass_flow_gj: GrbMVar
     ammonia_flow_kg: GrbMVar
@@ -190,6 +192,11 @@ class YearPayload:
     salvage_ledger: list[tuple[str, GrbExpr, int]] = field(default_factory=list)
     # `add_year_costs` 之前为 None。
     objective_expr: GrbExpr = None
+    # 三类分代能力本年的在役能力与固定运维（`model_linking.add_capacity_vintages` 写入，此前为 None）：
+    # 煤电捕集岛（每厂一项）、工业捕集与氢路线能力（每 hub 一项）。
+    ccs_island: StockYear | None = None
+    industry_ccs: StockYear | None = None
+    industry_h2: StockYear | None = None
 
 
 class SolveSlacks(TypedDict):
@@ -235,10 +242,16 @@ class YearSolution(TypedDict):
     air_installed: np.ndarray
     blend_level_b: np.ndarray
     blend_level_a: np.ndarray
-    retrofit_installed: np.ndarray
+    # 捕集岛：本年新建 (plant_count, 1)、在役 (plant_count,)、按建设年单价的固定运维 (plant_count,)，CNY/yr。
+    retrofit_new: np.ndarray
+    retrofit_alive: np.ndarray
+    ccs_om_by_plant: np.ndarray
     pipe_count: np.ndarray
     industry_share: np.ndarray
+    # 工业路线能力，Mt/yr (hub_count, len(INDUSTRY_ROUTES))：本年新建、在役；捕集的固定运维 (hub_count,)，CNY/yr。
+    industry_new_capacity_mt: np.ndarray
     industry_capacity_mt: np.ndarray
+    industry_ccs_om_by_hub: np.ndarray
     industry_h2_flow_kg: np.ndarray
     plant_reduction_mt: np.ndarray
     # `YearPayload` 同名字段的值：逐厂 Σβ_l·z_l。

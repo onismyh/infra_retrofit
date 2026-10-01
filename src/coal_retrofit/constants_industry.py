@@ -264,7 +264,8 @@ INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR: Final[dict[str, float]] = {
     SECTOR_AMMONIA: 450.0,
     SECTOR_METHANOL: 450.0,
 }
-# 捕集岛的固定运维，按每年占（经学习曲线调整后的）capex 的比例计。与煤电侧所用的
+# 捕集岛的固定运维，按每年占（经学习曲线调整后的）capex 的比例计，按建设年的 capex 与在役且在用的能力计（2026-09-30 起，
+# `vintage`；此前按当年 capex x 当年捕集量）。与煤电侧所用的
 # 5%/a 相同（An et al. 2025 Nat Commun SI Table 7：固定运维 / 投资 = 5.4%/a）；
 # PKU/Baowu 案例为 407 M 投资对应 12 M/a = 2.9%/a，IEAGHG 2013/04 钢厂维护费为安装成本的
 # 142/3 928 = 3.6%/a。5% 取的是保守一端。
@@ -314,7 +315,8 @@ INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
 INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
 # 捕集岛的经济寿命 20 a：NPC 2019 的钢铁、水泥、合成氨、乙醇捕集改造都取 20 a（`npc2019dualchallenge`，经
 # `pypsa_techdata`）；DEA 401 的技术寿命为 25 a（`dea_ccts`），可作敏感性。PKU/Baowu 假定 25 a；煤电侧的改造
-# 捕集岛依附于剩余 15-25 a 的机组；两侧统一取 20 a，使残值规则对捕集岛一视同仁，无论它建在哪里。
+# 捕集岛依附于剩余 15-25 a 的机组；两侧统一取 20 a，使残值规则对捕集岛一视同仁，无论它建在哪里。捕集能力按这个
+# 寿命退出，份额仍在就得重建（2026-09-30 起，`vintage`）。
 INDUSTRY_CAPTURE_LIFETIME_YEARS: Final[int] = 20
 
 # ACCA21 / China Energy News 的平准化捕集成本，CNY/吨，仅作交叉核对（2026-09-22 起不进
@@ -385,8 +387,9 @@ INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
     SECTOR_METHANOL: (3000.0, 16.5),
 }
 
-# 氢路线的改造 capex，单位为每吨年产能的 CNY；在能力存量的增量上一次性计入（2026-09-23 前
-# 计在路线份额的增量上），并为残值规则按直线折旧。
+# 氢路线的改造 capex，单位为每吨年产能的 CNY；在本年新建能力上一次性计入，能力按铭牌产能定规模、到寿命退出
+# （2026-09-23 前计在路线份额的增量上，此后到 09-30 计在按产量定规模、永不退出的能力存量的增量上），并为残值规则
+# 按直线折旧。
 #   steel_bf_bof  在现有厂址用 H2-DRI 竖炉 + EAF 替代 BF-BOF（烧结、焦炉、BF 和 BOF
 #                 弃用；铸造和轧制保留）：
 #                 竖炉：宝钢湛江百万吨级氢基竖炉 总投资 18.9 亿元，对应 1.0 Mt/a DRI
@@ -411,7 +414,7 @@ INDUSTRY_H2_ROUTE_CAPEX_CNY_PER_T_PRODUCT_YR: Final[dict[str, float]] = {
 # 新路线设备的固定运维，按每年占 capex 的比例计。IEAGHG 2013/04 Tables 6-7：
 # 钢厂维护费 142 M$/a，安装成本 3 928 M$，即 3.6%/a；取 3.5%。
 INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION: Final[float] = 0.035
-# 重建路线（DRI 竖炉、EAF、合成接入）的经济寿命：25 a（PKU/Baowu 对捕集改造用
+# 重建路线（DRI 竖炉、EAF、合成接入）的经济寿命，也是在役年限（到寿命退出，`vintage`）：25 a（PKU/Baowu 对捕集改造用
 # 25 a；DRI/EAF 模块是比它更长寿的资产）。⚠ 假设（无直接出处）：开源数据给出 20-40 a，即 MPP 钢铁模型的
 # 投资周期 20 a、钢厂寿命 40 a（`mpp_steel`），DEA 合成氨与甲醇的技术寿命 30 a（`dea_renewable_fuels`）。
 INDUSTRY_H2_LIFETIME_YEARS: Final[int] = 25
@@ -422,7 +425,7 @@ INDUSTRY_H2_LIFETIME_YEARS: Final[int] = 25
 # 因此 `opex_delta_nonH2`——相对现有化石路线的非氢运行差额（EAF/压缩机用电、省下的
 # 焦炭或煤、省下的化石路线运维）——就是锚点扣除其中的氢和资本后所隐含的值。
 # 钢铁的这一项为负（省下的焦炭与 BF opex 超过 EAF 电费），这是锚点自身算术所迫；
-# 求解器计入目标的仍是 max(0, 固定运维 + opex_delta_nonH2 + H2 采购)；capex 按能力存量增量一次计入，在 max 之外。
+# 求解器计入目标的仍是 max(0, 固定运维 + opex_delta_nonH2 + H2 采购)；capex 按本年新建能力一次计入，在 max 之外。
 
 # 走氢路线的 hub 的厂内用水：取该部门的先进值，而不是通用值。这不是猜——先进值按定义
 # 就是适用于新建与改建工厂的定额，而氢路线就是一次改建。GB/T 18916 没有 H2-DRI 行，
@@ -530,7 +533,7 @@ def h2_route_capex_cny_per_t_yr(sector: str) -> float:
 def h2_route_annual_capital_cny_per_t(sector: str, discount_rate: float) -> float:
     """氢路线的 capex 年金加固定运维，单位为每吨产品每年的 CNY。
 
-    即锚点分解时作为资本从 `premium_ref` 中扣除的部分。注意：求解器里 capex 按能力存量增量
+    即锚点分解时作为资本从 `premium_ref` 中扣除的部分。注意：求解器里 capex 按本年新建能力
     一次计入、在 `max` 之外，固定运维属于年度项、在 `max` 之内；见 `add_industry_year`。
     """
     capex = h2_route_capex_cny_per_t_yr(sector)

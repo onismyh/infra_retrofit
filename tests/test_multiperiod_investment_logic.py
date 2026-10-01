@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -167,13 +168,12 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
     assert y1["cost_breakdown_cny"]["baseline_net_cost"] == pytest.approx(expected_baseline_net, rel=1e-3)
 
 
-def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path) -> None:
-    """捕集岛一旦建成，只付一次钱，并持续运行。
+def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_path) -> None:
+    """捕集岛建成时付一次钱，在役到寿命（20 a）为止；份额仍在就得按当年单价重建。固定运维按建设年的单价。
 
-    目标 0.5 -> 0.3 -> 0.5，禁用退役。在捕集份额锁定（2026-09-10）之前，
-    CCS 份额会在第 2 期下降、第 3 期回升，本测试守护的是按存量增量计价（回升时
-    不再计第二笔 capex）。有了锁定，份额根本不能下降——2030 年的份额一直保持到
-    2040 与 2050 年，较低的 2040 年目标被超额完成，而 CAPEX 仍只在第 1 期计一次。"""
+    目标 0.5 -> 0.3 -> 0.5，禁用退役。捕集份额锁定（2026-09-10）让 2030 年的份额一直保持到 2040 与 2050 年，
+    较低的 2040 年目标被超额完成。2030 年建的捕集岛 2040 年仍在役，不再付 capex，固定运维仍按 2030 年的单价；
+    2050 年满 20 年退出，按 2050 年单价重建。2026-09-30 前存量永不退出，2050 年不付钱，固定运维按当年单价。"""
     years3 = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.7, 2050: 0.5})
@@ -213,35 +213,76 @@ def test_ccs_retrofit_capex_charged_on_installed_stock_not_share_delta(tmp_path)
     assert y2["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
     assert y3["share"][0, ccs_idx] == pytest.approx(s1_y2030, rel=1e-3)
 
-    # CAPEX 只在第 1 期按全部已装存量计；第 2、3 期不再增加
-    # （第 3 期的回升不超出已装存量）。
+    # CAPEX：第 1 期建、第 2 期不付、第 3 期重建，都按建设年的单价（学习曲线逐年下降）。
     rate = scenario.discount_rate
-    df1 = 1.0 / (1.0 + rate) ** (2030 - scenario.discount_base_year)
-    capex_rate = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * assumptions.ccs_learning_factor(2030)
-    expected_capex_y1 = 1000.0 * capex_rate * s1_y2030 * df1
-    assert y1["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(expected_capex_y1, rel=1e-3)
-    assert y2["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(0.0, abs=1.0)
-    assert y3["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(0.0, abs=1.0)
-
-    # 逐厂成本报表必须与模型一致：已装存量 CAPEX 只在第 1 期计，第 2、3 期为零。
+    annuity = (1.0 - (1.0 + rate) ** -10.0) / rate
+    capex_rate = {
+        year: assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * assumptions.ccs_learning_factor(year)
+        for year in years
+    }
+    assert capex_rate[2050] < capex_rate[2040] < capex_rate[2030]
+    capex_paid = {2030: capex_rate[2030], 2040: 0.0, 2050: capex_rate[2050]}
+    # 固定运维（每 MW 每年 = 单价 x ccs_om_fraction）按在用捕集岛的建设年：2040 年仍是 2030 年的岛。
+    om_rate = {
+        2030: capex_rate[2030] * assumptions.ccs_om_fraction,
+        2040: capex_rate[2030] * assumptions.ccs_om_fraction,
+        2050: capex_rate[2050] * assumptions.ccs_om_fraction,
+    }
     capex_indices = solution["capex_pathway_indices"]
-    plant_cost_y1 = _build_plant_cost_table(
-        prepared, 2030, y1["year_data"], y1["share"], y1["biomass_use_gj"],
-        plant_reduction_mt=y1["plant_reduction_mt"],
-        retrofit_installed=y1["retrofit_installed"], capex_pathway_indices=capex_indices,
+    for year, ys, prev in ((2030, y1, None), (2040, y2, y1), (2050, y3, y2)):
+        df = 1.0 / (1.0 + rate) ** (year - scenario.discount_base_year)
+        costs = ys["cost_breakdown_cny"]
+        assert costs["ccs_retrofit_capex"] == pytest.approx(1000.0 * capex_paid[year] * s1_y2030 * df, rel=1e-3, abs=1.0), year
+        assert costs["ccs_om_cost"] == pytest.approx(1000.0 * om_rate[year] * s1_y2030 * df * annuity, rel=1e-3), year
+        # 逐厂成本表与模型一致（未折现）。
+        plant_cost = _build_plant_cost_table(
+            prepared, year, ys["year_data"], ys["share"], ys["biomass_use_gj"],
+            prev_share_values=None if prev is None else prev["share"],
+            plant_reduction_mt=ys["plant_reduction_mt"],
+            retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
+            capex_pathway_indices=capex_indices,
+        )
+        assert float(plant_cost["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
+            1000.0 * capex_paid[year] * s1_y2030, rel=1e-3, abs=1.0
+        ), year
+        assert float(plant_cost["ccs_om_cny"].iloc[0]) == pytest.approx(1000.0 * om_rate[year] * s1_y2030, rel=1e-3), year
+    assert float(y2["retrofit_alive"][0]) == pytest.approx(s1_y2030, rel=1e-3)
+
+
+def test_retired_plant_pays_no_capture_island_om(tmp_path) -> None:
+    """2030 年建捕集岛，2040 年目标归零、全厂退役：捕集岛仍在寿命内，但不再运行，不付固定运维，也不再建。
+    只开放 CCS 与退役，退役速率不设上限；目标缺口的罚价调高 10 倍，否则留一部分捕集、付缺口比全退便宜。
+    2026-09-30 前固定运维按当年份额计，结论相同；这里锁住的是分代以后仍然成立：在用的捕集岛只需覆盖当年的
+    捕集份额，闲置的在役部分不付固定运维。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2030: 0.5, 2040: 0.0})
+    scenario = OptimizationScenario(
+        experiment_id="TEST-CCSRETIRE", description="toy", planning_years=(2030, 2040),
+        sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0),
+        electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
+        pathway_disable=("biomass", "beccs", "ammonia"),
+        max_new_retirement_share_per_period=1.0,
+        solver_time_limit=300,
     )
-    plant_cost_y3 = _build_plant_cost_table(
-        prepared, 2050, y3["year_data"], y3["share"], y3["biomass_use_gj"],
-        prev_share_values=y2["share"],
-        plant_reduction_mt=y3["plant_reduction_mt"],
-        retrofit_installed=y3["retrofit_installed"],
-        prev_retrofit_installed=y2["retrofit_installed"],
-        capex_pathway_indices=capex_indices,
+    assumptions = replace(_toy_assumptions(), slack_penalty_cny_per_unit=5.0e10)
+    prepared = prepare_inputs(paths, scenario, assumptions)
+    state = SolveState(
+        edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
+        remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
     )
-    assert float(plant_cost_y1["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
-        1000.0 * capex_rate * s1_y2030, rel=1e-3
-    )
-    assert float(plant_cost_y3["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(0.0, abs=1.0)
+    solution = _solve_joint_multi_period(prepared, scenario, assumptions, scenario.planning_years, state)
+    assert solution["status"] == "optimal"
+    y1, y2 = solution["year_solutions"][2030], solution["year_solutions"][2040]
+    assert float(y2["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6)
+    ccs_idx, retire_idx = 2, 1  # PATHWAYS = (unabated, retire, ccs, biomass, beccs, ammonia)
+    assert float(y1["share"][0, ccs_idx]) > 0.1
+    assert float(y2["share"][0, retire_idx]) == pytest.approx(1.0, abs=1e-6)
+    assert float(y2["retrofit_alive"][0]) == pytest.approx(float(y1["retrofit_new"][0, 0]), rel=1e-6)
+    assert float(y1["ccs_om_by_plant"][0]) > 0.0
+    assert float(y2["ccs_om_by_plant"][0]) == pytest.approx(0.0, abs=1.0)
+    assert y2["cost_breakdown_cny"]["ccs_om_cost"] == pytest.approx(0.0, abs=1.0)
+    assert y2["cost_breakdown_cny"]["ccs_retrofit_capex"] == pytest.approx(0.0, abs=1.0)
 
 
 def test_unit_cf_boost_recovers_unboosted_accounting(tmp_path) -> None:

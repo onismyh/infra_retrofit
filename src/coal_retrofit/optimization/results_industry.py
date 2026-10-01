@@ -20,14 +20,14 @@ def _build_industry_detail_table(
     year_data: YearData | None = None,
     *,
     capacity_mt: np.ndarray,
-    prev_capacity_mt: np.ndarray | None = None,
+    new_capacity_mt: np.ndarray,
+    ccs_fixed_om_cny: np.ndarray,
 ) -> pd.DataFrame:
     """每个工业 hub 每年一行：所选路线、减排、捕集、用水、成本。
 
-    成本沿用模型自己的拆分：`cost_annual_cny` 是固定运维、捕集能耗与耗材（氢路线为非氢运行
-    差额），再加本年在该 hub 链路上实际买的氢；`cost_capital_cny` 是按能力存量增量计的一次性
-    改造 capex（第一年按整个存量计）。期末残值抵扣不分摊到各 hub，它是 `cost_breakdown.csv`
-    里的 `salvage_credit` 一行。
+    成本沿用模型自己的拆分：`cost_annual_cny` 是捕集能耗与耗材、在役且在用的捕集能力按建设年单价的固定运维
+    （氢路线为固定运维与非氢运行差额），再加本年在该 hub 链路上实际买的氢；`cost_capital_cny` 是按本年新建
+    能力计的一次性改造 capex。期末残值抵扣不分摊到各 hub，它是 `cost_breakdown.csv` 里的 `salvage_credit` 一行。
 
     Args:
         prepared: 准备好的输入；`prepared.industry` 带 hub 表。
@@ -36,8 +36,9 @@ def _build_industry_detail_table(
         share_values: 求解得到的路线份额，形状 (hub_count, len(INDUSTRY_ROUTES))。
         h2_flow_kg: 求解得到的每条链路氢流量，kg。
         year_data: 本年的矩阵，用于取氢链路成本与关联矩阵。
-        capacity_mt: 求解得到的路线能力存量，Mt/yr，形状同 `share_values`。
-        prev_capacity_mt: 上一年的能力存量（第一年为 None）。
+        capacity_mt: 求解得到的在役路线能力，Mt/yr，形状同 `share_values`。
+        new_capacity_mt: 本年新建的路线能力，Mt/yr，形状同 `share_values`。
+        ccs_fixed_om_cny: 每个 hub 捕集能力的固定运维，CNY/yr（`vintage`）。
 
     Returns:
         每个 hub 一行，列序固定；没有工业 hub 时是列齐全的空表。
@@ -77,13 +78,10 @@ def _build_industry_detail_table(
     for hub_idx, hub in enumerate(hubs.itertuples(index=False)):
         share = share_values[hub_idx]
         cap = capacity_mt[hub_idx]
-        prev_cap = prev_capacity_mt[hub_idx] if prev_capacity_mt is not None else np.zeros_like(cap)
-        annual_ccs = float(opex[hub_idx, _CCS] * share[_CCS])
+        new = new_capacity_mt[hub_idx]
+        annual_ccs = float(opex[hub_idx, _CCS] * share[_CCS]) + float(ccs_fixed_om_cny[hub_idx])
         annual_h2 = max(0.0, float(opex[hub_idx, _H2] * share[_H2]) + float(h2_cost_by_hub[hub_idx]))
-        capital = float(
-            unit_capex[hub_idx, _CCS] * max(0.0, cap[_CCS] - prev_cap[_CCS])
-            + unit_capex[hub_idx, _H2] * max(0.0, cap[_H2] - prev_cap[_H2])
-        )
+        capital = float(unit_capex[hub_idx, _CCS] * new[_CCS] + unit_capex[hub_idx, _H2] * new[_H2])
         base_water = float(water[hub_idx, _UNABATED])
         total_water = float(sum(water[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))
         red = float(sum(reduction[hub_idx, r] * share[r] for r in range(len(INDUSTRY_ROUTES))))

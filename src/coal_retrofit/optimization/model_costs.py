@@ -1,7 +1,8 @@
 """一年的成本表达式：运行成本、资源采购、运输封存、一次性 capex、松弛惩罚，及残值台账。
 
-成本口径（作者决定 2026-09-22）：改造 capex 一次性计在存量增量上 + 固定运维 + 能耗按模型自身
-煤价电价，期末对未折旧 capex 计残值（`salvage.py`）。不用平准化每吨成本。
+成本口径（作者决定 2026-09-22）：改造 capex 一次性计 + 固定运维 + 能耗按模型自身煤价电价，期末对未折旧 capex
+计残值（`salvage.py`）。不用平准化每吨成本。捕集岛与工业路线能力的 capex 计在本年新建量上，按建设年分代、到寿命
+退出（`vintage`，2026-09-30 起）；掺烧升级、空冷、原址重建与搁浅资产计在存量增量上。
 """
 from __future__ import annotations
 
@@ -65,15 +66,16 @@ def add_year_costs(
         ("air_retrofit_capex", one_off["air_retrofit_capex"], int(assumptions.air_retrofit_lifetime_years)),
         ("rebuild_capex", one_off["rebuild_capex"], int(assumptions.rebuild_lifetime_years)),
     ]
-    # 工业：年度部分（固定运维、捕集能耗与耗材、氢路线非氢运行差额、按链路买的氢）用同一折现/年金权重；
-    # 改造 capex 一次性计在能力存量增量上，与煤电 `ccs_retrofit_capex` 计在改造存量增量上同法。
+    # 工业：年度部分（捕集能耗与耗材、在役且在用的捕集能力按建设年单价的固定运维、氢路线固定运维与非氢运行差额、
+    # 按链路买的氢）用同一折现/年金权重；改造 capex 一次性计在本年新建能力上，与煤电 `ccs_retrofit_capex` 同法。
+    assert payload.industry_ccs is not None, "add_capacity_vintages must run before add_year_costs"
     payload.cost_exprs["industry_cost"] = (
-        df * interval_weight * payload.industry.annual_cost_expr / _COST_SCALE
+        df * interval_weight * (payload.industry.annual_cost_expr + gp.quicksum(payload.industry_ccs.fixed_om))
+        / _COST_SCALE
     )
-    prev_industry = None if prev_payload is None else prev_payload.industry
     ind_lives = payload.industry.year_data.capex_lifetime_years
-    ind_ccs_capex = industry_capex_expr(payload.industry, prev_industry, routes=(_IND_CCS,))
-    ind_h2_capex = industry_capex_expr(payload.industry, prev_industry, routes=(_IND_H2,))
+    ind_ccs_capex = industry_capex_expr(payload.industry, routes=(_IND_CCS,))
+    ind_h2_capex = industry_capex_expr(payload.industry, routes=(_IND_H2,))
     payload.cost_exprs["industry_capex"] = (
         df * (ind_ccs_capex + ind_h2_capex) / _COST_SCALE
     )
@@ -135,10 +137,9 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             float(year_data.air_penalty_cost_matrix[p, k]) * payload.air_share[p, k]
             for p in range(plant_count) for k in range(len(PATHWAYS))
         )
-    ccs_om_cost = gp.quicksum(
-        float(year_data.ccs_om_matrix[p, k]) * payload.share[p, k]
-        for p in range(plant_count) for k in range(len(PATHWAYS))
-    )
+    # 捕集岛固定运维：在役且在用的捕集岛 x 建设年的单价（`vintage`，闲置不付）。2026-09-30 前按当年单价 x 捕集份额计。
+    assert payload.ccs_island is not None, "add_capacity_vintages must run before add_year_costs"
+    ccs_om_cost = gp.quicksum(payload.ccs_island.fixed_om)
     return {
         "baseline_net_cost": baseline_net,
         "carbon_cost": carbon_cost,
@@ -214,18 +215,20 @@ def _one_off_capex(
         for edge_idx in range(edge_count) for k in range(tier_capex.shape[1])
     )
 
-    # 搁浅资产、CCS 改造（计在存量增量上）、掺烧升级、空冷改造。
+    # 捕集岛：本年单价 x 本年新建（`vintage`；2026-09-30 前计在单调存量的增量上）。
+    stock_coeff = np.asarray(year_data.retrofit_stock_capex, dtype=np.float64)
+    ccs_retrofit_capex = gp.quicksum(
+        float(stock_coeff[p, j]) * payload.retrofit_new[p, j]
+        for j in range(stock_coeff.shape[1]) for p in range(plant_count)
+        if float(stock_coeff[p, j]) > 0.0
+    )
+
+    # 搁浅资产、掺烧升级、空冷改造。
     if prev_payload is None:
         stranded_capex = gp.quicksum(
             float(year_data.stranded_per_plant[p]) * payload.share[p, retire_idx]
             for p in range(plant_count)
             if float(year_data.stranded_per_plant[p]) > 0
-        )
-        stock_coeff = np.asarray(year_data.retrofit_stock_capex, dtype=np.float64)
-        ccs_retrofit_capex = gp.quicksum(
-            float(stock_coeff[p, j]) * payload.retrofit_installed[p, j]
-            for j in range(stock_coeff.shape[1]) for p in range(plant_count)
-            if float(stock_coeff[p, j]) > 0.0
         )
         blend_upgrade_capex = _build_blend_upgrade_capex(
             model, capacity_mw, payload.blend_level_b, payload.blend_level_a,
@@ -248,15 +251,6 @@ def _one_off_capex(
             )
             stranded_terms.append(coeff * delta_ret)
         stranded_capex = gp.quicksum(stranded_terms) if stranded_terms else 0.0
-        # CCS 改造 capex 计在存量增量上（历史最高份额），份额回落再回升不重复计费。
-        prev_installed = prev_payload.retrofit_installed
-        stock_coeff = np.asarray(year_data.retrofit_stock_capex, dtype=np.float64)
-        ccs_retrofit_capex = gp.quicksum(
-            float(stock_coeff[p, j])
-            * (payload.retrofit_installed[p, j] - prev_installed[p, j])
-            for j in range(stock_coeff.shape[1]) for p in range(plant_count)
-            if float(stock_coeff[p, j]) > 0.0
-        )
         blend_upgrade_capex = _build_blend_upgrade_capex(
             model, capacity_mw, payload.blend_level_b, payload.blend_level_a,
             assumptions, plant_count,

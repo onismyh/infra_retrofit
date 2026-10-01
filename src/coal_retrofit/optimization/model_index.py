@@ -28,7 +28,7 @@ class ModelIndex:
     pipeline_indices: list[int]
     incidence: np.ndarray
     sector_base_2030: dict[str, float]
-    # `retrofit_installed` 每一列按哪条路径的 capex 计价，即结果里的列顺序。只有捕集岛一列
+    # `retrofit_new` 每一列按哪条路径的 capex 计价，即结果里的列顺序。只有捕集岛一列
     # （ccs + beccs 份额），按 CCS 计价；2026-09-23 前另有 BECCS 增量一列。
     capex_pathway_indices: tuple[int, ...]
 

@@ -47,6 +47,7 @@ def _toy_industry() -> IndustryInputs:
             "hub_id": ["S1", "C1", "A1"],
             "sector": ["steel_bf_bof", "cement", "ammonia"],
             "province": ["Shanxi", "Shandong", "Unknown"],
+            "capacity_kt_per_year": [1000.0, 2000.0, 500.0],
             "production_kt_per_year": [1000.0, 2000.0, 500.0],
             "co2_mt_per_year": [2.0, 1.2, 1.0],
             "h2_demand_kt_per_year": [81.0, 0.0, 90.0],
@@ -66,7 +67,8 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     ef_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
     elec = scenario.electricity_price_for_year(2030)
 
-    # 钢铁 hub：份额为 1 时 capex = 捕集能力 t/a x 单位 capex x 学习系数；opex = 固定运维 + 可变成本。
+    # 钢铁 hub（铭牌 = 产量）：份额为 1 时 capex = 捕集能力 t/a x 单位 capex x 学习系数；opex = 可变成本；
+    # 固定运维按每 t/a 能力、建设年的单价另给（在役且在用的能力 x 该单价，`vintage`）。
     captured_t = 2.0e6 * scenario.capture_rate
     capex_unit = ci.capture_capex_cny_per_t_yr("steel_bf_bof") * learning
     var_unit = ci.capture_variable_cost_cny_per_t("steel_bf_bof", assumptions.province_coal_cost("Shanxi"), elec)
@@ -74,9 +76,8 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert data.capex_cny_per_mt[0, CCS] * data.capacity_mt_per_share[0, CCS] == pytest.approx(
         captured_t * capex_unit, rel=1e-9
     )
-    assert data.opex_cny[0, CCS] == pytest.approx(
-        captured_t * (capex_unit * ci.INDUSTRY_CCS_FIXED_OM_FRACTION + var_unit), rel=1e-9
-    )
+    assert data.fixed_om_cny_per_mt[0, CCS] == pytest.approx(capex_unit * 1e6 * ci.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
+    assert data.opex_cny[0, CCS] == pytest.approx(captured_t * var_unit, rel=1e-9)
     # 再沸器（reboiler）蒸汽的 CO2 直接排放：胺法捕集的减排量 < 捕集量，合成氨两者相等。
     steam = ci.capture_steam_co2_t_per_t("steel_bf_bof", ef_gj)
     assert 0.2 < steam < 0.4
@@ -86,11 +87,10 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     # 回退煤价由 `test_province_names.py` 用水泥 hub 测。
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
-    assert data.opex_cny[2, CCS] == pytest.approx(
-        1.0e6 * scenario.capture_rate * (capex_nat * ci.INDUSTRY_CCS_FIXED_OM_FRACTION + var_nat), rel=1e-9
-    )
+    assert data.opex_cny[2, CCS] == pytest.approx(1.0e6 * scenario.capture_rate * var_nat, rel=1e-9)
+    assert data.fixed_om_cny_per_mt[2, CCS] == pytest.approx(capex_nat * 1e6 * ci.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
 
-    # H2 路线：capex 按全部产量计；年度项 = 固定运维 + opex 差额；氢逐链路购买。
+    # H2 路线：capex 按铭牌产能计（这里 = 产量）；年度项 = 固定运维 + opex 差额，固定运维不单列；氢逐链路购买。
     assert data.route_available[0, H2] and data.route_available[2, H2]
     assert not data.route_available[1, H2]
     production = 1000.0e3
@@ -110,6 +110,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     }
     assert data.capex_cny_per_mt[:, UNABATED].sum() == 0.0
     assert data.capacity_mt_per_share[:, UNABATED].sum() == 0.0
+    assert data.fixed_om_cny_per_mt[:, [UNABATED, H2]].sum() == 0.0
 
 
 # -------------------------------------------------------------------- 残值：闭式检查 ---

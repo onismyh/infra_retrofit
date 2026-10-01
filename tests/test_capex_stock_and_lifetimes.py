@@ -1,6 +1,7 @@
 """一次性 capex 的计费基数与资产寿命（2026-09-23 的模型改动），每项一组 toy 回归测试。
 
-(a) 工业 capex 计在能力存量的增量上，不计在路线份额的增量上。
+(a) 工业 capex 计在新建能力上，不计在路线份额的增量上（2026-09-30 前计在单调能力存量的增量上；
+    到寿命退出与固定运维按建设年见 `test_capacity_vintages.py`）。
 (b) BECCS 的捕集岛按 CCS 计价，生物质改造只走掺烧档位 capex，各收一次。
 (c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
 (d) 成本乘子两侧都只乘 capex 与随 capex 的固定运维，不乘能耗、耗材与 BECCS 的掺烧运维。
@@ -30,6 +31,7 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     CCS,
     H2,
     IndustryInputs,
+    add_industry_capacity,
     add_industry_monotonicity,
     add_industry_year,
     industry_capex_expr,
@@ -44,14 +46,15 @@ from test_h2_route_multiplier import _steel_hub  # noqa: E402
 from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
-# ---------------------------------------------------------- (a) 工业 capex 按能力存量计 ---
+# ---------------------------------------------------------- (a) 工业 capex 按新建能力计 ---
 def _capex_by_year(
     industry: IndustryInputs, share: dict[int, float], route: int = CCS,
 ) -> tuple[dict[int, float], dict]:
     """固定各年 `route` 的份额，最小化一次性 capex 的现值之和，返回每年未折现的 capex 与逐年系数。
     与求解器一样按 `_discount_factor` 折现：氢路线的单价不随年份下降，不折现时，产量增长的用例里
-    2030 年的存量在一段区间里都是最优解，结果取决于求解器参数。
-    氢路线没有氢链路时份额被钉在 0，所以测氢路线时给唯一的 hub 接一条链路。"""
+    2030 年多建的能力在一段区间里都是最优解，结果取决于求解器参数。
+    氢路线没有氢链路时份额被钉在 0，所以测氢路线时给唯一的 hub 接一条链路。
+    只看 capex，不计固定运维：在用量怎么分给各代不影响这里的断言。"""
     scenario = OptimizationScenario(experiment_id="T", description="toy")
     assumptions = OptimizationAssumptions()
     model = gp.Model()
@@ -68,10 +71,8 @@ def _capex_by_year(
         model.addConstr(payload.share[0, route] == share[year], name=f"fix_share_{year}")
         payloads.append(payload)
     add_industry_monotonicity(model, payloads, 1)
-    exprs = [
-        industry_capex_expr(payload, payloads[i - 1] if i else None, routes=(route,))
-        for i, payload in enumerate(payloads)
-    ]
+    add_industry_capacity(model, years, payloads)
+    exprs = [industry_capex_expr(payload, routes=(route,)) for payload in payloads]
     model.setObjective(gp.quicksum(
         _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * expr
         for year, expr in zip(years, exprs)
@@ -97,7 +98,7 @@ def test_industry_capex_charges_output_growth_at_a_constant_share() -> None:
 
 def test_industry_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -> None:
     """产量 1.0 -> 0.5，份额 0.5 -> 0.8：2040 年只需 0.8 x 0.5 = 0.40 份 2030 年能力，
-    2030 年已建 0.50 份，不必新建。按份额增量计会再收 0.3 x 0.5 份的钱。"""
+    2030 年已建 0.50 份、仍在寿命内，不必新建。按份额增量计会再收 0.3 x 0.5 份的钱。"""
     industry = _cement_hub({("cement", 2030): 1.0, ("cement", 2040): 0.5})
     capex, data = _capex_by_year(industry, {2030: 0.5, 2040: 0.8})
     v30 = data[2030].capacity_mt_per_share[0, CCS]
@@ -112,7 +113,7 @@ def _steel_hub_indexed(output_index: dict[tuple[str, int], float]) -> IndustryIn
 
 def test_h2_route_capex_charges_output_growth_at_a_constant_share() -> None:
     """氢路线与 CCS 同法：份额两年都是 1，产量 1.0 -> 1.5，多出的 50% 产能要付 capex。
-    锁住三件事：氢路线的产能存量有下界，所需产能随产量指数变化，capex 计在存量的增量上。"""
+    锁住三件事：氢路线的在役产能有下界，所需产能随产量指数变化，capex 计在新建产能上。"""
     industry = _steel_hub_indexed({("steel_bf_bof", 2030): 1.0, ("steel_bf_bof", 2040): 1.5})
     capex, data = _capex_by_year(industry, {2030: 1.0, 2040: 1.0}, route=H2)
     k30 = data[2030].capacity_mt_per_share[0, H2]
@@ -124,8 +125,8 @@ def test_h2_route_capex_charges_output_growth_at_a_constant_share() -> None:
 
 
 def test_h2_route_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -> None:
-    """产量 1.0 -> 0.5，份额 0.5 -> 0.8：2040 年只需 0.40 份 2030 年产能，已建 0.50 份，不必新建。
-    产能存量跨年不降；去掉这条单调约束，存量会缩回 0.40，2040 年的 capex 成为负数。"""
+    """产量 1.0 -> 0.5，份额 0.5 -> 0.8：2040 年只需 0.40 份 2030 年产能，已建 0.50 份、仍在役（寿命 25 a），
+    不必新建。"""
     industry = _steel_hub_indexed({("steel_bf_bof", 2030): 1.0, ("steel_bf_bof", 2040): 0.5})
     capex, data = _capex_by_year(industry, {2030: 0.5, 2040: 0.8}, route=H2)
     k30 = data[2030].capacity_mt_per_share[0, H2]
@@ -133,21 +134,19 @@ def test_h2_route_capex_not_recharged_on_idle_capacity_of_a_declining_sector() -
     assert capex[2040] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_industry_capex_expr_charges_each_route_on_its_own_capacity_increment() -> None:
-    """氢路线的 capex 与 CCS 同法：本年单位 capex x 本路线能力存量的增量，第一年按整个存量计。
+def test_industry_capex_expr_charges_each_route_on_its_own_new_capacity() -> None:
+    """氢路线的 capex 与 CCS 同法：本年单位 capex x 本路线本年新建的能力。
     求解器分别按 CCS、H2 请求，好让残值台账里两项各带各的寿命，所以两列不得串。
-    不求解：能力存量直接给数值，表达式只剩常数项。"""
+    不求解：新建能力直接给数值，表达式只剩常数项。"""
     industry = _steel_hub()
     data = industry_year_data(industry, OptimizationScenario(experiment_id="T", description="toy"), OptimizationAssumptions(), 2030)
     unit = data.capex_cny_per_mt
     assert unit[0, CCS] > 0.0 and unit[0, H2] > 0.0
-    previous = SimpleNamespace(capacity_mt=np.array([[0.0, 0.4, 0.1]]), year_data=data)
-    current = SimpleNamespace(capacity_mt=np.array([[0.0, 0.6, 0.3]]), year_data=data)
-    h2 = industry_capex_expr(current, previous, routes=(H2,))
-    ccs = industry_capex_expr(current, previous, routes=(CCS,))
-    assert h2.getConstant() == pytest.approx(unit[0, H2] * 0.2, rel=1e-12)
+    payload = SimpleNamespace(new_capacity_mt=np.array([[0.0, 0.2, 0.3]]), year_data=data)
+    h2 = industry_capex_expr(payload, routes=(H2,))
+    ccs = industry_capex_expr(payload, routes=(CCS,))
+    assert h2.getConstant() == pytest.approx(unit[0, H2] * 0.3, rel=1e-12)
     assert ccs.getConstant() == pytest.approx(unit[0, CCS] * 0.2, rel=1e-12)
-    assert industry_capex_expr(current, None, routes=(H2,)).getConstant() == pytest.approx(unit[0, H2] * 0.3, rel=1e-12)
 
 
 def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
@@ -179,7 +178,7 @@ def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
 def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
     """全模型求解：钢铁组 2040、2050 年要比 2030 年减 70%。长流程钢的 CCS 最多减约 63%（捕集 90% x
     (1 - 再生蒸汽放空约 0.30)），氢路线减 95%，所以必须新建氢路线产能。目标函数里的 `industry_capex`
-    逐年等于折现后的明细表 `cost_capital_cny` 之和。目标函数漏掉氢路线 capex、残值台账里仍有时，能力存量
+    逐年等于折现后的明细表 `cost_capital_cny` 之和。目标函数漏掉氢路线 capex、残值台账里仍有时，新建能力
     没有上界，期末残值抵扣使目标无下界，求解返回 unbounded，在 status 断言处失败；台账里也一起漏掉时，
     2040 年两者差出氢路线那一份。"""
     years = (2030, 2040, 2050)
@@ -203,21 +202,18 @@ def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
     solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
     assert solution["status"] == "optimal"
     ys = solution["year_solutions"]
-    previous = None
     for year in years:
-        capacity = ys[year]["industry_capacity_mt"]
         table = _build_industry_detail_table(
             prepared, year, ys[year]["year_data"].industry, ys[year]["industry_share"],
-            capacity_mt=capacity, prev_capacity_mt=previous,
+            capacity_mt=ys[year]["industry_capacity_mt"], new_capacity_mt=ys[year]["industry_new_capacity_mt"],
+            ccs_fixed_om_cny=ys[year]["industry_ccs_om_by_hub"],
         )
         df = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate)
         booked = float(ys[year]["cost_breakdown_cny"]["industry_capex"])
         assert booked == pytest.approx(df * float(table["cost_capital_cny"].sum()), rel=1e-6, abs=1.0), year
         assert float(ys[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
-        previous = capacity
     steel = list(prepared.industry.hubs["hub_id"]).index("ST1")
-    new_h2_mt = float(ys[2040]["industry_capacity_mt"][steel, H2] - ys[2030]["industry_capacity_mt"][steel, H2])
-    assert new_h2_mt > 0.1
+    assert float(ys[2040]["industry_new_capacity_mt"][steel, H2]) > 0.1
 
 
 # ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---
@@ -254,8 +250,8 @@ def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_
     beccs_share = float(y50["share"][0, PATHWAY_INDEX["beccs"]])
     blend_level = float(y50["blend_level_b"][0])
     assert beccs_share > 0.5 and blend_level >= 1.0 - 1e-6
-    assert y50["retrofit_installed"].shape == (1, 1)
-    assert float(y50["retrofit_installed"][0, 0]) == pytest.approx(beccs_share, rel=1e-6)
+    assert y50["retrofit_new"].shape == (1, 1)
+    assert float(y50["retrofit_new"][0, 0]) == pytest.approx(beccs_share, rel=1e-6)
     df = 1.0 / (1.0 + scenario.discount_rate) ** (2050 - scenario.discount_base_year)
     island = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * capacity_mw * assumptions.ccs_learning_factor(2050)
     costs = y50["cost_breakdown_cny"]

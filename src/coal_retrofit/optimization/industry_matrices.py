@@ -38,9 +38,10 @@ class IndustryYearData:
     """`industry_year_data` 的输出：一个规划年里每个工业 hub、每条路线的系数。
 
     路线矩阵形状 (hub_count, len(INDUSTRY_ROUTES))、列序同 INDUSTRY_ROUTES；其余形状在旁注明。
-    成本分两部分：`opex_cny` 是年度部分，每个运行年按路线份额计；一次性改造 capex 是
-    `capex_cny_per_mt` x 新增能力，计在能力存量的增量上（`model_industry.industry_capex_expr`），
-    能力存量 >= `capacity_mt_per_share` x 份额。氢路线买氢不在 `opex_cny` 里，由求解器按链路采购。
+    成本分三部分：`opex_cny` 是年度部分，每个运行年按路线份额计；一次性改造 capex 是 `capex_cny_per_mt` x 本年
+    新建能力（`model_industry.industry_capex_expr`）；捕集的固定运维是 `fixed_om_cny_per_mt` x 在役且在用的能力，按建设年的
+    单价（`vintage.add_vintage_stock`）。在役能力 >= `capacity_mt_per_share` x 份额，到寿命退出。
+    氢路线买氢不在 `opex_cny` 里，由求解器按链路采购。
     """
 
     hub_ids: list[str]
@@ -51,9 +52,10 @@ class IndustryYearData:
     route_available: np.ndarray          # bool
     reduction_mt: np.ndarray             # CCS 列已扣除放空的再生蒸汽 CO2
     captured_mt: np.ndarray
-    opex_cny: np.ndarray                 # 年度：固定运维 + 能耗 + 耗材 + 氢路线非氢运行差额
-    capacity_mt_per_share: np.ndarray    # 份额为 1 时所需能力，Mt/yr：CCS 为捕集量，氢路线为产量
+    opex_cny: np.ndarray                 # 年度：捕集能耗 + 耗材；氢路线固定运维 + 非氢运行差额
+    capacity_mt_per_share: np.ndarray    # 份额为 1 时所需能力，Mt/yr，按铭牌产能定：CCS 为捕集能力，氢路线为产能
     capex_cny_per_mt: np.ndarray         # 一次性：每 Mt/yr 新增能力的改造 capex，本年价
+    fixed_om_cny_per_mt: np.ndarray      # 本年建成的每 Mt/yr 捕集能力每年的固定运维；氢路线列为 0（在 opex_cny 里）
     h2_demand_kg_per_share: np.ndarray   # (hub_count,)，氢路线份额为 1 时的年需氢量，kg
     water_m3: np.ndarray
     h2_price_cny_per_kg: float           # 全国供给加权均价，只作报告
@@ -99,10 +101,10 @@ def industry_year_data(
     """每个工业 hub、每条路线的逐年成本、排放与用水系数。
 
     除另有注明外，数组形状均为 `(hub_count, len(INDUSTRY_ROUTES))`。成本分成年度部分
-    （`opex_cny` = 固定运维 + 能耗 + 耗材 + 非氢运行差额，每个运行年按路线份额计）与一次性
-    部分（`capex_cny_per_mt` x 能力存量的增量；份额为 1 时所需能力是 `capacity_mt_per_share`，
-    随产量指数变化）。氢路线的买氢不在 `opex_cny` 里：它在求解器里按链路购买。
-    `reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
+    （`opex_cny` = 捕集能耗 + 耗材；氢路线为固定运维 + 非氢运行差额，每个运行年按路线份额计）、一次性部分
+    （`capex_cny_per_mt` x 本年新建能力）与捕集的固定运维（`fixed_om_cny_per_mt` x 在役且在用的能力，按建设年的单价）。
+    份额为 1 时所需能力 `capacity_mt_per_share` 按铭牌产能定（产量 x max(1, 铭牌 / 产量)），随产量指数变化。
+    氢路线的买氢不在 `opex_cny` 里：它在求解器里按链路购买。`reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
 
     Args:
         industry: 准备好的工业输入。
@@ -121,6 +123,10 @@ def industry_year_data(
     production_t = hubs["production_kt_per_year"].astype(float).to_numpy() * 1_000.0 * output_scale
     base_water_m3 = hubs["water_m3_per_year"].astype(float).to_numpy() * output_scale
     production_now = hubs["production_kt_per_year"].astype(float).to_numpy()
+    # 能力按铭牌产能定规模（作者决定 2026-09-30，方案 A）：设备按铭牌建，水泥、电炉钢、合成氨、甲醇的实际产量只有
+    # 铭牌的 73%–83%，按产量建会少算投资。铭牌小于产量的 hub（49 个，长流程钢占 40 个，数据口径不一）按产量建：
+    # 能力不能比实际产量还小。
+    nameplate_factor = np.maximum(1.0, hubs["capacity_kt_per_year"].astype(float).to_numpy() / production_now)
     h2_intensity_t_per_t = np.divide(
         hubs["h2_demand_kt_per_year"].astype(float).to_numpy(),
         np.where(production_now > 0, production_now, np.nan),
@@ -151,6 +157,7 @@ def industry_year_data(
     opex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     capacity_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     capex_cny_per_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
+    fixed_om_cny_per_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     water_m3 = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     h2_demand_kg = np.zeros(n, dtype=np.float64)  # 氢路线每单位份额的需氢量，kg H2
 
@@ -161,19 +168,21 @@ def industry_year_data(
     # 恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。
     captured_mt[:, CCS] = co2_mt * capture_rate
     captured_t = captured_mt[:, CCS] * 1e6
-    # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造
-    # 一样做学习调整；固定运维取该 capex 的一个比例，与能耗、耗材一样按当年捕集量计，不按能力存量计，
-    # 随产量升降（煤电 `ccs_om_matrix` 则按改造 MW x 份额计，与利用小时无关）。成本乘子只乘 capex
-    # （固定运维随之），能耗与耗材按模型价格计、不乘，与煤电 `ccs_cost_multiplier` 同口径（2026-09-23 前也乘）。
+    # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造一样做学习调整；
+    # 捕集能力 = 捕集量 x 铭牌系数。固定运维取 capex 的一个比例，按在役且在用的能力与建设年的单价计（与煤电捕集岛
+    # 同法，`vintage`），能耗与耗材按当年捕集量计。2026-09-30 前能力按捕集量定、固定运维按当年单价 x 当年捕集量计。
+    # 成本乘子只乘 capex（固定运维随之），能耗与耗材按模型价格计、不乘，与煤电 `ccs_cost_multiplier` 同口径
+    # （2026-09-23 前也乘）。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
     variable_unit = np.array(
         [capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh) for s, c in zip(sectors, coal_price_gj)],
         dtype=np.float64,
     )
-    capacity_mt[:, CCS] = captured_mt[:, CCS]
+    capacity_mt[:, CCS] = captured_mt[:, CCS] * nameplate_factor
     capex_cny_per_mt[:, CCS] = capex_unit * 1e6
-    opex_cny[:, CCS] = captured_t * (capex_unit * INDUSTRY_CCS_FIXED_OM_FRACTION + variable_unit)
+    fixed_om_cny_per_mt[:, CCS] = capex_cny_per_mt[:, CCS] * INDUSTRY_CCS_FIXED_OM_FRACTION
+    opex_cny[:, CCS] = captured_t * variable_unit
     # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
     # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。
     steam_co2_per_t = np.array(
@@ -195,18 +204,21 @@ def industry_year_data(
         route_available[hub_idx, H2] = True
         reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
         k_kg_per_t = float(h2_intensity_t_per_t[hub_idx]) * 1000.0
-        # 按 hub 的全部产量计重建路线的 capex，在其上计固定运维，再加由文献锚点反推的
-        # 非氢运行差额（见 `industry.py` 的模块 docstring）。买氢之前的年度部分可以为负
+        # 重建路线的能力按铭牌产能定（产量 x 铭牌系数），capex 与固定运维都按它计；再加按产量计的、由文献锚点
+        # 反推的非氢运行差额（见 `industry.py` 的模块 docstring）。路线 capex 不随年份变（不乘学习曲线），
+        # 按当年单价计固定运维即按建设年，所以固定运维留在年度项里。买氢之前的年度部分可以为负
         # （锚点把省下的化石原料计为收益）；求解器计入目标的是 max(0, 年度部分 + 购氢费)。
+        # 2026-09-30 前能力与固定运维都按产量计。
         # `h2_multiplier` 只乘路线 capex（固定运维随之），与两侧 CCS 的乘子同口径；不乘氢，也不乘
         # 反推的非氢运行差额——后者固定在乘子为 1 时的值。2026-09-23 前乘子还乘差额里路线自身的
         # 成本，使锚点价下的平准化溢价恰为乘子 x 锚点溢价。
         route_capex_unit = h2_route_capex_cny_per_t_yr(sector) * h2_multiplier
         opex_delta_unit = h2_route_opex_delta_cny_per_t(sector, float(h2_intensity_t_per_t[hub_idx]), rate)
-        capacity_mt[hub_idx, H2] = production_t[hub_idx] / 1e6
+        capacity_mt[hub_idx, H2] = production_t[hub_idx] * nameplate_factor[hub_idx] / 1e6
         capex_cny_per_mt[hub_idx, H2] = route_capex_unit * 1e6
-        opex_cny[hub_idx, H2] = production_t[hub_idx] * (
-            route_capex_unit * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + opex_delta_unit
+        opex_cny[hub_idx, H2] = (
+            capacity_mt[hub_idx, H2] * 1e6 * route_capex_unit * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION
+            + production_t[hub_idx] * opex_delta_unit
         )
         h2_demand_kg[hub_idx] = k_kg_per_t * production_t[hub_idx]
         ratio = quota_ratio[sector] if INDUSTRY_H2_USES_ADVANCED_QUOTA else 1.0
@@ -226,11 +238,12 @@ def industry_year_data(
         opex_cny=opex_cny,
         capacity_mt_per_share=capacity_mt,
         capex_cny_per_mt=capex_cny_per_mt,
+        fixed_om_cny_per_mt=fixed_om_cny_per_mt,
         h2_demand_kg_per_share=h2_demand_kg,
         water_m3=water_m3,
         h2_price_cny_per_kg=h2_price_mean,
         capture_learning_factor=learning,
-        # 各路线的经济寿命，供求解器的期末残值抵扣读取。
+        # 各路线的经济寿命：到寿命退出（`vintage`），期末残值抵扣也按它折旧。
         capex_lifetime_years={CCS: INDUSTRY_CAPTURE_LIFETIME_YEARS, H2: INDUSTRY_H2_LIFETIME_YEARS},
     )
 

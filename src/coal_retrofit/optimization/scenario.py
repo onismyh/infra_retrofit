@@ -62,7 +62,7 @@ class OptimizationAssumptions:
     # （两者都是推断，未核），差一个厂用电率，未修正。
     coal_plant_base_efficiency: float = 0.42
     coal_fuel_cost_cny_per_gj: float = 38.2             # 查不到省名时用；⚠ 假设（设定值，见 README §0.1）
-    # 捕集岛固定运维，按每年占（经学习曲线调整的）改造 CAPEX 的比例计。
+    # 捕集岛固定运维，按每年占（经学习曲线调整的）改造 CAPEX 的比例计；2026-09-30 起按建设年的 CAPEX、只计在役且在用的捕集岛。
     # An et al. 2025 (Nat Commun) SI Table 7 给出煤电 CCS 改造在每个预测年的
     # 固定运维 / 投资 = 20.7/381.9 = 5.4%；此处取 5%。
     ccs_om_fraction: float = 0.05
@@ -282,7 +282,7 @@ class OptimizationAssumptions:
     # 时，2060 年的改造要为十年的使用付全部 capex，模型在最后一期投资不足；有了它，规划期
     # 内实际承担的 capex 就是资产服役年份内的折旧，这是与 capex 只计一次相一致的唯一核算
     # 方式。搁浅资产核销不计残值（它是损失，不是资产）。寿命：煤电捕集岛 20 a（同
-    # `INDUSTRY_CAPTURE_LIFETIME_YEARS`）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
+    # `INDUSTRY_CAPTURE_LIFETIME_YEARS`；2026-09-30 起兼作在役年限，到寿命退出）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
     # `air_retrofit_lifetime_years`）；管道 30 a（`pipeline_lifetime_years`）；重建的厂址
     # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。工业捕集岛的 20 a 有出处（NPC 2019 的工业捕集改造，见
     # `constants_industry.INDUSTRY_CAPTURE_LIFETIME_YEARS`），煤电捕集岛只是沿用同值，那份出处不含煤电。

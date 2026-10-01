@@ -197,13 +197,13 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             emissions_mt=np.array([10.0, 4.0]), carbon_price=carbon_price,
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
-            energy_penalty_matrix=zeros_path, ccs_om_matrix=zeros_path, stranded_per_plant=np.zeros(n),
+            energy_penalty_matrix=zeros_path, stranded_per_plant=np.zeros(n),
         ))
         return _build_plant_cost_table(
             _prepared(n), 2040, year_data, share, np.zeros(n),
             # 第 2 个 hub 的减排为负：惩罚燃料使排放高于基线，碳成本随之高于基线排放的碳价。
             plant_reduction_mt=np.array([7.5, -0.2]),
-            retrofit_installed=np.zeros((n, 1)), capex_pathway_indices=(PATHWAY_INDEX["ccs"],),
+            retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), capex_pathway_indices=(PATHWAY_INDEX["ccs"],),
         )
 
     priced = table(100.0)
@@ -393,7 +393,7 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(mixed_continuous) 
         table = _build_plant_cost_table(
             prepared, year, year_data, ys["share"], ys["biomass_use_gj"],
             plant_reduction_mt=ys["plant_reduction_mt"],
-            retrofit_installed=ys["retrofit_installed"],
+            retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
             capex_pathway_indices=solution["capex_pathway_indices"],
         )
         plant_carbon = float(table["carbon_cost_cny"].sum())

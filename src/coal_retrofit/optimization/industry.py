@@ -22,15 +22,16 @@
 每个 hub 有三条路线——`unabated`、`ccs`、`h2`——其中 `h2` 只在 `SECTOR_HAS_H2_ROUTE`
 为真时开放（所以水泥与电炉钢要么捕集、要么不改造，对工艺 CO2 排放源而言这正是正确答案）。
 路线份额是 [0, 1] 上的连续量，并且跨规划年必须单调：装了捕集的 hub 不能再拆掉它，
-也不能把捕集换成氢。每条路线另有一个能力存量（Mt/yr，只设下界，跨年单调），不低于
-份额为 1 时所需能力 x 份额；所需能力随产量指数变化，所以份额与能力并不同步。
+也不能把捕集换成氢。每条路线另有能力（Mt/yr），按建设年分代：每年的新建量建成后在役到经济寿命（捕集 20 a、
+氢路线 25 a）为止，在役能力不低于份额为 1 时所需能力 x 份额（`vintage`，2026-09-30 起；此前是只设下界、跨年
+单调的存量）。所需能力按铭牌产能定（产量 x max(1, 铭牌 / 产量)），随产量指数变化，所以份额与能力并不同步。
 
 成本口径（作者 2026-09-22 的决定；与煤电侧一贯采用的口径相同）。每条工业路线都按下式计价：
 
-    capex   = 单位改造 capex x 新建能力，只在能力存量的增量上计一次
+    capex   = 单位改造 capex x 本年新建能力，计一次
               （2026-09-23 前计在路线份额增量上：产量增长时新增能力不付钱，
-               萎缩后闲置能力被重复收费）
-    annual  = 固定运维（每年为该 capex 的一个比例）
+               萎缩后闲置能力被重复收费；此后到 09-30 计在单调能力存量的增量上）
+    annual  = 固定运维（每年为该 capex 的一个比例；捕集按在役且在用的能力与建设年的 capex 计）
             + 能耗与耗材，按模型自己的煤价与电价计
             + （氢路线）相对现有工艺的非氢运行差额
             + （氢路线）求解器里按供氢链路购买的氢
@@ -65,7 +66,7 @@ max(0, 年成本（不含买氢）+ 购氢费)，这个地板表达的是：换�
 
 文件分工（2026-09-23 从本文件拆出，本文件只留设计说明并转导出，调用方的 import 不用改）：
 `industry_inputs.py` 输入准备（hub 表、氢链路）；`industry_matrices.py` 逐年系数
-（`IndustryYearData`）；`model_industry.py` 变量、约束与一次性 capex 表达式（`IndustryPayload`）。
+（`IndustryYearData`）；`model_industry.py` 变量、约束、分代能力与一次性 capex 表达式（`IndustryPayload`）。
 """
 from __future__ import annotations
 
@@ -81,6 +82,7 @@ from .industry_matrices import (
 )
 from .model_industry import (
     IndustryPayload,
+    add_industry_capacity,
     add_industry_monotonicity,
     add_industry_year,
     industry_capex_expr,
@@ -94,6 +96,7 @@ __all__ = [
     "IndustryInputs",
     "IndustryPayload",
     "IndustryYearData",
+    "add_industry_capacity",
     "add_industry_monotonicity",
     "add_industry_year",
     "basin_membership",

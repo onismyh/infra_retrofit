@@ -137,13 +137,18 @@ def _build_year_matrices(
     sector_cap_fraction: dict[str, float] = {
         str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
     }
-    # 改造存量的 capex 系数，(plant_count, 1)：只有捕集岛一列，按 CCS capex 计（见 `model_year`）。
+    # 本年建成的捕集岛的系数，(plant_count, 1)：只有一列，按 CCS capex 计（见 `model_year`）。
+    # 固定运维 = ccs_om_fraction x 学习后 capex（含成本乘子，随 capex 走），每年按改造容量计（An et al. 2025 SI
+    # Table 7），不按 MWh；在役且在用的每一年都按建设年的这个数付（`vintage`，闲置不付）。2026-09-30 前按当年的单价 x 捕集份额计，
+    # 2026-09-23 前固定运维不乘 `ccs_cost_multiplier`。
     capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
     retrofit_stock_capex = capex_matrix[:, [PATHWAY_INDEX["ccs"]]]
+    retrofit_stock_om = retrofit_stock_capex * float(assumptions.ccs_om_fraction)
 
     return YearData(
         **{k: v for k, v in plant.items() if k not in ("generation_cost_basis", "coal_price_per_plant")},
         retrofit_stock_capex=retrofit_stock_capex,
+        retrofit_stock_om=retrofit_stock_om,
         carbon_price=scenario.carbon_price_for_year(year),
         coal_savings_per_gj=coal_savings_per_gj,
         coal_savings_per_kg_nh3=coal_savings_per_kg_nh3,

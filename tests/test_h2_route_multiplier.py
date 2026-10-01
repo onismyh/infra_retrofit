@@ -13,12 +13,12 @@ from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industr
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 
 
-def _steel_hub() -> IndustryInputs:
-    """一个长流程钢 hub：100 万 t/a，氢强度 0.081 t/t（有氢路线）。"""
+def _steel_hub(capacity_kt: float = 1000.0) -> IndustryInputs:
+    """一个长流程钢 hub：产量 100 万 t/a，氢强度 0.081 t/t（有氢路线）；铭牌产能缺省与产量相同。"""
     hubs = pd.DataFrame({
         "hub_id": ["S1"], "sector": ["steel_bf_bof"], "province": ["Shanxi"],
         "longitude": [112.0], "latitude": [37.0],
-        "production_kt_per_year": [1000.0], "co2_mt_per_year": [2.0],
+        "capacity_kt_per_year": [capacity_kt], "production_kt_per_year": [1000.0], "co2_mt_per_year": [2.0],
         "process_co2_mt_per_year": [0.2], "h2_demand_kt_per_year": [81.0],
         "water_m3_per_year": [3.0e6], "target_group": ["steel"],
     })
@@ -42,6 +42,7 @@ def test_industry_h2_multiplier_scales_route_capex_and_its_fixed_om_only() -> No
     assert delta != 0.0
     assert base.route_available[0, H2] and doubled.route_available[0, H2]
     assert doubled.capex_cny_per_mt[0, H2] == pytest.approx(2.0 * base.capex_cny_per_mt[0, H2], rel=1e-12)
+    # 铭牌产能与产量相同（`_steel_hub` 缺省），固定运维按铭牌产能计、运行差额按产量计，这里两者同为 production_t。
     assert base.opex_cny[0, H2] == pytest.approx(
         production_t * (capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
