@@ -1,97 +1,59 @@
-"""逐流域核算：径流 x 0.20  vs  生活耗水 + 灌溉耗水。诊断脚本，不写入 inputs/。
+"""逐流域核算节点余量：径流 x 0.20 − 生活耗水 − 灌溉耗水。诊断脚本，只读 inputs/，不写。
 
-末列是旧 runoff 口径 `径流 x 0.20 x (1-0.85)`（v9 wd085），2026-09-26 已从 src/ 删除，只作对照。
-流域索引用 enumerate(codes, start=1)，与 builders/water._basin_runoff_from_file 一致；
-zones==0 是流域外（含海洋），必须排除。
+径流取 `water_availability.csv`（偏差订正后、按流域预算分到节点，节点合计即流域合计），耗水取
+`water_basin_use.csv`（`scripts/build_water_use.py`）。余量为负的流域，求解时节点可用量取归到该节点的
+煤电不改造同年耗水（存量不增，`optimization/water_access._water_available_by_node`）；这里只列余量本身。
+
+用法：python scripts/diagnose_basin_water_budget.py [--member cwatm|gfdl-esm4|ssp126] [--year 2050] [--season annual|dry]
 """
 from __future__ import annotations
 
-from pathlib import Path
+import argparse
 
-import netCDF4
-import numpy as np
+import pandas as pd
 
-from _bootstrap import SRC
+from _bootstrap import ROOT
 
-from coal_retrofit.builders.water import (
-    SECONDS_PER_YEAR, WATER_WINDOW_BASIS, _basin_zone_grid, _cell_area_m2, _clean_series,
-    _nc_path, basin_bias_factors,
-)
-from coal_retrofit.constants import (
-    OFFICIAL_BASIN_WATER_1E8_M3, WATER_EXTRACTABLE_FRACTION,
-)
-from coal_retrofit.paths import ProjectPaths
+from coal_retrofit.constants import WATER_EXTRACTABLE_FRACTION
 
-# 仓库根。只读 data/ 下的流域多边形与 ISIMIP 文件、不读 inputs/。
-# 求解树的 data/ 只是指向仓库根 data/ 的 junction（不入库），这里直接指仓库根。
-ROOT = SRC.parent
 NAMES = {"A": "东北诸河", "C": "海河", "D": "黄河", "E": "淮河", "F": "长江",
          "G": "东南诸河", "H": "珠江", "J": "西南诸河", "K": "西北诸河"}
-W = ROOT / "data" / "water"
-paths = ProjectPaths(ROOT)
 
 
-def fn(hydro: str, ssp: str, var: str) -> Path:
-    return W / (f"{hydro}_gfdl-esm4_w5e5_{ssp}_2015soc-from-histsoc_default_"
-                f"{var}_global_monthly_2015_2100.nc")
-
-
-def basin_total(path: Path, var: str, zones, codes, area, y0: int, y1: int) -> dict[str, float]:
-    """流域年总量，1e8 m3/yr，取 [y0,y1] 窗口月均年化。"""
-    with netCDF4.Dataset(_nc_path(path), "r") as ds:
-        tv = ds.variables["time"]
-        yrs = np.array([d.year for d in netCDF4.num2date(
-            tv[:], tv.units, getattr(tv, "calendar", "standard"))])
-        m = (yrs >= y0) & (yrs <= y1)
-        v = ds.variables[var]
-        series = _clean_series(np.asarray(v[m]), getattr(v, "_FillValue", None))
-        annual = np.nan_to_num(np.nanmean(series, axis=0)) * area * SECONDS_PER_YEAR / 1000.0
-    return {c: float(annual[zones == i].sum()) / 1e8
-            for i, c in enumerate(codes, start=1)}
+def basin_budget(member: str, year: int, season: str) -> pd.DataFrame:
+    """逐流域的径流、可提取量、生活与灌溉耗水与余量，10^8 m3/yr。"""
+    dry = season == "dry"
+    availability = pd.read_csv(ROOT / "inputs" / "water_availability.csv")
+    use = pd.read_csv(ROOT / "inputs" / "water_basin_use.csv")
+    runoff = availability[(availability["scenario_id"] == member) & (availability["planning_year"] == year)]
+    use = use[(use["scenario_id"] == member) & (use["planning_year"] == year)].set_index("basin_code")
+    if runoff.empty or use.empty:
+        raise SystemExit(f"{member} {year} 不在 water_availability.csv 或 water_basin_use.csv 里")
+    prefix = "dry_season_" if dry else ""
+    frame = pd.DataFrame({
+        "径流": runoff.groupby("basin_code")["dry_season_water_m3_per_year" if dry else "available_water_m3_per_year"].sum(),
+        "生活": use[f"{prefix}domestic_m3_per_year"],
+        "灌溉": use[f"{prefix}irrigation_m3_per_year"],
+    }).dropna() / 1e8
+    frame["x0.20"] = frame["径流"] * WATER_EXTRACTABLE_FRACTION
+    frame["余量"] = frame["x0.20"] - frame["生活"] - frame["灌溉"]
+    frame["占可提取"] = (frame["生活"] + frame["灌溉"]) / frame["x0.20"]
+    frame.index = [f"{code} {NAMES.get(code, '')}" for code in frame.index]
+    return frame[["径流", "x0.20", "生活", "灌溉", "余量", "占可提取"]]
 
 
 def main() -> None:
-    with netCDF4.Dataset(_nc_path(fn("cwatm", "ssp126", "qtot")), "r") as ds:
-        lat = np.asarray(ds.variables["lat"][:], float)
-        lon = np.asarray(ds.variables["lon"][:], float)
-    area = _cell_area_m2(lat)[:, None] * np.ones((1, len(lon)))
-    zones, codes = _basin_zone_grid(paths, lat, lon)
-    y0, y1 = WATER_WINDOW_BASIS[2050]
-    ssp = "ssp126"
-    print(f"窗口 {y0}-{y1}  {ssp}  GFDL-ESM4   单位 1e8 m3/yr\n")
-
-    for hydro in ("cwatm", "watergap2-2e"):
-        q = basin_total(fn(hydro, ssp, "qtot"), "qtot", zones, codes, area, y0, y1)
-        bias = basin_bias_factors(paths, hydro, "gfdl-esm4", zones, codes, area)
-        dom = basin_total(fn(hydro, ssp, "pdomuse"), "pdomuse", zones, codes, area, y0, y1)
-        if hydro == "watergap2-2e":
-            irr = basin_total(fn(hydro, ssp, "pirruse"), "pirruse", zones, codes, area, y0, y1)
-        else:
-            tot = basin_total(fn(hydro, ssp, "ptotuse"), "ptotuse", zones, codes, area, y0, y1)
-            ind = basin_total(fn(hydro, ssp, "pinduse"), "pinduse", zones, codes, area, y0, y1)
-            liv = basin_total(fn(hydro, ssp, "pliveuse"), "pliveuse", zones, codes, area, y0, y1)
-            irr = {c: max(tot[c] - dom[c] - ind[c] - liv[c], 0.0) for c in codes}
-
-        print(f"===== {hydro} =====")
-        print(f"{'流域':<12}{'官方':>7}{'订正径流':>9}{'x0.20':>7}{'生活':>6}{'灌溉':>7}"
-              f"{'可用':>8}{'占可提取':>9}  {'旧0.03口径':>12}")
-        print("-" * 96)
-        s_avail = s_ext = s_old = 0.0
-        for c in sorted(codes):
-            if c not in OFFICIAL_BASIN_WATER_1E8_M3:
-                continue
-            qc = q[c] * bias.get(c, 1.0)
-            ext = qc * WATER_EXTRACTABLE_FRACTION
-            avail = ext - dom[c] - irr[c]
-            old = qc * WATER_EXTRACTABLE_FRACTION * (1 - 0.85)
-            s_avail += avail; s_ext += ext; s_old += old
-            pct = (dom[c] + irr[c]) / ext * 100 if ext > 0 else float("nan")
-            flag = "  <-- 负" if avail < 0 else ""
-            print(f"{c + ' ' + NAMES.get(c, ''):<12}{OFFICIAL_BASIN_WATER_1E8_M3[c]:>7.0f}"
-                  f"{qc:>9.0f}{ext:>7.0f}{dom[c]:>6.0f}{irr[c]:>7.0f}{avail:>8.0f}"
-                  f"{pct:>8.0f}%{old:>13.0f}{flag}")
-        print(f"{'全国':<12}{sum(OFFICIAL_BASIN_WATER_1E8_M3.values()):>7.0f}"
-              f"{'':>9}{s_ext:>7.0f}{'':>6}{'':>7}{s_avail:>8.0f}{'':>9}{s_old:>13.0f}\n")
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--member", default="cwatm|gfdl-esm4|ssp126")
+    parser.add_argument("--year", type=int, default=2050)
+    parser.add_argument("--season", choices=("annual", "dry"), default="annual")
+    args = parser.parse_args()
+    frame = basin_budget(args.member, args.year, args.season)
+    print(f"{args.member}  {args.year}  {args.season}  单位 10^8 m3/yr（枯水期为年化值）\n")
+    shown = frame.round(0)
+    shown["占可提取"] = (frame["占可提取"] * 100).round(0).astype(int).astype(str) + "%"
+    print(shown.to_string())
+    print(f"\n合计余量 {frame['余量'].sum():.0f}；为负的流域：{[i for i, v in frame['余量'].items() if v < 0] or '无'}")
 
 
 if __name__ == "__main__":
