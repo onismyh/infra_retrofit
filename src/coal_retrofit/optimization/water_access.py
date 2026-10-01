@@ -19,23 +19,12 @@ def _water_scenario_family(mode: str) -> str:
     return "baseline"  # base_water 与 grid_supply 共用
 
 
-def _water_available_by_node(
-    prepared: PreparedInputs,
-    scenario: OptimizationScenario,
-    assumptions: OptimizationAssumptions,
-    year: int,
-    nodes: pd.DataFrame,
-) -> np.ndarray:
-    """`year` 各节点煤电可用水量（m3/yr）= 可再生径流 x 可提取比例（环境流量规则）。
+def _water_member_rows(prepared: PreparedInputs, scenario: OptimizationScenario, year: int) -> pd.DataFrame:
+    """`year` 所选气候成员在 `water_availability.csv` 里的行，一个节点一行。
 
     输入表每行一个 (节点, 年, 气候成员)，成员 = 水文模型 x GCM x SSP。`water_scenario_id`
     选一个成员；留空则取该 family 按 id 排序的第一个成员，保证可复现。
-
-    分配规则不在这里：它是流域取水指标约束（`_basin_cap_data`）。v9 的 runoff 口径曾在这里再乘
-    (1 - 存量取水占比)，与可提取比例只以乘积出现、无法分别识别，已删除。
     """
-    from ..constants import WATER_EXTRACTABLE_FRACTION
-
     frame = prepared.water_availability
     frame = frame[frame["planning_year"].astype(int) == int(year)]
     wanted = str(scenario.water_scenario_id or "")
@@ -52,27 +41,82 @@ def _water_available_by_node(
         if len(members) > 1:
             logger.info("water: family %s has %d members; using %s", family, len(members), members[0])
         frame = frame[frame["scenario_id"].astype(str) == members[0]]
+    return frame
 
-    season = str(scenario.water_season).lower()
-    column = "dry_season_water_m3_per_year" if season == "dry" else "available_water_m3_per_year"
-    if column not in frame.columns:
-        logger.warning("water: column %s missing, falling back to annual mean", column)
-        column = "available_water_m3_per_year"
 
-    lookup = frame.set_index("water_node_id")[column].to_dict()
-    # 偏差校正已烘进可用量列；`bias_factor` 是乘性因子，关掉时精确除回（只改水平不改季节性）。
+def _baseline_use_by_node(prepared: PreparedInputs, baseline_use_m3: np.ndarray, node_ids: pd.Series) -> np.ndarray:
+    """各节点的存量：归到该节点的煤电不改造同年耗水（m3/yr），每个 hub 归它最近的节点（`distance_rank` 为 1）。"""
+    links = prepared.water_links
+    nearest = links[links["distance_rank"].astype(int) == 1]
+    plant_index = {plant_id: idx for idx, plant_id in enumerate(prepared.plants["plant_id"].astype(str))}
+    node_index = {node_id: idx for idx, node_id in enumerate(node_ids)}
+    existing = np.zeros(len(node_ids), dtype=np.float64)
+    for plant_id, node_id in zip(nearest["plant_id"].astype(str), nearest["water_node_id"].astype(str)):
+        if plant_id in plant_index and node_id in node_index:
+            existing[node_index[node_id]] += float(baseline_use_m3[plant_index[plant_id]])
+    return existing
+
+
+def _water_available_by_node(
+    prepared: PreparedInputs,
+    scenario: OptimizationScenario,
+    assumptions: OptimizationAssumptions,
+    year: int,
+    nodes: pd.DataFrame,
+    baseline_use_m3: np.ndarray,
+) -> np.ndarray:
+    """`year` 各节点煤电可用水量（m3/yr）= max(生态余量, 存量) x `water_multiplier`。
+
+    生态余量（环境流量规则，作用于耗水）：流域径流的 20%（`WATER_EXTRACTABLE_FRACTION`）先扣掉该流域的生活与灌溉
+    耗水（`water_basin_use.csv`），再按节点的径流份额分到节点，即 径流_n x 0.20 − 耗水_b x 径流_n / 径流_b。径流本身就是
+    按流域预算、按本地径流比例分到节点的（`builders/water.build_water_availability_dataframe`），扣减用同一口径。
+    工业不扣：它是决策主体，取水进流域取水指标（`_basin_cap_data`）。
+
+    存量（作者决定 2026-10-01，存量不增）：归到该节点的煤电不改造同年耗水（`_baseline_use_by_node`）。余量为负的
+    流域里，既有用户已用尽环境流量的 20%，煤电只保有不改造时的耗水；改造多出的耗水（如加装 CCS）要靠空冷或同节点
+    退役腾出的水抵掉。
+
+    `water_season` 同时决定径流列与耗水列（枯水期两者是同一个三个月窗口）。偏差校正已烘进径流列，关掉时只把径流
+    除回（耗水本就未校正）。v9 的 runoff 口径曾在这里乘 (1 - 存量取水占比)，与可提取比例无法分别识别，已删除。
+    """
+    from ..constants import WATER_EXTRACTABLE_FRACTION
+
+    frame = _water_member_rows(prepared, scenario, year)
+    member = str(frame["scenario_id"].iloc[0])
+    prefix = "dry_season_" if str(scenario.water_season).lower() == "dry" else ""
+    runoff_column = "dry_season_water_m3_per_year" if prefix else "available_water_m3_per_year"
+    missing = {runoff_column, "basin_code"} - set(frame.columns)
+    if missing:
+        raise ValueError(f"water_availability.csv lacks {sorted(missing)}")
+
+    rows = frame.set_index(frame["water_node_id"].astype(str))
+    runoff = rows[runoff_column].astype(float)
+    # `bias_factor` 是乘性因子，关掉校正时精确除回（只改水平不改季节性）。
     if not float(assumptions.apply_bias_correction):
-        bias = frame.set_index("water_node_id")["bias_factor"].to_dict()
-        lookup = {
-            node_id: val / bias.get(str(node_id), 1.0)
-            for node_id, val in lookup.items()
-            if float(bias.get(str(node_id), 1.0)) > 0
-        }
-    return np.array(
-        [float(lookup.get(str(node_id), 0.0)) * WATER_EXTRACTABLE_FRACTION * scenario.water_multiplier
-         for node_id in nodes["water_node_id"].astype(str)],
-        dtype=np.float64,
+        bias = rows["bias_factor"].astype(float)
+        runoff = (runoff / bias.where(bias > 0)).fillna(0.0)
+    basins = rows["basin_code"].astype(str).to_numpy()
+    basin_runoff = runoff.groupby(basins).sum()
+
+    use = prepared.water_basin_use
+    use = use[(use["scenario_id"].astype(str) == member) & (use["planning_year"].astype(int) == int(year))]
+    use_columns = [f"{prefix}domestic_m3_per_year", f"{prefix}irrigation_m3_per_year"]
+    basin_use = use.set_index(use["basin_code"].astype(str))[use_columns].astype(float).sum(axis=1)
+    absent = sorted(set(basin_runoff.index) - set(basin_use.index))
+    if absent:
+        raise ValueError(
+            f"water_basin_use.csv has no {member} {year} rows for basins {absent}; run scripts/build_water_use.py"
+        )
+    total = basin_runoff.reindex(basins).to_numpy()
+    share = np.divide(runoff.to_numpy(), total, out=np.zeros(len(runoff)), where=total > 0)
+    residual = pd.Series(
+        runoff.to_numpy() * WATER_EXTRACTABLE_FRACTION - basin_use.reindex(basins).to_numpy() * share,
+        index=runoff.index,
     )
+    node_ids = nodes["water_node_id"].astype(str)
+    residual_by_node = residual.reindex(node_ids).fillna(0.0).to_numpy()
+    existing = _baseline_use_by_node(prepared, baseline_use_m3, node_ids)
+    return np.maximum(residual_by_node, existing) * scenario.water_multiplier
 
 
 def _withdrawal_matrices(
@@ -170,8 +214,14 @@ def _basin_cap_data(
     return membership, residual, codes
 
 
-def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int) -> dict[str, Any]:
-    """水链路关联矩阵、按计量水量定价的链路成本、节点可用量（缩放单位）。"""
+def _water_access_data(
+    prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int,
+    baseline_use_m3: np.ndarray,
+) -> dict[str, Any]:
+    """水链路关联矩阵、按计量水量定价的链路成本、节点可用量（缩放单位）。
+
+    `baseline_use_m3` 是各 hub 不改造同年的耗水（m3/yr），节点可用量的存量项要用。
+    """
     from ..constants import WATER_FLOW_SCALE
     nodes = prepared.water_nodes.copy().reset_index(drop=True)
     links = prepared.water_links.copy().reset_index(drop=True)
@@ -201,7 +251,7 @@ def _water_access_data(prepared: PreparedInputs, scenario: OptimizationScenario,
     if scenario.water_mode == "no_water":
         available = None
     else:
-        available = _water_available_by_node(prepared, scenario, assumptions, year, nodes)
+        available = _water_available_by_node(prepared, scenario, assumptions, year, nodes, baseline_use_m3)
     return {
         "nodes": nodes[["water_node_id", "province_name"]].copy(),
         "links": links,

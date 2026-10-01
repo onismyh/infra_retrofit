@@ -60,11 +60,16 @@ def test_input_files_are_what_prepare_inputs_reads_without_water(tmp_path, monke
 
 
 def test_input_files_are_what_prepare_inputs_reads_with_water(tmp_path, monkeypatch) -> None:
-    """有水约束时多读流域指标，以及 data/ 下给电厂与工业 hub 分流域用的一级区多边形。"""
+    """有水约束时多读流域指标、节点余量要扣的流域耗水，以及 data/ 下给电厂与工业 hub 分流域用的一级区多边形。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     pd.DataFrame(
         [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": 6.0e6} for year in YEARS]
     ).to_csv(paths.inputs_dir / "water_basin_caps.csv", index=False)
+    pd.DataFrame(
+        [{"scenario_id": WATER["water_scenario_id"], "planning_year": year, "basin_code": "B1",
+          "domestic_m3_per_year": 0.0, "irrigation_m3_per_year": 0.0,
+          "dry_season_domestic_m3_per_year": 0.0, "dry_season_irrigation_m3_per_year": 0.0} for year in YEARS]
+    ).to_csv(paths.inputs_dir / "water_basin_use.csv", index=False)
     polygons = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
     polygons.parent.mkdir(parents=True)
     polygons.write_bytes(b"toy")  # `load_basins` 先查文件在不在；内容由 fake_read_file 给

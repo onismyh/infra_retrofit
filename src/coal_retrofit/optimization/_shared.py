@@ -55,6 +55,8 @@ class PreparedInputs:
     # 各流域、各规划年的官方用水总量控制指标；文件尚未构建时为空。
     # 只在有水约束（`scenario.water_mode` 不为 no_water）时读取。
     water_basin_caps: pd.DataFrame
+    # 各气候成员、各规划年、各流域的生活与灌溉耗水（全年与枯水期），节点余量要扣；同样只在有水约束时读取。
+    water_basin_use: pd.DataFrame
     network: RuntimeNetwork
     available_ammonia_years: tuple[int, ...]
     # 工业点源，与煤电同在一个目标函数里决策。

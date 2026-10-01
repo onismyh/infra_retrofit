@@ -103,10 +103,13 @@ def _build_year_matrices(
     industry_data = industry_year_data(prepared.industry, scenario, assumptions, year)
     ammonia_data = _ammonia_access_data(prepared, year, assumptions)
     industry_h2_data = _industry_h2_access_data(prepared, year, assumptions, ammonia_data["nodes"])
-    water_data = _water_access_data(prepared, scenario, assumptions, year)
 
     plant = _plant_operating_matrices(prepared, scenario, assumptions, year)
     water_intensity, air_water_intensity = _water_intensity_matrices(prepared, scenario, assumptions)
+    # 节点可用量的存量项：各 hub 不改造同年的耗水（`water_access._water_available_by_node`）。
+    unabated = PATHWAY_INDEX["unabated"]
+    baseline_use_m3 = plant["generation_by_pathway"][:, unabated] * water_intensity[:, unabated]
+    water_data = _water_access_data(prepared, scenario, assumptions, year, baseline_use_m3)
     # 取水孪生矩阵与流域指标：只在有水约束且开流域上限时建（流域指标是唯一按取水计的约束）。
     withdrawal_intensity, air_withdrawal_intensity = _withdrawal_matrices(
         prepared, scenario, assumptions, water_intensity, air_water_intensity, year
