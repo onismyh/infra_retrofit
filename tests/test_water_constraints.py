@@ -19,14 +19,14 @@ if TYPE_CHECKING:
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
-import coal_retrofit.builders.water as builders_water
-import coal_retrofit.builders.water_quota as builders_water_quota
-from coal_retrofit.optimization._shared import SolveState
-from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
-from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from coal_retrofit.paths import ProjectPaths
-from toy_inputs import YEARS, _write_targets, _write_toy_inputs
+import coal_retrofit.builders.water as builders_water  # noqa: E402
+import coal_retrofit.builders.water_quota as builders_water_quota  # noqa: E402
+from coal_retrofit.optimization._shared import SolveState  # noqa: E402
+from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
+from coal_retrofit.paths import ProjectPaths  # noqa: E402
+from toy_inputs import YEARS, _write_targets, _write_toy_inputs  # noqa: E402
 
 WATER_SCENARIO_ID = "toy|gcm|ssp126"
 # 枯水期径流 2e7 x 可提取比例后节点余量只有 4e6 m3/yr，低于 toy 电厂不改造的耗水（约 8.6e6），节点可用量

@@ -11,12 +11,12 @@ if TYPE_CHECKING:
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
-from coal_retrofit.optimization._shared import SolveState
-from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.results import _build_plant_cost_table
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
-from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from coal_retrofit.paths import ProjectPaths
+from coal_retrofit.optimization._shared import SolveState  # noqa: E402
+from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
+from coal_retrofit.optimization.results import _build_plant_cost_table  # noqa: E402
+from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
+from coal_retrofit.paths import ProjectPaths  # noqa: E402
 from toy_inputs import YEARS, _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
