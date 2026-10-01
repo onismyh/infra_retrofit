@@ -210,8 +210,8 @@ class OptimizationAssumptions:
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
     # 水预算：`OptimizationScenario.water_mode` 不为 "no_water" 时生效，只有 v9.1 起的官方指标口径一种。
     # 两条规则是两个口径不同的独立约束，各自约束其条文实际所针对的量：
-    #    node  <= qtot x 0.20                       生态流量，作用于耗水（耗减规则）
-    #    basin <= 用水总量控制指标 - 非电既有取水    分配规则，作用于取水（公报计量的正是它）
+    #    node  <= max(qtot x 0.20 - 生活与灌溉耗水, 煤电存量)   生态流量，作用于耗水（耗减规则）
+    #    basin <= 用水总量控制指标 - 非电既有取水              分配规则，作用于取水（公报计量的正是它）
     # 分配规则直接从国办发〔2013〕2号读取，而不是靠假设；流域上限来自 `inputs/water_basin_caps.csv`
     # （`scripts/build_water_basin_caps.py`）。v9 及更早的 runoff 口径（available = qtot x 0.20 x
     # (1 - existing_withdrawal_share)，两个因子被别名化，无从区分生态流量标准与分配规则）已删除，

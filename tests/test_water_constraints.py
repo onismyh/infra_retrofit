@@ -1,5 +1,6 @@
 """水约束在单厂 toy 上的两条规则：节点上限（环境流量规则，作用于耗水）与流域取水指标（分配规则，作用于取水）。
-流域上限逼出空冷改造，结果表的空冷列与含空冷背压的逐路径拆分也在这里核对。
+节点可用量 = max(径流 x 0.20 − 生活与灌溉耗水, 不改造同年耗水)（存量不增）。流域上限逼出空冷改造，结果表的空冷列与
+含空冷背压的逐路径拆分也在这里核对。
 
 toy 没有流域面图层，也没有 plants.csv 的取水定额表；两处都在调用函数内部导入，
 所以直接替换模块属性即可（`monkeypatch` 在测试结束时还原）。
@@ -28,10 +29,11 @@ from coal_retrofit.paths import ProjectPaths
 from toy_inputs import YEARS, _write_targets, _write_toy_inputs
 
 WATER_SCENARIO_ID = "toy|gcm|ssp126"
-# 枯水期径流 2e7 x 可提取比例后节点只剩 4e6 m3/yr，低于 toy 电厂的最小耗水；
-# 流域余量 6e6 m3/yr 低于它的取水。两条上限都会绑定。
+# 枯水期径流 2e7 x 可提取比例后节点余量只有 4e6 m3/yr，低于 toy 电厂不改造的耗水（约 8.6e6），节点可用量
+# 就是后者；流域余量 6e6 m3/yr 低于它的取水。两条上限都会绑定。
 DRY_SEASON_M3 = 2.0e7
 BASIN_RESIDUAL_M3 = 6.0e6
+UNABATED = PATHWAYS.index("unabated")
 
 
 def _toy_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
@@ -44,15 +46,26 @@ def _toy_withdrawal(plants: pd.DataFrame, generation_mwh: pd.Series):
     return ones * 2.0, ones * 3.2, ones * 0.2, ones * 1.1, 1.0
 
 
-def _write_water_inputs(paths: ProjectPaths, basin_caps: bool) -> None:
+def _write_water_inputs(
+    paths: ProjectPaths, basin_caps: bool, dry_season_m3: float = DRY_SEASON_M3, dry_use_m3: float = 0.0
+) -> None:
     pd.DataFrame(
         [
             {"water_node_id": "W1", "planning_year": year, "scenario_family": "baseline",
-             "scenario_id": WATER_SCENARIO_ID, "available_water_m3_per_year": 2.0 * DRY_SEASON_M3,
-             "dry_season_water_m3_per_year": DRY_SEASON_M3, "bias_factor": 1.0}
+             "scenario_id": WATER_SCENARIO_ID, "basin_code": "B1", "available_water_m3_per_year": 2.0 * dry_season_m3,
+             "dry_season_water_m3_per_year": dry_season_m3, "bias_factor": 1.0}
             for year in YEARS
         ]
     ).to_csv(paths.inputs_dir / "water_availability.csv", index=False)
+    # 节点余量要扣的生活与灌溉耗水（枯水期列给 `dry_use_m3`，全部记在生活上）。
+    pd.DataFrame(
+        [
+            {"scenario_id": WATER_SCENARIO_ID, "planning_year": year, "basin_code": "B1",
+             "domestic_m3_per_year": dry_use_m3, "irrigation_m3_per_year": 0.0,
+             "dry_season_domestic_m3_per_year": dry_use_m3, "dry_season_irrigation_m3_per_year": 0.0}
+            for year in YEARS
+        ]
+    ).to_csv(paths.inputs_dir / "water_basin_use.csv", index=False)
     if basin_caps:
         pd.DataFrame(
             [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": BASIN_RESIDUAL_M3}
@@ -87,20 +100,28 @@ def _solve(
     return scenario, prepared, _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
 
 
-def _toy_paths(tmp_path, basin_caps: bool) -> ProjectPaths:
+def _toy_paths(tmp_path, basin_caps: bool, **water) -> ProjectPaths:
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {year: 0.5 for year in YEARS})
-    _write_water_inputs(paths, basin_caps)
+    _write_water_inputs(paths, basin_caps, **water)
     return paths
 
 
-def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path, monkeypatch) -> None:
-    """只开生态流量（关掉流域上限）：节点可用量低于电厂最小耗水，超出部分只能记在节点松弛上，
-    所以流经节点的水 = 可用量 + 松弛（缩放单位换回 m3 后仍成立）；厂用水另按耗水强度与解出的份额重算核对。
-    流域指标不激活。"""
+def _existing_use_m3(year_data) -> float:
+    """toy 电厂不改造同年的耗水，节点可用量的存量项。"""
+    return float(year_data.generation_by_pathway[0, UNABATED] * year_data.water_intensity[0, UNABATED])
+
+
+def test_node_limit_keeps_existing_use_and_overdraw_lands_in_node_slack(tmp_path, monkeypatch) -> None:
+    """只开生态流量（关掉流域上限）。节点余量（4e6，再扣 1e8 的耗水就为负）低于电厂不改造的耗水，可用量就是
+    后者（存量不增）。2050 年要靠 CCS 达标，CCS 多耗的水在 toy 里没法用空冷抵（toy 没有空冷耗水列），超出部分
+    只能记在节点松弛上：流经节点的水 = 可用量 + 松弛（缩放单位换回 m3 后仍成立）。厂用水另按耗水强度与解出的
+    份额重算核对。流域指标不激活。"""
     monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
-    _, _, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-NODE", apply_basin_cap=False)
+    paths = _toy_paths(tmp_path, basin_caps=True, dry_use_m3=1.0e8)
+    _, _, solution = _solve(paths, "TEST-WATER-NODE", apply_basin_cap=False)
     assert solution["status"] == "optimal"
+    slacks = []
     for year in YEARS:
         ys = solution["year_solutions"][year]
         year_data = ys["year_data"]
@@ -109,18 +130,66 @@ def test_node_limit_binds_and_overdraw_lands_in_node_slack(tmp_path, monkeypatch
         assert ys["slacks"]["water_basin_codes"] == []
 
         available = float(year_data.water_available_m3[0]) * float(year_data.water_flow_scale)
+        assert available == pytest.approx(_existing_use_m3(year_data), rel=1e-12)
         through_node = float(np.sum(ys["water_flow_m3"]))
         slack = float(ys["slacks"]["water_slack_m3"][0])
         # 厂侧水平衡：链路供水 = 厂用水。
         assert float(np.sum(ys["water_use_m3"])) == pytest.approx(through_node, rel=1e-9)
-        assert slack > 0.0
-        assert through_node == pytest.approx(available + slack, rel=1e-6)
+        assert through_node <= available + slack + 1e-3
+        if slack > 0.0:
+            assert through_node == pytest.approx(available + slack, rel=1e-6)
+        slacks.append(slack)
         # 上限绑定后，上面几条对任何耗水系数都成立；按解出的份额从耗水强度重算，才核对得到耗水行本身。
         per_path = year_data.water_intensity * ys["share"]
         if year_data.allow_air_cooling_retrofit:
             per_path = per_path - (year_data.water_intensity - year_data.air_water_intensity) * ys["air_share"]
         recomputed = float((year_data.generation_by_pathway * per_path).sum())
         assert float(np.sum(ys["water_use_m3"])) == pytest.approx(recomputed, rel=1e-6)
+    assert max(slacks) > 0.0, "前提：CCS 多耗的水超出存量"
+
+
+def test_node_limit_is_the_residual_when_it_exceeds_existing_use(tmp_path, monkeypatch) -> None:
+    """径流大到余量高于不改造耗水时，节点可用量 = 0.20 x 枯水期径流 − 枯水期生活与灌溉耗水。"""
+    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    paths = _toy_paths(tmp_path, basin_caps=True, dry_season_m3=2.0e8, dry_use_m3=1.0e7)
+    _, _, solution = _solve(paths, "TEST-WATER-RESIDUAL", apply_basin_cap=False)
+    assert solution["status"] == "optimal"
+    for year in YEARS:
+        year_data = solution["year_solutions"][year]["year_data"]
+        available = float(year_data.water_available_m3[0]) * float(year_data.water_flow_scale)
+        assert available == pytest.approx(0.20 * 2.0e8 - 1.0e7, rel=1e-12)
+        assert available > _existing_use_m3(year_data)
+
+
+def test_existing_use_cap_offsets_ccs_water_with_air_cooling(tmp_path, monkeypatch) -> None:
+    """存量不增的本意：余量为负时，CCS 多耗的水要靠空冷抵掉。给 toy 补上空冷耗水强度（湿冷 1.85、空冷 0.17，
+    带捕集 3.37 与 0.31 m3/MWh）后，CCS 路径转空冷，节点流量不超过不改造耗水、没有松弛；同一电厂在余量充足时
+    不转空冷、耗水高于不改造水平，目标值更低。只开生态流量。"""
+    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+
+    def solve(experiment_id: str, **water):
+        paths = _toy_paths(tmp_path / experiment_id, basin_caps=True, **water)
+        plants = pd.read_csv(paths.inputs_dir / "plants.csv")
+        plants["air_consumption_intensity_m3_per_mwh"] = 0.17
+        plants["air_consumption_ccs_intensity_m3_per_mwh"] = 0.31
+        plants.to_csv(paths.inputs_dir / "plants.csv", index=False)
+        _, _, solution = _solve(paths, experiment_id, apply_basin_cap=False)
+        assert solution["status"] == "optimal"
+        return solution
+
+    ccs = PATHWAYS.index("ccs")
+    capped = solve("TEST-WATER-EXISTING", dry_use_m3=1.0e8)
+    free = solve("TEST-WATER-FREE", dry_season_m3=2.0e8)
+    for year in YEARS:
+        ys, ys_free = capped["year_solutions"][year], free["year_solutions"][year]
+        existing = _existing_use_m3(ys["year_data"])
+        assert float(ys["share"][0, ccs]) > 0.1, "前提：靠 CCS 达标"
+        assert float(np.sum(ys["water_flow_m3"])) <= existing * (1 + 1e-9)
+        assert float(ys["slacks"]["water_slack_m3"][0]) == pytest.approx(0.0, abs=1e-3)
+        assert float(ys["air_share"][0, ccs]) > 1e-3
+        assert float(np.abs(ys_free["air_share"]).max()) < 1e-6
+        assert float(np.sum(ys_free["water_flow_m3"])) > existing
+    assert float(capped["objective_cny"]) > float(free["objective_cny"])
 
 
 def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch) -> None:

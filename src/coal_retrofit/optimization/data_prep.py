@@ -114,6 +114,29 @@ def _prepare_basin_caps(paths: ProjectPaths, scenario: OptimizationScenario) -> 
     return caps
 
 
+_BASIN_USE_COLUMNS = (
+    "scenario_id", "planning_year", "basin_code", "domestic_m3_per_year", "irrigation_m3_per_year",
+    "dry_season_domestic_m3_per_year", "dry_season_irrigation_m3_per_year",
+)
+
+
+def _prepare_basin_use(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
+    """读入各成员、各规划年、各流域的生活与灌溉耗水（`water_basin_use.csv`），节点余量要扣；无水约束时返回空表。"""
+    if scenario.water_mode == "no_water":
+        return pd.DataFrame(columns=list(_BASIN_USE_COLUMNS))
+    path = paths.inputs_dir / "water_basin_use.csv"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found. The water constraint (water_mode != 'no_water') needs it; run "
+            "scripts/build_water_use.py."
+        )
+    use = pd.read_csv(path)
+    missing = set(_BASIN_USE_COLUMNS) - set(use.columns)
+    if missing:
+        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    return use
+
+
 def _prepare_sector_targets(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
     """部门残余排放上限，各组自身 2030 基线的比例。"""
     columns = ["sector_group", "planning_year", "cap_fraction_of_2030"]
@@ -323,6 +346,7 @@ def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[st
         files["industry_output_index"] = inputs / f"industry_output_index_{source}.csv"
     if scenario.water_mode != "no_water":
         files["water_basin_caps"] = inputs / "water_basin_caps.csv"
+        files["water_basin_use"] = inputs / "water_basin_use.csv"
         # 电厂与工业 hub 按厂址归一级流域（`builders.water.load_basins`），读的是 data/ 而不是 inputs/。
         files["basin_polygons"] = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
     return files
@@ -339,6 +363,7 @@ def prepare_inputs(
     ammonia_supply, ammonia_links = _prepare_ammonia_supply(paths, scenario, assumptions, plants)
     water_nodes, water_links, water_availability = _prepare_water(paths, plants, assumptions)
     water_basin_caps = _prepare_basin_caps(paths, scenario)
+    water_basin_use = _prepare_basin_use(paths, scenario)
     sector_targets = _prepare_sector_targets(paths, scenario)
     available_ammonia_years = tuple(sorted(ammonia_supply["year"].astype(int).unique().tolist()))
     from .industry import prepare_industry, prepare_industry_h2_links
@@ -364,6 +389,7 @@ def prepare_inputs(
         water_links=water_links,
         water_availability=water_availability,
         water_basin_caps=water_basin_caps,
+        water_basin_use=water_basin_use,
         network=network,
         available_ammonia_years=available_ammonia_years,
         industry=industry,
