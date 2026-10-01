@@ -106,7 +106,7 @@ def _build_pathway_table(
     基线排放 × 份额 − 该路径的残余排放，`captured_mt` 是该路径的物理捕集量，都按约束逐项拆分（`_pathway_split`）：
     按路径相加就是求解器的逐厂减排量与捕集量（`sanity_checks.csv` 的 `pathway_split_closure` 行核对）。
     改造路径的发电量带 CF 提升（`retrofit_cf_boost`），低比例掺烧的减排可以为负，就是这条路径净增排；未改造一栏也不一定
-    为零：到期原址重建后按 E_op 排放、少排的记为正，空冷背压使之为负。此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）
+    为零：到期原址重建后按 E_op 排放、少排的记为正，空冷背压多排的记为负。此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）
     拆分、再缩放到求解器的逐厂合计：合计对，各路径的值与符号可能不对；捕集量按 CCS 与 BECCS 的份额比例分摊。
     """
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
@@ -229,7 +229,7 @@ def _build_plant_detail_table(
             "water_use_m3": float(water_use_m3[p]),
             # 空冷两列都是仍湿冷那部分的转换进度，乘 1 − already_air_share 才是全厂份额；该改造未启用或不值其 capex 时为零。
             # 已全空冷的 hub capex 系数为 0、不受单调约束（`constraints._build_air_retrofit_capex` 跳过），两列不保证为零，乘上式后为零。
-            # air_operating_share：当年在运行路径上以空冷运行的份额；退役路径上的空冷份额模型可任取，不计入（此前的 `air_cooled_share` 计入）。
+            # air_operating_share：当年在运行路径上以空冷运行的份额；退役路径上的空冷份额在已装存量以内模型可任取，不计入（此前的 `air_cooled_share` 计入）。
             # air_installed_share：已建成的空冷存量（capex 计在它的增量上），只增不减（已全空冷的 hub 除外），含此后退役的容量。
             "air_operating_share": float(air_share[p, operating].sum()),
             "air_installed_share": float(air_installed[p]),
