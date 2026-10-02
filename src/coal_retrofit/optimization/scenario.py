@@ -30,13 +30,13 @@ class OptimizationAssumptions:
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
     usd_to_cny: float = 7.0
     retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
-    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），因此不再另设每 MWh
-    # 附加项：两者并存会把同一笔成本重复计算。BECCS 的每 MWh 项只保留生物质掺烧运维，与纯生物质路径的 30 CNY/MWh
-    # 相同：Wang & Cai 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr，可变运维 γ3 未计；按约 4 400 h
-    # 折算，这个小时数：⚠ 假设（无出处）。按改造发电量逐 MWh 收，ST_ 系只收回 γ2 的 94%-39%（推算见 README §0.2）。
+    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），生物质掺烧运维按每年
+    # biomass_upgrade_om_fraction x 掺烧能力的 capex 计（2026-10-02 起），都不另设每 MWh 附加项：两者并存会把同一笔
+    # 成本重复计算。此前生物质与 BECCS 的掺烧运维各 30 CNY/MWh，按改造路径的全部发电量收，与掺烧比例无关：Wang & Cai
+    # 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr 按约 4 400 h 折算（这个小时数无出处）。
     ccs_fixed_cost_cny_per_mwh: float = 0.0
-    biomass_fixed_cost_cny_per_mwh: float = 30.0
-    beccs_fixed_cost_cny_per_mwh: float = 30.0
+    biomass_fixed_cost_cny_per_mwh: float = 0.0
+    beccs_fixed_cost_cny_per_mwh: float = 0.0
     ammonia_fixed_cost_cny_per_mwh: float = 80.0  # 掺氨运维；⚠ 假设（无出处）
     # 学习参考年（2030）的捕集岛改造 CAPEX，含压缩，在既有 300-1000 MW 机组上做 90% 胺法
     # 捕集。文献综述 2026-09-10（docs/工业联合减排实现说明.md §9.6）：中值 3 500 CNY/kW，
@@ -328,12 +328,21 @@ class OptimizationAssumptions:
     # "据预测"，二手）：69 / 91 Mt。
     # 空元组 = 关闭。
     green_h2_national_cap_mt_by_year: tuple[float, ...] = (6.5, 69.0, 91.0, 120.0)
-    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）。生物质每档 500 元/kW，
-    # 满档（5 档）2 500 元/kW，落在 Wang et al. 2025（`wang2025reducing`，即上文的 Wang & Cai 2024）SI Table 3
-    # 的掺烧改造 capex 327.2（140.7-513.7）$/kW = 2 290（985-3 596）元/kW 之内；第 1 档（10%）500 元/kW 高于
-    # Fan et al. 2023 SI 式 (S56) 的 500 MW 锅炉 15% 掺烧 50 USD/kW = 350 元/kW（Fan 转引 IEA 2019，未核）。
-    # 逐档线性这个形状：⚠ 假设（无出处）。
-    biomass_upgrade_capex_cny_per_mw_per_level: float = 500_000.0
+    # 掺烧比例升级的资本成本（每 MW 电厂容量、每升一个掺烧档位的 CNY）。生物质每档 175 元/kW：Fan et al. 2023 SI
+    # 式 (S56) 的 500 MW 锅炉 15% 掺烧 50 USD/kW = 350 元/kW（Fan 转引 IEA 2019，未核）定在第 2 档（15%），三档依次
+    # 175 / 350 / 525 元/kW；不用 (S56) 的规模指数 0.79（写法有歧义）。逐档线性这个形状：⚠ 假设（无出处）。Yuan et al.
+    # 2022 的 10% / 15% / 20% 为 573 / 790 / 991 元/kW（未核），不是逐档线性。2026-10-02 前每档 500 元/kW、五档
+    # （0.10–1.00），满档 2 500 元/kW 落在 Wang & Cai 2024 SI Table 3 的整包 985–3 596 元/kW 之内。
+    biomass_upgrade_capex_cny_per_mw_per_level: float = 175_000.0
+    # 生物质掺烧能力的固定运维，每年占其 capex 的比例：Fan et al. 2023 SI 式 (S57) 取 3%（不含燃料）。按在用的掺烧
+    # 能力（各档位层之和）计，闲置的不付；单价不随年份变，按当年单价与按建设年单价计相同（2026-10-02 起，此前见上方
+    # `biomass_fixed_cost_cny_per_mwh`）。
+    biomass_upgrade_om_fraction: float = 0.03
+    # 掺生物质比例的炉型上限（2026-10-02 起）：煤粉炉不超过 0.15（Fan et al. 2023 的基准掺烧比例），CFB 不超过 0.30
+    # （调研稿 B 级，原文未取得：⚠ 假设）。hub 内落在煤粉炉上限以上档位的在用份额不超过该 hub 的 CFB 装机份额，
+    # 落在 CFB 上限以上的为零（`constraints._add_blend_level_constraints`）。都设 1.0 即不限。
+    biomass_blend_max_pulverized: float = 0.15
+    biomass_blend_max_cfb: float = 0.30
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # 最高档（50% 掺烧）≈125 CNY/kW。
     # 中国全改造文献：90 CNY/kW（CNERI 2025，100% 改造）+ 储存；MIT 供应系统 ≈163 CNY/kW
     # （Deng et al. 2024）；仅燃烧器 121.6 CNY/kW（Li & Li 2022，未确认）。三者口径各异，中位数
@@ -444,7 +453,10 @@ class OptimizationScenario:
     # 燃烧后捕集率，全期不变：Fan et al. 2023 SI p.43-44（取 90% 并设研究期内不变）；An et al. 2025 SI p.20；
     # Wang et al. 2025 SI Table 5。三处都是煤电；工业 CCS 也用这个值（`industry_matrices`），未另找工业侧出处。
     capture_rate: float = 0.90
-    biomass_blend_levels: tuple[float, ...] = (0.10, 0.25, 0.50, 0.75, 1.00)
+    # 掺生物质档位（热量比例，升序）：煤粉炉直燃 10%–15%（Fan et al. 2023 基准 15%），0.20 档只对 CFB 开放
+    # （`OptimizationAssumptions.biomass_blend_max_pulverized`）。2026-10-02 前为 0.10 / 0.25 / 0.50 / 0.75 / 1.00，
+    # 0.25 以上没有煤粉炉工程证据，0.75、1.00 实为改烧。
+    biomass_blend_levels: tuple[float, ...] = (0.10, 0.15, 0.20)
     ammonia_blend_levels: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50)
     # 部门碳目标来源：读 `inputs/sector_targets_<source>.csv`（scripts/build_sector_targets.py）。
     # 每组每个规划年一条上限：residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)，
@@ -468,7 +480,8 @@ class OptimizationScenario:
     biomass_supply_multiplier: float = 1.0
     biomass_cost_multiplier: float = 1.0
     # 煤电捕集成本乘子：只乘捕集岛 capex 与随之的固定运维（`ccs_om_fraction`），不乘能耗惩罚与
-    # BECCS 的掺烧运维（`plant_matrices`）。2026-09-23 前乘的是 capex 与每 MWh 附加项，固定运维不乘。
+    # BECCS 的掺烧运维（`plant_matrices`；2026-10-02 起按掺烧能力计，此前按每 MWh）。2026-09-23 前乘的是 capex 与
+    # 每 MWh 附加项，固定运维不乘。
     ccs_cost_multiplier: float = 1.0
     # 工业捕集成本乘子：只乘捕集 capex（固定运维随之），不乘每吨捕集的能耗、耗材成本
     # （`industry_matrices.industry_year_data`），与煤电同口径；2026-09-23 前也乘能耗与耗材。

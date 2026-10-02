@@ -260,7 +260,8 @@ def _build_plant_detail_table(
             "air_operating_share": float(air_share[p, operating].sum()),
             "air_installed_share": float(air_installed[p]),
             "already_air_share": float(plant.get("already_air_share", 0.0)),
-            # 在用的掺烧能力：各档位层之和 Σ (档位下标) x 落在该档的份额（生物质列含 BECCS），只供结果表（capex 按层分代计）。
+            # 在用的掺烧能力：各档位层之和 Σ (档位下标) x 落在该档的份额（生物质列含 BECCS）；capex 按层分代计，
+            # 生物质的掺烧运维按它计。
             # 独热档位下是所选档位 x 路径份额；连续 hub 下只是加权下标，不能换算成比例。2026-10-02 前是 Σ 档位下标 x 改造到该档的容量份额。
             "biomass_blend_level": float(blend_level_b[p]),
             "ammonia_blend_level": float(blend_level_a[p]),
@@ -291,12 +292,14 @@ def _build_plant_cost_table(
     air_share: np.ndarray,
     rebuilt_air_share: np.ndarray,
     bio_penalty_by_plant: np.ndarray,
+    blend_level_b: np.ndarray,
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
     未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产取求解器的逐厂值 `stranded_by_plant`（计在新增提前退役上，
     `retirement.retirement_flows`），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
-    曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。
+    曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。增量运维含生物质
+    掺烧能力的固定运维：求解器的在用掺烧能力 `blend_level_b` x 每单位运维（2026-10-02 起）。
     碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本、CCS 能耗惩罚与空冷背压燃料含各类
     重建部分的差（`rebuilt_share`、`rebuilt_air_share`，求解器的同名值，形状 (类数, plant_count, len(PATHWAYS))；
     没有拆出重建部分的 hub 时全为零）。
@@ -341,8 +344,9 @@ def _build_plant_cost_table(
         _cspg = year_data.coal_savings_per_gj
         _cspg_val = float(_cspg[p]) if hasattr(_cspg, '__getitem__') and not isinstance(_cspg, (int, float)) else float(_cspg)
         coal_savings = (_cspg_val / _bio_scale) * float(biomass_use_gj[p])
-        # 增量运维
+        # 增量运维：每 MWh 附加项 + 生物质掺烧能力的固定运维（在用的掺烧能力，与目标函数同式）
         incr_om = sum(float(year_data.fixed_cost_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        incr_om += float(year_data.biomass_blend_om_per_level[p]) * float(blend_level_b[p])
         # 捕集岛固定运维：在役且在用的捕集岛 x 建设年单价，取求解器的值
         ccs_om = float(ccs_om_by_plant[p])
         # 搁浅资产：取求解器的值（新增提前退役 n^o x 每单位的剩余账面价值，`retirement.retirement_flows`）

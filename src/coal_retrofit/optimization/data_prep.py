@@ -140,6 +140,7 @@ def _with_expiry(
     """加逐规划年的列（`plant_matrices` 用）：到期装机份额 `expired_share_{年}`（f）、剩余账面份额
     `remaining_life_fraction_{年}`、未重建部分的毛热耗 `heat_rate_unexpired_{年}`；重建部分按重建热耗分类 j，
     每类一列不随年变的重建热耗 `heat_rate_rebuilt_c{j}` 与逐年的到期份额 `expired_share_c{j}_{年}`（f_j，按类相加为 f）。
+    另加不随年变的 CFB 装机份额 `cfb_share`（掺生物质比例的炉型上限，2026-10-02 起），不随机组到期与重建变。
 
     按机组计（`plants_unit_hub.csv`）：连续 hub（缺省）逐台在投产年 + 设计寿命到期；整数 hub 整个 hub 在
     `retirement_year`（平均投产年 + 设计寿命）一起到期，f 只取 0 或 1。2026-10-02 前两种模式都按整个 hub 计。
@@ -175,6 +176,9 @@ def _with_expiry(
         return plant_ids.map(values.groupby(by_hub).sum()).to_numpy()
 
     total = by_plant(capacity)
+    # CFB 装机份额：机型标签同 `builders.plants` 归一（去首尾空格、小写，带 `/CCS` 后缀的按本体机型）。
+    cfb = units["combustion"].astype(str).str.strip().str.lower().str.split("/").str[0].eq("cfb")
+    out["cfb_share"] = by_plant(capacity.where(cfb, 0.0)) / total
     # 部分到期 hub 的未重建部分由 hub 毛热耗反推，误差放大 1 / (1 - f) 倍，甚至为负：这些 hub 的 hub 值须与机组表按装机
     # 加权的值一致（plants.csv 取四位小数），改了分档煤耗等常量而没重建输入时报错。
     stale = np.abs(by_plant(capacity * unit_heat_rate) / total - hub_heat_rate) > 1e-4

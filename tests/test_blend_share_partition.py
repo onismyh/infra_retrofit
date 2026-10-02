@@ -74,6 +74,7 @@ def test_a_positive_share_cannot_skip_blending(pathway) -> None:
         generation_by_pathway=np.ones((1, len(PATHWAYS))),
         biomass_penalty_coeff_per_level=0.0, biomass_penalty_emissions_coeff_per_level=0.0,
         beccs_penalty_emissions_coeff_per_level=0.0, beccs_penalty_captured_coeff_per_level=0.0,
+        cfb_share=np.ones(1),  # 全是 CFB：炉型上限不起作用，最高档可用
     ))
     model = gp.Model()
     model.Params.OutputFlag = 0

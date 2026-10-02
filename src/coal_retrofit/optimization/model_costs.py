@@ -137,11 +137,11 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             float(nh3_savings_vec[p]) * payload.ammonia_use_kg[p] for p in range(plant_count)
         )
 
-    # 路径增量运维。
+    # 路径增量运维（每 MWh 附加项）+ 生物质掺烧能力的固定运维：在用的掺烧能力 x 每单位的运维（2026-10-02 起）。
     incremental_om = gp.quicksum(
         float(year_data.fixed_cost_matrix[p, k]) * payload.share[p, k]
         for p in range(plant_count) for k in range(len(PATHWAYS))
-    )
+    ) + _priced(year_data.biomass_blend_om_per_level, payload.blend_level_b)
 
     # 能耗惩罚：CCS 固定项 + 空冷背压项（仅转换份额）；生物质档位相关项在 constraints 里线性化。
     energy_penalty_cost = gp.quicksum(
@@ -316,7 +316,10 @@ def _air_unit_capex(year_data: YearData) -> np.ndarray:
 
 
 def _blend_unit_capex(year_data: YearData, assumptions: OptimizationAssumptions) -> tuple[np.ndarray, np.ndarray]:
-    """每单位掺烧能力（一个档位层 x 占装机的份额）的 capex，CNY，每厂一项；生物质（BECCS 共用）、氨各一份。"""
+    """每单位掺烧能力（一个档位层 x 占装机的份额）的 capex，CNY，每厂一项；生物质（BECCS 共用）、氨各一份。
+
+    生物质掺烧能力的固定运维按同一单价计（`plant_matrices` 的 `biomass_blend_om_per_level`），改这里须同改。
+    """
     capacity_mw = np.asarray(year_data.capacity_mw, dtype=np.float64)
     return (
         capacity_mw * float(assumptions.biomass_upgrade_capex_cny_per_mw_per_level),

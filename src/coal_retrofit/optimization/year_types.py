@@ -76,6 +76,10 @@ class YearData:
     rebuilt_deltas: tuple[RebuiltDelta, ...]  # 每类一份，与 `rebuilt_class_share` 的列同序
     capacity_mw: np.ndarray
     fixed_cost_matrix: np.ndarray
+    # (plant_count,) 生物质掺烧能力的固定运维，CNY/yr 每单位掺烧能力（一个档位层 x 占装机的份额），乘在用的掺烧能力
+    # 计入 `incremental_om`（2026-10-02 起）。
+    biomass_blend_om_per_level: np.ndarray
+    cfb_share: np.ndarray  # (plant_count,) CFB 装机份额（`data_prep._with_expiry`），掺生物质比例的炉型上限用
     energy_penalty_matrix: np.ndarray
     biomass_penalty_coeff_per_level: np.ndarray
     ccs_penalty_emissions_matrix: np.ndarray
@@ -210,8 +214,8 @@ class YearPayload:
     air_share: GrbMVar
     select_b: GrbMVar
     select_a: GrbMVar
-    # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表
-    # （`constraints._add_blend_level_constraints`）。独热档位下是所选档位 x 路径份额；连续 hub 下非整数时对应不到任何一档。
+    # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表（`constraints._add_blend_level_constraints`）；
+    # 生物质的另计掺烧能力的固定运维（2026-10-02 起）。独热档位下是所选档位 x 路径份额；连续 hub 下非整数时对应不到任何一档。
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
     # 在用的掺烧能力按档位分层，[厂][j] = 落在第 j+1 档及以上的份额 Σ_{l>=j} z_l（j、l 从 0 起），各层相加即上面的 blend_level；

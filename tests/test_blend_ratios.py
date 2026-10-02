@@ -1,7 +1,7 @@
 """连续 hub 下的掺烧比例换算、明细表的空冷运行份额、逐路径减排拆分与逐厂碳成本。
 
 连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level`（在用的掺烧能力 Σ 档位下标 × 份额）只是档位下标的加权和：
-一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
+生物质 0.4 用第 3 档、BECCS 0.6 用第 2 档记作 2.4，读不出两条路径各自的比例（0.20 与 0.15）。结果表改按约束里的 Σβ_l·z_l 除以
 路径份额换算（`results_plant._blend_ratios`）；逐路径的减排量与捕集量按约束逐项拆分（`results_plant._pathway_split`），
 逐厂相加等于求解器的值；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
 （只开 BECCS 的生物质用量、独热档位对照、比例列与未截断的商、逐路径拆分与求解器对拍、成本表碳成本与目标函数对拍、
@@ -36,7 +36,7 @@ from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumption
 from coal_retrofit.optimization.year_types import YearData
 
 SCENARIO = OptimizationScenario(experiment_id="T", description="toy")
-LEVELS_B = SCENARIO.biomass_blend_levels  # (0.10, 0.25, 0.50, 0.75, 1.00)
+LEVELS_B = SCENARIO.biomass_blend_levels  # (0.10, 0.15, 0.20)
 LEVELS_A = SCENARIO.ammonia_blend_levels  # (0.10, 0.20, 0.30, 0.40, 0.50)
 BIO, BECCS, AMM = PATHWAY_INDEX["biomass"], PATHWAY_INDEX["beccs"], PATHWAY_INDEX["ammonia"]
 
@@ -44,8 +44,8 @@ BIO, BECCS, AMM = PATHWAY_INDEX["biomass"], PATHWAY_INDEX["beccs"], PATHWAY_INDE
 def _three_hubs() -> dict[str, np.ndarray]:
     """三个 hub 的份额与 Σβ·z，档位混合各不相同。
 
-    hub 0：全部生物质，改造容量一半第 1 档（0.10）、一半第 3 档（0.50）。档位下标 2.0，比例 0.30。
-    hub 1：生物质 0.4 用第 4 档（0.75），BECCS 0.6 用第 2 档（0.25）。档位下标 2.8，两条路径比例不同。
+    hub 0：全部生物质，改造容量一半第 1 档（0.10）、一半第 3 档（0.20）。档位下标 2.0，比例 0.15。
+    hub 1：生物质 0.4 用第 3 档（0.20），BECCS 0.6 用第 2 档（0.15）。档位下标 2.4，两条路径比例不同。
     hub 2：掺氨 0.5 用第 5 档（0.50），其余未改造。档位下标 2.5，比例 0.50。
     """
     share = np.zeros((3, len(PATHWAYS)))
@@ -54,10 +54,10 @@ def _three_hubs() -> dict[str, np.ndarray]:
     share[2, AMM], share[2, PATHWAY_INDEX["unabated"]] = 0.5, 0.5
     return {
         "share": share,
-        "bio_xs": np.array([0.5 * 0.10 + 0.5 * 0.50, 0.4 * 0.75, 0.0]),
-        "beccs_xs": np.array([0.0, 0.6 * 0.25, 0.0]),
+        "bio_xs": np.array([0.5 * 0.10 + 0.5 * 0.20, 0.4 * 0.20, 0.0]),
+        "beccs_xs": np.array([0.0, 0.6 * 0.15, 0.0]),
         "amm_xs": np.array([0.0, 0.0, 0.5 * 0.50]),
-        "level_b": np.array([0.5 * 1 + 0.5 * 3, 0.4 * 4 + 0.6 * 2, 0.0]),
+        "level_b": np.array([0.5 * 1 + 0.5 * 3, 0.4 * 3 + 0.6 * 2, 0.0]),
         "level_a": np.array([0.0, 0.0, 0.5 * 5]),
     }
 
@@ -79,8 +79,8 @@ def test_effective_ratio_is_sum_beta_z_over_the_pathway_share() -> None:
     hubs = _three_hubs()
     levels = {"biomass_levels": LEVELS_B, "ammonia_levels": LEVELS_A}
     ratios = _blend_ratios(hubs["share"], hubs["bio_xs"], hubs["beccs_xs"], hubs["amm_xs"], **levels)
-    np.testing.assert_allclose(ratios["biomass"], [0.30, 0.75, 0.0], rtol=1e-12)
-    np.testing.assert_allclose(ratios["beccs"], [0.0, 0.25, 0.0], rtol=1e-12)
+    np.testing.assert_allclose(ratios["biomass"], [0.15, 0.20, 0.0], rtol=1e-12)
+    np.testing.assert_allclose(ratios["beccs"], [0.0, 0.15, 0.0], rtol=1e-12)
     np.testing.assert_allclose(ratios["ammonia"], [0.0, 0.0, 0.50], rtol=1e-12)
     # 份额为零（或在可行性容差之内）的路径记 0，不做 0/0。
     tiny = np.zeros((1, len(PATHWAYS)))
@@ -106,8 +106,8 @@ def test_detail_table_uses_the_effective_ratios() -> None:
         biomass_blend_x_share=hubs["bio_xs"], beccs_blend_x_share=hubs["beccs_xs"],
         ammonia_blend_x_share=hubs["amm_xs"], air_installed=zeros,
     )
-    np.testing.assert_allclose(detail["biomass_blend_ratio"], [0.30, 0.75, 0.0], rtol=1e-12)
-    np.testing.assert_allclose(detail["beccs_blend_ratio"], [0.0, 0.25, 0.0], rtol=1e-12)
+    np.testing.assert_allclose(detail["biomass_blend_ratio"], [0.15, 0.20, 0.0], rtol=1e-12)
+    np.testing.assert_allclose(detail["beccs_blend_ratio"], [0.0, 0.15, 0.0], rtol=1e-12)
     np.testing.assert_allclose(detail["ammonia_blend_ratio"], [0.0, 0.0, 0.50], rtol=1e-12)
     # 档位下标照原样保留（连续 hub 下是加权下标）。
     np.testing.assert_allclose(detail["biomass_blend_level"], hubs["level_b"], rtol=1e-12)
@@ -198,6 +198,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             emissions_mt=np.array([10.0, 4.0]), carbon_price=carbon_price,
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
+            biomass_blend_om_per_level=np.zeros(n),
             energy_penalty_matrix=zeros_path, air_penalty_cost_matrix=zeros_path, allow_air_cooling_retrofit=False,
             rebuilt_deltas=(),
         ))
@@ -209,6 +210,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), stranded_by_plant=np.zeros(n),
             capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=no_rebuilt,
             air_share=zeros_path, rebuilt_air_share=no_rebuilt, bio_penalty_by_plant=np.zeros(n),
+            blend_level_b=np.zeros(n),
         )
 
     priced = table(100.0)
@@ -433,9 +435,10 @@ def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
 def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -> None:
     """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）；
     逐厂基线净运行成本之和 = 目标函数的同名项（部分到期的 toy 含重建部分的差）；能耗惩罚三列（CCS 额外燃料、空冷背压、
-    生物质效率）之和 = 目标函数的 energy_penalty_cost，与 `cost_breakdown.csv` 的不折现列相同。除退役外全部路径开放、连续 hub。"""
+    生物质效率）之和 = 目标函数的 energy_penalty_cost，与 `cost_breakdown.csv` 的不折现列相同；增量运维（含生物质掺烧能力的
+    固定运维）之和 = 目标函数的 incremental_om。除退役外全部路径开放、连续 hub。"""
     scenario, assumptions, prepared, solution = request.getfixturevalue(solved)
-    biomass_penalty = 0.0
+    biomass_penalty = blend_om = 0.0
     for year, ys in solution["year_solutions"].items():
         year_data = ys["year_data"]
         price = float(year_data.carbon_price)
@@ -446,6 +449,7 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
             stranded_by_plant=ys["stranded_by_plant"], capex_pathway_indices=solution["capex_pathway_indices"],
             rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+            blend_level_b=ys["blend_level_b"],
         )
         plant_carbon = float(table["carbon_cost_cny"].sum())
         industry = year_data.industry
@@ -473,7 +477,12 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
         assert breakdown.loc["energy_penalty_cost", "cost_undiscounted_cny"] == pytest.approx(
             float(penalties.sum()), rel=1e-9
         )
+        assert float(table["incremental_om_cny"].sum()) == pytest.approx(
+            ys["cost_breakdown_cny"]["incremental_om"] / weight, rel=1e-9
+        )
+        blend_om += float(year_data.biomass_blend_om_per_level @ ys["blend_level_b"])
     assert biomass_penalty > 0.0, "前提：2060 年走 BECCS，有生物质效率惩罚"
+    assert blend_om > 0.0, "前提：有在用的生物质掺烧能力，掺烧运维被测到"
 
 
 def test_ammonia_blend_x_share_is_the_quantity_the_constraints_use(ammonia_continuous) -> None:

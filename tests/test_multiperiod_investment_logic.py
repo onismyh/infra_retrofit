@@ -248,6 +248,7 @@ def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_pat
             stranded_by_plant=ys["stranded_by_plant"],
             capex_pathway_indices=capex_indices, rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+            blend_level_b=ys["blend_level_b"],
         )
         assert float(plant_cost["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
             1000.0 * capex_paid[year] * s1_y2030, rel=1e-3, abs=1.0

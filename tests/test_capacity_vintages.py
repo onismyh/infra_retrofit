@@ -224,11 +224,13 @@ def test_solver_salvages_only_the_h2_capacity_still_in_use_at_the_end(tmp_path) 
     assert float(ys[2060]["cost_breakdown_cny"]["salvage_credit"]) == pytest.approx(expected, rel=1e-6)
 
 
-def test_solver_books_blend_capex_and_salvage_on_every_level_layer(tmp_path) -> None:
-    """全模型求解，掺烧 capex 与残值台账逐层相加（`model_costs`，2026-10-02 起）。只开 BECCS、独热档位，2060 年电力目标
-    为零排放：2060 年才建掺烧能力，所选档位高于第 1 档（前置断言：在用的掺烧能力 Σ 档位下标 x 份额大于份额）。2060 年的
-    `blend_upgrade_capex` 是每层单价（装机 x 每档单价）x 各层新建之和，即 x 在用的掺烧能力；残值台账的同一项是同一单价
-    x 各层期末在用量之和，也等于它。只计第 1 层时两者都只剩单价 x 份额。连续 hub 下同一情景高于第 1 档的份额太少。"""
+def test_solver_books_blend_capex_om_and_salvage_on_every_level_layer(tmp_path) -> None:
+    """全模型求解，掺烧 capex、固定运维与残值台账逐层相加（`model_costs`，2026-10-02 起）。只开 BECCS、独热档位，2060 年
+    电力目标为零排放：2060 年才建掺烧能力，所选档位高于第 1 档（前置断言：在用的掺烧能力 Σ 档位下标 x 份额大于份额）。
+    2060 年的 `blend_upgrade_capex` 是每层单价（装机 x 每档单价）x 各层新建之和，即 x 在用的掺烧能力；残值台账的同一项是
+    同一单价 x 各层期末在用量之和，也等于它；`incremental_om` 只剩掺烧能力的固定运维（BECCS 与未改造的每 MWh 附加项为 0），
+    是单价 x `biomass_upgrade_om_fraction` x 在用的掺烧能力。只计第 1 层时三者都只剩单价 x 份额。连续 hub 下同一情景
+    高于第 1 档的份额太少。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     bio = pd.read_csv(paths.inputs_dir / "biomass_supply_curve.csv")
     bio["longitude"], bio["latitude"], bio["province_name"], bio["available_gj"] = 112.05, 37.0, "Shanxi", 1.0e9
@@ -251,6 +253,11 @@ def test_solver_books_blend_capex_and_salvage_on_every_level_layer(tmp_path) -> 
     assert y60["cost_breakdown_cny"]["blend_upgrade_capex"] == pytest.approx(unit * level * df, rel=1e-6)
     booked = {name: value for name, value, _ in y60["salvage_ledger"]}
     assert booked["blend_upgrade_capex"] == pytest.approx(unit * level, rel=1e-6)
+    kind, weight = y60["cost_weights"]["incremental_om"]
+    assert kind == "annual"
+    assert y60["cost_breakdown_cny"]["incremental_om"] == pytest.approx(
+        unit * assumptions.biomass_upgrade_om_fraction * level * weight, rel=1e-6
+    )
 
 
 def _vintage_payloads(model, years, air_need, layers_b, layers_a) -> list[SimpleNamespace]:
@@ -312,8 +319,8 @@ def test_air_and_blend_capacity_retire_after_20_years(monkeypatch) -> None:
 @pytest.mark.parametrize("continuous", [True, False])
 def test_blend_layers_count_the_share_at_or_above_each_level(continuous: bool) -> None:
     """掺烧能力按档位分层（`constraints._add_blend_level_constraints`，2026-10-02 起）：第 l 层是落在第 l 档及以上的份额，
-    各层相加即在用的掺烧能力 `blend_level`。生物质份额 0.2，连续 hub 与独热档位相同：全落在最高档时五层都是 0.2、
-    能力 1.0；全落在最低档时只有第一层是 0.2、能力 0.2。"""
+    各层相加即在用的掺烧能力 `blend_level`。生物质份额 0.2，连续 hub 与独热档位相同：全落在最高档时各层（L 层）都是 0.2、
+    能力 0.2L；全落在最低档时只有第一层是 0.2、能力 0.2。hub 全是 CFB，炉型上限不起作用。"""
     from coal_retrofit.optimization.constraints import _add_blend_level_constraints
 
     year_data = cast(YearData, SimpleNamespace(
@@ -321,6 +328,7 @@ def test_blend_layers_count_the_share_at_or_above_each_level(continuous: bool) -
         generation_by_pathway=np.ones((1, len(PATHWAYS))),
         biomass_penalty_coeff_per_level=0.0, biomass_penalty_emissions_coeff_per_level=0.0,
         beccs_penalty_emissions_coeff_per_level=0.0, beccs_penalty_captured_coeff_per_level=0.0,
+        cfb_share=np.ones(1),
     ))
     model = gp.Model()
     model.Params.OutputFlag = 0
@@ -331,7 +339,9 @@ def test_blend_layers_count_the_share_at_or_above_each_level(continuous: bool) -
         model, share, 1, SCENARIO, OptimizationAssumptions(hub_decisions_continuous=continuous), year_data, "",
     )
     level_b, layers_b, x_share = blocks[2], blocks[4], blocks[-3]
-    for sense, layers, level in ((gp.GRB.MAXIMIZE, [0.2] * 5, 1.0), (gp.GRB.MINIMIZE, [0.2, 0.0, 0.0, 0.0, 0.0], 0.2)):
+    n_levels = len(SCENARIO.biomass_blend_levels)
+    top, bottom = [0.2] * n_levels, [0.2] + [0.0] * (n_levels - 1)
+    for sense, layers, level in ((gp.GRB.MAXIMIZE, top, 0.2 * n_levels), (gp.GRB.MINIMIZE, bottom, 0.2)):
         model.setObjective(x_share[0], sense)
         model.optimize()
         assert model.Status == gp.GRB.OPTIMAL

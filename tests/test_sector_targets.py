@@ -99,7 +99,8 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
 
 def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_path) -> None:
     """生物质是唯一剩下的路径、2040 年要求减排 15% 时，不设上限的机组群靠掺烧满足上限；
-    远低于该需求的全国上限恰好绑定，未满足的部分表现为 power 组的缺口。"""
+    远低于该需求的全国上限恰好绑定，未满足的部分表现为 power 组的缺口。档位与炉型上限取 2026-10-02 前的值（五档到 1.00、
+    不分炉型）：现行三档下改造路径的发电量乘 1.15（`retrofit_cf_boost`），煤粉炉最高的 15% 掺烧只减排约 2%，满足不了。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     # 把生物质节点挪到电厂旁边，使燃料链路存在（fixture 故意把它放在 2 000 km 之外）。
     pd.DataFrame(
@@ -122,12 +123,14 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
         electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
         pathway_disable=("retire", "ccs", "beccs", "ammonia"),
         solver_time_limit=300,
+        biomass_blend_levels=(0.10, 0.25, 0.50, 0.75, 1.00),
     )
 
     def _run(cap_gj: float):
         assumptions = OptimizationAssumptions(
             storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0),
             biomass_national_cap_gj_per_year=cap_gj,
+            biomass_blend_max_pulverized=1.0, biomass_blend_max_cfb=1.0,
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
         years = scenario.planning_years

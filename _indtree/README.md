@@ -124,8 +124,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 节点可用量要扣（`docs/方法论.md` §7.2）；由 `scripts/build_water_use.py` 从 ISIMIP3b 耗水文件生成（下载见
 > `scripts/download_isimip_water_use.py`），其余水输入不重建。
 > 2026-10-02 起 `plants.csv` 多一列 `heat_rate_gj_per_mwh`（逐台分档供电煤耗折毛、按装机加权的 hub 毛热耗；原有 36 列逐字节
-> 不变），另多一张 `plants_unit_hub.csv`（3 623 台机组到 hub 的映射，连续 hub 按机组到期要用）。两者由
-> `scripts/build_plant_inputs.py --hubs` 一起写出，`plants_unit.csv` 不变（`docs/方法论.md` §4.1、§4.2）。
+> 不变），另多一张 `plants_unit_hub.csv`（3 623 台机组到 hub 的映射，连续 hub 按机组到期要用；两种 hub 都按它的 `combustion`
+> 算 CFB 装机份额，供掺生物质的炉型上限用）。两者由 `scripts/build_plant_inputs.py --hubs` 一起写出，`plants_unit.csv` 不变
+> （`docs/方法论.md` §4.1、§4.2、§4.3）。
 
 其余一律不动：`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -250,6 +251,11 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > 20 年后退出，还要用就按当期单价重建；分代能力的期末残值只计最后一个规划年仍在用的部分；原址重建部分按到期机组的重建毛热耗
 > 分类，先重建哪一类由求解器定（`docs/方法论.md` §3.3、§3.4、§4.1、§4.2、§4.3、§4.5）。下表的结果都在此之前落盘，
 > **不得与改后的求解相减**，要用须重解。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-02，掺生物质三档与炉型上限）**：生物质（含 BECCS）档位改为 0.10 / 0.15 / 0.20，0.15 以上的档位只有 CFB
+> 装机能用（hub 的 CFB 装机份额为上限）；掺烧升级 capex 每档 17.5 万元/MW（此前 50 万），掺烧运维改为在用掺烧能力的 capex × 3%/年
+> （此前按发电量每 MWh 30 元）（`docs/方法论.md` §4.3、式 12b、附录 B）。下表的结果都在此之前落盘，**不得与改后的求解相减**，
+> 要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

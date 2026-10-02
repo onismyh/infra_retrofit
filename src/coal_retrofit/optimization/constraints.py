@@ -154,13 +154,18 @@ def _add_blend_level_constraints(
     rz_{c,l} >= 0，Σ_c rz_{c,l} <= z_l，Σ_l rz_{c,l} = 该路径该类的重建份额；用量、减排、惩罚各项按同式逐类加一遍重建部分，
     系数换成该类与未重建部分之差（`YearData.rebuilt_deltas`）。
 
+    掺生物质比例的炉型上限（2026-10-02 起，BECCS 同）：落在高于 `biomass_blend_max_pulverized` 的档位上的份额不超过 hub 的
+    CFB 装机份额（`YearData.cfb_share`），落在高于 `biomass_blend_max_cfb` 的档位上的为零；约束加在 `bio_layers` 的对应层上。
+    档位须在 (0, 1] 内严格升序（分层与炉型上限都按升序取），煤粉炉上限须为正且不高于 CFB 上限，否则报错。
+
     Returns
     -------
     select_b : MVar (plant_count, L_b+1)  — 档位 0 = 不掺生物质
     select_a : MVar (plant_count, L_a+1)  — 档位 0 = 不掺氨
     blend_level_b : MVar (plant_count,)   — 在用的生物质掺烧能力 Σ_l (l+1)·(z_bio[p,l] + z_beccs[p,l])，即档位下标 x
-        落在该档的份额（生物质与 BECCS 共用档位能力），只供结果表。2026-10-02 前是 Σ l·select_b，capex 计在它的增量上
-    blend_level_a : MVar (plant_count,)   — 在用的掺氨能力 Σ_l (l+1)·z_amm[p,l]，同上
+        落在该档的份额（生物质与 BECCS 共用档位能力），供结果表与掺烧能力的固定运维（`model_costs._operating_costs`，
+        2026-10-02 起）。2026-10-02 前是 Σ l·select_b，capex 计在它的增量上
+    blend_level_a : MVar (plant_count,)   — 在用的掺氨能力 Σ_l (l+1)·z_amm[p,l]，只供结果表
     bio_layers : list[list[LinExpr]]      — [厂][j] 在用掺烧能力的第 j+1 层 Σ_{l>=j} (z_bio[p,l] + z_beccs[p,l])（j、l 从 0
         起，即落在第 j+1 档及以上的份额），各层相加即 blend_level_b；掺烧能力按层分代、计 capex（`model_linking.add_capacity_vintages`）
     amm_layers : list[list[LinExpr]]      — 同上，Σ_{l>=j} z_amm[p,l]
@@ -183,6 +188,14 @@ def _add_blend_level_constraints(
     """
     blend_b = np.asarray(scenario.biomass_blend_levels, dtype=np.float64)
     blend_a = np.asarray(scenario.ammonia_blend_levels, dtype=np.float64)
+    for name, levels in (("biomass_blend_levels", blend_b), ("ammonia_blend_levels", blend_a)):
+        if not (np.all(np.diff(levels) > 0.0) and np.all((levels > 0.0) & (levels <= 1.0))):
+            raise ValueError(f"{name} must be strictly ascending within (0, 1], got {tuple(levels.tolist())}")
+    if not 0.0 < assumptions.biomass_blend_max_pulverized <= assumptions.biomass_blend_max_cfb:
+        raise ValueError(
+            f"need 0 < biomass_blend_max_pulverized ({assumptions.biomass_blend_max_pulverized}) "
+            f"<= biomass_blend_max_cfb ({assumptions.biomass_blend_max_cfb})"
+        )
     L_b = len(blend_b)
     L_a = len(blend_a)
     lhv = float(assumptions.nh3_lhv_gj_per_kg)
@@ -215,6 +228,9 @@ def _add_blend_level_constraints(
     amm_layers: list[list[gp.LinExpr]] = []
     rebuilt_share = rebuilt_share or {}
     bio_idx, beccs_idx, amm_idx = PATHWAY_INDEX["biomass"], PATHWAY_INDEX["beccs"], PATHWAY_INDEX["ammonia"]
+    # 第一个高于煤粉炉上限、高于 CFB 上限的生物质档位（下标从 0 起；没有为 None）。
+    above_pc = next((j for j, beta in enumerate(blend_b) if beta > assumptions.biomass_blend_max_pulverized), None)
+    above_cfb = next((j for j, beta in enumerate(blend_b) if beta > assumptions.biomass_blend_max_cfb), None)
 
     for p in range(plant_count):
         # 改造后的运行带有效率比（重建电厂）和改造后的
@@ -309,6 +325,11 @@ def _add_blend_level_constraints(
         model.addConstr(blend_level_b[p] == bio_in_use, name=f"blv_b_{p}{sfx}")
         # 在用的掺烧能力按档位分层：第 j+1 层（j 从 0 起）是落在第 j+1 档及以上的份额。能力按层分代，闲置的低档能力不能顶替高档。
         bio_layers.append([gp.quicksum(z_bio_all[j:]) + gp.quicksum(z_beccs_all[j:]) for j in range(L_b)])
+        # 炉型上限（2026-10-02 起）：高于煤粉炉上限的档位只有 CFB 能用，高于 CFB 上限的档位谁都不能用。
+        if above_pc is not None:
+            model.addConstr(bio_layers[p][above_pc] <= float(year_data.cfb_share[p]), name=f"cfb_b_{p}{sfx}")
+        if above_cfb is not None:
+            model.addConstr(bio_layers[p][above_cfb] <= 0.0, name=f"cfb_max_b_{p}{sfx}")
 
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()

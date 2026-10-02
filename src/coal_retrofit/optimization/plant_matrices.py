@@ -63,8 +63,8 @@ def _plant_operating_matrices(
     # 成本基数：退役列保留基线发电量（退役成本按原发电量计），物理量用 generation_by_pathway（退役列为零）。
     generation_cost_basis = generation_by_pathway.copy()
     generation_cost_basis[:, PATHWAY_INDEX["retire"]] = generation
-    # 每 MWh 附加项不乘 `ccs_cost_multiplier`：CCS 为 0，BECCS 的 30 元/MWh 是生物质掺烧运维，
-    # 与纯掺烧相同（2026-09-23 前两项都乘，BECCS 的掺烧运维因此随捕集成本变动）。
+    # 每 MWh 附加项不乘 `ccs_cost_multiplier`：CCS、生物质、BECCS 为 0（掺烧运维按掺烧能力计，见下方
+    # `biomass_blend_om_per_level`；2026-10-02 前生物质、BECCS 各 30 元/MWh，2026-09-23 前 CCS、BECCS 两项都乘）。
     pathway_fixed_costs = np.array(
         [
             assumptions.fixed_cost_cny_per_mwh("unabated"),
@@ -139,6 +139,12 @@ def _plant_operating_matrices(
     capacity_mw = prepared.plants["total_capacity_mw"].astype(float).to_numpy()
     ccs_retrofit_capex_matrix = capacity_mw[:, None] * ccs_capex_per_mw[None, :]
     # 捕集岛的固定运维（ccs_om_fraction x 这笔 capex，每年）在 `year_matrices` 里随 capex 系数一起给。
+    # 生物质掺烧能力的固定运维（CNY/yr，每单位掺烧能力 = 一个档位层 x 占装机的份额）：capex 单价
+    # （`model_costs._blend_unit_capex`）x biomass_upgrade_om_fraction，乘在用的掺烧能力计入 `incremental_om`。
+    biomass_blend_om_per_level = (
+        capacity_mw * float(assumptions.biomass_upgrade_capex_cny_per_mw_per_level)
+        * float(assumptions.biomass_upgrade_om_fraction)
+    )
 
     fixed_cost_matrix = generation_cost_basis * pathway_fixed_costs[None, :]
 
@@ -164,6 +170,8 @@ def _plant_operating_matrices(
         "capacity_mw": capacity_mw,
         "coal_price_per_plant": coal_price_per_plant,
         "fixed_cost_matrix": fixed_cost_matrix,
+        "biomass_blend_om_per_level": biomass_blend_om_per_level,
+        "cfb_share": prepared.plants["cfb_share"].astype(float).to_numpy(),
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
         "stranded_per_plant": stranded_per_plant,
         "rebuilt_class_share": rebuilt_class_share,

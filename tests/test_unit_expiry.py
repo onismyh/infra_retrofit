@@ -310,7 +310,7 @@ def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, reti
         ccs_om_by_plant=ys["ccs_om_by_plant"], stranded_by_plant=ys["stranded_by_plant"],
         capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
         air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
-        bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+        bio_penalty_by_plant=ys["bio_penalty_by_plant"], blend_level_b=ys["blend_level_b"],
     )
     margin = assumptions.baseline_om_cost_cny_per_mwh - scenario.electricity_price_for_year(2050)
     expected = float(year_data.generation[0]) * (
