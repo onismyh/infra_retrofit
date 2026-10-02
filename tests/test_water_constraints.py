@@ -233,8 +233,8 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
 
 
 def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -> None:
-    """流域上限绑定时 toy 电厂在运行路径上转空冷。明细表的空冷运行份额是运行路径上空冷份额之和，已装份额是空冷存量；
-    2060 年退役份额变大，已装存量（只增不减）高于运行份额。逐路径的减排量与捕集量含空冷背压的排放与捕集，逐厂相加
+    """流域上限绑定时 toy 电厂在运行路径上转空冷。明细表的空冷运行份额是运行路径上空冷份额之和，在役份额是在役的空冷
+    能力；2060 年退役份额变大，2050 年建成的空冷仍在役（寿命 20 年），在役能力高于运行份额。逐路径的减排量与捕集量含空冷背压的排放与捕集，逐厂相加
     等于求解器的值。逐厂成本表的空冷背压燃料费为正，能耗惩罚三列之和等于目标函数的 energy_penalty_cost（不折现）。"""
     from coal_retrofit.optimization.results_plant import (
         _build_pathway_table,
@@ -283,4 +283,4 @@ def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -
         assert kind == "annual"
         assert penalties == pytest.approx(ys["cost_breakdown_cny"]["energy_penalty_cost"] / weight, rel=1e-9)
     last = solution["year_solutions"][YEARS[-1]]
-    assert float(last["air_installed"][0]) > float(last["air_share"][0, operating].sum()) + 1e-3, "前提：末年运行份额低于已装存量"
+    assert float(last["air_installed"][0]) > float(last["air_share"][0, operating].sum()) + 1e-3, "前提：末年运行份额低于在役能力"

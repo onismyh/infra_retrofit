@@ -137,18 +137,21 @@ def _read_unit_hub_map(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFram
 def _with_expiry(
     paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, plants: pd.DataFrame
 ) -> pd.DataFrame:
-    """加四组逐规划年的列（`plant_matrices` 用）：到期装机份额 `expired_share_{年}`（f）、剩余账面份额
-    `remaining_life_fraction_{年}`、未重建部分与重建部分的毛热耗 `heat_rate_unexpired_{年}`、`heat_rate_rebuilt_{年}`。
+    """加逐规划年的列（`plant_matrices` 用）：到期装机份额 `expired_share_{年}`（f）、剩余账面份额
+    `remaining_life_fraction_{年}`、未重建部分的毛热耗 `heat_rate_unexpired_{年}`；重建部分按重建热耗分类 j，
+    每类一列不随年变的重建热耗 `heat_rate_rebuilt_c{j}` 与逐年的到期份额 `expired_share_c{j}_{年}`（f_j，按类相加为 f）。
 
     按机组计（`plants_unit_hub.csv`）：连续 hub（缺省）逐台在投产年 + 设计寿命到期；整数 hub 整个 hub 在
     `retirement_year`（平均投产年 + 设计寿命）一起到期，f 只取 0 或 1。2026-10-02 前两种模式都按整个 hub 计。
     剩余账面份额按装机加权 min(1, 剩余设计寿命 / 会计寿命)，到期装机为 0，搁浅资产按它计。
-    重建部分逐台取 min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加空冷的 +15 g/kWh) 按装机加权，重建机组不比它
-    替换的那台差（`builders.plants.unit_rebuild_heat_rate_cap_gj_per_mwh`，2026-10-02 起）；未重建部分取
-    (hub 毛热耗 - f x 到期机组的毛热耗) / (1 - f)，两部分按 f 加权正好还原 hub 毛热耗。f = 0 时两者都取 hub 毛热耗，
-    f = 1 时都取重建热耗，只有部分到期的 hub 两者不同（`constraints._add_rebuilt_split`）。逐台毛热耗与 hub 毛热耗
-    同一算法（`builders.plants.unit_heat_rate_gj_per_mwh`）。2026-10-02 前全国一个热耗 8.5714，整个 hub 自
-    `retirement_year` 起乘 0.42 / rebuild_efficiency，不论到期装机是重建还是退役。
+    重建机组逐台取 min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加空冷的 +15 g/kWh)，不比它替换的那台差
+    （`builders.plants.unit_rebuild_heat_rate_cap_gj_per_mwh`）；规划期内到期的机组按这个值（六位小数）分类，
+    类按重建热耗升序编号，没有该类的 hub 填 hub 毛热耗、f_j 为 0。哪一类重建由求解器定（`model_year`）。
+    未重建部分取 (hub 毛热耗 - f x 到期机组的毛热耗) / (1 - f)；f = 0 时取 hub 毛热耗，f = 1 时没有未重建部分，取到期机组
+    重建热耗的装机加权平均（`constraints._add_rebuilt_split` 只拆两类以上的这种 hub，拆了与它无关）。逐台毛热耗与
+    hub 毛热耗同一算法（`builders.plants.unit_heat_rate_gj_per_mwh`）。按机组细化的 `4d5ce30`（2026-10-02）里重建部分
+    只有一类，取到期机组重建热耗的装机加权平均；再之前全国一个热耗 8.5714，整个 hub 自 `retirement_year` 起乘
+    0.42 / rebuild_efficiency，不论到期装机是重建还是退役。
     """
     from ..builders.plants import unit_heat_rate_gj_per_mwh, unit_rebuild_heat_rate_cap_gj_per_mwh
 
@@ -162,9 +165,9 @@ def _with_expiry(
     else:
         end_year = by_hub.map(out["retirement_year"].astype(int).set_axis(plant_ids))
     unit_heat_rate = unit_heat_rate_gj_per_mwh(units)
-    rebuilt_heat_rate = np.minimum(
+    rebuilt_heat_rate = pd.Series(np.minimum(
         unit_heat_rate, unit_rebuild_heat_rate_cap_gj_per_mwh(units, max(float(scenario.rebuild_efficiency), 1e-9))
-    )
+    ), index=unit_heat_rate.index)
     hub_heat_rate = out["heat_rate_gj_per_mwh"].astype(float).to_numpy()
     life = max(1, int(assumptions.stranded_asset_accounting_life))
 
@@ -175,6 +178,19 @@ def _with_expiry(
     # 部分到期 hub 的未重建部分由 hub 毛热耗反推，误差放大 1 / (1 - f) 倍，甚至为负：这些 hub 的 hub 值须与机组表按装机
     # 加权的值一致（plants.csv 取四位小数），改了分档煤耗等常量而没重建输入时报错。
     stale = np.abs(by_plant(capacity * unit_heat_rate) / total - hub_heat_rate) > 1e-4
+    # 重建热耗类：规划期内到期的机组按重建热耗（六位小数）分，hub 内升序编号（dense 名次从 1 起），不到期的机组为 NaN；
+    # 类的重建热耗取类内机组按装机加权（同一类的机组取值相同，只差浮点误差）。
+    rebuilt_class = (
+        rebuilt_heat_rate.round(6).where(end_year <= max(scenario.planning_years)).groupby(by_hub).rank(method="dense")
+        - 1.0
+    )
+    class_count = int(np.nan_to_num(rebuilt_class.max(), nan=0.0)) + 1
+    for j in range(class_count):
+        class_capacity = by_plant(capacity.where(rebuilt_class == j, 0.0))
+        out[f"heat_rate_rebuilt_c{j}"] = np.divide(
+            by_plant((capacity * rebuilt_heat_rate).where(rebuilt_class == j, 0.0)), class_capacity,
+            out=hub_heat_rate.copy(), where=class_capacity > 0.0,
+        )
     for year in scenario.planning_years:
         expired_capacity = capacity.where(end_year <= year, 0.0)
         expired_total = by_plant(expired_capacity)
@@ -200,7 +216,8 @@ def _with_expiry(
         out[f"expired_share_{year}"] = expired
         out[f"remaining_life_fraction_{year}"] = by_plant(book) / total
         out[f"heat_rate_unexpired_{year}"] = unexpired
-        out[f"heat_rate_rebuilt_{year}"] = rebuilt
+        for j in range(class_count):
+            out[f"expired_share_c{j}_{year}"] = by_plant(expired_capacity.where(rebuilt_class == j, 0.0)) / total
     return out
 
 

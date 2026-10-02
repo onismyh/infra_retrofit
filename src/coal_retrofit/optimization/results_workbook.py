@@ -91,7 +91,7 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
         ["objective", "目标函数值（现值），及各成本类别各年的现值（cost_breakdown.csv 的 cost_cny），各年各类相加即目标函数值。"
                       "期末残值抵扣（salvage_credit）记在最后一个规划年。"],
         ["本模型另加的表", "Plant_Pathways：煤电 hub 各年各路径的份额；already_air 是原本就是空冷的份额，air_retrofit_operating、"
-                         "air_retrofit_installed 是湿冷改空冷的装机里当年在运行的与已建成的，都按占全厂的份额（plant_detail.csv "
+                         "air_retrofit_installed 是湿冷改空冷的装机里当年在运行的与在役的（建成未满改造寿命），都按占全厂的份额（plant_detail.csv "
                          "的 air_operating_share、air_installed_share 乘 1 − already_air_share）。Industry_Routes：工业 hub 各年"
                          "各路线的份额。"],
         ["不出的表", "num_total_well_new：模型没有注入井（ChinaCCS 用注入量除以单井注入率算，模型没有单井注入率）。"

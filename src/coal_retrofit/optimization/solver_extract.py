@@ -10,12 +10,11 @@ from ._shared import (
     _expr_value,
     _var_scalar_value,
     _var_value,
-    gp,
 )
 from .industry_matrices import CCS, H2
 from .model_index import ModelIndex
 from .scenario import PATHWAYS
-from .year_types import GrbExpr, YearPayload, YearSolution
+from .year_types import GrbExpr, RebuiltShares, YearPayload, YearSolution
 
 
 def empty_year_solutions(
@@ -31,6 +30,7 @@ def empty_year_solutions(
             "share": np.zeros((plant_count, len(PATHWAYS))),
             "build_edge": np.zeros(edge_count),
             "rebuild": np.zeros(plant_count),
+            "rebuild_class": np.zeros(p.year_data.rebuilt_class_share.shape),
             "new_cap_mtpa": np.zeros(edge_count),
             "edge_flow_mtpa": np.zeros(edge_count),
             "storage_use_mtpa": np.zeros(storage_count),
@@ -59,9 +59,9 @@ def empty_year_solutions(
             "biomass_blend_x_share": np.zeros(plant_count),
             "beccs_blend_x_share": np.zeros(plant_count),
             "ammonia_blend_x_share": np.zeros(plant_count),
-            "rebuilt_share": np.zeros((plant_count, len(PATHWAYS))),
-            "rebuilt_air_share": np.zeros((plant_count, len(PATHWAYS))),
-            "rebuilt_blend_x_share": np.zeros((plant_count, len(PATHWAYS))),
+            "rebuilt_share": np.zeros(_rebuilt_shape(p, plant_count)),
+            "rebuilt_air_share": np.zeros(_rebuilt_shape(p, plant_count)),
+            "rebuilt_blend_x_share": np.zeros(_rebuilt_shape(p, plant_count)),
             "bio_penalty_by_plant": np.zeros(plant_count),
             "total_reduction_mt": 0.0,
             "co2_flow_fwd": np.zeros(edge_count),
@@ -107,8 +107,10 @@ def extract_year_solutions(
         _wat_s = float(year_data.water_flow_scale)
         _bio_s = float(year_data.biomass_flow_scale)
         industry = payload.industry
-        island, industry_ccs, industry_h2 = payload.ccs_island, payload.industry_ccs, payload.industry_h2
-        assert island is not None and industry_ccs is not None and industry_h2 is not None
+        island, air, industry_ccs, industry_h2 = (
+            payload.ccs_island, payload.air_cooling, payload.industry_ccs, payload.industry_h2
+        )
+        assert island is not None and air is not None and industry_ccs is not None and industry_h2 is not None
         industry_alive = np.zeros((hub_count, len(INDUSTRY_ROUTES)))
         industry_alive[:, CCS] = _values(industry_ccs.alive)
         industry_alive[:, H2] = _values(industry_h2.alive)
@@ -118,6 +120,7 @@ def extract_year_solutions(
             "share": _var_value(payload.share, (plant_count, len(PATHWAYS))),
             "build_edge": _var_value(payload.build_edge, edge_count),
             "rebuild": _var_value(payload.rebuild, plant_count),
+            "rebuild_class": _var_value(payload.rebuild_class, tuple(payload.rebuild_class.shape)),
             "new_cap_mtpa": _var_value(payload.new_cap_mtpa, edge_count),
             "edge_flow_mtpa": _var_value(payload.edge_flow_mtpa, edge_count),
             "co2_flow_fwd": _var_value(payload.co2_flow_fwd, edge_count),
@@ -131,7 +134,7 @@ def extract_year_solutions(
             "ammonia_flow_kg": _var_value(payload.ammonia_flow_kg, len(year_data.ammonia_links)) * _amm_s,
             "captured_mt_by_plant": _var_value(payload.captured_mt_by_plant, plant_count),
             "air_share": _var_value(payload.air_share, (plant_count, len(PATHWAYS))),
-            "air_installed": _var_value(payload.air_installed, plant_count),
+            "air_installed": _values(air.alive),
             "blend_level_b": _var_value(payload.blend_level_b, plant_count),
             "blend_level_a": _var_value(payload.blend_level_a, plant_count),
             "retrofit_new": _var_value(payload.retrofit_new, (plant_count, len(idx.capex_pathway_indices))),
@@ -152,8 +155,8 @@ def extract_year_solutions(
             "biomass_blend_x_share": np.array([_expr_value(e) for e in payload.biomass_blend_x_share], dtype=np.float64),
             "beccs_blend_x_share": np.array([_expr_value(e) for e in payload.beccs_blend_x_share], dtype=np.float64),
             "ammonia_blend_x_share": np.array([_expr_value(e) for e in payload.ammonia_blend_x_share], dtype=np.float64),
-            "rebuilt_share": _rebuilt_values(payload.rebuilt_share, plant_count),
-            "rebuilt_air_share": _rebuilt_values(payload.rebuilt_air_share, plant_count),
+            "rebuilt_share": _rebuilt_values(payload.rebuilt_share, _rebuilt_shape(payload, plant_count)),
+            "rebuilt_air_share": _rebuilt_values(payload.rebuilt_air_share, _rebuilt_shape(payload, plant_count)),
             "rebuilt_blend_x_share": _rebuilt_blend_values(payload, plant_count),
             "bio_penalty_by_plant": _values(payload.bio_penalty_by_plant),
             "total_reduction_mt": _expr_value(payload.total_reduction_mt),
@@ -193,18 +196,24 @@ def _values(exprs: list[GrbExpr]) -> np.ndarray:
     return np.array([_expr_value(expr) for expr in exprs], dtype=np.float64)
 
 
-def _rebuilt_values(parts: dict[int, dict[int, gp.Var]], plant_count: int) -> np.ndarray:
-    """部分到期 hub 各路径份额或空冷份额里的重建部分（`constraints._add_rebuilt_split`），(plant_count, len(PATHWAYS))。"""
-    out = np.zeros((plant_count, len(PATHWAYS)))
-    for p, part in parts.items():
-        for k, var in part.items():
-            out[p, k] = _var_scalar_value(var)
+def _rebuilt_shape(payload: YearPayload, plant_count: int) -> tuple[int, int, int]:
+    """重建部分各数组的形状：(重建热耗类数, plant_count, len(PATHWAYS))。"""
+    return len(payload.year_data.rebuilt_deltas), plant_count, len(PATHWAYS)
+
+
+def _rebuilt_values(parts: RebuiltShares, shape: tuple[int, int, int]) -> np.ndarray:
+    """各路径份额或空冷份额里各类的重建部分（`constraints._add_rebuilt_split`），(类数, plant_count, len(PATHWAYS))。"""
+    out = np.zeros(shape)
+    for p, classes in parts.items():
+        for c, part in classes.items():
+            for k, var in part.items():
+                out[c, p, k] = _var_scalar_value(var)
     return out
 
 
 def _rebuilt_blend_values(payload: YearPayload, plant_count: int) -> np.ndarray:
-    """部分到期 hub 掺烧三列上重建部分的 Σβ_l·rz_l，(plant_count, len(PATHWAYS))。"""
-    out = np.zeros((plant_count, len(PATHWAYS)))
-    for (p, k), expr in payload.rebuilt_blend_x_share.items():
-        out[p, k] = _expr_value(expr)
+    """掺烧三列上各类重建部分的 Σβ_l·rz_l，(类数, plant_count, len(PATHWAYS))。"""
+    out = np.zeros(_rebuilt_shape(payload, plant_count))
+    for (p, c, k), expr in payload.rebuilt_blend_x_share.items():
+        out[c, p, k] = _expr_value(expr)
     return out

@@ -43,7 +43,7 @@ SOURCE_HEADER = [
     "Power_Capture", "ISI_Capture", "Cement_Capture", "Chemical_Capture",
 ]
 OPEX_ORDER = ("power", "cement", "isi", "chemical")  # OPEX_Capture_p、_c、_i、_a 的顺序
-# Plant_Pathways 的份额列：各路径份额，及湿冷改空冷的装机里当年在运行的、已建成的各占全厂的份额（`plant_pathways`）。
+# Plant_Pathways 的份额列：各路径份额，及湿冷改空冷的装机里当年在运行的、在役的（建成未满改造寿命）各占全厂的份额（`plant_pathways`）。
 PLANT_SHARES = {**{pw: f"share_{pw}" for pw in PATHWAYS}, "air_retrofit_operating": "air_retrofit_operating",
                 "air_retrofit_installed": "air_retrofit_installed"}
 

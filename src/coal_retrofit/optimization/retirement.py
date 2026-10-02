@@ -2,7 +2,7 @@
 
 hub 装机按份额分五部分：未到期在运行、未到期就关停（提前退役，存量 U）、到期未重建（正常寿终）、原址重建在运行（R）、
 重建后又关停（存量 Q）。自愿退役是 U 的新增（扣除按比例到期的部分）与 R 的净减少（2026-10-02 起，此前按退役份额的增量计）。
-记 f 为到期份额、x 为退役份额、ρ 为重建份额、Σr 为重建部分的运行份额（`constraints._add_rebuilt_split`）：
+记 f 为到期份额、x 为退役份额、ρ 为重建份额、Σr 为重建部分（各重建热耗类之和）的运行份额（`constraints._add_rebuilt_split`）：
 
     f = 0：U = x，Q = 0；  0 < f < 1：U = x - f + Σr，Q = ρ - Σr；  f = 1：U = 0，Q = x - 1 + ρ。
 
@@ -28,7 +28,7 @@ def _retired_stocks(payload: YearPayload, p: int) -> tuple[GrbExpr, GrbExpr]:
         return retired, 0.0
     if expired >= 1.0:
         return 0.0, retired - 1.0 + payload.rebuild[p]
-    rebuilt_running = gp.quicksum(payload.rebuilt_share[p].values())
+    rebuilt_running = gp.quicksum(var for part in payload.rebuilt_share[p].values() for var in part.values())
     return retired - expired + rebuilt_running, payload.rebuild[p] - rebuilt_running
 
 

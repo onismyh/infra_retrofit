@@ -21,8 +21,8 @@ def _plant_operating_matrices(
 ) -> dict[str, Any]:
     """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex、搁浅资产。
 
-    随毛热耗变的系数（`by_heat_rate`）按未重建部分的毛热耗算；部分到期 hub 上原址重建部分的毛热耗不同，两部分算出的
-    系数之差放在 `rebuilt_delta`，乘重建部分的份额加进约束与成本（`constraints._add_rebuilt_split`）。
+    随毛热耗变的系数（`by_heat_rate`）按未重建部分的毛热耗算；原址重建部分按重建热耗分类，每类与未重建部分算出的
+    系数之差放在 `rebuilt_deltas`，乘该类重建部分的份额加进约束与成本（`constraints._add_rebuilt_split`）。
     """
     # 本年利用小时：`annual_generation_mwh` 是当前省级统计，按情景小时轨迹逐年缩放，
     # 发电、基线排放与每 MWh 成本同步移动。
@@ -40,14 +40,26 @@ def _plant_operating_matrices(
         generation_retrofit,           # beccs
         generation_retrofit,           # ammonia
     ])
-    # hub 毛热耗（基线排放按它算，`data_prep._prepare_plants`）与两部分的毛热耗（`data_prep._with_expiry`）：
-    # 未重建部分（未到期机组；全部到期的 hub 取重建热耗）与原址重建部分（到期机组逐台 min(机组毛热耗,
-    # 3.6 / rebuild_efficiency，空冷机组加 +15 g/kWh) 按装机加权）。2026-10-02 前全国一个热耗 8.5714，整个 hub 自
-    # `retirement_year` 起乘 0.42 / rebuild_efficiency，不论到期装机重建还是退役。
+    # hub 毛热耗（基线排放按它算，`data_prep._prepare_plants`）与各部分的毛热耗（`data_prep._with_expiry`）：
+    # 未重建部分（未到期机组；全部到期的 hub 取各类重建热耗的装机加权平均）与各类原址重建部分（到期机组逐台
+    # min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加 +15 g/kWh)，按这个值分类）。本年没有某类到期装机的 hub，
+    # 该类取未重建部分的毛热耗，差恰为零。2026-10-02 前全国一个热耗 8.5714，整个 hub 自 `retirement_year` 起乘
+    # 0.42 / rebuild_efficiency，不论到期装机重建还是退役。
     hub_heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy()
     heat_rate_unexpired = prepared.plants[f"heat_rate_unexpired_{year}"].astype(float).to_numpy()
-    heat_rate_rebuilt = prepared.plants[f"heat_rate_rebuilt_{year}"].astype(float).to_numpy()
     expired_share = prepared.plants[f"expired_share_{year}"].astype(float).to_numpy()
+    classes = range(sum(str(column).startswith("heat_rate_rebuilt_c") for column in prepared.plants.columns))
+    rebuilt_class_share = np.column_stack(
+        [prepared.plants[f"expired_share_c{c}_{year}"].astype(float).to_numpy() for c in classes]
+    )
+    rebuilt_heat_rates = [
+        np.where(
+            rebuilt_class_share[:, c] > 0.0,
+            prepared.plants[f"heat_rate_rebuilt_c{c}"].astype(float).to_numpy(),
+            heat_rate_unexpired,
+        )
+        for c in classes
+    ]
     # 成本基数：退役列保留基线发电量（退役成本按原发电量计），物理量用 generation_by_pathway（退役列为零）。
     generation_cost_basis = generation_by_pathway.copy()
     generation_cost_basis[:, PATHWAY_INDEX["retire"]] = generation
@@ -111,10 +123,9 @@ def _plant_operating_matrices(
         }
 
     unexpired_terms = by_heat_rate(heat_rate_unexpired)
-    rebuilt_terms = by_heat_rate(heat_rate_rebuilt)
 
     # CCS/BECCS 改造 capex（含学习曲线）。BECCS 的捕集岛就是 CCS 捕集岛，同价；生物质改造
-    # 另由掺烧档位 capex 计（`constraints._build_blend_upgrade_capex`）。
+    # 另由掺烧能力的 capex 计（`model_costs._blend_unit_capex`）。
     lf = assumptions.ccs_learning_factor(year)
     capture_island_capex_per_mw = assumptions.ccs_retrofit_capex_cny_per_kw * 1000.0 * scenario.ccs_cost_multiplier * lf
     ccs_capex_per_mw = np.array([
@@ -155,9 +166,12 @@ def _plant_operating_matrices(
         "fixed_cost_matrix": fixed_cost_matrix,
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
         "stranded_per_plant": stranded_per_plant,
-        "heat_rate_rebuilt": heat_rate_rebuilt,
-        # f = 0 或 1 的 hub 两部分毛热耗相同，差恰为零。
-        "rebuilt_delta": {name: rebuilt_terms[name] - value for name, value in unexpired_terms.items()},
+        "rebuilt_class_share": rebuilt_class_share,
+        "rebuilt_heat_rates": rebuilt_heat_rates,
+        "rebuilt_deltas": [
+            {name: value - unexpired_terms[name] for name, value in by_heat_rate(heat_rate).items()}
+            for heat_rate in rebuilt_heat_rates
+        ],
     }
 
 
@@ -206,7 +220,7 @@ def _air_cooling_matrices(
 
     `air_share` 是按全空冷强度计价的发电份额，驱到 1 只转换仍湿冷的部分（基线强度已混入现有空冷），
     所以 capex 与背压惩罚都乘 still_wet；否则 87% 已空冷的宁夏 hub 会按全厂重建收费。
-    燃料成本按未重建部分的毛热耗算，重建部分与它之差另给（`air_penalty_cost_rebuilt_delta`，并入 `RebuiltDelta`）。
+    燃料成本按未重建部分的毛热耗算，各类重建部分与它之差另给（`air_penalty_cost_rebuilt_deltas`，并入 `RebuiltDelta`）。
     """
     generation_by_pathway = plant["generation_by_pathway"]
     generation_cost_basis = plant["generation_cost_basis"]
@@ -219,7 +233,8 @@ def _air_cooling_matrices(
         else np.zeros(len(prepared.plants), dtype=np.float64)
     )
     still_wet = 1.0 - already_air_share
-    # 一次性 capex 计在新转换份额上，与 CCS 改造同一约定。
+    # 一次性 capex 计在新建的空冷能力上（在役 `air_retrofit_lifetime_years` 年，`model_linking.add_capacity_vintages`），
+    # 与 CCS 改造同一约定。
     air_retrofit_capex_per_plant = (
         capacity_mw * 1000.0 * float(assumptions.air_retrofit_capex_cny_per_kw) * still_wet
     )
@@ -258,6 +273,8 @@ def _air_cooling_matrices(
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,
         "air_penalty_captured_matrix": air_penalty_captured_matrix,
         "air_penalty_cost_matrix": air_penalty_cost_matrix,
-        "air_penalty_cost_rebuilt_delta": penalty_cost(plant["heat_rate_rebuilt"]) - air_penalty_cost_matrix,
+        "air_penalty_cost_rebuilt_deltas": [
+            penalty_cost(heat_rate) - air_penalty_cost_matrix for heat_rate in plant["rebuilt_heat_rates"]
+        ],
         "allow_air_cooling_retrofit": bool(assumptions.allow_air_cooling_retrofit),
     }

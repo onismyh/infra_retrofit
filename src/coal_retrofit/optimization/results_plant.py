@@ -23,7 +23,7 @@ def _blend_ratios(
 ) -> dict[str, np.ndarray]:
     """逐厂有效掺烧比例 = Σβ_l·z_l / 路径份额，键 biomass、beccs、ammonia。
 
-    连续 hub 下 `select_*` 是份额，一个 hub 可以把不同份额改造到不同档位；`blend_level = Σ l·select`
+    连续 hub 下一个 hub 可以把不同份额改造到不同档位；`blend_level`（在用的掺烧能力 Σ 档位下标 x 落在该档的份额）
     只是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是几档的混合（一半第 1 档、
     一半第 3 档记作 2）。模型的减排、燃料用量与惩罚都按 Σβ_l·z_l 计（`constraints._add_blend_level_constraints`），
     这里除以同一条路径的份额。生物质与 BECCS 共用档位容量与生物质档位表，但各自的 z 不同，比例分开算。
@@ -60,15 +60,15 @@ def _pathway_split(
 
     逐项照搬 `constraints._add_plant_path_constraints` 的 `residual_expr` 与 `captured_expr`：每一项记到它所乘的
     份额（路径份额、该路径的 Σβ·z 或空冷份额）所在的路径上，按路径相加就是求解器的逐厂残余排放与捕集量。
-    部分到期 hub 的重建部分（`rebuilt_share`、`rebuilt_blend_x_share`，求解器的同名值）按同式再加一遍，系数换成
-    两部分之差；没有部分到期的 hub 时两者全为零。
+    各类重建部分（`rebuilt_share`、`rebuilt_blend_x_share`，求解器的同名值，形状 (类数, plant_count, len(PATHWAYS))）
+    按同式逐类再加一遍，系数换成该类与未重建部分之差；没有拆出重建部分的 hub 时两者全为零。
     """
     gen = np.asarray(year_data.generation_by_pathway, dtype=np.float64)
     eta = float(scenario.capture_rate)
     un, ccs, bio, beccs, amm = (PATHWAY_INDEX[k] for k in ("unabated", "ccs", "biomass", "beccs", "ammonia"))
 
     def split(coeffs, s: np.ndarray, xs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """按份额 s 与掺烧三列的 Σβz（xs，形状同 s）计的各项，系数取 `YearData` 或其 `rebuilt_delta`。"""
+        """按份额 s 与掺烧三列的 Σβz（xs，形状同 s）计的各项，系数取 `YearData` 或其 `rebuilt_deltas` 的一类。"""
         e_op = np.asarray(coeffs.emissions_operating_mt, dtype=np.float64)
         e_rt = np.asarray(coeffs.emissions_retrofit_mt, dtype=np.float64)
         # CCS 能耗惩罚燃料按路径份额计，捕集路径上按 1 − η 排放、按 η 捕集。
@@ -100,12 +100,13 @@ def _pathway_split(
     residual += year_data.air_penalty_emissions_matrix * air
     captured += year_data.air_penalty_captured_matrix * air
     rebuilt = np.asarray(rebuilt_share, dtype=np.float64)
-    if not rebuilt.any():
-        return residual, captured
-    rebuilt_residual, rebuilt_captured = split(
-        year_data.rebuilt_delta, rebuilt, np.asarray(rebuilt_blend_x_share, dtype=np.float64)
-    )
-    return residual + rebuilt_residual, captured + rebuilt_captured
+    rebuilt_xs = np.asarray(rebuilt_blend_x_share, dtype=np.float64)
+    for c, delta in enumerate(year_data.rebuilt_deltas):
+        if rebuilt[c].any():
+            rebuilt_residual, rebuilt_captured = split(delta, rebuilt[c], rebuilt_xs[c])
+            residual += rebuilt_residual
+            captured += rebuilt_captured
+    return residual, captured
 
 
 def _build_pathway_table(
@@ -252,13 +253,15 @@ def _build_plant_detail_table(
             "ammonia_use_kg": float(ammonia_use_kg[p]),
             "water_use_m3": float(water_use_m3[p]),
             # 空冷两列都是仍湿冷那部分的转换进度，乘 1 − already_air_share 才是全厂份额；该改造未启用或不值其 capex 时为零。
-            # 已全空冷的 hub capex 系数为 0、不受单调约束（`constraints._build_air_retrofit_capex` 跳过），两列不保证为零，乘上式后为零。
-            # air_operating_share：当年在运行路径上以空冷运行的份额；退役路径上的空冷份额在已装存量以内模型可任取，不计入（此前的 `air_cooled_share` 计入）。
-            # air_installed_share：已建成的空冷存量（capex 计在它的增量上），只增不减（已全空冷的 hub 除外），含此后退役的容量。
+            # 已全空冷的 hub capex 与背压惩罚系数为 0，两列不保证为零，乘上式后为零。
+            # air_operating_share：当年在运行路径上以空冷运行的份额（2026-10-02 起退役列的空冷份额恒为零）。
+            # air_installed_share：在役的空冷能力，各代新建之和（capex 计在新建上），不小于运行份额、可含闲置的；
+            # 2026-10-02 起建成 `air_retrofit_lifetime_years` 年后退出（`vintage`），此前只增不减、含此后退役的容量。
             "air_operating_share": float(air_share[p, operating].sum()),
             "air_installed_share": float(air_installed[p]),
             "already_air_share": float(plant.get("already_air_share", 0.0)),
-            # 掺烧档位：Σ l·select。独热档位下是所选档位；连续 hub 下只是加权下标，不能换算成比例。
+            # 在用的掺烧能力：各档位层之和 Σ (档位下标) x 落在该档的份额（生物质列含 BECCS），只供结果表（capex 按层分代计）。
+            # 独热档位下是所选档位 x 路径份额；连续 hub 下只是加权下标，不能换算成比例。2026-10-02 前是 Σ 档位下标 x 改造到该档的容量份额。
             "biomass_blend_level": float(blend_level_b[p]),
             "ammonia_blend_level": float(blend_level_a[p]),
             # 有效掺烧比例：Σβ_l·z_l / 该路径份额（`_blend_ratios`），份额不超过 `_SHARE_EPS` 时记 0，
@@ -294,8 +297,9 @@ def _build_plant_cost_table(
     未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产取求解器的逐厂值 `stranded_by_plant`（计在新增提前退役上，
     `retirement.retirement_flows`），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
     曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。
-    碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本与 CCS 能耗惩罚含部分到期 hub
-    重建部分的差（`rebuilt_share`、`rebuilt_air_share`，求解器的同名值；没有部分到期的 hub 时全为零）。
+    碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本、CCS 能耗惩罚与空冷背压燃料含各类
+    重建部分的差（`rebuilt_share`、`rebuilt_air_share`，求解器的同名值，形状 (类数, plant_count, len(PATHWAYS))；
+    没有拆出重建部分的 hub 时全为零）。
 
     能耗惩罚分三列：`energy_penalty_cny` 是 CCS 与 BECCS 的额外燃料；`air_penalty_cny` 是空冷背压、
     `biomass_penalty_cny` 是生物质掺烧效率损失多烧的煤（2026-10-02 起另列，后者取求解器的逐厂值
@@ -325,10 +329,9 @@ def _build_plant_cost_table(
         )
         # 能耗惩罚
         energy_pen = sum(float(year_data.energy_penalty_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
-        if np.any(rebuilt_share[p]):
-            delta = year_data.rebuilt_delta
-            baseline_net += float(delta.baseline_net_matrix[p] @ rebuilt_share[p])
-            energy_pen += float(delta.energy_penalty_matrix[p] @ rebuilt_share[p])
+        for delta, rebuilt in zip(year_data.rebuilt_deltas, rebuilt_share[:, p], strict=True):
+            baseline_net += float(delta.baseline_net_matrix[p] @ rebuilt)
+            energy_pen += float(delta.energy_penalty_matrix[p] @ rebuilt)
         # 碳成本：碳价 × (基线排放 − 求解器逐厂减排量)，与目标函数同式（`model_costs._operating_costs`）；
         # 减排量取约束本身的表达式，含效率比、CF 提升、全部惩罚燃料与连续 hub 下的掺烧份额。
         # 此前是近似式：未减排部分按基线排放计、不含惩罚燃料，掺烧比例按档位换算（连续 hub 下换算错）。
@@ -350,8 +353,8 @@ def _build_plant_cost_table(
         )
         # 空冷背压多烧的煤，与目标函数同式（`model_costs._operating_costs`）：按空冷份额，重建部分加两部分之差。
         air_pen = float(year_data.air_penalty_cost_matrix[p] @ air_share[p]) if air_cost_on else 0.0
-        if np.any(rebuilt_air_share[p]):
-            air_pen += float(year_data.rebuilt_delta.air_penalty_cost_matrix[p] @ rebuilt_air_share[p])
+        for delta, rebuilt_air in zip(year_data.rebuilt_deltas, rebuilt_air_share[:, p], strict=True):
+            air_pen += float(delta.air_penalty_cost_matrix[p] @ rebuilt_air)
 
         rows.append({
             "year": year,

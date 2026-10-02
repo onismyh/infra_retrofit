@@ -4,7 +4,9 @@ from __future__ import annotations
 import numpy as np
 
 from ._shared import PATHWAY_INDEX, SolveState, gp
+from .constraints import RUNNING
 from .model_industry import add_industry_capacity
+from .salvage import horizon_end_year
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .vintage import add_vintage_stock
 from .year_types import YearPayload
@@ -21,7 +23,8 @@ def add_inter_period_constraints(
     """所有年块建完后加的跨期约束。多年才有意义的项在单年模型下自动跳过。"""
     from .industry import add_industry_monotonicity
 
-    # 掺烧档位单调：CDF 形式 Σ_{l'≤l} select[p,l',t+1] ≤ Σ_{l'≤l} select[p,l',t]。掺烧设备不可逆。
+    # 掺烧档位单调：CDF 形式 Σ_{l'≤l} select[p,l',t+1] ≤ Σ_{l'≤l} select[p,l',t]。掺烧设备不可逆：改造到某档的容量
+    # 不回到低档；到寿命后仍在用的档位要重建（掺烧能力分代，`add_capacity_vintages`）。
     if len(year_payloads) > 1:
         n_opts_b = len(scenario.biomass_blend_levels) + 1
         n_opts_a = len(scenario.ammonia_blend_levels) + 1
@@ -97,7 +100,7 @@ def add_inter_period_constraints(
             name=f"build_flag_tie_{yr_sfx}",
         )
 
-    # 原址重建不可逆。
+    # 原址重建不可逆，各重建热耗类也不减（2026-10-02 起）：否则重建了的一类可以换成另一类而不付钱。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
             rb_curr = year_payloads[yi].rebuild
@@ -107,18 +110,30 @@ def add_inter_period_constraints(
                 (rb_curr[p] >= rb_prev[p] for p in range(plant_count)),
                 name=f"rebuild_irreversible_{yr_sfx}",
             )
+            rc_curr = year_payloads[yi].rebuild_class
+            rc_prev = year_payloads[yi - 1].rebuild_class
+            model.addConstrs(
+                (rc_curr[p, c] >= rc_prev[p, c] for p in range(plant_count) for c in range(rc_curr.shape[1])),
+                name=f"rebuild_class_irreversible_{yr_sfx}",
+            )
 
 
 def add_capacity_vintages(
     model, year_payloads: list[YearPayload], assumptions: OptimizationAssumptions
 ) -> None:
-    """三类改造能力按建设年分代（`vintage.add_vintage_stock`）：在役 >= 当年所需、到寿命退出、固定运维按建设年的单价。
+    """改造能力按建设年分代（`vintage.add_vintage_stock`）：在役 >= 当年在用、到寿命退出、固定运维按建设年的单价。
 
     - 煤电捕集岛（CCS 与 BECCS 共用，占装机的份额）：所需 = share_ccs + share_beccs，寿命 `ccs_retrofit_lifetime_years`；
+    - 空冷改造（占仍湿冷装机的份额）：所需 = 运行路径上的空冷份额之和，寿命 `air_retrofit_lifetime_years`；
+    - 生物质与氨掺烧能力（占装机的份额），按档位分层、每层一类：第 l 层所需 = 落在第 l 档及以上的路径份额
+      （`blend_layers_b`、`blend_layers_a`，生物质含 BECCS），各层之和即在用的掺烧能力 `blend_level_b`、`blend_level_a`，
+      寿命 `blend_upgrade_lifetime_years`；后两类 2026-10-02 起，此前不到期、capex 计在已装存量或档位的增量上；
     - 工业捕集能力与氢路线能力：`model_industry.add_industry_capacity`。
-    结果写到各 payload 的 `ccs_island`、`industry_ccs`、`industry_h2`，供成本与结果提取。
+    计残值（`end_of_horizon_salvage`）时建各类的期末在用量，残值只计最后一年仍在用的部分。结果写到各 payload 的
+    `ccs_island`、`air_cooling`、`biomass_blend`、`ammonia_blend`、`industry_ccs`、`industry_h2`，供成本与结果提取。
     """
     years = [int(payload.year) for payload in year_payloads]
+    end_year = horizon_end_year(year_payloads) if bool(assumptions.end_of_horizon_salvage) else None
     ccs_k, beccs_k = PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]
     plant_count = int(year_payloads[0].share.shape[0])
     islands = add_vintage_stock(
@@ -130,10 +145,44 @@ def add_capacity_vintages(
         ],
         life=int(assumptions.ccs_retrofit_lifetime_years),
         om_unit=[np.asarray(payload.year_data.retrofit_stock_om, dtype=np.float64)[:, 0] for payload in year_payloads],
+        salvage_end_year=end_year,
     )
-    industry_ccs, industry_h2 = add_industry_capacity(model, years, [payload.industry for payload in year_payloads])
-    for payload, island, ccs, h2 in zip(year_payloads, islands, industry_ccs, industry_h2, strict=True):
-        payload.ccs_island, payload.industry_ccs, payload.industry_h2 = island, ccs, h2
+    air = add_vintage_stock(
+        model, "air_cooling", years,
+        new=[payload.air_new for payload in year_payloads],
+        required=[
+            [gp.quicksum(payload.air_share[p, k] for k in RUNNING) for p in range(plant_count)]
+            for payload in year_payloads
+        ],
+        life=int(assumptions.air_retrofit_lifetime_years), salvage_end_year=end_year,
+    )
+    blend_life = int(assumptions.blend_upgrade_lifetime_years)
+    biomass = [
+        add_vintage_stock(
+            model, f"blend_biomass_l{j + 1}", years,
+            new=[payload.blend_new_b[:, j] for payload in year_payloads],
+            required=[[payload.blend_layers_b[p][j] for p in range(plant_count)] for payload in year_payloads],
+            life=blend_life, salvage_end_year=end_year,
+        )
+        for j in range(int(year_payloads[0].blend_new_b.shape[1]))
+    ]
+    ammonia = [
+        add_vintage_stock(
+            model, f"blend_ammonia_l{j + 1}", years,
+            new=[payload.blend_new_a[:, j] for payload in year_payloads],
+            required=[[payload.blend_layers_a[p][j] for p in range(plant_count)] for payload in year_payloads],
+            life=blend_life, salvage_end_year=end_year,
+        )
+        for j in range(int(year_payloads[0].blend_new_a.shape[1]))
+    ]
+    industry_ccs, industry_h2 = add_industry_capacity(
+        model, years, [payload.industry for payload in year_payloads], salvage_end_year=end_year
+    )
+    for t, payload in enumerate(year_payloads):
+        payload.ccs_island, payload.air_cooling = islands[t], air[t]
+        payload.biomass_blend = [layer[t] for layer in biomass]
+        payload.ammonia_blend = [layer[t] for layer in ammonia]
+        payload.industry_ccs, payload.industry_h2 = industry_ccs[t], industry_h2[t]
 
 
 def add_capacity_constraints(

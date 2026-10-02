@@ -276,9 +276,9 @@ class OptimizationAssumptions:
     # 内实际承担的 capex 就是资产服役年份内的折旧，这是与 capex 只计一次相一致的唯一核算
     # 方式。搁浅资产核销不计残值（它是损失，不是资产）。寿命：煤电捕集岛 20 a（同
     # `INDUSTRY_CAPTURE_LIFETIME_YEARS`；2026-09-30 起兼作在役年限，到寿命退出）；掺烧燃烧器升级 20 a；空冷 20 a（见上方
-    # `air_retrofit_lifetime_years`）；管道 30 a（`pipeline_lifetime_years`）；重建的厂址
-    # 30 a。这些寿命都是 ⚠ 假设（设定值，无文献）。工业捕集岛的 20 a 有出处（NPC 2019 的工业捕集改造，见
-    # `constants_industry.INDUSTRY_CAPTURE_LIFETIME_YEARS`），煤电捕集岛只是沿用同值，那份出处不含煤电。
+    # `air_retrofit_lifetime_years`；这两项 2026-10-02 起同样兼作在役年限）；管道 30 a（`pipeline_lifetime_years`）；
+    # 重建的厂址 30 a（只作折旧年限：重建机组按设计寿命 40 a 服役，规划期内不到期）。这些寿命都是 ⚠ 假设（设定值，无文献）。
+    # 工业捕集岛的 20 a 有出处（NPC 2019 的工业捕集改造，见 `constants_industry.INDUSTRY_CAPTURE_LIFETIME_YEARS`），煤电捕集岛只是沿用同值，那份出处不含煤电。
     # 设 `end_of_horizon_salvage=False` 只去掉残值项；09-22 以来目标函数还有别的改动（README §0.1），复现不了更早的求解。
     end_of_horizon_salvage: bool = True
     ccs_retrofit_lifetime_years: int = 20

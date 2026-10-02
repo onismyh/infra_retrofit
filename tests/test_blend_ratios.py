@@ -1,6 +1,6 @@
 """连续 hub 下的掺烧比例换算、明细表的空冷运行份额、逐路径减排拆分与逐厂碳成本。
 
-连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level = Σ l·select` 只是档位下标的加权和：
+连续 hub 下一个 hub 可以把不同份额改造到不同档位，`blend_level`（在用的掺烧能力 Σ 档位下标 × 份额）只是档位下标的加权和：
 一半第 1 档、一半第 3 档记作 2，按档位读成 0.25，实际是 0.30。结果表改按约束里的 Σβ_l·z_l 除以
 路径份额换算（`results_plant._blend_ratios`）；逐路径的减排量与捕集量按约束逐项拆分（`results_plant._pathway_split`），
 逐厂相加等于求解器的值；成本表的碳成本与目标函数同式，用求解器的逐厂减排量。求解 toy 的几条
@@ -114,8 +114,8 @@ def test_detail_table_uses_the_effective_ratios() -> None:
 
 
 def test_detail_air_operating_share_leaves_out_the_retire_pathway() -> None:
-    """hub 2 掺氨 0.5 全转空冷，另有 0.3 的空冷份额落在退役路径上（已装存量以内，对用水与成本都没有作用，模型可任取）：
-    运行份额只计前者，已装份额照抄空冷存量。"""
+    """hub 2 掺氨 0.5 全转空冷；退役路径上的空冷份额在求解器里恒为零（2026-10-02 起上界为 0），这里故意给 0.3，
+    运行份额也不计它，在役份额照抄在役的空冷能力。"""
     hubs = _three_hubs()
     n = len(hubs["share"])
     zeros = np.zeros(n)
@@ -162,12 +162,12 @@ def test_pathway_split_charges_each_term_to_its_own_pathway() -> None:
         air_penalty_emissions_matrix=penalty["air_em"], air_penalty_captured_matrix=penalty["air_cap"],
         biomass_penalty_emissions_coeff_per_level=np.full(n, 2e-8),
         beccs_penalty_emissions_coeff_per_level=np.full(n, 1e-8),
-        beccs_penalty_captured_coeff_per_level=np.full(n, 9e-8),
+        beccs_penalty_captured_coeff_per_level=np.full(n, 9e-8), rebuilt_deltas=(),
     ))
+    no_rebuilt = np.zeros((0, n, len(PATHWAYS)))
     table = _build_pathway_table(
         _prepared(n), SCENARIO, 2050, share, np.array([0.0, 0.3]), np.array([0.0, 0.15]), np.array([0.05, 0.0]),
-        year_data=year_data, air_share=air_share,
-        rebuilt_share=np.zeros_like(share), rebuilt_blend_x_share=np.zeros_like(share),
+        year_data=year_data, air_share=air_share, rebuilt_share=no_rebuilt, rebuilt_blend_x_share=no_rebuilt,
     )
     hub0 = table[table["plant_id"] == "P0"].set_index("pathway")
     assert hub0.loc["ccs", "abatement_mt"] == pytest.approx(4.425, rel=1e-9)
@@ -199,14 +199,16 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
             energy_penalty_matrix=zeros_path, air_penalty_cost_matrix=zeros_path, allow_air_cooling_retrofit=False,
+            rebuilt_deltas=(),
         ))
+        no_rebuilt = np.zeros((0, n, len(PATHWAYS)))
         return _build_plant_cost_table(
             _prepared(n), 2040, year_data, share, np.zeros(n),
             # 第 2 个 hub 的减排为负：惩罚燃料使排放高于基线，碳成本随之高于基线排放的碳价。
             plant_reduction_mt=np.array([7.5, -0.2]),
             retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), stranded_by_plant=np.zeros(n),
-            capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=zeros_path,
-            air_share=zeros_path, rebuilt_air_share=zeros_path, bio_penalty_by_plant=np.zeros(n),
+            capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=no_rebuilt,
+            air_share=zeros_path, rebuilt_air_share=no_rebuilt, bio_penalty_by_plant=np.zeros(n),
         )
 
     priced = table(100.0)
@@ -345,17 +347,19 @@ def mixed_partly_expired(tmp_path_factory):
     ("pathway", "power_caps"), [("beccs", {2050: 0.0, 2060: 0.0}), ("ammonia", {2050: 0.75, 2060: 0.6})],
 )
 def test_one_hot_levels_give_the_ratio_of_the_selected_level(tmp_path, pathway, power_caps) -> None:
-    """独热档位（`hub_decisions_continuous=False`）下档位下标是整数，所选档位的比例与 Σβ·z ÷ 份额相同。"""
+    """独热档位（`hub_decisions_continuous=False`）下在用的掺烧能力 ÷ 路径份额是整数档位下标，所选档位的比例与
+    Σβ·z ÷ 份额相同。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
     _, _, _, solution = _solve_blend_toy(tmp_path, _ONLY[pathway], power_caps, continuous=False)
     level_key, levels = ("blend_level_b", LEVELS_B) if pathway == "beccs" else ("blend_level_a", LEVELS_A)
     for ys in solution["year_solutions"].values():
-        assert float(ys["share"][0, PATHWAY_INDEX[pathway]]) > 0.0
+        share = float(ys["share"][0, PATHWAY_INDEX[pathway]])
+        assert share > 0.0
         ratios = _blend_ratios(
             ys["share"], ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             biomass_levels=LEVELS_B, ammonia_levels=LEVELS_A,
         )
-        level = float(ys[level_key][0])
+        level = float(ys[level_key][0]) / share
         assert level == pytest.approx(round(level), abs=1e-4) and 1 <= round(level) <= len(levels)
         by_level = levels[round(level) - 1]
         assert float(ratios[pathway][0]) == pytest.approx(by_level, abs=1e-6)
@@ -398,15 +402,16 @@ def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
             year_data=ys["year_data"], air_share=ys["air_share"],
             rebuilt_share=ys["rebuilt_share"], rebuilt_blend_x_share=ys["rebuilt_blend_x_share"],
         )
-        rebuilt_retrofit += float(ys["rebuilt_share"][:, [PATHWAY_INDEX["ccs"], BIO, BECCS, AMM]].sum())
-        # 重建与未重建两部分各自恰好分摊到各档位上（`rzsum_*`、rz <= z）：Σβ·rz ÷ 重建份额、
-        # (Σβ·z - Σβ·rz) ÷ (份额 - 重建份额) 都落在档位之内。
+        rebuilt_retrofit += float(ys["rebuilt_share"][..., [PATHWAY_INDEX["ccs"], BIO, BECCS, AMM]].sum())
+        # 各类重建部分与未重建部分各自恰好分摊到各档位上（`rzsum_*`、Σ_c rz_c <= z）：Σβ·rz_c ÷ 该类重建份额、
+        # (Σβ·z - Σ_c Σβ·rz_c) ÷ (份额 - Σ_c 重建份额) 都落在档位之内。
         for col, key, levels in (
             (BIO, "biomass", LEVELS_B), (BECCS, "beccs", LEVELS_B), (AMM, "ammonia", LEVELS_A),
         ):
-            rebuilt, rebuilt_xs = ys["rebuilt_share"][:, col], ys["rebuilt_blend_x_share"][:, col]
-            unexpired, unexpired_xs = ys["share"][:, col] - rebuilt, ys[f"{key}_blend_x_share"] - rebuilt_xs
-            for part, part_xs in ((rebuilt, rebuilt_xs), (unexpired, unexpired_xs)):
+            rebuilt, rebuilt_xs = ys["rebuilt_share"][..., col], ys["rebuilt_blend_x_share"][..., col]
+            unexpired = ys["share"][:, col] - rebuilt.sum(axis=0)
+            unexpired_xs = ys[f"{key}_blend_x_share"] - rebuilt_xs.sum(axis=0)
+            for part, part_xs in (*zip(rebuilt, rebuilt_xs, strict=True), (unexpired, unexpired_xs)):
                 on = part > 1e-6
                 raw = part_xs[on] / part[on]
                 assert np.all((raw >= min(levels) - 1e-6) & (raw <= max(levels) + 1e-6)), (year, key, raw)
