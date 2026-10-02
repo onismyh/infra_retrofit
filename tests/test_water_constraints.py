@@ -235,8 +235,12 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
 def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -> None:
     """流域上限绑定时 toy 电厂在运行路径上转空冷。明细表的空冷运行份额是运行路径上空冷份额之和，已装份额是空冷存量；
     2060 年退役份额变大，已装存量（只增不减）高于运行份额。逐路径的减排量与捕集量含空冷背压的排放与捕集，逐厂相加
-    等于求解器的值。"""
-    from coal_retrofit.optimization.results_plant import _build_pathway_table, _build_plant_detail_table
+    等于求解器的值。逐厂成本表的空冷背压燃料费为正，能耗惩罚三列之和等于目标函数的 energy_penalty_cost（不折现）。"""
+    from coal_retrofit.optimization.results_plant import (
+        _build_pathway_table,
+        _build_plant_cost_table,
+        _build_plant_detail_table,
+    )
 
     monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
@@ -265,5 +269,18 @@ def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -
         )
         assert float(pathways["abatement_mt"].sum()) == pytest.approx(float(ys["plant_reduction_mt"][0]), rel=1e-6)
         assert float(pathways["captured_mt"].sum()) == pytest.approx(float(ys["captured_mt_by_plant"][0]), rel=1e-6)
+        cost = _build_plant_cost_table(
+            prepared, year, ys["year_data"], ys["share"], ys["biomass_use_gj"],
+            plant_reduction_mt=ys["plant_reduction_mt"], retrofit_new=ys["retrofit_new"],
+            ccs_om_by_plant=ys["ccs_om_by_plant"], stranded_by_plant=ys["stranded_by_plant"],
+            capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
+            air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
+            bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+        )
+        assert float(cost["air_penalty_cny"].iloc[0]) > 0.0
+        kind, weight = ys["cost_weights"]["energy_penalty_cost"]
+        penalties = cost[["energy_penalty_cny", "air_penalty_cny", "biomass_penalty_cny"]].to_numpy().sum()
+        assert kind == "annual"
+        assert penalties == pytest.approx(ys["cost_breakdown_cny"]["energy_penalty_cost"] / weight, rel=1e-9)
     last = solution["year_solutions"][YEARS[-1]]
     assert float(last["air_installed"][0]) > float(last["air_share"][0, operating].sum()) + 1e-3, "前提：末年运行份额低于已装存量"

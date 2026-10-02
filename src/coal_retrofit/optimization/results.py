@@ -48,8 +48,18 @@ __all__ = [
 ]
 
 
-def _build_cost_breakdown(year: int, breakdown: dict[str, float]) -> pd.DataFrame:
-    return pd.DataFrame([{"year": year, "category": category, "cost_cny": cost} for category, cost in breakdown.items()])
+def _build_cost_breakdown(
+    year: int, breakdown: dict[str, float], weights: dict[str, tuple[str, float]]
+) -> pd.DataFrame:
+    """每个成本类别一行。`cost_cny` 是进目标函数的折现值，各年各类相加即目标函数值；`cost_undiscounted_cny` 是除以
+    折现权重（`YearPayload.cost_weights`）后本年不折现的值：`kind` 为 annual 的是一年的费用，one_off 是本年的一次性
+    支出，horizon_end 是期末（最后一个规划年 + 它的区间长度）的残值抵扣。后两列 2026-10-02 起有。
+    """
+    return pd.DataFrame([
+        {"year": year, "category": category, "cost_cny": cost, "kind": weights[category][0],
+         "cost_undiscounted_cny": cost / weights[category][1]}
+        for category, cost in breakdown.items()
+    ])
 
 
 def _build_sanity_checks(

@@ -10,6 +10,7 @@ from ._shared import (
     _expr_value,
     _var_scalar_value,
     _var_value,
+    gp,
 )
 from .industry_matrices import CCS, H2
 from .model_index import ModelIndex
@@ -59,11 +60,15 @@ def empty_year_solutions(
             "beccs_blend_x_share": np.zeros(plant_count),
             "ammonia_blend_x_share": np.zeros(plant_count),
             "rebuilt_share": np.zeros((plant_count, len(PATHWAYS))),
+            "rebuilt_air_share": np.zeros((plant_count, len(PATHWAYS))),
             "rebuilt_blend_x_share": np.zeros((plant_count, len(PATHWAYS))),
+            "bio_penalty_by_plant": np.zeros(plant_count),
             "total_reduction_mt": 0.0,
             "co2_flow_fwd": np.zeros(edge_count),
             "co2_flow_bwd": np.zeros(edge_count),
             "cost_breakdown_cny": {k: 0.0 for k in list(year_payloads[0].cost_exprs.keys())},
+            "cost_weights": dict(p.cost_weights),
+            "salvage_ledger": [],
             "slacks": {
                 "target_shortfall_mt": 0.0,
                 "target_shortfall_by_group": {},
@@ -147,10 +152,14 @@ def extract_year_solutions(
             "biomass_blend_x_share": np.array([_expr_value(e) for e in payload.biomass_blend_x_share], dtype=np.float64),
             "beccs_blend_x_share": np.array([_expr_value(e) for e in payload.beccs_blend_x_share], dtype=np.float64),
             "ammonia_blend_x_share": np.array([_expr_value(e) for e in payload.ammonia_blend_x_share], dtype=np.float64),
-            "rebuilt_share": _rebuilt_values(payload, plant_count),
+            "rebuilt_share": _rebuilt_values(payload.rebuilt_share, plant_count),
+            "rebuilt_air_share": _rebuilt_values(payload.rebuilt_air_share, plant_count),
             "rebuilt_blend_x_share": _rebuilt_blend_values(payload, plant_count),
+            "bio_penalty_by_plant": _values(payload.bio_penalty_by_plant),
             "total_reduction_mt": _expr_value(payload.total_reduction_mt),
             "cost_breakdown_cny": {category: _expr_value(expr) * _COST_SCALE for category, expr in payload.cost_exprs.items()},
+            "cost_weights": dict(payload.cost_weights),
+            "salvage_ledger": [(name, _expr_value(expr), life) for name, expr, life in payload.salvage_ledger],
             "slacks": {
                 "target_shortfall_mt": _var_scalar_value(payload.target_shortfall_mt),
                 "target_shortfall_by_group": {
@@ -180,14 +189,14 @@ def extract_year_solutions(
 
 
 def _values(exprs: list[GrbExpr]) -> np.ndarray:
-    """逐单元表达式（分代能力 `vintage.StockYear`、逐厂搁浅资产）的解值；常数 0.0 读作 0。"""
+    """逐单元表达式（分代能力 `vintage.StockYear`、逐厂搁浅资产与生物质惩罚）的解值；常数 0.0 读作 0。"""
     return np.array([_expr_value(expr) for expr in exprs], dtype=np.float64)
 
 
-def _rebuilt_values(payload: YearPayload, plant_count: int) -> np.ndarray:
-    """部分到期 hub 各路径份额里的重建部分（`constraints._add_rebuilt_split`），(plant_count, len(PATHWAYS))。"""
+def _rebuilt_values(parts: dict[int, dict[int, gp.Var]], plant_count: int) -> np.ndarray:
+    """部分到期 hub 各路径份额或空冷份额里的重建部分（`constraints._add_rebuilt_split`），(plant_count, len(PATHWAYS))。"""
     out = np.zeros((plant_count, len(PATHWAYS)))
-    for p, part in payload.rebuilt_share.items():
+    for p, part in parts.items():
         for k, var in part.items():
             out[p, k] = _var_scalar_value(var)
     return out

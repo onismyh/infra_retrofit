@@ -33,7 +33,7 @@ def add_year_costs(
     edge_count: int,
     storage_count: int,
 ) -> None:
-    """写入 payload 的 `cost_exprs`、`salvage_ledger`、`objective_expr`。
+    """写入 payload 的 `cost_exprs`、`cost_weights`、`salvage_ledger`、`objective_expr`。
 
     年度项（运行、资源、运输封存、松弛）乘折现 x 年金权重，一次性 capex 只乘折现。
     `cost_exprs` 的键序即目标函数的求和顺序；辅助变量与约束的加入顺序决定模型指纹，两者都不要调换。
@@ -81,6 +81,12 @@ def add_year_costs(
         ("industry_ccs_capex", ind_ccs_capex, int(ind_lives[_IND_CCS])),
         ("industry_h2_capex", ind_h2_capex, int(ind_lives[_IND_H2])),
     ]
+    # 上面各项乘的折现权重，结果表除以它得本年不折现的值（`results._build_cost_breakdown`）。
+    payload.cost_weights = {
+        **{name: ("annual", df * interval_weight) for name in (*annual, "slack_penalty", "industry_cost")},
+        **{name: ("one_off", df) for name in (*one_off, "industry_capex")},
+    }
+    assert payload.cost_weights.keys() == payload.cost_exprs.keys()
     payload.objective_expr = gp.quicksum(list(payload.cost_exprs.values()))
 
 
@@ -136,7 +142,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             for p in range(plant_count) for k in range(len(PATHWAYS))
         )
     # 上面三项的系数按未重建部分的毛热耗算；部分到期 hub 的重建部分再加两部分之差 x 重建部分的份额
-    # （`constraints._add_rebuilt_split`）。掺烧惩罚的差已在 `total_bio_penalty` 里。
+    # （`constraints._add_rebuilt_split`）。掺烧惩罚的差已在 `bio_penalty_by_plant` 里。
     delta = year_data.rebuilt_delta
     baseline_net = baseline_net + gp.quicksum(
         _rebuilt_dot(delta.baseline_net_matrix[p], part) for p, part in payload.rebuilt_share.items()
@@ -153,7 +159,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
         "baseline_net_cost": baseline_net,
         "carbon_cost": carbon_cost,
         "coal_savings_credit": -coal_savings,
-        "energy_penalty_cost": energy_penalty_cost + payload.total_bio_penalty,
+        "energy_penalty_cost": energy_penalty_cost + gp.quicksum(payload.bio_penalty_by_plant),
         "ccs_om_cost": ccs_om_cost,
         "incremental_om": incremental_om,
     }

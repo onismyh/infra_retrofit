@@ -244,6 +244,33 @@
 > 重建增量的辅助变量与约束随有到期装机的 hub 增多各多 220 个，部分到期 hub 加重建上限约束 513 条；整数变量不变。
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）；
 > 新旧结果的 `digest_plants` 不同，`check_run_provenance.py --pair` 判不过，改后另有 `digest_plants_unit_hub`。
+>
+> 2026-10-02 起结果目录多一个参照 ChinaCCS.xlsm 版式的结果工作簿（作者批准 2026-10-02；`docs/方法论.md` §9.4）。每个情景写
+> `<树>/results/<结果名>.json` 与 `<树>/results/<结果名>/` 下的 15 张 CSV（`pathway_shares`、`province_pathways`、`plant_detail`、
+> `industry_detail`、`network_edges`、`storage_utilization`、`resource_use`、`biomass_flows`、`ammonia_flows`、`water_flows`、
+> `co2_flow_direction`、`plant_cost`、`slack_detail`、`cost_breakdown`、`sanity_checks`）和 `ccs_results.xlsx`：
+> - `ccs_results.xlsx`（`optimization/results_workbook.py`）：表名与行列结构参照 ChinaCCS 的结果表，数字全部取自本次求解，各表口径写在
+>   它的「说明」表。源（`Source_Results_<年>`，分部门、分区、分省）、汇（`Sink_Results`）、源省到汇省的输送矩阵（按节点充分混合
+>   追踪，行和 = 该省捕集量、列和 = 该省或海上的封存量）、各源各汇的 `*_stock`、管道（各管径档的在役根数、管长、分区）、
+>   成本（各年不折现的捕集、运输、封存与 EOR 抵扣，单位百万元；全期每吨成本 = 成本现值 ÷ 捕集量现值）、`objective`，另加煤电
+>   路径份额与空冷改造份额（占全厂）`Plant_Pathways`、工业路线份额 `Industry_Routes`。分区是 ChinaCCS 的六大区（西藏归西南）
+>   加 7 海上、8 跨地理分区（ChinaCCS 没有海上区，跨地理分区记 7）。不出注入井数表与回收期（模型没有单井注入率；CCS 链条除
+>   EOR 抵扣外没有收入，售电收入计在煤电的基线净成本里），也不出模型里没有的部门（炼化、现代煤化工、天然气、液化、烯烃、
+>   乙二醇）的 `CO2_capture_*_stock`。工作簿出错只记日志并删掉工作簿（`--force` 重跑时上一次的也删掉；删不掉，如 Windows 上
+>   在 Excel 里开着，也只记日志），CSV 与 result.json 照写。
+> - 管网节点的省（`optimization/results_regions.py`）：源取源的省，本情景纳入的海上封存汇记 Offshore，其余取输入表的省名；都没有的
+>   （ST 输入 1 052 个节点里 305 个：走廊节点 227 个、没填省名的陆上封存汇 78 个）按经纬度落在 `data/ChinaMap/provinces.shp` 的
+>   哪个省，落在省界多边形之外的记 Offshore（其中 17 个走廊节点，在海上或近岸）。要落点时缺这个图层（新克隆没建 `_indtree/data`
+>   就是这样，见 `_indtree/README.md`），MIP 求解之前就报错（`warm_start = "lp_relax"` 的情景在热启动第 1 步之后）。
+> - CSV 只加列：`cost_breakdown.csv` 加 `kind`（annual / one_off / horizon_end）与 `cost_undiscounted_cny`（`cost_cny` 除以折现
+>   权重，即本年不折现的值；`salvage_credit` 记在最后一个规划年，它的不折现值是期末 2070 年的残值）；`plant_cost.csv` 加
+>   `air_penalty_cny`、`biomass_penalty_cny`（空冷背压与生物质掺烧多烧的煤，与 `energy_penalty_cny`（CCS 与 BECCS 额外燃料）三列逐厂相加
+>   即该年目标函数 `energy_penalty_cost` 的不折现值；`total_plant_cost_cny` 口径不变）；
+>   `industry_detail.csv` 加 `cost_capital_ccs_cny`、`cost_capital_h2_cny`、`cost_annual_ccs_cny`、`cost_annual_h2_cny`（两两相加即
+>   `cost_capital_cny`、`cost_annual_cny`）；`network_edges.csv` 加 `pipes_in_service_by_tier`（在役根数，写法同 `pipes_new_by_tier`）
+>   与 `from_province`、`to_province`。
+>
+> 模型、目标值与原有各列不变；此前落盘的结果没有这些列和工作簿，重解后才有。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -253,7 +280,7 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:199`（`_one_off_capex`）、`optimization/model_year.py:185`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:205`（`_one_off_capex`）、`optimization/model_year.py:185`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:54-75`、`optimization/model_industry.py:177` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:43-44`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
 | 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:70-80`、`optimization/industry_matrices.py:184`、`:219-222` |
@@ -302,7 +329,7 @@
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:117` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:173-177`）。
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:179-183`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
    煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:124-133`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；

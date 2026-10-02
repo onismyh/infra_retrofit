@@ -1,6 +1,8 @@
 """CO2 管网与封存结果表：逐边容量与流量、逐汇注入与剩余容量、逐边流向。"""
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 import pandas as pd
 
@@ -9,14 +11,14 @@ from .scenario import OptimizationAssumptions
 
 
 def _alive_edge_added_stock(
-    new_cap_by_year: dict[int, np.ndarray], year: int, lifetime_years: int, edge_count: int
+    new_cap_by_year: dict[int, np.ndarray], year: int, lifetime_years: int, shape: int | tuple[int, ...]
 ) -> np.ndarray:
-    """`year` 年仍在寿命内的往期新增管道容量（Mtpa），不含 `year` 本年的新增。
+    """`year` 年仍在寿命内的往期新增管道容量（Mtpa），不含 `year` 本年的新增；*shape* 是每年数组的形状。
 
     与求解器 `edge_capacity_limit` 同口径：`year - 建成年 < lifetime_years` 的管才在役。到寿命的管
-    不再计入存量，它在原址重建的容量记在重建那一年的新增里。
+    不再计入存量，它在原址重建的容量记在重建那一年的新增里。逐边逐管径档的根数同法累计（`runner`）。
     """
-    stock = np.zeros(edge_count, dtype=np.float64)
+    stock = np.zeros(shape, dtype=np.float64)
     for built_year, new_cap in new_cap_by_year.items():
         if int(built_year) < int(year) and int(year) - int(built_year) < int(lifetime_years):
             stock += np.asarray(new_cap, dtype=np.float64)
@@ -33,7 +35,14 @@ def _build_edge_table(
     assumptions: OptimizationAssumptions,
     pipe_count: np.ndarray,
     pipe_tiers: tuple[float, ...],
+    pipes_in_service: np.ndarray,
+    node_province: Mapping[str, str],
 ) -> pd.DataFrame:
+    """逐边一行。`pipes_new_by_tier` 是本年按管径档铺设的整根管数，`pipes_in_service_by_tier`（2026-10-02 起）是本年
+    在役的根数（寿命内的往年新铺加本年新铺，`_alive_edge_added_stock`），写法同为 "根数x档容量"，如 "1x2|1x20"。
+    在役根数乘档容量的合计 = `total_capacity_mtpa` 减既有走廊容量。`from_province`、`to_province`（2026-10-02 起）是
+    起止节点的省（`results_regions.node_provinces`，海上记 Offshore）。
+    """
     edges = prepared.network.edges.copy()
     edges["year"] = year
     edges["available_stock_before_mtpa"] = (
@@ -46,11 +55,10 @@ def _build_edge_table(
     edges["total_capacity_mtpa"] = edges["available_stock_before_mtpa"] + edges["new_capacity_mtpa"]
     edges["edge_active"] = ((edges["edge_flow_mtpa"] > 1e-6) | (edges["new_capacity_mtpa"] > 1e-6)).astype(int)
     # 本年按管径档铺设的整根管数，例如 "1x2|1x20"——即实际建成的内容。
-    counts = np.rint(np.asarray(pipe_count, dtype=np.float64)).astype(int)
-    edges["pipes_new_by_tier"] = [
-        "|".join(f"{int(counts[e, k])}x{pipe_tiers[k]:g}" for k in range(len(pipe_tiers)) if counts[e, k] > 0)
-        for e in range(len(edges))
-    ]
+    edges["pipes_new_by_tier"] = _tier_strings(pipe_count, pipe_tiers)
+    edges["pipes_in_service_by_tier"] = _tier_strings(pipes_in_service, pipe_tiers)
+    edges["from_province"] = edges["from_node_id"].astype(str).map(node_province)
+    edges["to_province"] = edges["to_node_id"].astype(str).map(node_province)
     return edges[
         [
             "year",
@@ -70,7 +78,19 @@ def _build_edge_table(
             "new_capacity_mtpa",
             "total_capacity_mtpa",
             "pipes_new_by_tier",
+            "pipes_in_service_by_tier",
+            "from_province",
+            "to_province",
         ]
+    ]
+
+
+def _tier_strings(counts: np.ndarray, pipe_tiers: tuple[float, ...]) -> list[str]:
+    """逐边的 "根数x档容量" 串，档之间用 | 隔开，没有管的边为空串；根数按最近整数取（求解器的整数变量带容差）。"""
+    whole = np.rint(np.asarray(counts, dtype=np.float64)).astype(int)
+    return [
+        "|".join(f"{int(row[k])}x{pipe_tiers[k]:g}" for k in range(len(pipe_tiers)) if row[k] > 0)
+        for row in whole
     ]
 
 

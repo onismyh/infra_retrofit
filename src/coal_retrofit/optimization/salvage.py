@@ -84,6 +84,8 @@ def _add_salvage_credit(
         payload.cost_exprs["salvage_credit"] = 0.0
     end_year = horizon_end_year(year_payloads)
     df_end = _discount_factor(end_year, scenario.discount_base_year, scenario.discount_rate)
+    for payload in year_payloads:
+        payload.cost_weights["salvage_credit"] = ("horizon_end", df_end)
     terms = []
     for payload in year_payloads:
         build_year = int(payload.year)
