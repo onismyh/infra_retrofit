@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from ..constants import GJ_PER_MWH
 from ._shared import PATHWAY_INDEX, PreparedInputs
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 
@@ -18,7 +19,11 @@ def _plant_operating_matrices(
     assumptions: OptimizationAssumptions,
     year: int,
 ) -> dict[str, Any]:
-    """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex、搁浅资产。"""
+    """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex、搁浅资产。
+
+    随毛热耗变的系数（`by_heat_rate`）按未重建部分的毛热耗算；部分到期 hub 上原址重建部分的毛热耗不同，两部分算出的
+    系数之差放在 `rebuilt_delta`，乘重建部分的份额加进约束与成本（`constraints._add_rebuilt_split`）。
+    """
     # 本年利用小时：`annual_generation_mwh` 是当前省级统计，按情景小时轨迹逐年缩放，
     # 发电、基线排放与每 MWh 成本同步移动。
     fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
@@ -35,17 +40,14 @@ def _plant_operating_matrices(
         generation_retrofit,           # beccs
         generation_retrofit,           # ammonia
     ])
-    design_retirement_year = prepared.plants["retirement_year"].astype(int).to_numpy()
-    # 到期后原址重建的机组按 rebuild_efficiency（超超临界）运行，热耗与排放强度按效率比缩放。
-    eff_ratio = np.where(
-        year >= design_retirement_year,
-        assumptions.coal_plant_base_efficiency / max(float(scenario.rebuild_efficiency), 1e-9),
-        1.0,
-    )
-    heat_rate_eff = assumptions.heat_rate_gj_per_mwh * eff_ratio
-    # 三个排放基数：基线（退役避免量 + 目标分母）、运行（效率修正）、改造（效率修正 x CF 提升）。
-    emissions_operating_mt = emissions_mt * eff_ratio
-    emissions_retrofit_mt = emissions_operating_mt * scenario.retrofit_cf_boost
+    # hub 毛热耗（基线排放按它算，`data_prep._prepare_plants`）与两部分的毛热耗（`data_prep._with_expiry`）：
+    # 未重建部分（未到期机组；全部到期的 hub 取重建热耗）与原址重建部分（到期机组逐台 min(机组毛热耗,
+    # 3.6 / rebuild_efficiency，空冷机组加 +15 g/kWh) 按装机加权）。2026-10-02 前全国一个热耗 8.5714，整个 hub 自
+    # `retirement_year` 起乘 0.42 / rebuild_efficiency，不论到期装机重建还是退役。
+    hub_heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy()
+    heat_rate_unexpired = prepared.plants[f"heat_rate_unexpired_{year}"].astype(float).to_numpy()
+    heat_rate_rebuilt = prepared.plants[f"heat_rate_rebuilt_{year}"].astype(float).to_numpy()
+    expired_share = prepared.plants[f"expired_share_{year}"].astype(float).to_numpy()
     # 成本基数：退役列保留基线发电量（退役成本按原发电量计），物理量用 generation_by_pathway（退役列为零）。
     generation_cost_basis = generation_by_pathway.copy()
     generation_cost_basis[:, PATHWAY_INDEX["retire"]] = generation
@@ -62,47 +64,54 @@ def _plant_operating_matrices(
         ],
         dtype=np.float64,
     )
-    # 能耗惩罚（效率损失 → 多烧煤）：CCS 项只随份额变；生物质项随掺烧档位变，在 constraints 里 McCormick 线性化。
-    eta_coal = assumptions.coal_plant_base_efficiency
     coal_price_per_plant = np.array([
         assumptions.province_coal_cost(str(prov))
         for prov in prepared.plants["province_name"]
     ], dtype=np.float64)
-    # CCS 能耗惩罚直接以单位出力的额外燃料比表示，逐年下降：额外煤成本 = ratio(year) x hr_eff x 煤价 [CNY/MWh]
     eps_ratio_ccs = assumptions.ccs_energy_penalty_ratio(year)
-    ccs_penalty_per_mwh_per_plant = eps_ratio_ccs * heat_rate_eff * coal_price_per_plant
     energy_penalty_per_pathway = np.array([0.0, 0.0, 1.0, 0.0, 1.0, 0.0], dtype=np.float64)
-    energy_penalty_matrix = generation_cost_basis * (ccs_penalty_per_mwh_per_plant[:, None] * energy_penalty_per_pathway[None, :])
-    # 生物质档位效率惩罚系数：penalty = G_p x β_b x (ε_per_ratio / η) x hr_eff x 煤价_p
-    biomass_penalty_coeff_per_level = (
-        assumptions.biomass_efficiency_penalty_per_ratio / eta_coal * heat_rate_eff * coal_price_per_plant
-    )
-
-    # 能耗惩罚的排放（Mt）：补效率损失多烧的煤在同一锅炉燃烧，经同一捕集装置，只有未捕集份额排放
-    # （Fan et al. 2023 Nat Clim Change SI eq. S42）；捕集份额是真实流量，计入捕集量。
     uncaptured = 1.0 - float(scenario.capture_rate)
-    emission_factor_t_per_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
-    ccs_penalty_emissions_per_mwh_per_plant = (
-        eps_ratio_ccs * heat_rate_eff * emission_factor_t_per_gj * uncaptured / 1_000_000.0
-    )
-    ccs_penalty_emissions_matrix = (
-        generation_cost_basis
-        * (ccs_penalty_emissions_per_mwh_per_plant[:, None] * energy_penalty_per_pathway[None, :])
-    )
-    ccs_penalty_captured_matrix = (
-        generation_cost_basis
-        * (eps_ratio_ccs * heat_rate_eff * emission_factor_t_per_gj * float(scenario.capture_rate)
-           / 1_000_000.0)[:, None]
-        * energy_penalty_per_pathway[None, :]
-    )
-    # 生物质掺烧的惩罚燃料：纯掺烧路径全部排放，BECCS 按 capture_rate 捕集。
-    biomass_penalty_emissions_coeff_per_level = (
-        assumptions.biomass_efficiency_penalty_per_ratio / eta_coal * heat_rate_eff * emission_factor_t_per_gj / 1_000_000.0
-    )
-    beccs_penalty_emissions_coeff_per_level = biomass_penalty_emissions_coeff_per_level * uncaptured
-    beccs_penalty_captured_coeff_per_level = (
-        biomass_penalty_emissions_coeff_per_level * float(scenario.capture_rate)
-    )
+    emission_factor_t_per_gj = assumptions.coal_emission_factor_t_per_gj
+    elec_price_year = scenario.electricity_price_for_year(year)
+
+    def by_heat_rate(heat_rate: np.ndarray) -> dict[str, np.ndarray]:
+        """按给定毛热耗算的系数，键同 `YearData` 的字段。效率损失折算燃料按这部分自己的效率 η = 3.6 / 毛热耗。"""
+        eta = GJ_PER_MWH / heat_rate
+        # 两个排放基数（基线排放之外）：运行（基线排放按毛热耗 / hub 毛热耗缩放）、改造（再乘 CF 提升）。
+        emissions_operating_mt = emissions_mt * (heat_rate / hub_heat_rate)
+        # 能耗惩罚（效率损失 -> 多烧煤）：CCS 项只随份额变；生物质项随掺烧档位变，在 constraints 里 McCormick 线性化。
+        # CCS 能耗惩罚直接以单位出力的额外燃料比表示，逐年下降：额外燃料 = ratio(year) x 毛热耗 [GJ/MWh]。
+        ccs_penalty_fuel = eps_ratio_ccs * heat_rate
+        # 生物质档位效率惩罚：每单位掺烧比例多烧 (ε_per_ratio / η) x 毛热耗 [GJ/MWh]，乘 G_p x β_b 即惩罚燃料。
+        biomass_penalty_fuel = assumptions.biomass_efficiency_penalty_per_ratio / eta * heat_rate
+        # 能耗惩罚的排放（Mt）：补效率损失多烧的煤在同一锅炉燃烧，经同一捕集装置，只有未捕集份额排放
+        # （Fan et al. 2023 Nat Clim Change SI eq. S42）；捕集份额是真实流量，计入捕集量。
+        ccs_penalty_mt = generation_cost_basis * (
+            (ccs_penalty_fuel * emission_factor_t_per_gj / 1_000_000.0)[:, None] * energy_penalty_per_pathway[None, :]
+        )
+        # 生物质掺烧的惩罚燃料：纯掺烧路径全部排放，BECCS 按 capture_rate 捕集。
+        biomass_penalty_emissions = biomass_penalty_fuel * emission_factor_t_per_gj / 1_000_000.0
+        return {
+            "heat_rate_eff": heat_rate,
+            "emissions_operating_mt": emissions_operating_mt,
+            "emissions_retrofit_mt": emissions_operating_mt * scenario.retrofit_cf_boost,
+            "energy_penalty_matrix": generation_cost_basis * (
+                (ccs_penalty_fuel * coal_price_per_plant)[:, None] * energy_penalty_per_pathway[None, :]
+            ),
+            "biomass_penalty_coeff_per_level": biomass_penalty_fuel * coal_price_per_plant,
+            "ccs_penalty_emissions_matrix": ccs_penalty_mt * uncaptured,
+            "ccs_penalty_captured_matrix": ccs_penalty_mt * float(scenario.capture_rate),
+            "biomass_penalty_emissions_coeff_per_level": biomass_penalty_emissions,
+            "beccs_penalty_emissions_coeff_per_level": biomass_penalty_emissions * uncaptured,
+            "beccs_penalty_captured_coeff_per_level": biomass_penalty_emissions * float(scenario.capture_rate),
+            # 基线净运行成本（煤 + 运维 - 电）：未改造列按基线发电量，改造列含 CF 提升，退役列为零。
+            "baseline_net_matrix": generation_by_pathway * (
+                heat_rate * coal_price_per_plant + assumptions.baseline_om_cost_cny_per_mwh - elec_price_year
+            )[:, None],
+        }
+
+    unexpired_terms = by_heat_rate(heat_rate_unexpired)
+    rebuilt_terms = by_heat_rate(heat_rate_rebuilt)
 
     # CCS/BECCS 改造 capex（含学习曲线）。BECCS 的捕集岛就是 CCS 捕集岛，同价；生物质改造
     # 另由掺烧档位 capex 计（`constraints._build_blend_upgrade_capex`）。
@@ -122,19 +131,16 @@ def _plant_operating_matrices(
 
     fixed_cost_matrix = generation_cost_basis * pathway_fixed_costs[None, :]
 
-    # 基线净运行成本（煤 + 运维 - 电）：未改造列按基线发电量，改造列含 CF 提升，退役列为零。
-    elec_price_year = scenario.electricity_price_for_year(year)
-    net_operating_cost_per_mwh = (
-        heat_rate_eff * coal_price_per_plant
-        + assumptions.baseline_om_cost_cny_per_mwh
-        - elec_price_year
+    # 搁浅资产（每单位新增提前退役，`retirement.retirement_flows`）：新建成本 x 未到期装机的平均剩余账面份额
+    # ℓ / (1 - f)。ℓ 是全 hub 的剩余账面份额（到期装机为 0，`data_prep._with_expiry`）；全部到期的 hub 为零，
+    # 到期退役不罚。2026-10-02 前按 hub 的剩余寿命份额 min(1, max(0, retirement_year - 年) / 20) 计在退役份额的
+    # 增量上（整数 hub 与现在的 ℓ 相同）。
+    fraction_remaining = prepared.plants[f"remaining_life_fraction_{year}"].astype(float).to_numpy()
+    unexpired = 1.0 - expired_share
+    book_of_unexpired = np.divide(
+        fraction_remaining, unexpired, out=np.zeros_like(unexpired), where=unexpired > 0.0
     )
-    baseline_net_matrix = generation_by_pathway * net_operating_cost_per_mwh[:, None]
-
-    # 搁浅资产：按剩余设计寿命占会计寿命的比例计。
-    remaining_life = np.maximum(0, design_retirement_year - year)
-    fraction_remaining = np.minimum(1.0, remaining_life / max(1, assumptions.stranded_asset_accounting_life))
-    stranded_per_plant = capacity_mw * assumptions.stranded_asset_base_cny_per_kw * 1000.0 * fraction_remaining
+    stranded_per_plant = capacity_mw * assumptions.stranded_asset_base_cny_per_kw * 1000.0 * book_of_unexpired
 
     return {
         "hours_scale": hours_scale,
@@ -142,22 +148,16 @@ def _plant_operating_matrices(
         "generation_by_pathway": generation_by_pathway,
         "generation_cost_basis": generation_cost_basis,
         "emissions_mt": emissions_mt,
-        "emissions_operating_mt": emissions_operating_mt,
-        "emissions_retrofit_mt": emissions_retrofit_mt,
-        "heat_rate_eff": heat_rate_eff,
+        **unexpired_terms,
+        "expired_share": expired_share,
         "capacity_mw": capacity_mw,
         "coal_price_per_plant": coal_price_per_plant,
         "fixed_cost_matrix": fixed_cost_matrix,
-        "energy_penalty_matrix": energy_penalty_matrix,
-        "biomass_penalty_coeff_per_level": biomass_penalty_coeff_per_level,
-        "ccs_penalty_emissions_matrix": ccs_penalty_emissions_matrix,
-        "ccs_penalty_captured_matrix": ccs_penalty_captured_matrix,
-        "biomass_penalty_emissions_coeff_per_level": biomass_penalty_emissions_coeff_per_level,
-        "beccs_penalty_emissions_coeff_per_level": beccs_penalty_emissions_coeff_per_level,
-        "beccs_penalty_captured_coeff_per_level": beccs_penalty_captured_coeff_per_level,
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
-        "baseline_net_matrix": baseline_net_matrix,
         "stranded_per_plant": stranded_per_plant,
+        "heat_rate_rebuilt": heat_rate_rebuilt,
+        # f = 0 或 1 的 hub 两部分毛热耗相同，差恰为零。
+        "rebuilt_delta": {name: rebuilt_terms[name] - value for name, value in unexpired_terms.items()},
     }
 
 
@@ -206,10 +206,10 @@ def _air_cooling_matrices(
 
     `air_share` 是按全空冷强度计价的发电份额，驱到 1 只转换仍湿冷的部分（基线强度已混入现有空冷），
     所以 capex 与背压惩罚都乘 still_wet；否则 87% 已空冷的宁夏 hub 会按全厂重建收费。
+    燃料成本按未重建部分的毛热耗算，重建部分与它之差另给（`air_penalty_cost_rebuilt_delta`，并入 `RebuiltDelta`）。
     """
     generation_by_pathway = plant["generation_by_pathway"]
     generation_cost_basis = plant["generation_cost_basis"]
-    heat_rate_eff = plant["heat_rate_eff"]
     coal_price_per_plant = plant["coal_price_per_plant"]
     capacity_mw = plant["capacity_mw"]
 
@@ -223,18 +223,17 @@ def _air_cooling_matrices(
     air_retrofit_capex_per_plant = (
         capacity_mw * 1000.0 * float(assumptions.air_retrofit_capex_cny_per_kw) * still_wet
     )
-    # 空冷背压升高：每 MWh 多烧煤、多排 CO2，按本厂基线排放比例计。
-    penalty_ratio = float(assumptions.air_retrofit_efficiency_penalty_pp) / max(
-        1e-6, float(assumptions.coal_plant_base_efficiency)
-    )
+    # 空冷背压升高：效率降 pp 个百分点，每 MWh 多烧 (pp / η) x 毛热耗的煤（η = 3.6 / 毛热耗）。多排的 CO2 按 hub 毛热耗计，
+    # 不随重建变；下面的燃料成本按各部分自己的毛热耗计（docs/参数调研_20261001.md §4 第 15 条，作者决定 2026-10-02 维持）。
+    heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy()
+    penalty_pp = float(assumptions.air_retrofit_efficiency_penalty_pp)
+    penalty_ratio = penalty_pp / (GJ_PER_MWH / heat_rate)
     air_penalty_gross_matrix = (
         generation_by_pathway
-        * assumptions.coal_emission_factor_t_per_mwh / 1_000_000.0
-        * penalty_ratio
-        * still_wet[:, None]
+        * (heat_rate * assumptions.coal_emission_factor_t_per_gj / 1_000_000.0 * penalty_ratio * still_wet)[:, None]
     )
     air_penalty_gross_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
-    # 同一锅炉同一捕集装置：捕集路径上背压惩罚燃料按 (1-η) 排放、按 η 捕集，与 CCS 能耗惩罚一致。
+    # 同一锅炉同一捕集装置：捕集路径上背压惩罚燃料按 (1 − 捕集率) 排放、按捕集率捕集，与 CCS 能耗惩罚一致。
     capture_pathway_mask = np.zeros(len(PATHWAYS), dtype=np.float64)
     capture_pathway_mask[[PATHWAY_INDEX["ccs"], PATHWAY_INDEX["beccs"]]] = 1.0
     air_penalty_emissions_matrix = air_penalty_gross_matrix * (
@@ -244,16 +243,21 @@ def _air_cooling_matrices(
         air_penalty_gross_matrix * capture_pathway_mask[None, :] * float(scenario.capture_rate)
     )
     # 多烧的煤也要买（只计碳价会低估约 17%）。
-    air_penalty_cost_matrix = (
-        generation_cost_basis
-        * (penalty_ratio * heat_rate_eff * coal_price_per_plant)[:, None]
-        * still_wet[:, None]
-    )
-    air_penalty_cost_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
+    def penalty_cost(part_heat_rate: np.ndarray) -> np.ndarray:
+        cost = (
+            generation_cost_basis
+            * (penalty_pp / (GJ_PER_MWH / part_heat_rate) * part_heat_rate * coal_price_per_plant)[:, None]
+            * still_wet[:, None]
+        )
+        cost[:, PATHWAY_INDEX["retire"]] = 0.0
+        return cost
+
+    air_penalty_cost_matrix = penalty_cost(plant["heat_rate_eff"])
     return {
         "air_retrofit_capex_per_plant": air_retrofit_capex_per_plant,
         "air_penalty_emissions_matrix": air_penalty_emissions_matrix,
         "air_penalty_captured_matrix": air_penalty_captured_matrix,
         "air_penalty_cost_matrix": air_penalty_cost_matrix,
+        "air_penalty_cost_rebuilt_delta": penalty_cost(plant["heat_rate_rebuilt"]) - air_penalty_cost_matrix,
         "allow_air_cooling_retrofit": bool(assumptions.allow_air_cooling_retrofit),
     }

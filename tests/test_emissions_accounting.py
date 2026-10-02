@@ -46,7 +46,7 @@ def test_pathway_split_unabated_uses_the_operating_emissions() -> None:
     ))
     table = _build_pathway_table(
         _prepared(n), SCENARIO, 2050, share, np.zeros(n), np.zeros(n), np.zeros(n),
-        year_data=year_data, air_share=zeros_k,
+        year_data=year_data, air_share=zeros_k, rebuilt_share=zeros_k, rebuilt_blend_x_share=zeros_k,
     ).set_index("pathway")
     assert table.loc["unabated", "abatement_mt"] == pytest.approx(0.6, rel=1e-12)
     assert table.loc["retire", "abatement_mt"] == pytest.approx(4.0, rel=1e-12)

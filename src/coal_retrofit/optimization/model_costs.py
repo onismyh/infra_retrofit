@@ -2,7 +2,7 @@
 
 成本口径（作者决定 2026-09-22）：改造 capex 一次性计 + 固定运维 + 能耗按模型自身煤价电价，期末对未折旧 capex
 计残值（`salvage.py`）。不用平准化每吨成本。捕集岛与工业路线能力的 capex 计在本年新建量上，按建设年分代、到寿命
-退出（`vintage`，2026-09-30 起）；掺烧升级、空冷、原址重建与搁浅资产计在存量增量上。
+退出（`vintage`，2026-09-30 起）；掺烧升级、空冷与原址重建计在存量增量上，搁浅资产计在新增提前退役上（`retirement`）。
 """
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ import numpy as np
 
 from ._shared import (
     _COST_SCALE,
-    PATHWAY_INDEX,
     PreparedInputs,
     _discount_factor,
     _year_objective_weight,
     gp,
 )
-from .constraints import _build_air_retrofit_capex, _build_blend_upgrade_capex
+from .constraints import _build_air_retrofit_capex, _build_blend_upgrade_capex, _rebuilt_dot
+from .retirement import add_retirement_rate_limit, retirement_flows
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from .year_types import GrbExpr, YearPayload
 
@@ -29,7 +29,6 @@ def add_year_costs(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
-    retirement_years: np.ndarray,
     plant_count: int,
     edge_count: int,
     storage_count: int,
@@ -50,10 +49,9 @@ def add_year_costs(
         **_resource_costs(payload, prepared),
         **_transport_storage_costs(payload, prepared, edge_count, storage_count),
     }
-    one_off = _one_off_capex(
-        model, payload, prev_payload, scenario, assumptions, retirement_years, plant_count, edge_count,
-    )
-    _add_retirement_rate_limit(model, payload, prev_payload, scenario, retirement_years, plant_count)
+    early_new, rebuilt_new = retirement_flows(model, payload, prev_payload, plant_count)
+    one_off = _one_off_capex(model, payload, prev_payload, scenario, assumptions, early_new, plant_count, edge_count)
+    add_retirement_rate_limit(model, payload, scenario, early_new, rebuilt_new, plant_count)
 
     payload.cost_exprs = {name: df * interval_weight * expr / _COST_SCALE for name, expr in annual.items()}
     payload.cost_exprs.update({name: df * expr / _COST_SCALE for name, expr in one_off.items()})
@@ -90,7 +88,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
     """煤电运行项与碳成本（CNY/yr，未折现未缩放），键与 `cost_exprs` 同名同序。"""
     year_data = payload.year_data
 
-    # 基线净运行成本（煤 + 运维 - 电）：未改造按基线发电量，改造路径含 CF 提升（重建机组用其热耗），退役为零。
+    # 基线净运行成本（煤 + 运维 - 电）：未改造按基线发电量，改造路径含 CF 提升，退役为零。
     baseline_net = gp.quicksum(
         float(year_data.baseline_net_matrix[p, k]) * payload.share[p, k]
         for p in range(plant_count) for k in range(len(PATHWAYS))
@@ -137,6 +135,17 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             float(year_data.air_penalty_cost_matrix[p, k]) * payload.air_share[p, k]
             for p in range(plant_count) for k in range(len(PATHWAYS))
         )
+    # 上面三项的系数按未重建部分的毛热耗算；部分到期 hub 的重建部分再加两部分之差 x 重建部分的份额
+    # （`constraints._add_rebuilt_split`）。掺烧惩罚的差已在 `total_bio_penalty` 里。
+    delta = year_data.rebuilt_delta
+    baseline_net = baseline_net + gp.quicksum(
+        _rebuilt_dot(delta.baseline_net_matrix[p], part) for p, part in payload.rebuilt_share.items()
+    )
+    energy_penalty_cost = energy_penalty_cost + gp.quicksum(
+        _rebuilt_dot(delta.energy_penalty_matrix[p], part) for p, part in payload.rebuilt_share.items()
+    ) + gp.quicksum(
+        _rebuilt_dot(delta.air_penalty_cost_matrix[p], part) for p, part in payload.rebuilt_air_share.items()
+    )
     # 捕集岛固定运维：在役且在用的捕集岛 x 建设年的单价（`vintage`，闲置不付）。2026-09-30 前按当年单价 x 捕集份额计。
     assert payload.ccs_island is not None, "add_capacity_vintages must run before add_year_costs"
     ccs_om_cost = gp.quicksum(payload.ccs_island.fixed_om)
@@ -193,20 +202,20 @@ def _one_off_capex(
     prev_payload: YearPayload | None,
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
-    retirement_years: np.ndarray,
+    early_new: list[GrbExpr],
     plant_count: int,
     edge_count: int,
 ) -> dict[str, GrbExpr]:
-    """一次性 capex（CNY，未折现未缩放），键与 `cost_exprs` 同名同序。
+    """一次性 capex（CNY，未折现未缩放），键与 `cost_exprs` 同名同序；逐厂搁浅资产另写入 `payload.stranded_by_plant`。
 
-    非首年按增量计：搁浅资产、原址重建与掺烧升级为增量加辅助变量与约束，空冷改造只加存量单调约束
-    （后两者在 `constraints` 里加）。这些加入模型的先后决定模型指纹。
+    非首年按增量计：原址重建与掺烧升级为增量加辅助变量与约束，空冷改造只加存量单调约束（后两者在
+    `constraints` 里加）；搁浅资产计在新增提前退役 `early_new` 上（`retirement.retirement_flows`）。这些加入模型的
+    先后决定模型指纹。
     """
     year_data = payload.year_data
     yr_sfx = str(payload.year)
-    current_year = int(payload.year)
-    retire_idx = PATHWAY_INDEX["retire"]
     capacity_mw = year_data.capacity_mw
+    expired_share = year_data.expired_share
 
     # 管道 capex：各管径档整根计。
     tier_capex = np.asarray(year_data.edge_tier_capex, dtype=np.float64)
@@ -223,13 +232,16 @@ def _one_off_capex(
         if float(stock_coeff[p, j]) > 0.0
     )
 
-    # 搁浅资产、掺烧升级、空冷改造。
+    # 搁浅资产：每单位新增提前退役的剩余账面价值（`plant_matrices`）x 新增提前退役。到期退役不计；重建后退役也不计，
+    # 它的 capex 已在目标函数里，期末不计残值（`retirement.add_retired_rebuild_offset`）。
+    payload.stranded_by_plant = [
+        float(year_data.stranded_per_plant[p]) * early_new[p] if float(year_data.stranded_per_plant[p]) > 0 else 0.0
+        for p in range(plant_count)
+    ]
+    stranded_capex = gp.quicksum(payload.stranded_by_plant)
+
+    # 掺烧升级、空冷改造。
     if prev_payload is None:
-        stranded_capex = gp.quicksum(
-            float(year_data.stranded_per_plant[p]) * payload.share[p, retire_idx]
-            for p in range(plant_count)
-            if float(year_data.stranded_per_plant[p]) > 0
-        )
         blend_upgrade_capex = _build_blend_upgrade_capex(
             model, capacity_mw, payload.blend_level_b, payload.blend_level_a,
             assumptions, plant_count, sfx=f"_{yr_sfx}",
@@ -238,19 +250,6 @@ def _one_off_capex(
             model, year_data, payload, plant_count, yr_sfx, prev_payload=None
         )
     else:
-        # 搁浅资产按新增退役份额计。
-        stranded_terms = []
-        for p in range(plant_count):
-            coeff = float(year_data.stranded_per_plant[p])
-            if coeff <= 0:
-                continue
-            delta_ret = model.addVar(lb=0.0, name=f"stranded_delta_{p}_{yr_sfx}")
-            model.addConstr(
-                delta_ret >= payload.share[p, retire_idx] - prev_payload.share[p, retire_idx],
-                name=f"stranded_delta_lb_{p}_{yr_sfx}",
-            )
-            stranded_terms.append(coeff * delta_ret)
-        stranded_capex = gp.quicksum(stranded_terms) if stranded_terms else 0.0
         blend_upgrade_capex = _build_blend_upgrade_capex(
             model, capacity_mw, payload.blend_level_b, payload.blend_level_a,
             assumptions, plant_count,
@@ -262,18 +261,19 @@ def _one_off_capex(
             model, year_data, payload, plant_count, yr_sfx, prev_payload=prev_payload
         )
 
-    # 原址重建 capex：容量 x 新建成本比例，只在首次激活期计（rebuild 锁存，增量只在激活期为 1）。
+    # 原址重建 capex：容量 x 新建成本比例 x 重建份额的增量（rebuild 锁存）；只有本年有到期装机的 hub 能重建
+    # （`model_year._add_expiry_rules`），2026-10-02 前按整个 hub 到期计。
     rebuild_cost_per_mw = assumptions.stranded_asset_base_cny_per_kw * scenario.rebuild_capex_fraction * 1000.0
     if prev_payload is None:
         rebuild_capex = gp.quicksum(
             float(capacity_mw[p]) * rebuild_cost_per_mw * payload.rebuild[p]
             for p in range(plant_count)
-            if current_year >= retirement_years[p]
+            if float(expired_share[p]) > 0.0
         )
     else:
         rebuild_capex_terms = []
         for p in range(plant_count):
-            if current_year < retirement_years[p]:
+            if float(expired_share[p]) <= 0.0:
                 continue
             delta_rebuild = model.addVar(lb=0.0, name=f"rebuild_delta_{p}_{yr_sfx}")
             model.addConstr(
@@ -291,38 +291,6 @@ def _one_off_capex(
         "air_retrofit_capex": air_retrofit_capex,
         "rebuild_capex": rebuild_capex,
     }
-
-
-def _add_retirement_rate_limit(
-    model,
-    payload: YearPayload,
-    prev_payload: YearPayload | None,
-    scenario: OptimizationScenario,
-    retirement_years: np.ndarray,
-    plant_count: int,
-) -> None:
-    """自愿退役速率上限（不含到期强制退役）。两边除以总发电量，系数为发电份额，避免 4e7 量级系数。"""
-    retire_idx = PATHWAY_INDEX["retire"]
-    yr_sfx = str(payload.year)
-    if scenario.max_new_retirement_share_per_period > 0:
-        generation = payload.year_data.generation
-        total_gen = float(generation.sum())
-        voluntary_plants = [p for p in range(plant_count) if int(payload.year) < retirement_years[p]]
-        if voluntary_plants and total_gen > 0:
-            if prev_payload is None:
-                model.addConstr(
-                    gp.quicksum(float(generation[p]) / total_gen * payload.share[p, retire_idx] for p in voluntary_plants)
-                    <= scenario.max_new_retirement_share_per_period,
-                    name=f"max_retire_rate_{yr_sfx}",
-                )
-            else:
-                model.addConstr(
-                    gp.quicksum(
-                        float(generation[p]) / total_gen * (payload.share[p, retire_idx] - prev_payload.share[p, retire_idx])
-                        for p in voluntary_plants
-                    ) <= scenario.max_new_retirement_share_per_period,
-                    name=f"max_retire_rate_{yr_sfx}",
-                )
 
 
 def _slack_penalty(payload: YearPayload, assumptions: OptimizationAssumptions) -> GrbExpr:

@@ -64,7 +64,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assumptions = OptimizationAssumptions()
     data = industry_year_data(_toy_industry(), scenario, assumptions, 2030)
     learning = assumptions.ccs_learning_factor(2030)
-    ef_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
+    ef_gj = assumptions.coal_emission_factor_t_per_gj
     elec = scenario.electricity_price_for_year(2030)
 
     # 钢铁 hub（铭牌 = 产量）：份额为 1 时 capex = 捕集能力 t/a x 单位 capex x 学习系数；opex = 可变成本；

@@ -8,10 +8,17 @@ from sklearn.cluster import AgglomerativeClustering
 
 from ..artifacts import write_csv
 from ..constants import (
+    AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH,
     CHINA_WATER_QUOTA_M3_PER_MWH,
+    COAL_DESIGN_LIFE_YEARS,
+    COAL_STATION_SERVICE_RATE,
     COMBUSTION_CLASS_MAP,
     COOLING_WATER_INTENSITY_M3_PER_MWH,
+    GJ_PER_MWH,
     PLANT_YEAR_BASIS,
+    STANDARD_COAL_GJ_PER_KG,
+    SUPPLY_COAL_RATE_CLASS_MIN_MW,
+    SUPPLY_COAL_RATE_G_PER_KWH,
     WATER_INTENSITY_BY_TECH_M3_PER_MWH,
     quota_capacity_band,
 )
@@ -148,9 +155,12 @@ def build_plant_dataframe(
                     has_water_cooling = True
 
         mean_commission = float(frame["commission_year"].mean())
-        # 设计寿命 40 年：Fan et al. 2023（`fan2023cofiring`）SI Table 10（煤电 40 年）；
-        # Wang et al. 2025（`wang2025reducing`）正文与 SI Table 3（40 年，区间 25-40）。
-        retirement_year = int(mean_commission + 40)
+        # 整个 hub 在平均投产年 + 设计寿命那年一起到期：整数 hub 用它；连续 hub 按机组逐台到期（`data_prep`）。
+        retirement_year = int(mean_commission + COAL_DESIGN_LIFE_YEARS)
+        # 按装机加权的逐台毛热耗；不用 `dominant_combustion`，那只是机组数的众数机型。
+        heat_rate = float("nan")
+        if total_cap > 0:
+            heat_rate = float((unit_heat_rate_gj_per_mwh(frame) * capacity).sum() / total_cap)
 
         # Wang (2023) 用水强度表：逐机组按蒸汽参数（steam cycle）与冷却方式查表，
         # 再按装机容量加权到 hub。之所以产出两个变体，是因为沿海直流冷却 hub 是否取
@@ -171,6 +181,7 @@ def build_plant_dataframe(
                 "dominant_combustion": most_common_string(frame["combustion"]),
                 "dominant_cooling_technology": most_common_string(frame["cooling_technology"]),
                 "combustion_mix": mix_string(frame["combustion"]),
+                "heat_rate_gj_per_mwh": round(heat_rate, 4),
                 **cooling_capacities,
                 "weighted_water_intensity_m3_per_mwh": round(weighted_intensity, 4),
                 **water_intensities,
@@ -287,6 +298,40 @@ def _cooling_class(label: str) -> str:
     return "recirculating"
 
 
+def unit_heat_rate_gj_per_mwh(units: pd.DataFrame) -> pd.Series:
+    """逐台毛热耗（GJ/MWh）= 分档供电煤耗（空冷 +15）x (1 - 厂用电率) x 标准煤热值，见 `constants`。
+
+    带 `/CCS` 后缀的机组按本体机型归档：后缀是改造状态，这些机组在模型里按未改造计。
+    """
+    rates = [
+        _supply_coal_rate_g_per_kwh(combustion, float(capacity), _cooling_class(cooling))
+        for combustion, capacity, cooling in zip(units["combustion"], units["capacity_mw"], units["cooling_technology"])
+    ]
+    return pd.Series(rates, index=units.index, dtype=float) * (1.0 - COAL_STATION_SERVICE_RATE) * STANDARD_COAL_GJ_PER_KG
+
+
+def unit_rebuild_heat_rate_cap_gj_per_mwh(units: pd.DataFrame, rebuild_efficiency: float) -> pd.Series:
+    """到期机组原址重建后的毛热耗上限：3.6 / 重建效率，空冷机组另加空冷的 +15 g/kWh（重建效率与分档煤耗一样按湿冷
+    机组计，原址重建不换冷却方式）。重建机组取 min(原机组毛热耗, 上限)，见 `optimization.data_prep._with_expiry`。
+    """
+    air = units["cooling_technology"].map(_cooling_class).eq("air").astype(float)
+    adder = AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH * (1.0 - COAL_STATION_SERVICE_RATE) * STANDARD_COAL_GJ_PER_KG
+    return GJ_PER_MWH / rebuild_efficiency + adder * air
+
+
+def _supply_coal_rate_g_per_kwh(combustion: str, capacity_mw: float, cooling: str) -> float:
+    """机型、铭牌容量与冷却方式 -> 供电煤耗基准水平（g/kWh）。"""
+    base = str(combustion).strip().lower().split("/")[0]
+    level = ""
+    if base in SUPPLY_COAL_RATE_CLASS_MIN_MW:
+        threshold, upper, lower = SUPPLY_COAL_RATE_CLASS_MIN_MW[base]
+        level = upper if capacity_mw >= threshold else lower
+    if (base, level) not in SUPPLY_COAL_RATE_G_PER_KWH:
+        raise ValueError(f"no supply coal rate for combustion label {combustion!r}")
+    adder = AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH if cooling == "air" else 0.0
+    return SUPPLY_COAL_RATE_G_PER_KWH[(base, level)] + adder
+
+
 # 海水冷却分类。
 #
 # GEM 只记 `once-through`，不说明凝汽器取的是海水还是河水，而二者在淡水预算中的表现
@@ -383,6 +428,7 @@ def _cluster_plants_to_hubs(units: pd.DataFrame, n_hubs: int = DEFAULT_N_HUBS) -
 
 
 def write_plants(paths: ProjectPaths, n_hubs: int = DEFAULT_N_HUBS) -> None:
+    """写 `plants.csv`（hub 表）与 `plants_unit_hub.csv`（机组到 hub 的映射，连续 hub 的机组级到期要用）。"""
     plants_path = paths.inputs_dir / "plants_unit.csv"
     plants = pd.read_csv(plants_path)
     clustered = _cluster_plants_to_hubs(plants, n_hubs=n_hubs)
@@ -394,3 +440,9 @@ def write_plants(paths: ProjectPaths, n_hubs: int = DEFAULT_N_HUBS) -> None:
     plant_sites = add_seawater_classification(paths, plant_sites)
     plant_sites = finalize_water_intensities(plant_sites)
     write_csv(plant_sites, paths.inputs_dir / "plants.csv")
+    # 机组表的原有列（`plant_site` 是原厂名，不是聚类标签），加所属 hub 与逐台毛热耗。逐台毛热耗取 4 位，只供复核、
+    # 模型不读；hub 值按未取整的逐台值加权，用这一列重算差在 1e-4 以内。
+    units = plants.loc[clustered.index].copy()
+    units["plant_id"] = clustered["plant_site"].map(dict(zip(plant_sites["plant_site"], plant_sites["plant_id"])))
+    units["heat_rate_gj_per_mwh"] = unit_heat_rate_gj_per_mwh(units).round(4)
+    write_csv(units, paths.inputs_dir / "plants_unit_hub.csv")

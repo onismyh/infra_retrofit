@@ -53,40 +53,59 @@ def _pathway_split(
     biomass_blend_x_share: np.ndarray,
     beccs_blend_x_share: np.ndarray,
     ammonia_blend_x_share: np.ndarray,
+    rebuilt_share: np.ndarray,
+    rebuilt_blend_x_share: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """逐厂 x 路径的残余排放与物理捕集量（Mt），返回 (residual, captured)。
 
     逐项照搬 `constraints._add_plant_path_constraints` 的 `residual_expr` 与 `captured_expr`：每一项记到它所乘的
     份额（路径份额、该路径的 Σβ·z 或空冷份额）所在的路径上，按路径相加就是求解器的逐厂残余排放与捕集量。
+    部分到期 hub 的重建部分（`rebuilt_share`、`rebuilt_blend_x_share`，求解器的同名值）按同式再加一遍，系数换成
+    两部分之差；没有部分到期的 hub 时两者全为零。
     """
-    s = np.asarray(share_values, dtype=np.float64)
-    air = np.asarray(air_share, dtype=np.float64)
-    e_op = np.asarray(year_data.emissions_operating_mt, dtype=np.float64)
-    e_rt = np.asarray(year_data.emissions_retrofit_mt, dtype=np.float64)
     gen = np.asarray(year_data.generation_by_pathway, dtype=np.float64)
-    bio_xs = np.asarray(biomass_blend_x_share, dtype=np.float64)
-    beccs_xs = np.asarray(beccs_blend_x_share, dtype=np.float64)
-    amm_xs = np.asarray(ammonia_blend_x_share, dtype=np.float64)
     eta = float(scenario.capture_rate)
     un, ccs, bio, beccs, amm = (PATHWAY_INDEX[k] for k in ("unabated", "ccs", "biomass", "beccs", "ammonia"))
 
-    # 惩罚燃料：CCS 能耗惩罚按路径份额计，空冷背压按空冷份额计；捕集路径上按 1 − η 排放、按 η 捕集。
-    residual = year_data.ccs_penalty_emissions_matrix * s + year_data.air_penalty_emissions_matrix * air
-    captured = year_data.ccs_penalty_captured_matrix * s + year_data.air_penalty_captured_matrix * air
-    residual[:, un] += e_op * s[:, un]
-    residual[:, ccs] += e_rt * (1.0 - eta) * s[:, ccs]
-    # 掺烧替代的 E_rt·Σβz 不排放；掺烧惩罚燃料照样排放，BECCS 上只排 1 − η，η 被捕集。
-    residual[:, bio] += e_rt * (s[:, bio] - bio_xs) + year_data.biomass_penalty_emissions_coeff_per_level * gen[:, bio] * bio_xs
-    residual[:, beccs] += (
-        e_rt * ((1.0 - eta) * s[:, beccs] - beccs_xs)
-        + year_data.beccs_penalty_emissions_coeff_per_level * gen[:, beccs] * beccs_xs
+    def split(coeffs, s: np.ndarray, xs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """按份额 s 与掺烧三列的 Σβz（xs，形状同 s）计的各项，系数取 `YearData` 或其 `rebuilt_delta`。"""
+        e_op = np.asarray(coeffs.emissions_operating_mt, dtype=np.float64)
+        e_rt = np.asarray(coeffs.emissions_retrofit_mt, dtype=np.float64)
+        # CCS 能耗惩罚燃料按路径份额计，捕集路径上按 1 − η 排放、按 η 捕集。
+        residual = coeffs.ccs_penalty_emissions_matrix * s
+        captured = coeffs.ccs_penalty_captured_matrix * s
+        residual[:, un] += e_op * s[:, un]
+        residual[:, ccs] += e_rt * (1.0 - eta) * s[:, ccs]
+        # 掺烧替代的 E_rt·Σβz 不排放；掺烧惩罚燃料照样排放，BECCS 上只排 1 − η，η 被捕集。
+        residual[:, bio] += (
+            e_rt * (s[:, bio] - xs[:, bio]) + coeffs.biomass_penalty_emissions_coeff_per_level * gen[:, bio] * xs[:, bio]
+        )
+        residual[:, beccs] += (
+            e_rt * ((1.0 - eta) * s[:, beccs] - xs[:, beccs])
+            + coeffs.beccs_penalty_emissions_coeff_per_level * gen[:, beccs] * xs[:, beccs]
+        )
+        residual[:, amm] += e_rt * (s[:, amm] - xs[:, amm])
+        captured[:, ccs] += e_rt * eta * s[:, ccs]
+        captured[:, beccs] += (
+            e_rt * eta * s[:, beccs] + coeffs.beccs_penalty_captured_coeff_per_level * gen[:, beccs] * xs[:, beccs]
+        )
+        return residual, captured
+
+    s = np.asarray(share_values, dtype=np.float64)
+    xs = np.zeros_like(s)
+    xs[:, bio], xs[:, beccs], xs[:, amm] = biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share
+    residual, captured = split(year_data, s, xs)
+    # 空冷背压燃料按空冷份额计，按 hub 毛热耗、不随重建变。
+    air = np.asarray(air_share, dtype=np.float64)
+    residual += year_data.air_penalty_emissions_matrix * air
+    captured += year_data.air_penalty_captured_matrix * air
+    rebuilt = np.asarray(rebuilt_share, dtype=np.float64)
+    if not rebuilt.any():
+        return residual, captured
+    rebuilt_residual, rebuilt_captured = split(
+        year_data.rebuilt_delta, rebuilt, np.asarray(rebuilt_blend_x_share, dtype=np.float64)
     )
-    residual[:, amm] += e_rt * (s[:, amm] - amm_xs)
-    captured[:, ccs] += e_rt * eta * s[:, ccs]
-    captured[:, beccs] += (
-        e_rt * eta * s[:, beccs] + year_data.beccs_penalty_captured_coeff_per_level * gen[:, beccs] * beccs_xs
-    )
-    return residual, captured
+    return residual + rebuilt_residual, captured + rebuilt_captured
 
 
 def _build_pathway_table(
@@ -99,6 +118,9 @@ def _build_pathway_table(
     ammonia_blend_x_share: np.ndarray,
     year_data: YearData,
     air_share: np.ndarray,
+    *,
+    rebuilt_share: np.ndarray,
+    rebuilt_blend_x_share: np.ndarray,
 ) -> pd.DataFrame:
     """单年的逐厂 x 路径份额、发电量、基线排放、减排量与捕集量。
 
@@ -106,7 +128,8 @@ def _build_pathway_table(
     基线排放 × 份额 − 该路径的残余排放，`captured_mt` 是该路径的物理捕集量，都按约束逐项拆分（`_pathway_split`）：
     按路径相加就是求解器的逐厂减排量与捕集量（`sanity_checks.csv` 的 `pathway_split_closure` 行核对）。
     改造路径的发电量带 CF 提升（`retrofit_cf_boost`），低比例掺烧的减排可以为负，就是这条路径净增排；未改造一栏也不一定
-    为零：到期原址重建后按 E_op 排放、少排的记为正，空冷背压多排的记为负。此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）
+    为零：部分到期 hub 的未到期机组与原址重建机组按各自的毛热耗排放，比 hub 毛热耗少排的记为正、多排的记为负，空冷背压
+    多排的记为负。此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）
     拆分、再缩放到求解器的逐厂合计：合计对，各路径的值与符号可能不对；捕集量按 CCS 与 BECCS 的份额比例分摊。
     """
     gen_year = np.asarray(year_data.generation, dtype=np.float64)
@@ -114,6 +137,7 @@ def _build_pathway_table(
     residual, captured = _pathway_split(
         scenario, year_data, share_values, air_share,
         biomass_blend_x_share, beccs_blend_x_share, ammonia_blend_x_share,
+        rebuilt_share, rebuilt_blend_x_share,
     )
     rows: list[dict[str, object]] = []
     for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
@@ -254,26 +278,27 @@ def _build_plant_cost_table(
     year_data: YearData,
     share_values: np.ndarray,
     biomass_use_gj: np.ndarray,
-    prev_share_values: np.ndarray | None = None,
     *,
     plant_reduction_mt: np.ndarray,
     retrofit_new: np.ndarray,
     ccs_om_by_plant: np.ndarray,
+    stranded_by_plant: np.ndarray,
     capex_pathway_indices: tuple[int, ...],
+    rebuilt_share: np.ndarray,
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
-    未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产计在新增退役份额上（上一年的份额经
-    prev_share_values 传入，首年为 None），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
+    未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产取求解器的逐厂值 `stranded_by_plant`（计在新增提前退役上，
+    `retirement.retirement_flows`），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
     曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。
-    碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。
+    碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本与 CCS 能耗惩罚含部分到期 hub
+    重建部分的差（`rebuilt_share`，求解器的同名值；没有部分到期的 hub 时全为零）。
     """
     plants = prepared.plants
     n = len(plants)
     emissions = np.asarray(year_data.emissions_mt, dtype=np.float64)
     capacity_mw = plants["total_capacity_mw"].astype(float).to_numpy()
     carbon_price = float(year_data.carbon_price)
-    retire_idx = PATHWAY_INDEX["retire"]
     # 本年建成的捕集岛的系数（只有一列，见 `model_year._add_retrofit_new`）。
     stock_coeff = year_data.retrofit_stock_capex
 
@@ -289,6 +314,12 @@ def _build_plant_cost_table(
             float(year_data.baseline_net_matrix[p, k]) * float(share[k])
             for k in range(len(PATHWAYS))
         )
+        # 能耗惩罚
+        energy_pen = sum(float(year_data.energy_penalty_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
+        if np.any(rebuilt_share[p]):
+            delta = year_data.rebuilt_delta
+            baseline_net += float(delta.baseline_net_matrix[p] @ rebuilt_share[p])
+            energy_pen += float(delta.energy_penalty_matrix[p] @ rebuilt_share[p])
         # 碳成本：碳价 × (基线排放 − 求解器逐厂减排量)，与目标函数同式（`model_costs._operating_costs`）；
         # 减排量取约束本身的表达式，含效率比、CF 提升、全部惩罚燃料与连续 hub 下的掺烧份额。
         # 此前是近似式：未减排部分按基线排放计、不含惩罚燃料，掺烧比例按档位换算（连续 hub 下换算错）。
@@ -300,13 +331,10 @@ def _build_plant_cost_table(
         coal_savings = (_cspg_val / _bio_scale) * float(biomass_use_gj[p])
         # 增量运维
         incr_om = sum(float(year_data.fixed_cost_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
-        # 能耗惩罚
-        energy_pen = sum(float(year_data.energy_penalty_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         # 捕集岛固定运维：在役且在用的捕集岛 x 建设年单价，取求解器的值
         ccs_om = float(ccs_om_by_plant[p])
-        # 搁浅资产（与模型一致：计在新增退役份额上）
-        prev_retire = float(prev_share_values[p, retire_idx]) if prev_share_values is not None else 0.0
-        stranded = float(year_data.stranded_per_plant[p]) * max(0.0, float(share[retire_idx]) - prev_retire)
+        # 搁浅资产：取求解器的值（新增提前退役 n^o x 每单位的剩余账面价值，`retirement.retirement_flows`）
+        stranded = float(stranded_by_plant[p])
         # CCS 改造 CAPEX（与模型一致：本年单价 x 本年新建的捕集岛；coeff 已含学习系数）。
         ccs_capex = sum(
             float(stock_coeff[p, j]) * float(retrofit_new[p, j]) for j in range(len(capex_pathway_indices))

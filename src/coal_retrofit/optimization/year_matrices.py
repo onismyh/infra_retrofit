@@ -11,7 +11,7 @@ from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _w
 from .resource_access import _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matrices
-from .year_types import YearData
+from .year_types import RebuiltDelta, YearData
 
 
 def _offshore_edge_mask(prepared: PreparedInputs) -> np.ndarray:
@@ -147,9 +147,17 @@ def _build_year_matrices(
     capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
     retrofit_stock_capex = capex_matrix[:, [PATHWAY_INDEX["ccs"]]]
     retrofit_stock_om = retrofit_stock_capex * float(assumptions.ccs_om_fraction)
+    # 部分到期 hub 上重建部分与未重建部分的系数之差，厂侧与空冷燃料成本两处合成一份。
+    rebuilt_delta = RebuiltDelta(
+        **plant["rebuilt_delta"], air_penalty_cost_matrix=air.pop("air_penalty_cost_rebuilt_delta")
+    )
 
     return YearData(
-        **{k: v for k, v in plant.items() if k not in ("generation_cost_basis", "coal_price_per_plant")},
+        **{
+            k: v for k, v in plant.items()
+            if k not in ("generation_cost_basis", "coal_price_per_plant", "heat_rate_rebuilt", "rebuilt_delta")
+        },
+        rebuilt_delta=rebuilt_delta,
         retrofit_stock_capex=retrofit_stock_capex,
         retrofit_stock_om=retrofit_stock_om,
         carbon_price=scenario.carbon_price_for_year(year),

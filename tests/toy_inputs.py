@@ -8,15 +8,26 @@ from __future__ import annotations
 
 import pandas as pd
 
+from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
+from coal_retrofit.constants import COAL_DESIGN_LIFE_YEARS
 from coal_retrofit.optimization.scenario import OptimizationAssumptions
 from coal_retrofit.paths import ProjectPaths
 
 YEARS = (2050, 2060)
 TOY_TARGET_YEARS = (2030, 2040, 2050, 2060)
+# toy 电厂的 hub 毛热耗：2026-10-02 前全国一个数的值（3.6 / 0.42 取四位）。与下面 toy 机组的逐台毛热耗不一致：toy 的
+# 机组只有一台、不会部分到期，只有部分到期的 hub 要求两者一致（`data_prep._with_expiry`）；换机组表用 `_write_toy_units`。
+TOY_HEAT_RATE_GJ_PER_MWH = 8.5714
+# toy 机组的机型与冷却方式（映射表的两列）：600MW 级亚临界湿冷，逐台毛热耗 314 x 0.95 x 0.0293076 = 8.742 GJ/MWh，
+# 比重建的 3.6 / 0.45 = 8.0 高，全部到期时重建热耗为 8.0，与按 hub 毛热耗取 min 相同。
+TOY_UNIT_TYPE = {"combustion": ["subcritical"], "cooling_technology": ["recirculating"]}
 
 
 def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
-    """最小但完整的 inputs/：1 座电厂 - 1 条边 - 1 个封存汇，资源放在远处。"""
+    """最小但完整的 inputs/：1 座电厂 - 1 条边 - 1 个封存汇，资源放在远处。
+
+    电厂是一台 1 000 MW 机组，`retirement_year` 那年到期（机组表的投产年 = retirement_year - 40）。
+    """
     inputs = root / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
 
@@ -27,10 +38,19 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "total_capacity_mw": [1000.0],
             "retirement_year": [retirement_year],
             "dominant_cooling_technology": ["recirculating"],
+            "heat_rate_gj_per_mwh": [TOY_HEAT_RATE_GJ_PER_MWH],
             "centroid_longitude": [112.0],
             "centroid_latitude": [37.0],
         }
     ).to_csv(inputs / "plants.csv", index=False)
+    pd.DataFrame(
+        {
+            "plant_id": ["P1"],
+            "capacity_mw": [1000.0],
+            "commission_year": [retirement_year - COAL_DESIGN_LIFE_YEARS],
+            **TOY_UNIT_TYPE,
+        }
+    ).to_csv(inputs / "plants_unit_hub.csv", index=False)
 
     pd.DataFrame(
         {
@@ -141,6 +161,16 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
     paths = ProjectPaths(root=root)
     _write_targets(paths, {y: 1.0 for y in TOY_TARGET_YEARS})
     return paths
+
+
+def _write_toy_units(paths: ProjectPaths, units: pd.DataFrame) -> None:
+    """换掉 toy 电厂的机组表；hub 毛热耗随之取逐台值按装机加权（同 `builders.plants`，但不取四位小数），与机组表一致。"""
+    units.to_csv(paths.inputs_dir / "plants_unit_hub.csv", index=False)
+    plants = pd.read_csv(paths.inputs_dir / "plants.csv")
+    plants["heat_rate_gj_per_mwh"] = float(
+        (unit_heat_rate_gj_per_mwh(units) * units["capacity_mw"]).sum() / units["capacity_mw"].sum()
+    )
+    plants.to_csv(paths.inputs_dir / "plants.csv", index=False)
 
 
 def _write_targets(

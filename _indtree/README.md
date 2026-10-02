@@ -123,8 +123,11 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 2026-10-01 起多一张 `water_basin_use.csv`（v7 输入里没有）：各气候成员、规划年、一级流域的生活与灌溉耗水，有水约束时
 > 节点可用量要扣（`docs/方法论.md` §7.2）；由 `scripts/build_water_use.py` 从 ISIMIP3b 耗水文件生成（下载见
 > `scripts/download_isimip_water_use.py`），其余水输入不重建。
+> 2026-10-02 起 `plants.csv` 多一列 `heat_rate_gj_per_mwh`（逐台分档供电煤耗折毛、按装机加权的 hub 毛热耗；原有 36 列逐字节
+> 不变），另多一张 `plants_unit_hub.csv`（3 623 台机组到 hub 的映射，连续 hub 按机组到期要用）。两者由
+> `scripts/build_plant_inputs.py --hubs` 一起写出，`plants_unit.csv` 不变（`docs/方法论.md` §4.1、§4.2）。
 
-其余一律不动：`plants.csv`、`industry_hubs.csv`、`industry_sources.csv`、
+其余一律不动：`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
 生物质与氨的供给曲线。
 
@@ -234,6 +237,12 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > 摊到的量, 归到该节点的煤电不改造同年耗水) × `water_multiplier`，每个 hub 只归最近的节点（`docs/方法论.md` §7.2）。下表有水约束的两个情景
 > （`ST_WA_cwatm_126_dry_oq` 及其 `_inthub`）都在此之前落盘，**不得与改后的求解相减**；`ST_BASE`、`ST_CP_BASE` 没有水约束，
 > 不受这一项影响。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-02，煤电按机组细化）**：基线排放与燃料按逐 hub 毛热耗（逐台分档供电煤耗折毛、按装机加权）计，部分到期的
+> hub 原址重建与未重建两部分各按自己的毛热耗燃烧；连续 hub 的机组按投产年 + 40 年逐台到期，到期装机份额进到期约束；退役速率上限
+> 只计没到寿命就关停与重建后又关停的装机，搁浅资产只计前者，期末已关停的重建装机不计残值；CCS 额外燃料改为 p/(1 − p)
+> （`docs/方法论.md` §4.1、§4.2、§4.6）。
+> 下表的结果都在此之前落盘，**不得与改后的求解相减**，要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

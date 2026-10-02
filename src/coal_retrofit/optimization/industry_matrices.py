@@ -109,7 +109,7 @@ def industry_year_data(
     Args:
         industry: 准备好的工业输入。
         scenario: `OptimizationScenario`；从中读取捕集率、两个工业成本乘数、贴现率与本年电价。
-        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线、分省煤价、燃煤排放因子与热耗率。
+        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线、分省煤价与燃煤排放因子（t/GJ）。
         year: 规划年。
 
     Returns:
@@ -147,7 +147,7 @@ def industry_year_data(
     provinces = hubs["province"].astype(str).to_numpy() if "province" in hubs.columns else np.array([""] * n)
     coal_price_gj = np.array([float(assumptions.province_coal_cost(p)) for p in provinces], dtype=np.float64)
     elec_price_mwh = float(scenario.electricity_price_for_year(int(year)))
-    emission_factor_t_per_gj = float(assumptions.coal_emission_factor_t_per_mwh) / float(assumptions.heat_rate_gj_per_mwh)
+    emission_factor_t_per_gj = float(assumptions.coal_emission_factor_t_per_gj)
 
     route_available = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=bool)
     route_available[:, UNABATED] = True

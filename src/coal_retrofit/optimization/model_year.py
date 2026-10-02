@@ -87,12 +87,13 @@ def add_year_block(
         select_b, select_a, blend_level_b, blend_level_a,
         total_bio_penalty, plant_reduction_exprs, air_share, air_installed,
         bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
+        rebuilt_share, rebuilt_air_share, rebuilt_blend_x_share,
     ) = _add_plant_path_constraints(
-        model, share, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
+        model, share, rebuild, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
     )
     model.addConstrs((share[plant_idx, :].sum() == 1.0 for plant_idx in range(plant_count)), name=f"share_sum_{year_suffix}")
     retrofit_new = _add_retrofit_new(model, plant_count, year_suffix)
-    _add_expiry_rules(model, share, rebuild, idx.retirement_years, year, plant_count, year_suffix)
+    _add_expiry_rules(model, share, rebuild, year_data.expired_share, plant_count, year_suffix)
 
     # --- CO2 管网节点平衡；工业捕集在 hub 自己的节点进入同一张图，所以工业年块建在两段之间 ---
     _add_co2_power_storage_balance(
@@ -172,6 +173,9 @@ def add_year_block(
         biomass_blend_x_share=bio_blend_x_share,
         beccs_blend_x_share=beccs_blend_x_share,
         ammonia_blend_x_share=amm_blend_x_share,
+        rebuilt_share=rebuilt_share,
+        rebuilt_air_share=rebuilt_air_share,
+        rebuilt_blend_x_share=rebuilt_blend_x_share,
         total_reduction_mt=total_reduction_mt,
         total_bio_penalty=total_bio_penalty,
         industry=industry_payload,
@@ -194,21 +198,27 @@ def _add_expiry_rules(
     model,
     share: GrbMVar,
     rebuild: GrbMVar,
-    retirement_years: np.ndarray,
-    year: int,
+    expired_share: np.ndarray,
     plant_count: int,
     year_suffix: str,
 ) -> None:
-    """到期机组：退役或原址重建；未到期机组不能重建。"""
+    """到期装机（份额 f）退役或原址重建：退役份额 >= f - 重建份额，重建份额 <= f；没有到期装机的 hub 不能重建。
+
+    整数 hub 的 f 只取 0 或 1（整个 hub 一起到期，`data_prep._with_expiry`），约束与 2026-10-02 前相同；
+    连续 hub 按机组逐台到期，0 < f < 1 时多一条重建上限。
+    """
     retire_idx = PATHWAY_INDEX["retire"]
     for plant_idx in range(plant_count):
-        if year >= retirement_years[plant_idx]:
-            model.addConstr(
-                share[plant_idx, retire_idx] >= 1.0 - rebuild[plant_idx],
-                name=f"expire_retire_or_rebuild_{plant_idx}_{year_suffix}",
-            )
-        else:
+        expired = float(expired_share[plant_idx])
+        if expired <= 0.0:
             model.addConstr(rebuild[plant_idx] == 0, name=f"no_rebuild_{plant_idx}_{year_suffix}")
+            continue
+        model.addConstr(
+            share[plant_idx, retire_idx] >= expired - rebuild[plant_idx],
+            name=f"expire_retire_or_rebuild_{plant_idx}_{year_suffix}",
+        )
+        if expired < 1.0:
+            model.addConstr(rebuild[plant_idx] <= expired, name=f"rebuild_le_expired_{plant_idx}_{year_suffix}")
 
 
 def _add_co2_power_storage_balance(

@@ -201,6 +201,49 @@
 > 同日起 `resource_use.csv` 的 `utilization` 在可用量 ≤ 0 而有用量时记 inf（此前记 0，会把用了松弛的节点或超指标的流域读成
 > "没用"），与图 7 的"无余量"同一规则；没有用量，或无水约束时可用量为空，仍记 0。模型、求解与其余各列不变，旧结果不重算；
 > 新旧表按 `resolved.code` 的提交号区分。
+>
+> 2026-10-02 起煤电热耗、到期、自愿退役核算与 CCS 额外燃料按机组细化（**模型改动**，作者批准 2026-10-01；`docs/参数调研_20261001.md`
+> §3 乙，`docs/方法论.md` §3.4、§4.1、§4.2、§4.6）：
+> - 逐 hub 毛热耗：每台机组按机型、容量等级与冷却方式取发改运行〔2022〕559 号的供电煤耗基准值（超超临界 ≥ 900 MW 为 1000MW 级，
+>   超临界与亚临界 ≥ 450 MW 为 600MW 级，空冷 +15；CFB 290、IGCC 270 取 Wang et al. 2025 SI Table 1 的转述值；
+>   `constants.SUPPLY_COAL_RATE_G_PER_KWH`），乘
+>   (1 − 厂用电率 0.05) × 0.0293076 折成毛热耗，按装机加权到 hub：`plants.csv` 新增 `heat_rate_gj_per_mwh`（7.935–9.411 GJ/MWh，
+>   装机加权 8.505），原有各列逐字节不变。基线排放 = 发电量 × hub 毛热耗 × `coal_emission_factor_t_per_gj`（0.82 / 8.5714；
+>   工业捕集再生蒸汽的排放用同一因子，数值不变），效率 = 3.6 / 毛热耗（生物质与空冷的效率损失按运行那部分的效率折燃料，见下条）。
+>   分档值不校准到全国统计。全国基线排放 5 347 Mt（此前 5 392，−0.84%），发电量加权排放强度 0.813 t/MWh（此前 0.82）。
+>   `OptimizationAssumptions` 删去 `coal_emission_factor_t_per_mwh`、`heat_rate_gj_per_mwh`、`coal_plant_base_efficiency`，
+>   登记表或 `--set` 再写它们会报错。
+> - 机组级到期：连续 hub（缺省）的机组按投产年 + 40 年逐台到期，到期装机份额 f 进到期约束（退役份额 ≥ f − 重建份额、
+>   重建份额 ≤ f，f = 0 的 hub 不能重建）；整数 hub 仍整个 hub 在 `retirement_year` 一起到期，约束与此前相同。新输入
+>   `_indtree/inputs/plants_unit_hub.csv`（3 623 台机组到 hub 的映射，与 `plants.csv` 由 `scripts/build_plant_inputs.py --hubs`
+>   一起写出；读入时核对两表的 hub 与装机，缺表或对不上就报错）。到期装机 2030/2040/2050/2060 年 14.5/102.4/547.7/1 030.9 GW
+>   （此前按 hub 平均投产年 0/14.6/613.1/1 342.6 GW）。重建 capex 只计有到期装机的 hub。
+> - 部分到期的 hub 分两部分燃烧（作者决定 2026-10-02：按效率精确加权，不因部分机组到期就把整个 hub 当作换了新机组）：
+>   原址重建部分逐台取 min(机组毛热耗, 3.6 / 0.45) 按装机加权，空冷机组的上限另加空冷的 +15 g/kWh（0.418 GJ/MWh，
+>   原址重建不改冷却方式）；未重建部分取未到期机组的装机加权毛热耗（由 hub 值反推，两部分按 f 加权还原 hub 值；反推放大误差，
+>   部分到期 hub 的 hub 值与按现行分档基准逐台现算、按装机加权的值相差超过 1e-4 就报错）。0 < f < 1 的 hub
+>   把每条运行路径的份额、空冷份额与掺烧各档拆出重建机组承担的部分（运行的重建部分不超过重建份额，未重建部分不超过未到期装机
+>   1 − f，`optimization/constraints.py:48-82`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
+>   空冷背压惩罚的排放与捕集仍按 hub 毛热耗（作者决定维持）。哪几台机组运行、退役、改空冷由求解器定，模型不追踪逐台状态；
+>   拆到各路径的份额不受跨期约束，跨期约束只管 hub 合计与重建部分的运行合计（自愿退役核算，见下条）。f = 0 或 1 的 hub（整数
+>   hub 都是）两部分相同，不加变量。此前整个 hub 自 `retirement_year` 起热耗乘 0.42 / 0.45，不论到期装机重建还是退役。
+> - 自愿退役只计没到寿命就关停的装机（作者决定 2026-10-02），精确分开记（`optimization/retirement.py`）：hub
+>   装机分未到期在运行、提前退役（未到期就关停）、到期未重建（正常寿终）、重建在运行、重建后关停五部分，自愿退役是提前退役与重建
+>   后关停。提前退役按未到期机组等比例摊（与未重建部分的毛热耗、搁浅资产同一假设），上期的提前退役留到本期的是
+>   (1 − f_t) / (1 − f_{t−1})，其余随机组到期转为正常寿终。每期新增的提前退役与重建后关停都不能为负（关停的机组不能重启）；
+>   新增提前退役与在运行重建装机的净减少（本期新建而未运行的不计）之和按发电量加权进 15% 的退役速率上限。搁浅资产只计新增提前
+>   退役，每单位按未到期装机的平均剩余账面份额 ℓ / (1 − f)（ℓ 按机组装机加权），全部到期的 hub 为零；重建后关停的不计搁浅资产
+>   （重建 capex 已在目标里），期末已关停的重建装机不计残值，按先关最早建成的扣回。此前两者都按退役份额的增量计，
+>   只认 hub 平均到期年 `retirement_year`：之前的退役全算自愿（含逐台已满 40 年的机组），搁浅资产按 hub 剩余寿命
+>   min(1, (retirement_year − 年) / 20) 收、到期后不收；速率上限只管还没到 `retirement_year` 的 hub。
+> - CCS 额外燃料按 An et al. 2025 SI Table 7 的出力损失 p 换算为 p/(1 − p)：0.2853 / 0.1848 / 0.1534 / 0.1249
+>   （此前 0.150 / 0.1054 / 0.0899 / 0.075，2030 年的 15% 无出处）。
+>
+> `ST_BASE` 只建模不求解：变量 +13 367、约束 +22 726，其中部分到期 hub 的拆分占 12 825、20 520（2030/2040/2050/2060
+> 年各有 28/111/203/171 个 hub 部分到期），退役核算占 911、2 062；另删去 1a02fe2 的搁浅资产增量辅助变量与约束各 589 个，
+> 重建增量的辅助变量与约束随有到期装机的 hub 增多各多 220 个，部分到期 hub 加重建上限约束 513 条；整数变量不变。
+> 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）；
+> 新旧结果的 `digest_plants` 不同，`check_run_provenance.py --pair` 判不过，改后另有 `digest_plants_unit_hub`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -210,14 +253,14 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:190`（`_one_off_capex`）、`optimization/model_year.py:181`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:199`（`_one_off_capex`）、`optimization/model_year.py:185`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:54-75`、`optimization/model_industry.py:177` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44-45`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:43-44`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
 | 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:70-80`、`optimization/industry_matrices.py:184`、`:219-222` |
-| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:65-75`、`optimization/industry_matrices.py:144-149` |
+| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:67-70, 98-100`、`optimization/industry_matrices.py:144-149` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:139` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:110`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
-| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:62`、`optimization/model_costs.py:61-85` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:119`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
+| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:63`、`optimization/model_costs.py:59-83` |
 | 到寿命后 | 管道到 30 年、捕集岛到 20 年退出，可在原址重铺、重建（捕集岛 2026-09-30 起）；掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
 **本轮已统一的差异**（批 2）：
@@ -238,7 +281,7 @@
 重算由 `tests/test_discount_rate.py` 覆盖（不求解，不依赖 Gurobi）——真实输入（v7 / v9 / v9.1 都是按 8%、20 年算的 0.0891 USD/kg；
 `_indtree/inputs/` 的那张表自 `89f8205` 起入库，与 v7 那份逐字节相同）上每条氨链路的成本都会变。
 
-另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/scenario.py:76-79`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
+另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/scenario.py:69-72`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
 9.92 $/GJ 是气价；京津两行的气价、生物质价与潜力完全相同，取天津的 5.51 $/GJ。煤电没有北京机组；仓库根
 `inputs/industry_hubs.csv` 里只有 1 个北京 hub（水泥 cement_039），它的捕集蒸汽变便宜（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。
 查不到省名时用的缺省煤价 38.2 元/GJ（`coal_fuel_cost_cny_per_gj`）原是 30 省的简单平均，含北京误取的 69.4；更正后简单平均
@@ -251,15 +294,15 @@
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
 1. **煤电有几项运维不是"capex 的比例"。** 生物质掺烧、BECCS 的掺烧部分、掺氨按发电量收 30 / 30 / 80 元/MWh
-   （`optimization/scenario.py:39-41`），与掺烧档位无关，和 §二.7 字面的"固定运维 = capex 比例/年"不一致；空冷改造只有
+   （`optimization/scenario.py:38-40`），与掺烧档位无关，和 §二.7 字面的"固定运维 = capex 比例/年"不一致；空冷改造只有
    capex（300 元/kW）和背压能耗，没有固定运维项。工业 CCS 另有 15 或 5 元/t 的耗材，煤电 CCS 没有单列。
-2. **工业没有退役和搁浅资产。** 煤电有退役份额、搁浅资产（3 500 元/kW × 剩余寿命 / 20 年）和原址重建
+2. **工业没有退役和搁浅资产。** 煤电有退役份额、搁浅资产（只计提前退役，3 500 元/kW × 未到期装机的平均 min(1, 剩余寿命 / 20 年)）和原址重建
    （3 500 × 70% 元/kW）；工业产量完全外生，没有厂址级退役决策（`optimization/industry.py` 模块说明的"已知偏差"）。
 3. **工业 H2 路线的 capex 没有学习曲线**（两侧 CCS 都有）。H2 路线的非氢运行差额由文献溢价锚点反推，目标计入
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:117` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:164-168`）。
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:173-177`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
    煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:124-133`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
@@ -287,7 +330,7 @@
 | CCS | 捕集岛 capex（2030，含压缩） | 3 500 元/kW | 袁家海等 2022（主引）；Lockwood 2018 IEA CCC（上沿）；An et al. 2025 SI Table 7（下沿，2 140 元/kW）；国能锦界 2024 备案。本地 PDF 里另有两个改造 capex，注释原来没提：Fan et al. 2023 SI Table 15 为 4 373 元/kW，Wang et al. 2025 SI Table 3 为 1 559.75（205–2 914.5）$/kW ≈ 10 918（1 435–20 402）元/kW | 有出处（主引、上沿与国能锦界备案原文未核；本地能核的三个值 2 140 / 4 373 / 10 918） |
 | | 固定运维 | capex × 5%/年 | An et al. 2025 SI Table 7（5.4%） | 有出处（原文比值 5.4%，取 5%） |
 | | 学习曲线 | 15%/倍增，5.6 年倍增 | 学习率：Li et al. 2012、DNV/Gassnova 2020（原文未核）；模型实际用的年降幅按 An et al. 2025 SI Table 7 的 capex 轨迹拟合；Fan et al. 2023 SI Table 15 的改造学习率为 7.25% | 推导（年降幅拟合 An et al. 2025；15% 的出处原文未核） |
-| | 能耗惩罚 2030 年水平 | 15%（额外燃料比） | 逐年下降的形状取自 An et al. 2025 SI Table 7；该文 2030 年为 22.2%，15% 这个水平没有来源 | ⚠ 假设（无出处） |
+| | 能耗惩罚（额外燃料比） | 2030–2060 年 0.2853 / 0.1848 / 0.1534 / 0.1249 | An et al. 2025 SI Table 7 的出力损失 22.2 / 15.6 / 13.3 / 11.1% 按 p/(1 − p) 换算（固定产出近似；2026-10-02 起，此前 2030 年取 15%，无出处，之后按该表的相对下降缩放） | 推导（原表 09-30 核过） |
 | BECCS | capex | 捕集岛同 CCS；生物质改造走掺烧档位 capex | 2026-09-23 起删掉原 +1 000 元/kW 增量，见 §0.1 (b) | 同 CCS 与掺生物质两行 |
 | 掺生物质 | 掺烧升级 capex | 50 万元/MW/档（5 档，满档 2 500 元/kW） | 满档落在 Wang et al. 2025 SI Table 3 的 2 290（985–3 596）元/kW 之内；第 1 档（10% 掺烧）500 元/kW 高于 Fan et al. 2023 SI 式 (S56) 的 15% 掺烧 350 元/kW（Fan 转引 IEA 2019，未核） | 水平有出处；逐档线性的形状 ⚠ 假设（无出处） |
 | | 运维 | 30 元/MWh | Wang et al. 2025 SI Table 3 的固定运维 γ2 = 18.85（5.5–32.2）$/(kW·a) ≈ 132 元/(kW·a)，按约 4 400 h 折成每 MWh（对照：同文 SI 第 3 页补缺失值用的全国平均运行小时为 4 611.83 h，转引 Zhou et al.，按它折合 28.6 元/MWh）；同表可变运维 γ3（27.5 $/kW）未计。模型按改造后发电量逐 MWh 收：`ST_` 系的小时轨迹是全机组容量加权 3 600 / 3 100 / 2 000 / 1 500 h，改造机组发电量再乘 `retrofit_cf_boost` 1.15，相当于 4 140 / 3 565 / 2 300 / 1 725 h，γ2 折合 32 / 37 / 57 / 76 元/MWh，30 元/MWh 只收回其 94% / 81% / 52% / 39%；不设小时轨迹时为按分省利用小时、全机组容量加权的 4 643 h × 1.15 ≈ 5 340 h，多收 21% | ⚠ 假设（γ2 有出处，只计 γ2；折算用的 4 400 h 无出处） |
@@ -297,7 +340,7 @@
 | 退役 | 退役成本 | 450 元/MWh | — | ⚠ 假设（无出处） |
 | | 搁浅资产基数 | 3 500 元/kW | Fan et al. 2023 SI Table 15（3 636 元/kW）；电规总院 2020 年水平 3 309–3 636 元/kW（经《中国能源报》转述，未核原文） | 有出处（全文为单值 3 636，取值比原文低 3.7%） |
 | | 搁浅资产会计寿命 | 20 年 | — | ⚠ 假设（无出处） |
-| | 设计寿命（决定搁浅的剩余寿命与重建时点） | 平均投产年 + 40 年 | Fan et al. 2023 SI Table 10；Wang et al. 2025 正文与 SI Table 3（40 年，区间 25–40）（`builders/plants.py:151-153`） | 有出处 |
+| | 设计寿命（决定搁浅的剩余寿命与重建时点） | 投产年 + 40 年（2026-10-02 起连续 hub 逐台到期；整数 hub 用按台数平均的投产年） | Fan et al. 2023 SI Table 10；Wang et al. 2025 正文与 SI Table 3（40 年，区间 25–40）（`constants.COAL_DESIGN_LIFE_YEARS`） | 有出处 |
 | 原址重建 | capex | 新建的 70%（2 450 元/kW） | — | ⚠ 假设（无出处） |
 | 各技术 | 残值寿命 | CCS 20、掺烧升级 20、空冷 20、重建 30 年 | 注释给了取值理由，无文献；CCS 的 20 年与工业捕集岛同值，后者的出处（NPC 2019）只含工业 | ⚠ 假设（设定值） |
 
@@ -338,11 +381,11 @@
 | 参数 | 取值 | 出处或对照 | 判定 |
 |---|---|---|---|
 | 碳价路径（只有 `ST_CP_BASE` 用，另两个 `ST_` 情景置零） | 2030–2060 年 120 / 500 / 880 / 1 260 元/t | 没有文献给出这条直线。对照（只见检索摘要）：ICF 2022 调查对 2030 年的预期 130 元/t；C-GEM（张希良等 2022）2060 年 2 700 元/t 以上 | ⚠ 假设（情景设定） |
-| 基准发电效率 | 0.42，全期不变 | Fan et al. 2023 SI 式 (S42)：0.4（2020）→ 0.5（2060），0.42 约为 2028 年值；Wang et al. 2025 SI Table 1 各机型折 0.380–0.431。文献应是供电（净）口径、模型的发电量应属毛口径（都是推断，未核） | 有出处（取常数） |
+| 基准发电效率 | 逐 hub 3.6 / 毛热耗：0.383–0.454（装机加权 0.424），全期不变（2026-10-02 起；此前全国 0.42） | 发改运行〔2022〕559 号原附件 p1 的分级供电煤耗（CFB、IGCC 取 Wang et al. 2025 SI Table 1），乘 (1 − 厂用电率 0.05) 折到毛口径（模型发电量属毛口径是推断；5% 取发电公司年报的 4.66%–4.86%），见方法论 §4.1。对照：Fan et al. 2023 SI 式 (S42) 0.4（2020）→ 0.5（2060） | 有出处（折毛口径为推断） |
 | 捕集率 | 0.90 | Fan et al. 2023 SI p.43–44；An et al. 2025 SI p.20；Wang et al. 2025 SI Table 5。都是煤电，工业沿用 | 有出处 |
 | 每期新增自愿退役上限 | 当年发电量的 15% | 对照：REMIND 中国煤电 2.4%/年（装机口径）；An et al. 2025 不设上限。v9 的结果卡在这个上限上 | ⚠ 假设（无出处） |
 | 改造机组发电量倍数 | 1.15 | 数值同 Fan et al. 2023 SI Table 11 的 CCS 类 / 未改造煤电最大容量因子之比 0.69/0.60，但那是上限之比、只有 CCS 类；模型把它当必然多发，生物质、掺氨两列没有出处 | ⚠ 假设（用法无出处） |
-| 重建效率 | 0.45 | Wang et al. 2025 SI Table 1 引 NDRC 2022："Ultra-supercritical/ccs" 270 gce/kWh，折 0.455 | 有出处（行名有歧义，NDRC 原文未核） |
+| 重建效率 | 0.45（重建机组逐台取 min(机组毛热耗, 3.6 / 0.45)，空冷机组上限另加 0.418，2026-10-02 起，见 §0） | Wang et al. 2025 SI Table 1 引 NDRC 2022："Ultra-supercritical/ccs" 270 gce/kWh，折 0.455 | 有出处（行名有歧义，NDRC 原文未核） |
 | 掺氨用水乘子 | 1.01 | 本地水资源文献与三篇主引文献都没有掺氨耗水数据 | ⚠ 假设（无出处） |
 | 绿氨合成岛用电 | 0.74 kWh/kg NH₃ | "合成回路 + 空分"口径的开源数据 0.55–1.17（DEA 103 + DEA 空分；Joule 2018） | ⚠ 假设（无单一出处） |
 | 液氨储存附加 | 0.017 USD/kg | 罐价与寿命取自 Morgan 2013（经 PyPSA technology-data）；0.017 相当于常年保有 47–65 天储量，30 天约 0.008–0.011 | ⚠ 假设（储存天数无出处） |

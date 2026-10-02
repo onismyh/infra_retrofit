@@ -147,7 +147,6 @@ def solve(
     plant_cost_tables = []
     industry_detail_tables = []
     sanity_tables = []
-    prev_share_values = None
 
     state_track = initial_state(prepared)
 
@@ -218,6 +217,7 @@ def solve(
             prepared, scenario, year, share,
             ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             year_data=year_data, air_share=ys["air_share"],
+            rebuilt_share=ys["rebuilt_share"], rebuilt_blend_x_share=ys["rebuilt_blend_x_share"],
         )
         prov_table = _build_province_table(pw_table)
         pathway_tables.append(pw_table)
@@ -257,16 +257,16 @@ def solve(
         co2_direction_tables.append(_build_co2_flow_direction_table(prepared, year, ys["co2_flow_fwd"], ys["co2_flow_bwd"]))
         plant_cost_tables.append(_build_plant_cost_table(
             prepared, year, year_data, share, ys["biomass_use_gj"],
-            prev_share_values=prev_share_values,
             plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_new=ys["retrofit_new"],
             ccs_om_by_plant=ys["ccs_om_by_plant"],
+            stranded_by_plant=ys["stranded_by_plant"],
             capex_pathway_indices=solution["capex_pathway_indices"],
+            rebuilt_share=ys["rebuilt_share"],
         ))
 
         new_cap_by_year[year] = ys["new_cap_mtpa"]
         state_track.remaining_storage_mt = np.maximum(0.0, state_track.remaining_storage_mt - ys["storage_use_mtpa"] * interval_years)
-        prev_share_values = share
 
     # 写 CSV
     out_dir = paths.root / "results" / name
