@@ -19,6 +19,7 @@ from ._shared import (
 from .constraints import _rebuilt_dot
 from .retirement import add_retirement_rate_limit, retirement_flows
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from .vintage import alive_vintages
 from .year_types import GrbExpr, GrbMVar, YearData, YearPayload
 
 
@@ -48,7 +49,7 @@ def add_year_costs(
     annual = {
         **_operating_costs(payload, plant_count),
         **_resource_costs(payload, prepared),
-        **_transport_storage_costs(payload, prepared, edge_count, storage_count),
+        **_transport_storage_costs(payload, year_payloads, year_position, prepared, assumptions, edge_count, storage_count),
     }
     early_new, rebuilt_new = retirement_flows(model, payload, prev_payload, plant_count)
     one_off = _one_off_capex(model, payload, prev_payload, scenario, assumptions, early_new, plant_count, edge_count)
@@ -202,15 +203,35 @@ def _resource_costs(payload: YearPayload, prepared: PreparedInputs) -> dict[str,
 
 
 def _transport_storage_costs(
-    payload: YearPayload, prepared: PreparedInputs, edge_count: int, storage_count: int
+    payload: YearPayload,
+    year_payloads: list[YearPayload],
+    year_position: int,
+    prepared: PreparedInputs,
+    assumptions: OptimizationAssumptions,
+    edge_count: int,
+    storage_count: int,
 ) -> dict[str, GrbExpr]:
-    """CO2 运输运维与封存（CNY/yr，未折现未缩放）。边系数（CNY/Mt）已含长度、单位运维率与海上倍率。"""
+    """CO2 运输运维与封存（CNY/yr，未折现未缩放）。
+
+    运输运维 = 按流量计的一项（边系数 CNY/Mt 已含长度、单位运维率与海上倍率；2026-10-02 起缺省单位运维率为 0）+ 管道固定
+    运维：在役各代管道的 capex x `pipe_fixed_om_fraction`（2026-10-02 起）。在役与流量上限同一判据（t − v < 管道寿命，
+    `model_linking.add_capacity_constraints`），含到寿命后原址重铺的那一代；闲置的管也付。比例为 0 时不加这一项。
+    """
     edge_opex_coeff = payload.year_data.edge_route_opex_coeff
     transport_opex = gp.quicksum(
         float(edge_opex_coeff[e])
         * (payload.co2_flow_fwd[e] + payload.co2_flow_bwd[e])
         for e in range(edge_count)
     )
+    pipe_om_fraction = float(assumptions.pipe_fixed_om_fraction)
+    if not pipe_om_fraction >= 0.0:  # 写成 not >= 也拦下 NaN
+        raise ValueError(f"pipe_fixed_om_fraction must be >= 0, got {pipe_om_fraction}")
+    if pipe_om_fraction > 0.0:
+        years = [int(p.year) for p in year_payloads]
+        transport_opex = transport_opex + pipe_om_fraction * gp.quicksum(
+            _pipe_capex(year_payloads[v], edge_count)
+            for v in alive_vintages(years, year_position, int(assumptions.pipeline_lifetime_years))
+        )
     storage_cost_lookup = prepared.storages["storage_cost_cny_per_t"].astype(float).to_numpy()
     storage_cost = gp.quicksum(
         float(storage_cost_lookup[s]) * 1_000_000.0 * payload.storage_use_mtpa[s]
@@ -239,12 +260,7 @@ def _one_off_capex(
     capacity_mw = year_data.capacity_mw
     expired_share = year_data.expired_share
 
-    # 管道 capex：各管径档整根计。
-    tier_capex = np.asarray(year_data.edge_tier_capex, dtype=np.float64)
-    pipe_capex = gp.quicksum(
-        float(tier_capex[edge_idx, k]) * payload.pipe_count[edge_idx, k]
-        for edge_idx in range(edge_count) for k in range(tier_capex.shape[1])
-    )
+    pipe_capex = _pipe_capex(payload, edge_count)
 
     # 捕集岛：本年单价 x 本年新建（`vintage`；2026-09-30 前计在单调存量的增量上）。
     ccs_retrofit_capex = _priced(_island_unit_capex(year_data), payload.retrofit_new[:, 0])
@@ -295,6 +311,15 @@ def _one_off_capex(
         "air_retrofit_capex": air_retrofit_capex,
         "rebuild_capex": rebuild_capex,
     }
+
+
+def _pipe_capex(payload: YearPayload, edge_count: int) -> GrbExpr:
+    """本年新铺管道的 capex（CNY）：各管径档整根计，单根单价含类别与海上倍率（`year_matrices._edge_matrices`）。"""
+    tier_capex = np.asarray(payload.year_data.edge_tier_capex, dtype=np.float64)
+    return gp.quicksum(
+        float(tier_capex[edge_idx, k]) * payload.pipe_count[edge_idx, k]
+        for edge_idx in range(edge_count) for k in range(tier_capex.shape[1])
+    )
 
 
 def _priced(unit: np.ndarray, amount: GrbMVar | None) -> GrbExpr:

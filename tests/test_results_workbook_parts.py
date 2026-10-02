@@ -239,8 +239,9 @@ def test_capture_costs_take_the_ccs_columns_and_the_industry_salvage() -> None:
     assert by_id["C"]["CAPEX_Capture"] == pytest.approx(800.0) and by_id["C"]["OPEX_Capture_i"] == pytest.approx(90.0)
     assert by_id["P"]["CAPEX_Capture"] == pytest.approx(1000.0) and by_id["P"]["OPEX_Capture_p"] == pytest.approx(300.0)
 
-    sinks = pd.DataFrame({"year": years, "use_mt": [5.0, 6.5], "cost_cny_per_t": [32.0, 26.0]})
-    lines = cost_lines(tables, sinks, SimpleNamespace(storage_cost_cny_per_t=32.0), years)  # type: ignore[arg-type]
+    sinks = pd.DataFrame({"year": years, "use_mt": [5.0, 6.5], "cost_before_credit_cny_per_t": 35.0,
+                          "cost_cny_per_t": [35.0, 29.0]})
+    lines = cost_lines(tables, sinks, years)
     weights = {2050: (3.0, 0.5), 2060: (2.0, 0.3)}  # (年度项, 一次性项)
     df_end = 0.2
     solution = {"year_solutions": {

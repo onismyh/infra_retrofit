@@ -15,7 +15,6 @@ from .results_regions import CROSS_REGION, REGIONS, edge_region, province_region
 from .results_tracing import FLOW_TOL
 from .results_workbook_sources import MILLION, Block, blank
 from .salvage import remaining_fraction
-from .scenario import OptimizationAssumptions
 
 # 一项成本：(行名, 折现类别 annual / one_off, 残值台账里的同一项或空串, 各年不折现的 CNY)。
 CostLine = tuple[str, str, str, dict[int, float]]
@@ -138,21 +137,21 @@ def _transport_analysis(edges: pd.DataFrame, years: Sequence[int], labels: Seque
 
 
 def cost_lines(
-    tables: Mapping[str, pd.DataFrame], sinks: pd.DataFrame, assumptions: OptimizationAssumptions, years: Sequence[int]
+    tables: Mapping[str, pd.DataFrame], sinks: pd.DataFrame, years: Sequence[int]
 ) -> dict[str, list[CostLine]]:
     """Cost_Capture、Cost_Transport、Cost_Storage、Revenue_EOR 各项各年不折现的 CNY。
 
     捕集取逐厂、逐 hub 的值（`plant_cost.csv`、`industry_detail.csv`），运输取 `cost_breakdown.csv`；封存费按封存量 x
-    `storage_cost_cny_per_t`（扣抵扣之前），EOR 抵扣 = 封存量 x（它 − 汇的每吨封存成本），两者之差即目标函数的
-    `storage_cost`。
+    汇的扣抵扣前单价（含海上倍率），EOR 抵扣 = 封存量 x（扣前单价 − 扣后单价），两者之差即目标函数的 `storage_cost`。
+    2026-10-02 前扣前单价取全国一个 `storage_cost_cny_per_t`，海上汇加价后会被记出负的抵扣，改为逐汇取。
     """
     def per_year(frame: pd.DataFrame, column: str) -> dict[int, float]:
         return {y: float(frame.loc[frame["year"] == y, column].sum()) for y in years}
 
     plant, hubs, breakdown = tables["plant_cost.csv"], tables["industry_detail.csv"], tables["cost_breakdown.csv"]
-    base = float(assumptions.storage_cost_cny_per_t)
-    stored = sinks.assign(before=sinks["use_mt"] * MILLION * base,
-                          credit=sinks["use_mt"] * MILLION * (base - sinks["cost_cny_per_t"]))
+    before = sinks["cost_before_credit_cny_per_t"]
+    stored = sinks.assign(before=sinks["use_mt"] * MILLION * before,
+                          credit=sinks["use_mt"] * MILLION * (before - sinks["cost_cny_per_t"]))
     return {
         "Cost_Capture": [
             ("煤电捕集岛投资", "one_off", "ccs_retrofit_capex", per_year(plant, "ccs_retrofit_capex_cny")),

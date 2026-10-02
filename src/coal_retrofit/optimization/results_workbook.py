@@ -42,6 +42,11 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
     """「说明」表：各表的口径；写进去的参数取本次求解的值。"""
     life = int(assumptions.pipeline_lifetime_years)
     credit = float(assumptions.eor_credit_cny_per_t)
+    pipe_om, route_opex = float(assumptions.pipe_fixed_om_fraction), float(assumptions.route_opex_cny_per_t_km)
+    om_parts = [f"在役管道的投资 x {pipe_om:.1%}/年，闲置的管也计"] if pipe_om else []
+    om_parts += [f"按流量计的每吨公里 {route_opex:g} 元"] if route_opex else []
+    transport_om = "；".join(om_parts) or "不计"
+    storage, offshore = float(assumptions.storage_cost_cny_per_t), float(assumptions.offshore_storage_multiplier)
     return [
         ["项目", "说明"],
         ["来源", "每次求解后由 coal_retrofit.optimization.results_workbook 写出，表名与行列结构参照 ChinaCCS.xlsm 的结果表，"
@@ -82,8 +87,10 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
                                 "汇总。Total_CO2_Pipeline_Length 给两种总管长：有在役管的边每条只算一次，与按根累计。"],
         ["成本", "Cost_* 与 Revenue_EOR 是各年不折现的值，投资计在建成那一年。捕集 = 煤电捕集岛投资 + 工业捕集投资 + 煤电"
                 "捕集岛固定运维 + 煤电 CCS 额外燃料（CCS 与 BECCS 多烧的燃料）+ 工业捕集路线的年度费，不含氢路线的费用，也不含"
-                "空冷背压与生物质掺烧的效率损失；运输 = 管道投资 + 运输运维；封存 = 扣 EOR 抵扣之前的封存费；Revenue_EOR = 各汇"
-                f"封存量 x EOR 容量占比 x 每吨 {credit:g} 元的抵扣（参数 eor_credit_cny_per_t，⚠ 无出处）。"],
+                f"空冷背压与生物质掺烧的效率损失；运输 = 管道投资 + 运输运维（{transport_om}）；封存 = 扣 EOR 抵扣之前的"
+                f"封存费（每吨 {storage:g} 元，海上汇再乘 "
+                f"{offshore:g}）；Revenue_EOR = 各汇封存量 x EOR 容量占比 x 每吨 {credit:g} 元的抵扣（参数 eor_credit_cny_per_t，"
+                "⚠ 无出处）。"],
         ["Cost_Analysis", "当期成本 = 本年投资 + 本年运行费。每吨运行费 = 本年运行费 ÷ 本年捕集量。全期每吨成本 = 各环节成本的"
                           "现值（投资减去期末残值抵扣，折现与目标函数相同）÷ 捕集量的现值（与年度成本同一折现与年金权重）。"
                           "平均运程 = Σ(各边净流量的绝对值 x 管长) ÷ 捕集量。本年捕集量不超过 "
@@ -131,7 +138,7 @@ def write_ccs_workbook(
     sheets["CO2_inject_stock"] = [(1, 1, stock_table(sinks, "use_mt", years))]
     sheets.update(pipe_sheets(edges, years, tiers, prepared, node_province))
     captured = captured_by_year(sources, years)
-    sheets.update(cost_sheets(cost_lines(tables, sinks, assumptions, years), captured, edges, solution, years, end_year))
+    sheets.update(cost_sheets(cost_lines(tables, sinks, years), captured, edges, solution, years, end_year))
     sheets["objective"] = _objective(tables["cost_breakdown.csv"], float(solution["objective_cny"]), years)
     sheets["Plant_Pathways"] = [(1, 1, plant_pathways(tables, years))]
     sheets["Industry_Routes"] = [(1, 1, industry_routes(tables, years))]

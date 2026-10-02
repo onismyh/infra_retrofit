@@ -331,15 +331,20 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
     storages["injectivity_mtpa"] = (
         np.minimum(buildable, geological_ceiling) * scenario.injectivity_multiplier
     )
-    # DSA 容量支付基准封存成本；EOR 容量在此之上获得收益抵扣（credit）。
+    # 每吨封存成本 = 基准封存成本 x 海上倍率（`offshore` 为真的汇，2026-10-02 起）− EOR 容量份额 x EOR 抵扣（credit）。
     # 按容量拆分计价，而不是按 `storage_type`，因为只要一个 hub 两者兼有，这个标签就只是
     # 多数表决的结果。不做距离合并建出的汇是纯的，份额非 0 即 1，此式与旧规则完全一致；
     # 在合并情形下，它能防止 7 232 Mt 的 EOR 容量因在表决中被压过而悄悄丢掉抵扣。
+    # 扣抵扣之前的单价另存一列，结果工作簿按它与扣后单价之差记 EOR 抵扣（`results_workbook_network.cost_lines`）。
     dsa_mt = storages["storage_dsa_mt"].astype(float).clip(lower=0.0)
     eor_mt = storages["storage_eor_mt"].astype(float).clip(lower=0.0)
     eor_share = (eor_mt / (dsa_mt + eor_mt).replace(0.0, np.nan)).fillna(0.0)
+    offshore = storages["offshore"].astype(bool) if "offshore" in storages.columns else False
+    storages["storage_cost_before_credit_cny_per_t"] = assumptions.storage_cost_cny_per_t * np.where(
+        offshore, assumptions.offshore_storage_multiplier, 1.0
+    )
     storages["storage_cost_cny_per_t"] = (
-        assumptions.storage_cost_cny_per_t - eor_share * assumptions.eor_credit_cny_per_t
+        storages["storage_cost_before_credit_cny_per_t"] - eor_share * assumptions.eor_credit_cny_per_t
     )
     storages = storages.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
     storages = storages[(storages["available_capacity_mt"] > 0) | (storages["injectivity_mtpa"] > 0)].reset_index(drop=True)

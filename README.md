@@ -346,6 +346,34 @@
 > hub 右端为 0）。新参数设回旧值（五档、每档 50 万元/MW、运维比例 0、每 MWh 30 元、两个上限都设 1.0）时，两个情景建出的模型
 > 与改前的 Gurobi 指纹、规模逐个相同。
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
+>
+> 2026-10-02 起管道按在役管道的投资计固定运维，封存按汇型定价（**模型改动**，作者批准 2026-10-02；`docs/参数调研_20261001.md`
+> §2.2 第 2 条、§2.1"封存按汇型"，`docs/方法论.md` §6.2、§6.3、§9.4、附录 B.3、D.3）：
+> - 管道运维：每年按在役管道投资的 4% 计（`pipe_fixed_om_fraction`；Fan et al. 2023 SI p.12（PDF 第 13 页）式 (S29) 后：单位管长运维 =
+>   单位管长建造成本（式 S26）× 4%，Fan 引其文献 18，原文未核；DEA 陆上 0.9% 作敏感性）。投资取建设年的单价，含边类别与海上倍率；在役与流量上限同一判据（建成不满 30 年），
+>   到寿命后原址重铺的那一代另计，闲置的管也付。只在年度项 `transport_opex` 里加一项，不加变量与约束
+>   （`optimization/model_costs._transport_storage_costs`）。按流量计的运输运维 `route_opex_cny_per_t_km` 0.15 → 0（字段保留）：
+>   旧值是 An et al. 2025 SI Table 7 的运输全口径成本 0.182 元/(t·km)（管道、船、铁路平均）减去 20 Mt 档满负荷的投资年金，满负荷时
+>   相当于每年投资的 15% / 21% / 38%（类别倍率 1.0 的边，2 / 5 / 20 Mt 档）。设回 0.15、比例设 0 即旧口径，两项同开会重复计费。
+> - 封存：陆上基准价 32 → 35 元/t（An et al. 2025 SI Table 7 的原值）；海上汇再乘 2.2（`offshore_storage_multiplier`，新参数）：REMIND
+>   carbon management 表的海上、陆上注入投资 525 / 350，固定运维占投资 0.12 / 0.06 每年，寿命都是 40 年，按模型贴现率 6% 年化后之比
+>   为 2.21（贴现率 5%–8% 为 2.13–2.26），只按投资比为 1.5。EOR 抵扣 12 元/t 不变，不随海上倍率放大。四类汇的单价：陆上 DSA 35、
+>   海上 DSA 77、陆上 EOR 23、海上 EOR 65 元/t；ST 输入各有 24 / 7 / 54 / 4 个，注入能力（乘部署系数之前）800 / 467 / 6.6 / 9.2 Mt/yr。
+>   汇表没有 `offshore` 列时都按陆上计（`optimization/data_prep._prepare_storages`）。
+> - 结果工作簿：封存费按各汇的扣前单价（含海上倍率）计，EOR 抵扣 = 封存量 ×（扣前 − 扣后单价）；此前按全国一个基准价反推，海上
+>   加价后会记出负的抵扣（`optimization/results_workbook_network.cost_lines`）。「说明」表写出本次求解的管道运维比例与每吨公里
+>   运维（为 0 的不写）、封存基准价与海上倍率。
+> - 后果（未求解，按系数推）：满负荷时每 km 管道的年成本（投资按 6%、30 年折年金，加运维），三角化边（类别倍率 1.0）降 49% / 61% /
+>   75%（2 / 5 / 20 Mt 档）；旧的按流量运维不乘类别倍率，走廊边（0.97）降 50% / 62% / 75%，支线（1.35）降 39% / 51% / 68%，
+>   直连（2.8）降 11% / 24% / 45%。大管的规模经济回来了，管网与汇的选择会变。已建管道上的流量没有边际成本，流向因而不唯一：
+>   不影响成本，只影响结果表里的流向（`co2_flow_direction.csv`）、边流量（`network_edges.csv` 的 `edge_flow_mtpa`、`edge_active`）、
+>   平均运程（可能含环流）与输送矩阵（追踪前先抵消环流，`optimization/results_tracing.py`）。海上汇（注入能力占全国 37%，其中海上
+>   DSA 36%）每吨贵 42 元，海上封存会减少。
+>
+> `ST_BASE`、`ST_WA_cwatm_126_dry_oq` 只建模不求解：变量、约束、非零元与整数变量都不变（只改目标函数系数）；新参数设回旧值
+> （每吨公里 0.15、运维比例 0、封存 32 元/t、海上倍率 1.0）时，两个情景建出的模型与改前的 Gurobi 指纹、规模逐个相同。
+> `tests/test_transport_storage_costs.py` 覆盖（管道运维的用例求解 toy）。
+> 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -355,14 +383,14 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:222`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:234`（`industry_capex_expr`） |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:243`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:234`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:57-78`、`optimization/model_industry.py:177` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44-45`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨仍按发电量每 MWh 80 元 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:142-147`、`optimization/model_costs.py:140-144`、`optimization/industry_matrices.py:184`、`:219-222` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:45-46`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨仍按发电量每 MWh 80 元 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:142-147`、`optimization/model_costs.py:141-145`、`optimization/industry_matrices.py:184`、`:219-222` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:79-82, 110-112`、`optimization/industry_matrices.py:144-149` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:139` |
 | 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:130`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
-| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:60-97`、`optimization/vintage.py`（`_end_in_use`） |
+| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:61-98`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
 **本轮已统一的差异**（批 2）：
@@ -405,7 +433,7 @@
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:117` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:196-200`）。
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:197-201`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
    煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:139-149`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
@@ -468,8 +496,10 @@
 |---|---|---|---|
 | 管道 capex（2 / 5 / 20 Mtpa 三档） | 2.0 / 3.5 / 8.0 百万元/km | 规模指数 0.6：Knoope et al. 2013；干线基价 40 万元/(Mtpa·km) 取的是"ADB 中国系数"，没能定位出自哪份 ADB 报告，同处引的 Smith et al. 2021 折算只有 23 万且没核到原文；对照：按 Fan et al. 2023 SI 的材料法自算 12–16 万（式中 r 按半径读；原文称其为直径，按直径读是 47–65 万，原式待核；壁厚与保温层为自设），吉林石化—吉林油田一期按规模放大 71 万（只见检索摘要） | 规模指数有出处（原文未核）；干线基价 ⚠ 假设（出处不具体） |
 | 沿既有走廊新建的折减 | × 0.97 | NETL 2013 路权公式（经 IEAGHG 2013/18 Table 20 转引）：路权约占 24–40 英寸、100 英里管道 capex 的 2–3%，0.97 = 去掉这部分 | 推导（原文未核） |
-| 支线 / 直连 / 海上倍率 | × 1.35 / 2.8 / 1.5 | — | ⚠ 假设（无出处） |
-| 封存成本 | 32 元/t | An et al. 2025 SI Table 7：5.0（3.0–8.5）$/t = 35（21–60）元/t | 有出处（原文 35，取值在区间内、低 9%） |
+| 支线 / 直连 / 海上倍率（管道） | × 1.35 / 2.8 / 1.5 | — | ⚠ 假设（无出处） |
+| 管道固定运维 | 在役管道投资 × 4%/年，闲置的管也付（2026-10-02 起；此前无固定运维，按流量每吨公里 0.15 元，该项缺省改为 0） | Fan et al. 2023 SI p.12（PDF 第 13 页）式 (S29) 后：单位管长建造成本（式 S26）× 4%（Fan 引其文献 18）；对照：DEA 陆上 0.9%/年、海底 0.5%/年 | 有出处（Fan 所引原文未核） |
+| 封存成本 | 陆上 35 元/t（2026-10-02 前 32） | An et al. 2025 SI Table 7：5.0（3.0–8.5）$/t = 35（21–60）元/t | 有出处 |
+| 海上封存倍率 | × 2.2（2026-10-02 起；此前海上、陆上同价） | REMIND carbon management 表：海上、陆上注入投资 525 / 350，固定运维占投资 0.12 / 0.06 每年，寿命 40 年；按 6% 年化后之比 2.21（只按投资比为 1.5） | 推导（REMIND 的注入成本之比，套用到 An 的封存单价上；按模型贴现率 6% 年化，5%–8% 为 2.13–2.26；单位按表头推断，比值与单位无关） |
 | EOR 抵扣 | 12 元/t | — | ⚠ 假设（无出处） |
 | 管道寿命 | 30 年 | — | ⚠ 假设（设定值） |
 | 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply.py:76-129`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
