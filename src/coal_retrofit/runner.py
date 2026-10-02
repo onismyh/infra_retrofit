@@ -209,6 +209,7 @@ def solve(
             "status": ys["status"],
             "objective_cny": float(ys["objective_cny"]),
             "hours_scale": float(year_data.hours_scale),
+            "part_load_factor": float(year_data.part_load_factor),
             "coal_generation_twh": total_gen_year / 1e6,
             "coal_baseline_mt": coal_baseline_year,
             "pathway_shares": pathway_shares,

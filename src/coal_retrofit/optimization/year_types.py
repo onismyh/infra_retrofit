@@ -64,6 +64,7 @@ class YearData:
     # --- 煤电厂侧（`plant_matrices._plant_operating_matrices`）。随毛热耗变的系数按未重建部分的毛热耗
     #     `heat_rate_eff`（未到期机组；全部到期的 hub 为各类重建热耗的平均）算，各类重建部分的差在 `rebuilt_deltas` ---
     hours_scale: float
+    part_load_factor: float  # 部分负荷修正系数 κ，已乘进毛热耗与排放（缺省关为 1，`OptimizationScenario.part_load_factor`）
     generation: np.ndarray
     generation_by_pathway: np.ndarray
     emissions_mt: np.ndarray

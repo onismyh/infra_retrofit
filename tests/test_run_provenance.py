@@ -57,6 +57,10 @@ RESULTS = {
     "NOGIT": _result({}, code={"commit": None, "dirty": None}),
     "CP0": _result({}, carbon_price_cny_per_t_by_year=[0.0, 0.0, 0.0, 0.0]),
     "CP1": _result({}, carbon_price_cny_per_t_by_year=[50.0, 100.0, 150.0, 200.0]),
+    "DR6": _result({}, discount_rate=0.06),
+    "DR8": _result({}, discount_rate=0.08),
+    "CAP0": _result({}, coal_capacity_price_cny_per_kw_yr=0.0),
+    "CAP100": _result({}, coal_capacity_price_cny_per_kw_yr=100.0),
     "DIG": _result({}, digests={"digest_plants": "p1", "digest_sector_targets": "s1"}, input_files=FILES),
     "DIG_PLANTS": _result({}, digests={"digest_plants": "p2", "digest_sector_targets": "s1"}, input_files=FILES),
     "DIG_OTHER_FILE": _result({}, digests={"digest_plants": "p1", "digest_sector_targets": "s2"},
@@ -115,6 +119,7 @@ def check(monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, str]]:
         ("DIG", "DIG_OTHER_FILE", "两边读的文件不同"),  # 部门目标换了来源：文件不同，摘要不比
         ("DIG", "DIG_WATER", "只有 DIG_WATER 读了"),  # 无水约束的一边不读水的文件
         ("DIG_WATER", "DIG", "只有 DIG_WATER 读了"),  # 两边换位置，点名的仍是读了水文件的那一边
+        ("MIP", "CAP0", "参数差 1 项"),  # 加容量电价之前落盘的一边没有这个键，按 0 比：口径相同
     ],
 )
 def test_pair_passes(check, a: str, b: str, message: str) -> None:
@@ -138,6 +143,9 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
         ("MIP", "NOCODE", "NOCODE 的 resolved 段没有 code"),  # 分不出是不是在模型改动之后求解的
         ("NOCODE", "MIP", "NOCODE 的 resolved 段没有 code"),
         ("CP0", "CP1", "carbon_price_cny_per_t_by_year 两边不同"),  # 目标函数的口径不同
+        ("DR6", "DR8", "discount_rate 两边不同"),  # 折现的贴现率不同
+        ("CAP0", "CAP100", "coal_capacity_price_cny_per_kw_yr 两边不同"),  # 目标函数含的容量电费收入不同
+        ("MIP", "CAP100", "coal_capacity_price_cny_per_kw_yr 两边不同"),  # 缺键的一边按 0 比，仍不同
         ("DIG", "DIG_PLANTS", "输入 plants 两边不同"),  # CLAUDE.md 二.6：不同输入版本不得相减
     ],
 )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 
 TARGET_GEO_CRS = "EPSG:4326"
 PLANT_YEAR_BASIS = "2025"
@@ -242,6 +243,20 @@ GJ_PER_MWH = 3.6  # 效率 = GJ_PER_MWH / 毛热耗（`optimization.plant_matric
 # 煤电设计寿命 40 年：Fan et al. 2023（`fan2023cofiring`）SI Table 10（煤电 40 年）；Wang et al. 2025
 # （`wang2025reducing`）正文与 SI Table 3（40 年，区间 25-40）。hub 的 `retirement_year` 与机组级到期都用它。
 COAL_DESIGN_LIFE_YEARS = 40
+
+
+def part_load_heat_rate_factor(load_fraction: float) -> float:
+    """负荷系数 *load_fraction*（统计期出力 ÷ 额定出力）下度电燃料与 CO2 相对额定负荷的倍数（`OptimizationScenario.part_load_factor`）。
+
+    生态环境部《全国碳排放权交易市场 2025、2026 年度发电行业以及 2026 年度钢铁、水泥、铝冶炼行业配额总量和分配方案
+    （征求意见稿）》表 2 的常规燃煤机组调峰修正系数（转录件，未与官方原文核对，征求意见稿不是定稿；观测 coal_perf-050）：
+    负荷系数 F（%）< 50 时取下式，F >= 50 时为 1。式在 F = 100 处为 1.000、在 F = 50 处为 1.100，按原文字面在 50 处跳变 10%。
+    """
+    load_pct = 100.0 * float(load_fraction)
+    if load_pct >= 50.0:
+        return 1.0
+    return 7.254 - 0.633 * (1.0 - math.exp(-load_pct / 29.822)) - 5.643 * (1.0 - math.exp(-load_pct / 6.871))
+
 
 PLANNING_YEARS = [2030, 2040, 2050, 2060]
 # 模型的贴现率缺省值（`OptimizationScenario.discount_rate`）。模型自己折现与折年金的地方都用

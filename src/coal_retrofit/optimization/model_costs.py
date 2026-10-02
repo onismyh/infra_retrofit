@@ -109,7 +109,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
     """煤电运行项与碳成本（CNY/yr，未折现未缩放），键与 `cost_exprs` 同名同序。"""
     year_data = payload.year_data
 
-    # 基线净运行成本（煤 + 运维 - 电）：未改造按基线发电量，改造路径含 CF 提升，退役为零。
+    # 基线净运行成本（煤 + 运维 - 电量电费 - 容量电费）：未改造按基线发电量，改造路径含 CF 提升，退役为零。
     baseline_net = gp.quicksum(
         float(year_data.baseline_net_matrix[p, k]) * payload.share[p, k]
         for p in range(plant_count) for k in range(len(PATHWAYS))
