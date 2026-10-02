@@ -24,7 +24,7 @@ from coal_retrofit.optimization._shared import (
     _year_objective_weight,
 )
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.results import _build_sanity_checks
+from coal_retrofit.optimization.results import _build_cost_breakdown, _build_sanity_checks
 from coal_retrofit.optimization.results_plant import (
     _blend_ratios,
     _build_pathway_table,
@@ -198,7 +198,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             emissions_mt=np.array([10.0, 4.0]), carbon_price=carbon_price,
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
-            energy_penalty_matrix=zeros_path,
+            energy_penalty_matrix=zeros_path, air_penalty_cost_matrix=zeros_path, allow_air_cooling_retrofit=False,
         ))
         return _build_plant_cost_table(
             _prepared(n), 2040, year_data, share, np.zeros(n),
@@ -206,6 +206,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             plant_reduction_mt=np.array([7.5, -0.2]),
             retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), stranded_by_plant=np.zeros(n),
             capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=zeros_path,
+            air_share=zeros_path, rebuilt_air_share=zeros_path, bio_penalty_by_plant=np.zeros(n),
         )
 
     priced = table(100.0)
@@ -426,8 +427,10 @@ def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
 @pytest.mark.parametrize("solved", ["mixed_continuous", "mixed_partly_expired"])
 def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -> None:
     """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）；
-    逐厂基线净运行成本之和 = 目标函数的同名项（部分到期的 toy 含重建部分的差）。除退役外全部路径开放、连续 hub。"""
+    逐厂基线净运行成本之和 = 目标函数的同名项（部分到期的 toy 含重建部分的差）；能耗惩罚三列（CCS 额外燃料、空冷背压、
+    生物质效率）之和 = 目标函数的 energy_penalty_cost，与 `cost_breakdown.csv` 的不折现列相同。除退役外全部路径开放、连续 hub。"""
     scenario, assumptions, prepared, solution = request.getfixturevalue(solved)
+    biomass_penalty = 0.0
     for year, ys in solution["year_solutions"].items():
         year_data = ys["year_data"]
         price = float(year_data.carbon_price)
@@ -436,7 +439,8 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
             plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
             stranded_by_plant=ys["stranded_by_plant"], capex_pathway_indices=solution["capex_pathway_indices"],
-            rebuilt_share=ys["rebuilt_share"],
+            rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
+            rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
         )
         plant_carbon = float(table["carbon_cost_cny"].sum())
         industry = year_data.industry
@@ -454,6 +458,17 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
         assert float(table["baseline_net_cost_cny"].sum()) == pytest.approx(
             ys["cost_breakdown_cny"]["baseline_net_cost"] / weight, rel=1e-9
         )
+        penalties = table[["energy_penalty_cny", "air_penalty_cny", "biomass_penalty_cny"]].sum()
+        biomass_penalty += float(penalties["biomass_penalty_cny"])
+        assert float(penalties.sum()) == pytest.approx(
+            ys["cost_breakdown_cny"]["energy_penalty_cost"] / weight, rel=1e-9
+        )
+        breakdown = _build_cost_breakdown(year, ys["cost_breakdown_cny"], ys["cost_weights"]).set_index("category")
+        assert breakdown.loc["energy_penalty_cost", "kind"] == "annual"
+        assert breakdown.loc["energy_penalty_cost", "cost_undiscounted_cny"] == pytest.approx(
+            float(penalties.sum()), rel=1e-9
+        )
+    assert biomass_penalty > 0.0, "前提：2060 年走 BECCS，有生物质效率惩罚"
 
 
 def test_ammonia_blend_x_share_is_the_quantity_the_constraints_use(ammonia_continuous) -> None:

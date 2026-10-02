@@ -158,8 +158,9 @@ class YearData:
 class YearPayload:
     """`add_year_block` 的输出：一年的变量、表达式与系数。
 
-    `cost_exprs`、`salvage_ledger`、`objective_expr` 由 `add_year_costs` 写入，`retirement.add_retired_rebuild_offset`
-    往台账补已退役重建装机的扣回项，`_add_salvage_credit` 再补残值项并重算目标，所以这个类不冻结。
+    `cost_exprs`、`cost_weights`、`salvage_ledger`、`objective_expr` 由 `add_year_costs` 写入，
+    `retirement.add_retired_rebuild_offset` 往台账补已退役重建装机的扣回项，`_add_salvage_credit` 再补残值项并重算目标，
+    所以这个类不冻结。
     """
 
     year: int
@@ -213,11 +214,15 @@ class YearPayload:
     rebuilt_air_share: dict[int, dict[int, gp.Var]]
     rebuilt_blend_x_share: dict[tuple[int, int], GrbExpr]
     total_reduction_mt: GrbExpr
-    total_bio_penalty: GrbExpr
+    # 逐厂随掺烧档位变的生物质效率惩罚燃料费（CNY/yr，未折现），含重建部分的差；目标函数的 energy_penalty_cost 含其合计。
+    bio_penalty_by_plant: list[GrbExpr]
     # `model_industry.add_industry_year` 的输出。
     industry: IndustryPayload
     # 成本类别 -> 折现并缩放后的表达式（碳价为零时碳成本是 0.0）。
     cost_exprs: dict[str, GrbExpr] = field(default_factory=dict)
+    # 成本类别 -> (类别, 折现权重)：年度项 annual 乘折现 x 年金权重，一次性项 one_off 乘折现，期末残值 horizon_end 乘期末
+    # 折现（`add_year_costs`、`_add_salvage_credit` 写入）；结果表除以它得本年不折现的值。
+    cost_weights: dict[str, tuple[str, float]] = field(default_factory=dict)
     # (名称, 未折现 capex 表达式, 经济寿命年)，供期末残值；期末已退役重建装机的扣回项（`rebuild_retired`）为负。
     salvage_ledger: list[tuple[str, GrbExpr, int]] = field(default_factory=list)
     # `add_year_costs` 之前为 None。
@@ -292,12 +297,18 @@ class YearSolution(TypedDict):
     biomass_blend_x_share: np.ndarray
     beccs_blend_x_share: np.ndarray
     ammonia_blend_x_share: np.ndarray
-    # `YearPayload` 同名字段的值，(plant_count, len(PATHWAYS))，其余 hub 与列为零：各路径份额里的重建部分；
-    # 掺烧三列的 Σβ_l·rz_l（空冷份额的重建部分只进目标，不导出）。
+    # `YearPayload` 同名字段的值，(plant_count, len(PATHWAYS))，其余 hub 与列为零：各路径份额与空冷份额里的重建部分；
+    # 掺烧三列的 Σβ_l·rz_l。
     rebuilt_share: np.ndarray
+    rebuilt_air_share: np.ndarray
     rebuilt_blend_x_share: np.ndarray
+    # 逐厂生物质效率惩罚燃料费，CNY/yr（`YearPayload.bio_penalty_by_plant` 的值）。
+    bio_penalty_by_plant: np.ndarray
     total_reduction_mt: float
     cost_breakdown_cny: dict[str, float]
+    # `YearPayload.cost_weights`；残值台账 (名称, 未折现 capex 的值, 经济寿命年)，扣回项为负。
+    cost_weights: dict[str, tuple[str, float]]
+    salvage_ledger: list[tuple[str, float, int]]
     slacks: SolveSlacks
     year_data: YearData
 

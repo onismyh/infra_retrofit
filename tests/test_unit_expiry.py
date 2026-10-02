@@ -277,6 +277,8 @@ def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, reti
         plant_reduction_mt=ys["plant_reduction_mt"], retrofit_new=ys["retrofit_new"],
         ccs_om_by_plant=ys["ccs_om_by_plant"], stranded_by_plant=ys["stranded_by_plant"],
         capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
+        air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
+        bio_penalty_by_plant=ys["bio_penalty_by_plant"],
     )
     margin = assumptions.baseline_om_cost_cny_per_mwh - scenario.electricity_price_for_year(2050)
     expected = float(year_data.generation[0]) * (
@@ -448,7 +450,7 @@ def test_retired_rebuilds_get_no_salvage(last_expired: float) -> None:
             rebuild=model.addMVar(1, lb=rebuild, ub=rebuild),
             rebuilt_share={0: {UNABATED: model.addVar(lb=running, ub=running)}},
             year_data=SimpleNamespace(expired_share=np.array([f]), capacity_mw=np.array([1000.0])),
-            salvage_ledger=[], cost_exprs={},
+            salvage_ledger=[], cost_exprs={}, cost_weights={},
         ))
     model.update()
     count = model.NumVars

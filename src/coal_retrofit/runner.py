@@ -1,4 +1,4 @@
-"""求解一个登记情景并落盘：建模、求解、建 15 张结果表，写 CSV 与 result.json。
+"""求解一个登记情景并落盘：建模、求解、建 15 张结果表，写 CSV、结果工作簿与 result.json。
 
 2026-09-27 从 `scripts/run_single.py` 的 `run()`、`main()` 搬来，求解、建表与写文件的逻辑不变。变的有两处：
 参数取自登记表（`coal_retrofit.scenarios`），求解树取自情景的 `tree`（或命令行 `--tree`），不再取脚本所在目录；
@@ -9,6 +9,10 @@ result.json 末尾多一段 `resolved`，记全部参数、求解树、`--set` �
 （`run_controls`）；Gurobi 的 seed 与 MIPFocus 是情景字段，环境变量仍兼容（`build_parameters`）；已有同名结果时
 求解之前就拒绝，`force` 才覆盖；`resolved` 另记热启动第 1 步（`warm_start`）、读了哪些输入文件（`input_files`）
 与求解时的提交号（`code`）。
+
+2026-10-02 另加：同目录多写一个参照 ChinaCCS.xlsm 版式的结果工作簿 `ccs_results.xlsx`（`results_workbook`），它出错只记
+日志并删掉工作簿（删不掉也只记日志），CSV 与 result.json 照写；管网节点的省（`results_regions.node_provinces`）在建模
+之前定好，缺省界图层等错误在 MIP 求解之前就报（`warm_start = "lp_relax"` 的情景在热启动第 1 步之后）。
 """
 from __future__ import annotations
 
@@ -46,6 +50,8 @@ from .optimization.results import (
     _build_supply_table,
     _build_water_flow_table,
 )
+from .optimization.results_regions import node_provinces
+from .optimization.results_workbook import write_ccs_workbook
 from .optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from .optimization.solver import SolveControls, _solve_joint_multi_period
 from .paths import ProjectPaths
@@ -127,12 +133,14 @@ def solve(
     paths: ProjectPaths, name: str, scenario: OptimizationScenario, assumptions: OptimizationAssumptions,
     controls: SolveControls | None = None,
 ) -> dict[str, Any]:
-    """建模、求解，把 15 张结果表写到 `<树>/results/<name>/`；返回 result.json 的内容（还没有 `resolved`）。
+    """建模、求解，把 15 张结果表与结果工作簿 `ccs_results.xlsx` 写到 `<树>/results/<name>/`；返回 result.json 的内容
+    （还没有 `resolved`）。
 
     *controls* 是只改搜索路径或只做诊断的开关（`SolveControls`：热启动第 2 步的 MIP start、LP 松弛诊断等），缺省全关。
     """
     t0 = time.time()
     prepared = prepare_inputs(paths, scenario, assumptions)
+    node_province = node_provinces(prepared, paths.data_dir / "ChinaMap" / "provinces.shp")
     years = scenario.planning_years
     state = initial_state(prepared)
     solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state, controls)
@@ -152,6 +160,7 @@ def solve(
 
     year_summaries = {}
     new_cap_by_year: dict[int, np.ndarray] = {}  # 逐年新增管道容量，在役存量只数寿命内的
+    pipes_by_year: dict[int, np.ndarray] = {}  # 逐年逐边逐管径档新铺的整根管数，同法累计在役根数
     for year_index, year in enumerate(years):
         ys = solution["year_solutions"][year]
         share = ys["share"]
@@ -161,6 +170,10 @@ def solve(
             new_cap_by_year, year, assumptions.pipeline_lifetime_years, len(prepared.network.edges)
         )
         state_before = state_track.clone()
+        pipes_by_year[year] = np.rint(ys["pipe_count"])
+        pipes_in_service = pipes_by_year[year] + _alive_edge_added_stock(
+            pipes_by_year, year, assumptions.pipeline_lifetime_years, pipes_by_year[year].shape
+        )
 
         # 汇总按本年发电量加权（已乘利用小时轨迹）
         gen_year = np.asarray(year_data.generation, dtype=np.float64)
@@ -224,14 +237,15 @@ def solve(
         province_tables.append(prov_table)
         edge_tables.append(_build_edge_table(
             prepared, year, ys["edge_flow_mtpa"], ys["build_edge"], ys["new_cap_mtpa"], state_before, assumptions,
-            pipe_count=ys["pipe_count"], pipe_tiers=tuple(year_data.pipe_tiers_mtpa),
+            pipe_count=ys["pipe_count"], pipe_tiers=tuple(year_data.pipe_tiers_mtpa), pipes_in_service=pipes_in_service,
+            node_province=node_province,
         ))
         storage_tables.append(_build_storage_table(
             prepared, year, ys["storage_use_mtpa"], state_before, interval_years,
             injectivity_mtpa=year_data.storage_injectivity_mtpa,
         ))
         supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"]["water_basin_use_m3"]))
-        cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"]))
+        cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"], ys["cost_weights"]))
         sanity_tables.append(_build_sanity_checks(
             year, ys["slacks"], pw_table, prov_table,
             plant_reduction_mt=ys["plant_reduction_mt"], captured_mt=ys["captured_mt_by_plant"],
@@ -262,7 +276,8 @@ def solve(
             ccs_om_by_plant=ys["ccs_om_by_plant"],
             stranded_by_plant=ys["stranded_by_plant"],
             capex_pathway_indices=solution["capex_pathway_indices"],
-            rebuilt_share=ys["rebuilt_share"],
+            rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
+            rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
         ))
 
         new_cap_by_year[year] = ys["new_cap_mtpa"]
@@ -290,6 +305,15 @@ def solve(
     }
     for fname, df in csv_tables.items():
         df.to_csv(out_dir / fname, index=False)
+    workbook = out_dir / "ccs_results.xlsx"
+    try:
+        write_ccs_workbook(workbook, csv_tables, solution, prepared, scenario, assumptions, node_province)
+    except Exception:  # 工作簿只是同一组结果的另一种版式，出错不能连累已求得的解
+        logger.exception("%s: 结果工作簿 ccs_results.xlsx 没有写成，CSV 与 result.json 照写", name)
+        try:  # 写了一半的、或 --force 之前那次求解留下的工作簿都删掉，不与这次的 CSV 混放
+            workbook.unlink(missing_ok=True)
+        except OSError as err:  # 如 Windows 上在 Excel 里开着（保存多半也是因此失败的）
+            logger.error("%s: %s 删不掉（%s），它不是这次求解的结果，请手动删除", name, shown_path(workbook), err)
 
     result = {
         "name": name,
@@ -307,7 +331,7 @@ def run(
     time_limit: int = DEFAULT_TIME_LIMIT, mip_gap: float | None = None,
     applied_sets: Mapping[str, Any] | None = None, sol_dir: Path | None = None, force: bool = False,
 ) -> dict[str, Any]:
-    """求解 *spec*，写 `<树>/results/<结果名>.json` 与同名目录下的 15 张表，返回 result.json 的内容。
+    """求解 *spec*，写 `<树>/results/<结果名>.json` 与同名目录下的 15 张表和结果工作簿，返回 result.json 的内容。
 
     *name* 是结果名（缺省为情景名；`--as` 另起），*tree* 换掉情景登记的求解树（`--tree`）。
     *applied_sets* 是已经并进 *spec* 的 `--set` 覆盖项，只用来记进 `resolved`。

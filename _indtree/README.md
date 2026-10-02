@@ -145,10 +145,12 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 
 换句话说：被换掉的是**管网与汇**，被保留的是**源与水**，两者在输入侧没有交叉依赖。
 
-`data/` 是指向仓库根 `data/` 的 junction（流域矢量、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
+`data/` 是指向仓库根 `data/` 的 junction（流域矢量、省界、封存汇栅格等只读大文件）。它不在版本库里（`.gitignore`），
 新克隆要在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`（`mklink` 是 cmd 内建命令，PowerShell 里要带 `cmd /c`），
-Linux / macOS `ln -s ../data _indtree/data`；没有它，有水约束的情景求解时读不到流域矢量（`data_prep._prepare_plants`
-经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）直接报错。
+Linux / macOS `ln -s ../data _indtree/data`；没有它求解时直接报错：有水约束的情景读不到流域矢量（`data_prep._prepare_plants`
+经 `builders/water._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）；2026-10-02 起每个情景还要读省界
+`ChinaMap/provinces.shp`，给源、汇与节点表都给不出省名的管网节点按经纬度定省（`results_regions.node_provinces`，v9.2 有
+305 个这样的节点），`warm_start = "lp_relax"` 的情景要到热启动第 1 步之后才报这个错。
 出图不经它：2026-09-29 起 `plot_style.map_layer` 的底图直接读仓库根 `data/ChinaMapTHT/`（`REPO_ROOT`，已入库）。
 
 ---

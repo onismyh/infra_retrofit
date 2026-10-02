@@ -285,6 +285,9 @@ def _build_plant_cost_table(
     stranded_by_plant: np.ndarray,
     capex_pathway_indices: tuple[int, ...],
     rebuilt_share: np.ndarray,
+    air_share: np.ndarray,
+    rebuilt_air_share: np.ndarray,
+    bio_penalty_by_plant: np.ndarray,
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
@@ -292,7 +295,12 @@ def _build_plant_cost_table(
     `retirement.retirement_flows`），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
     曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。
     碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本与 CCS 能耗惩罚含部分到期 hub
-    重建部分的差（`rebuilt_share`，求解器的同名值；没有部分到期的 hub 时全为零）。
+    重建部分的差（`rebuilt_share`、`rebuilt_air_share`，求解器的同名值；没有部分到期的 hub 时全为零）。
+
+    能耗惩罚分三列：`energy_penalty_cny` 是 CCS 与 BECCS 的额外燃料；`air_penalty_cny` 是空冷背压、
+    `biomass_penalty_cny` 是生物质掺烧效率损失多烧的煤（2026-10-02 起另列，后者取求解器的逐厂值
+    `bio_penalty_by_plant`）。三列逐厂相加即目标函数的 `energy_penalty_cost`（未折现）。
+    `total_plant_cost_cny` 的口径不变，不含后两列。
     """
     plants = prepared.plants
     n = len(plants)
@@ -301,6 +309,7 @@ def _build_plant_cost_table(
     carbon_price = float(year_data.carbon_price)
     # 本年建成的捕集岛的系数（只有一列，见 `model_year._add_retrofit_new`）。
     stock_coeff = year_data.retrofit_stock_capex
+    air_cost_on = year_data.air_penalty_cost_matrix is not None and bool(year_data.allow_air_cooling_retrofit)
 
     rows: list[dict[str, object]] = []
     for p in range(n):
@@ -339,6 +348,10 @@ def _build_plant_cost_table(
         ccs_capex = sum(
             float(stock_coeff[p, j]) * float(retrofit_new[p, j]) for j in range(len(capex_pathway_indices))
         )
+        # 空冷背压多烧的煤，与目标函数同式（`model_costs._operating_costs`）：按空冷份额，重建部分加两部分之差。
+        air_pen = float(year_data.air_penalty_cost_matrix[p] @ air_share[p]) if air_cost_on else 0.0
+        if np.any(rebuilt_air_share[p]):
+            air_pen += float(year_data.rebuilt_delta.air_penalty_cost_matrix[p] @ rebuilt_air_share[p])
 
         rows.append({
             "year": year,
@@ -354,5 +367,7 @@ def _build_plant_cost_table(
             "stranded_capex_cny": stranded,
             "ccs_retrofit_capex_cny": ccs_capex,
             "total_plant_cost_cny": baseline_net + carbon_cost - coal_savings + incr_om + energy_pen + ccs_om + stranded + ccs_capex,
+            "air_penalty_cny": air_pen,
+            "biomass_penalty_cny": float(bio_penalty_by_plant[p]),
         })
     return pd.DataFrame(rows)
