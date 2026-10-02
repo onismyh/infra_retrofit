@@ -103,8 +103,8 @@ def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
 
 
 def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> None:
-    """煤电：乘子 2 使捕集岛 capex 与其固定运维翻倍；能耗惩罚与 BECCS 每 MWh 的掺烧运维
-    （与纯掺烧同为 30 元/MWh）不变。2026-09-23 前固定运维不翻倍，掺烧运维却翻倍。"""
+    """煤电：乘子 2 使捕集岛 capex 与其固定运维翻倍；能耗惩罚、每 MWh 附加项与生物质掺烧能力的固定运维（BECCS 与纯掺烧
+    共用；2026-10-02 前是 BECCS、生物质每 MWh 30 元）不变。2026-09-23 前固定运维不翻倍，BECCS 的掺烧运维却翻倍。"""
     base = _toy_year_matrices(tmp_path / "m1", 2050)
     doubled = _toy_year_matrices(tmp_path / "m2", 2050, ccs_cost_multiplier=2.0)
     assert base.retrofit_stock_om[0, 0] > 0.0
@@ -114,7 +114,8 @@ def test_ccs_cost_multiplier_scales_capex_and_its_fixed_om_only(tmp_path) -> Non
         assert base.energy_penalty_matrix[0, k] > 0.0
         assert doubled.ccs_retrofit_capex_matrix[0, k] == pytest.approx(2.0 * base.ccs_retrofit_capex_matrix[0, k], rel=1e-12)
         assert doubled.energy_penalty_matrix[0, k] == pytest.approx(base.energy_penalty_matrix[0, k], rel=1e-12)
-    assert base.fixed_cost_matrix[0, PATHWAY_INDEX["beccs"]] > 0.0
+    assert base.biomass_blend_om_per_level[0] > 0.0
+    np.testing.assert_array_equal(doubled.biomass_blend_om_per_level, base.biomass_blend_om_per_level)
     np.testing.assert_array_equal(doubled.fixed_cost_matrix, base.fixed_cost_matrix)
 
 

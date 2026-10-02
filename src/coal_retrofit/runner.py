@@ -278,6 +278,7 @@ def solve(
             capex_pathway_indices=solution["capex_pathway_indices"],
             rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+            blend_level_b=ys["blend_level_b"],
         ))
 
         new_cap_by_year[year] = ys["new_cap_mtpa"]
