@@ -290,10 +290,27 @@ python -m coal_retrofit run ST_BASE --threads 8
 两次求解相减之前，在仓库根跑 `python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
 列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
 有一边没有 `resolved` 段（2026-09-27 之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是
-LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价不同、读的同一个输入文件摘要不同、线程数或
+LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价、贴现率或煤电容量电价不同、读的同一个输入文件摘要不同、线程数或
 MIPFocus 不同、有一边没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同、
 记不了提交号或求解时有未提交的改动只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
 这份脚本和出图脚本一样读本树 `results/`（`scripts/_bootstrap.py` 的 `ROOT`）。
+
+敏感性不进登记表，缺省值都不改模型（2026-10-02 起，见仓库根 README §0）：用 `--set 节.字段=值` 覆盖、`--as` 另起结果名，
+水约束情景用同一组 `--set`、另起结果名（如 `ST_WA_cwatm_126_dry_oq_dr5`）。贴现率、煤价乘子、煤电容量电价、部分负荷修正（机组全年在线小时）各两档：
+
+```bash
+python -m coal_retrofit run ST_BASE --set scenario.discount_rate=0.05 --as ST_BASE_dr5 --threads 8
+python -m coal_retrofit run ST_BASE --set scenario.discount_rate=0.08 --as ST_BASE_dr8 --threads 8
+python -m coal_retrofit run ST_BASE --set assumptions.coal_price_multiplier=0.89 --as ST_BASE_coal089 --threads 8
+python -m coal_retrofit run ST_BASE --set assumptions.coal_price_multiplier=0.86 --as ST_BASE_coal086 --threads 8
+python -m coal_retrofit run ST_BASE --set scenario.coal_capacity_price_cny_per_kw_yr=100 --as ST_BASE_cap100 --threads 8
+python -m coal_retrofit run ST_BASE --set scenario.coal_capacity_price_cny_per_kw_yr=165 --as ST_BASE_cap165 --threads 8
+python -m coal_retrofit run ST_BASE --set scenario.coal_part_load_online_hours=7500 --as ST_BASE_pl7500 --threads 8
+python -m coal_retrofit run ST_BASE --set scenario.coal_part_load_online_hours=6500 --as ST_BASE_pl6500 --threads 8
+```
+
+贴现率或容量电价与对照不同，目标函数口径就不同，`--pair` 判不过，只能比路径结构；同一组 `--set` 下的 `ST_BASE` 与
+`ST_WA_cwatm_126_dry_oq` 照常按可证区间比。
 
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |
 |---|---|---|---|---|---|---|

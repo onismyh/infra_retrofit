@@ -4,7 +4,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from ..constants import DEFAULT_DISCOUNT_RATE, PLANNING_YEARS
+from ..constants import DEFAULT_DISCOUNT_RATE, PLANNING_YEARS, part_load_heat_rate_factor
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +85,21 @@ class OptimizationAssumptions:
         "Shanxi": 28.2, "Sichuan": 45.4, "Tianjin": 38.6,
         "Xinjiang": 16.8, "Yunnan": 29.6, "Zhejiang": 39.4,
     })
+    # 煤价乘子（2026-10-02 起，缺省 1.0，只作敏感性）：乘在上表与缺省煤价上，煤电与工业捕集蒸汽的用煤同时变。上表是 2023 价格年，
+    # 2024–2025 年发电集团口径低 2%–11%、2025 年秦皇岛港口价低 14%（B），敏感性取 0.89、0.86，保留分省结构、整体平移
+    # （docs/参数调研_20261001.md §2.3）。
+    coal_price_multiplier: float = 1.0
 
     def province_coal_cost(self, province_name: str) -> float:
-        """取某省的燃煤成本（CNY/GJ）。
+        """取某省的燃煤成本（CNY/GJ），已乘 `coal_price_multiplier`。
 
         省名用本表的写法（读入时已由 `canonical_provinces` 换过）；查不到时退回
         `coal_fuel_cost_cny_per_gj`，读入时已告警。
         """
-        return self.province_coal_cost_cny_per_gj.get(province_name, self.coal_fuel_cost_cny_per_gj)
+        if not 0.0 < self.coal_price_multiplier < float("inf"):
+            raise ValueError(f"coal_price_multiplier must be positive and finite, got {self.coal_price_multiplier}")
+        price = self.province_coal_cost_cny_per_gj.get(province_name, self.coal_fuel_cost_cny_per_gj)
+        return price * self.coal_price_multiplier
 
     def canonical_provinces(self, province_names: Iterable[object], source: str) -> list[str]:
         """把输入表的省名逐个换成分省煤价表的写法（`PROVINCE_NAME_ALIASES`），按原顺序返回。
@@ -105,7 +112,7 @@ class OptimizationAssumptions:
         if missing:
             logger.warning(
                 "%s: %d row(s) in province(s) %s have no coal price; priced at the default %.1f CNY/GJ",
-                source, sum(name in missing for name in names), missing, float(self.coal_fuel_cost_cny_per_gj),
+                source, sum(name in missing for name in names), missing, self.coal_fuel_cost_cny_per_gj * self.coal_price_multiplier,
             )
         return names
     # 技术学习曲线（外生 Wright 定律）。
@@ -484,6 +491,12 @@ class OptimizationScenario:
     # TIMES CN60 给出 2030 年 3 594 h、2040 年 3 092 h（TIMES 里 2040 年后煤电是剩余项），
     # 之后各点是按机组留作灵活性电源取的整数。
     coal_operating_hours_by_year: tuple[float, ...] = ()
+    # 部分负荷修正（2026-10-02 起，缺省 0 即关，只作敏感性）：设为机组全年在线小时数时，各规划年全国一个系数
+    # κ = `constants.part_load_heat_rate_factor`(利用小时 ÷ 在线小时)，乘在煤电各部分的毛热耗与基线排放上，燃料与掺烧用量、排放、各项能耗
+    # 惩罚、空冷背压与 2030 年电力基线随之放大（`plant_matrices`、`model_index`）；耗水强度不乘。利用小时取上一项，没设时取全机组
+    # 当前平均小时数。ST 的小时数下降是"整体降负荷"才该加，"整台停运、其余满发"则不该加，主线不开（docs/参数调研_20261001.md
+    # §2.3）。在线 7 500 h 时 ST 四年 κ = 1.110 / 1.150 / 1.353 / 1.609，6 500 h 作低档（1.000 / 1.111 / 1.268 / 1.466）。
+    coal_part_load_online_hours: float = 0.0
     # 外生的分行业、分年份工业产量指数，来自 `inputs/industry_output_index_<source>.csv`；
     # 为空表示每年产量都保持在 2025 年水平（2026-09-10 之前的行为）。设了
     # `sector_target_source` 而本项未设时默认取前者，这样以 TIMES 为锚的上限总是配上推导它
@@ -553,6 +566,10 @@ class OptimizationScenario:
     # 电价路径。2030 年的 400 元/MWh 对照 Wang et al. 2025（`wang2025reducing`）SI Table 3：
     # 0.06（0.048-0.072）$/kWh = 420（336-504）元/MWh。逐年上涨的路径：⚠ 假设（无出处）。
     electricity_price_cny_per_mwh_by_year: tuple[float, ...] = (400.0, 440.0, 490.0, 550.0)
+    # 煤电容量电价，元/(kW·a)（2026-10-02 起，缺省 0 即单一制电价，只作敏感性）：按未退役装机收，煤电的电量电价同时减去
+    # 容量电价 ÷ 全机组现状利用小时，按现状小时算的总收入不变，不与上面的单一制电价重复计收（`plant_matrices`）；工业买电仍按
+    # 上面的电价。2024 年起煤电两部制，每年 100 或 165 元/kW（B，政策摘要；docs/参数调研_20261001.md §2.3）。
+    coal_capacity_price_cny_per_kw_yr: float = 0.0
     # 每个规划期新增的自愿退役（未到设计寿命的机组）不超过当年总发电量的 15%，约合每年 1.5%：⚠ 假设（无出处）。
     # 对照：REMIND 的提前退役上限，中国落在缺省组 2%/年，常规煤电再乘 1.2，即 2.4%/年（`remind`，按装机计）；
     # An et al. 2025 不设速率上限，其 Base 情景 2030-2040 年仅比 Flex 情景多出的提前退役就有 302.8-397.1 GW。
@@ -596,6 +613,21 @@ class OptimizationScenario:
             raise ValueError("fleet_hours_now must be positive to scale operating hours")
         target = self._interpolate_year_tuple(self.coal_operating_hours_by_year, year)
         return float(target) / float(fleet_hours_now)
+
+    def part_load_factor(self, year: int, fleet_hours_now: float) -> float:
+        """`year` 年的部分负荷修正系数 κ（`coal_part_load_online_hours` 为 0 时为 1.0）。"""
+        online = float(self.coal_part_load_online_hours)
+        if online == 0.0:
+            return 1.0
+        if not 0.0 < online <= 8760.0:
+            raise ValueError(f"coal_part_load_online_hours must be 0 (off) or in (0, 8760], got {online}")
+        hours = (
+            self._interpolate_year_tuple(self.coal_operating_hours_by_year, year)
+            if self.coal_operating_hours_by_year else float(fleet_hours_now)
+        )
+        if not 0.0 < hours <= online:
+            raise ValueError(f"utilisation hours {hours} in {year} must lie in (0, coal_part_load_online_hours = {online}]")
+        return part_load_heat_rate_factor(hours / online)
 
     def electricity_price_for_year(self, year: int) -> float:
         return self._interpolate_year_tuple(self.electricity_price_cny_per_mwh_by_year, year)

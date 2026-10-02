@@ -324,7 +324,7 @@ def _build_plant_cost_table(
         e = float(emissions[p])
         cap = float(capacity_mw[p])
 
-        # 基线净成本：逐路径（燃料 + 运维 - 电）矩阵行 × 份额
+        # 基线净成本：逐路径（燃料 + 运维 - 电量电费 - 容量电费）矩阵行 × 份额
         # （改造列含 CF 提升，退役列为零）
         baseline_net = sum(
             float(year_data.baseline_net_matrix[p, k]) * float(share[k])

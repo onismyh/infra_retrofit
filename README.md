@@ -425,6 +425,31 @@
 > `industry_detail.csv` 加 `abatable_production_share`（份额为正的点源占 hub 产量的比例，没有点源表时为 1）；图 4 的路线构成
 > 按它只把改造的产量计入 CCS 与氢路线，混合 hub 里不改造的产量计入未改造（此前的结果没有这一列，按 1 取）。
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
+>
+> 2026-10-02 起情景多三个敏感性开关，缺省都不改模型（作者批准 2026-10-02；`docs/参数调研_20261001.md` §2.3，`docs/方法论.md`
+> §3.2、§4.1、§7.4、§8.1、§9.3、附录 B.2、D.1、D.3）：
+> - 部分负荷修正 `scenario.coal_part_load_online_hours`（缺省 0 即关）：设为机组全年在线小时后，各规划年全国一个系数 κ，取生态环境部
+>   2025、2026 年度配额方案征求意见稿表 2 的常规燃煤机组调峰修正系数（转录件，`constants.part_load_heat_rate_factor`）：负荷系数
+>   F = 100 × 利用小时 ÷ 在线小时（%），F < 50 时 7.254 − 0.633(1 − e^(−F/29.822)) − 5.643(1 − e^(−F/6.871))，F ≥ 50 时为 1；
+>   式在 F = 50 处为 1.100，按原文字面在此跳变。κ 乘在基线排放与各部分的毛热耗（含空冷背压用的 hub 毛热耗）上：燃料、排放、
+>   CCS 额外燃料与掺烧的生物质、氨用量（连同节煤抵扣）随 κ 放大，生物质掺烧与空冷背压的效率损失折成的燃料随 κ²，2030 年电力基线
+>   同乘 2030 年的 κ（`optimization/model_index.py`）；发电量与耗水强度不变。在线 7 500 h 时
+>   ST 四年 κ = 1.110 / 1.150 / 1.353 / 1.609，6 500 h 时 1.000 / 1.111 / 1.268 / 1.466。ST 的小时数下降按"整体降负荷"理解才该加，
+>   按"整台停运、其余满发"理解则不该加，主线不开，调度口径由作者定。result.json 的 `years` 逐年多记 `part_load_factor`。
+> - 煤价乘子 `assumptions.coal_price_multiplier`（缺省 1）：乘在分省煤价表与缺省煤价上（`OptimizationAssumptions.province_coal_cost`），
+>   煤电燃料、节煤抵扣与工业捕集蒸汽用煤同时变。分省表是 2023 价格年，2024–2025 年发电集团口径低 2%–11%、2025 年秦皇岛港口价
+>   低 14%（B），敏感性取 0.89、0.86。
+> - 煤电容量电价 `scenario.coal_capacity_price_cny_per_kw_yr`（缺省 0 即单一制）：按未退役装机收（退役列为零，即按 1 − 退役份额收），
+>   煤电的电量电价同时减去 容量电价 ÷ 全机组现状利用小时（4 643.1 h 下 100 → 21.5、165 → 35.5 元/MWh），全机组按现状小时维持现状
+>   运行时全国售电总收入不变（逐厂不同），ST 的利用小时低于现状，未退役装机的售电收入因而高于单一制（2030 年浙江、新疆 hub 的改造列除外）；工业买电仍按原电价。容量电费并在 `baseline_net_cost` 里，结果表不单列。2024 年起煤电两部制，每年 100 或
+>   165 元/kW（B，发改价格〔2023〕1501 号，原文未取得）。
+> - 连同已有的贴现率 `scenario.discount_rate`（缺省 0.06，敏感性 0.05、0.08），都用 `--set … --as <名>` 跑，命令见
+>   [`_indtree/README.md`](_indtree/README.md)。贴现率或容量电价两边不同时目标函数口径不同，`check_run_provenance.py --pair` 记
+>   failure（`OBJECTIVE_BASIS`），只能比路径结构；煤价乘子、在线小时两边不同只列在参数差里；此前落盘的结果没有容量电价一项，按 0（单一制）比。
+>
+> `ST_BASE`、`ST_WA_cwatm_126_dry_oq` 只建模不求解：缺省值下两个情景建出的模型与改前的 Gurobi 指纹、规模逐个相同，已有结果不受影响；
+> `ST_BASE` 三个开关同开（在线 7 500 h、煤价 × 0.89、容量电价 100）时变量、约束与非零元的个数和名字族都不变，只改系数。
+> `tests/test_sensitivity_switches.py` 覆盖。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -437,10 +462,10 @@
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:243`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:234`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:57-78`、`optimization/model_industry.py:177` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:45-46`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨仍按发电量每 MWh 80 元 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:142-147`、`optimization/model_costs.py:141-145`、`optimization/industry_matrices.py:248`、`:297-300` |
-| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，缺省 0，2026-10-02 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:79-82, 110-112`、`optimization/industry_matrices.py:203-208`、`:238-245` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨仍按发电量每 MWh 80 元 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:157-162`、`optimization/model_costs.py:141-145`、`optimization/industry_matrices.py:248`、`:297-300` |
+| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，缺省 0，2026-10-02 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:81-84, 125-127`、`optimization/industry_matrices.py:203-208`、`:238-245` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:198` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:130`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:237`、`:293` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:145`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:237`、`:293` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:61-98`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 

@@ -82,8 +82,10 @@ def build_model_index(
     sector_base_2030: dict[str, float] = {}
     fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
     scale_2030 = float(scenario.operating_hours_scale(2030, fleet_hours_now)) if fleet_hours_now > 0 else 1.0
+    # 部分负荷修正（缺省关为 1）同样乘在 2030 年基线上，与 2030 年的排放同口径，否则 2030 年要凭空多减。
     sector_base_2030[POWER_TARGET_GROUP] = float(
         prepared.plants["baseline_emissions_mt"].astype(float).sum() * scale_2030
+        * scenario.part_load_factor(2030, fleet_hours_now)
     )
     base_2030 = industry_year_data(prepared.industry, scenario, assumptions, 2030)
     groups = base_2030.target_groups

@@ -34,6 +34,8 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
   是空值时按 gap 反推。对照（c，`--pair` 的第一个结果）的目标函数或下界不是正数时只给绝对区间（元）。
 - 热启动看两处：情景 `warm_start = "lp_relax"`（运行器自动两步）或手工设 COAL_RETROFIT_START_SOL，两边一个热启动
   一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
+  2026-10-02 起贴现率（`discount_rate`）、煤电容量电价（`coal_capacity_price_cny_per_kw_yr`，此前落盘的结果没有这一项，
+  按 0 比）两边不同同样记 failure。
 - `--pair` 另比两边都有的输入摘要（`digest_*`），不同就记 failure（CLAUDE.md 二.6）；两边读的不是同一个文件的
   （`resolved.input_files` 不同）与只有一边有的只列出。任一边没有 `resolved.code`（这之前落盘，跨 PR #11 连续 hub
   掺烧等式的模型改动分不出来）记 failure；提交号不同、求解时有未提交的改动、记不了提交号，只告警。
@@ -73,7 +75,11 @@ ENV_BLOCKING = {
 # 这些参数两边不同，目标函数的口径就不同，目标函数不能相减。
 OBJECTIVE_BASIS = {
     "scenario.carbon_price_cny_per_t_by_year": "目标函数含的碳价支出不同，只能比路径结构",
+    "scenario.discount_rate": "目标函数折现的贴现率不同，只能比路径结构",
+    "scenario.coal_capacity_price_cny_per_kw_yr": "目标函数含的煤电容量电费收入不同，只能比路径结构",
 }
+# 加这一项之前落盘的 `resolved` 里没有这个键，缺的一边按缺省值比（单一制电价），否则跨这次改动的比较都会误判。
+OBJECTIVE_BASIS_DEFAULTS = {"scenario.coal_capacity_price_cny_per_kw_yr": 0.0}
 
 
 def load(name, results=RESULTS):
@@ -112,7 +118,7 @@ def _env_view(resolved):
 
 
 def describe_params(label, names, a, b, failures, warnings):
-    """两次求解的参数差与环境变量差（`resolved` 段）。LP 松弛或热启动两边不一致、碳价不同（`OBJECTIVE_BASIS`）
+    """两次求解的参数差与环境变量差（`resolved` 段）。LP 松弛或热启动两边不一致、碳价、贴现率或容量电价不同（`OBJECTIVE_BASIS`）
     记进 *failures*；提交号不同、有未提交的改动、记不了提交号记进 *warnings*（`resolved.code`，旧结果没有这一项）。
 
     任一边没有 `resolved`（2026-09-27 之前落盘）就说明比不了。
@@ -122,8 +128,9 @@ def describe_params(label, names, a, b, failures, warnings):
     diffs = diff_resolved(a["resolved"], b["resolved"])
     lines = [f"    -> 参数差 {len(diffs)} 项："] if diffs else ["    -> 参数完全相同"]
     lines += [f"         {key}: {va!r} -> {vb!r}" for key, va, vb in diffs]
-    for key, _, _ in diffs:
-        if key in OBJECTIVE_BASIS:
+    for key, va, vb in diffs:
+        default = OBJECTIVE_BASIS_DEFAULTS.get(key)
+        if key in OBJECTIVE_BASIS and (default if va is None else va) != (default if vb is None else vb):
             failures.append(f"{label}: {key} 两边不同 -- {OBJECTIVE_BASIS[key]}，目标函数不能相减")
     ea, eb = _env_view(a["resolved"]), _env_view(b["resolved"])
     env_diffs = [(key, ea.get(key), eb.get(key)) for key in [*ea, *(k for k in eb if k not in ea)]
@@ -286,7 +293,7 @@ def main():
                         help="also fail when a compared run left Threads at 0 (auto)")
     parser.add_argument("--pair", nargs=2, metavar=("A", "B"), required=True,
                         help="核这两次求解（结果名）；缺一边、没有 resolved 段或"
-                             " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价不同、"
+                             " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价、贴现率或煤电容量电价不同、"
                              "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、记不了提交号、有未提交的改动只告警；"
                              "两边同名直接报错退出")
     parser.add_argument("--results", type=Path, default=None,

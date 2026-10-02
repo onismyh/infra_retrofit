@@ -28,8 +28,10 @@ def _plant_operating_matrices(
     # 发电、基线排放与每 MWh 成本同步移动。
     fleet_hours_now = float(prepared.plants["fleet_hours_now"].iloc[0]) if "fleet_hours_now" in prepared.plants.columns else 0.0
     hours_scale = float(scenario.operating_hours_scale(int(year), fleet_hours_now)) if fleet_hours_now > 0 else 1.0
+    # 部分负荷修正（缺省关为 1，`scenario.part_load_factor`）：全国一个系数，乘在基线排放与下面各部分的毛热耗上。
+    part_load = float(scenario.part_load_factor(int(year), fleet_hours_now))
     generation = prepared.plants["annual_generation_mwh"].astype(float).to_numpy() * hours_scale
-    emissions_mt = prepared.plants["baseline_emissions_mt"].astype(float).to_numpy() * hours_scale
+    emissions_mt = prepared.plants["baseline_emissions_mt"].astype(float).to_numpy() * hours_scale * part_load
     # 改造路径优先调度，发电量乘 CF 提升。
     generation_retrofit = generation * scenario.retrofit_cf_boost
     generation_by_pathway = np.column_stack([
@@ -45,8 +47,8 @@ def _plant_operating_matrices(
     # min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加 +15 g/kWh)，按这个值分类）。本年没有某类到期装机的 hub，
     # 该类取未重建部分的毛热耗，差恰为零。2026-10-02 前全国一个热耗 8.5714，整个 hub 自 `retirement_year` 起乘
     # 0.42 / rebuild_efficiency，不论到期装机重建还是退役。
-    hub_heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy()
-    heat_rate_unexpired = prepared.plants[f"heat_rate_unexpired_{year}"].astype(float).to_numpy()
+    hub_heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy() * part_load
+    heat_rate_unexpired = prepared.plants[f"heat_rate_unexpired_{year}"].astype(float).to_numpy() * part_load
     expired_share = prepared.plants[f"expired_share_{year}"].astype(float).to_numpy()
     classes = range(sum(str(column).startswith("heat_rate_rebuilt_c") for column in prepared.plants.columns))
     rebuilt_class_share = np.column_stack(
@@ -55,7 +57,7 @@ def _plant_operating_matrices(
     rebuilt_heat_rates = [
         np.where(
             rebuilt_class_share[:, c] > 0.0,
-            prepared.plants[f"heat_rate_rebuilt_c{c}"].astype(float).to_numpy(),
+            prepared.plants[f"heat_rate_rebuilt_c{c}"].astype(float).to_numpy() * part_load,
             heat_rate_unexpired,
         )
         for c in classes
@@ -85,6 +87,19 @@ def _plant_operating_matrices(
     uncaptured = 1.0 - float(scenario.capture_rate)
     emission_factor_t_per_gj = assumptions.coal_emission_factor_t_per_gj
     elec_price_year = scenario.electricity_price_for_year(year)
+    # 容量电价（缺省 0，`scenario.coal_capacity_price_cny_per_kw_yr`）：按装机收，退役列为零（各列份额相加为 1，即按 1 − 退役份额收）；
+    # 电量电价减去 容量电价 ÷ 全机组现状利用小时，按现状小时算的总收入不变。
+    capacity_price = float(scenario.coal_capacity_price_cny_per_kw_yr)
+    capacity_revenue_matrix = np.zeros_like(generation_by_pathway)
+    if capacity_price != 0.0:
+        if not 0.0 < capacity_price < float("inf"):
+            raise ValueError(f"coal_capacity_price_cny_per_kw_yr must be positive and finite, got {capacity_price}")
+        if not fleet_hours_now > 0.0:
+            raise ValueError("coal_capacity_price_cny_per_kw_yr needs fleet_hours_now (current fleet hours) > 0")
+        elec_price_year -= capacity_price * 1000.0 / fleet_hours_now
+        capacity_kw = prepared.plants["total_capacity_mw"].astype(float).to_numpy() * 1000.0
+        capacity_revenue_matrix[:] = (capacity_kw * capacity_price)[:, None]
+        capacity_revenue_matrix[:, PATHWAY_INDEX["retire"]] = 0.0
 
     def by_heat_rate(heat_rate: np.ndarray) -> dict[str, np.ndarray]:
         """按给定毛热耗算的系数，键同 `YearData` 的字段。效率损失折算燃料按这部分自己的效率 η = 3.6 / 毛热耗。"""
@@ -116,10 +131,10 @@ def _plant_operating_matrices(
             "biomass_penalty_emissions_coeff_per_level": biomass_penalty_emissions,
             "beccs_penalty_emissions_coeff_per_level": biomass_penalty_emissions * uncaptured,
             "beccs_penalty_captured_coeff_per_level": biomass_penalty_emissions * float(scenario.capture_rate),
-            # 基线净运行成本（煤 + 运维 - 电）：未改造列按基线发电量，改造列含 CF 提升，退役列为零。
+            # 基线净运行成本（煤 + 运维 - 电量电费 - 容量电费）：未改造列按基线发电量，改造列含 CF 提升，退役列为零。
             "baseline_net_matrix": generation_by_pathway * (
                 heat_rate * coal_price_per_plant + assumptions.baseline_om_cost_cny_per_mwh - elec_price_year
-            )[:, None],
+            )[:, None] - capacity_revenue_matrix,
         }
 
     unexpired_terms = by_heat_rate(heat_rate_unexpired)
@@ -161,6 +176,7 @@ def _plant_operating_matrices(
 
     return {
         "hours_scale": hours_scale,
+        "part_load_factor": part_load,
         "generation": generation,
         "generation_by_pathway": generation_by_pathway,
         "generation_cost_basis": generation_cost_basis,
@@ -248,7 +264,8 @@ def _air_cooling_matrices(
     )
     # 空冷背压升高：效率降 pp 个百分点，每 MWh 多烧 (pp / η) x 毛热耗的煤（η = 3.6 / 毛热耗）。多排的 CO2 按 hub 毛热耗计，
     # 不随重建变；下面的燃料成本按各部分自己的毛热耗计（docs/参数调研_20261001.md §4 第 15 条，作者决定 2026-10-02 维持）。
-    heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy()
+    # 毛热耗都乘部分负荷修正（缺省关为 1；各部分的已在 `_plant_operating_matrices` 里乘过）。
+    heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy() * plant["part_load_factor"]
     penalty_pp = float(assumptions.air_retrofit_efficiency_penalty_pp)
     penalty_ratio = penalty_pp / (GJ_PER_MWH / heat_rate)
     air_penalty_gross_matrix = (
