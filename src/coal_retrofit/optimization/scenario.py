@@ -121,9 +121,15 @@ class OptimizationAssumptions:
     # （经《中国能源报》2023-04-24 转述，该文即按 3 500 元/kW 计；未核原文）。
     stranded_asset_base_cny_per_kw: float = 3500.0
     stranded_asset_accounting_life: int = 20           # 折旧年限；⚠ 假设（无出处）
-    # 封存成本 32 CNY/t，对照 An et al. 2025 SI Table 7：5.0 (3.0-8.5) $/t = 35 (21-60) CNY/t。
-    storage_cost_cny_per_t: float = 32.0
+    # 陆上封存成本，取 An et al. 2025 SI Table 7：5.0 (3.0-8.5) $/t = 35 (21-60) CNY/t（2026-10-02 前为 32）。每个汇的单价
+    # = 本值 x 海上倍率 − EOR 容量份额 x EOR 抵扣（`data_prep._prepare_storages`）。
+    storage_cost_cny_per_t: float = 35.0
     eor_credit_cny_per_t: float = 12.0  # EOR 每吨抵扣；⚠ 假设（无出处）
+    # 海上汇的封存成本倍率（2026-10-02 起；此前海上、陆上同价）：REMIND `core/input/generisdata_tech.prn` 的海上、陆上注入
+    # 投资 525 / 350（单位按表头推断，待核），固定运维占投资 0.12 / 0.06 每年，寿命都是 40 年；按模型贴现率 6% 年化后
+    # (CRF + 0.12) x 525 / ((CRF + 0.06) x 350) = 2.21（贴现率 5%–8% 为 2.13–2.26；建设期 5 / 3 年按年中均匀投入计息、运维按隔夜投资计为 2.23），取 2.2。
+    # 只按投资比为 1.5。与管道的 offshore_transport_multiplier 分开设，设 1.0 即不分陆海。
+    offshore_storage_multiplier: float = 2.2
     # --- hub 注入速率，由候选场址密度推得 ------------------------------------------------
     # 源栅格（Fan 5 km 网格；见 data/封存汇图层-Fan）按每个 5x5 km 格子存的是地层能接受的
     # 地质注入速率（全国均值 8.0，单格最大 134 Mt/a）——已用数据集自带的分省表核对，
@@ -139,11 +145,14 @@ class OptimizationAssumptions:
     storage_site_block_pixels: float = 100.0
     storage_site_project_rate_mtpa: float = 2.0
     max_hub_injectivity_mtpa: float = 200.0
-    # 管道运维。An et al. 2025 SI Table 7 给出 CO2 运输全口径成本 0.026 (0.020-0.036)
-    # $/(t·km) = 0.182 (0.14-0.25) CNY/(t·km)。本模型单独计管道 CAPEX（满负荷年化
-    # ~0.029 CNY/(t·km)），所以 0.15 opex + 0.029 capex = 0.179 CNY/(t·km)（平准化）
-    # 复现了来源的中值。
-    route_opex_cny_per_t_km: float = 0.15
+    # 管道运维（2026-10-02 起）：每年 pipe_fixed_om_fraction x 在役管道的 capex（建设年的单价，含类别与海上倍率），在役与
+    # 流量上限同一判据，含到寿命后原址重铺的那一代，闲置的管也付（`model_costs._transport_storage_costs`）。4% 取 Fan et al.
+    # 2023 SI p.12（PDF 第 13 页）式 (S29) 后：单位管长运维 = 单位管长建造成本（式 S26）x 4%，引其文献 18，原文未核；DEA 陆上 0.9% 作敏感性。
+    pipe_fixed_om_fraction: float = 0.04
+    # 按流量计的运输运维，CNY/(t·km)。2026-10-02 前为 0.15、管道没有固定运维：An et al. 2025 SI Table 7 的 CO2 运输全口径
+    # 成本 0.026 (0.020-0.036) $/(t·km) = 0.182 CNY/(t·km) 减去 20 Mt 档满负荷的 capex 年化 ~0.029；满负荷时相当于每年
+    # capex 的 15% / 21% / 38%（类别倍率 1.0 的边，2 / 5 / 20 Mt 档）。设回 0.15、pipe_fixed_om_fraction 设 0 即复原旧口径，两项同开会重复计费。
+    route_opex_cny_per_t_km: float = 0.0
     # 海上盆地（东海、珠江口、渤海、北部湾）要承担海底管道与平台成本：凡与海上封存 hub
     # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。⚠ 假设（无出处）。
     offshore_transport_multiplier: float = 1.5

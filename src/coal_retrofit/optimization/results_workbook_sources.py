@@ -87,8 +87,8 @@ def captured_by_year(sources: pd.DataFrame, years: Sequence[int]) -> dict[int, f
 def sinks_frame(
     tables: Mapping[str, pd.DataFrame], prepared: PreparedInputs, node_province: Mapping[str, str]
 ) -> pd.DataFrame:
-    """每年每个封存汇一行：id、DSA/EOR、所在节点、省、区、封存量（Mt/yr）、扣 EOR 抵扣后的每吨封存成本（CNY/t，
-    即目标函数用的 `storage_cost_cny_per_t`）。"""
+    """每年每个封存汇一行：id、DSA/EOR、所在节点、省、区、封存量（Mt/yr）、扣 EOR 抵扣前与扣后的每吨封存成本（CNY/t；
+    扣后即目标函数用的 `storage_cost_cny_per_t`，`data_prep._prepare_storages`）。"""
     use = tables["storage_utilization.csv"]
     storages = prepared.storages.set_index(prepared.storages["storage_hub_id"].astype(str))
     ids = use["storage_hub_id"].astype(str)
@@ -96,6 +96,7 @@ def sinks_frame(
     frame = pd.DataFrame({
         "year": use["year"], "id": ids, "category": ids.map(storages["storage_type"]).astype(str).str.upper(),
         "node": node, "province": node.map(node_province), "use_mt": use["storage_use_mtpa"],
+        "cost_before_credit_cny_per_t": ids.map(storages["storage_cost_before_credit_cny_per_t"]).astype(float),
         "cost_cny_per_t": ids.map(storages["storage_cost_cny_per_t"]).astype(float),
     })
     frame["region"] = frame["province"].map(province_region)
