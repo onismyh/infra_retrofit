@@ -92,6 +92,7 @@ def test_plant_province_names_get_the_same_alias_and_warning(tmp_path, caplog) -
     pd.DataFrame({
         "plant_id": ["P1", "P2"], "province_mode": ["Neimenggu", "Atlantis"],
         "total_capacity_mw": [1000.0, 1000.0], "dominant_cooling_technology": ["recirculating", "recirculating"],
+        "heat_rate_gj_per_mwh": [8.5714, 8.5714],
     }).to_csv(paths.inputs_dir / "plants.csv", index=False)
     assumptions = OptimizationAssumptions()
     with caplog.at_level(logging.WARNING):

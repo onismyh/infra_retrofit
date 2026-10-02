@@ -20,12 +20,11 @@ PROVINCE_NAME_ALIASES: dict[str, str] = {"Neimenggu": "Inner Mongolia"}
 @dataclass(frozen=True)
 class OptimizationAssumptions:
     capacity_factor: float = 0.55
-    # 全机组平均排放强度。保持 0.82 t/MWh：配合下面按效率锚定的热耗率，折合
-    # 95.7 kgCO2/GJ，落在 IPCC 烟煤区间（~94.6-96.1）内。
-    coal_emission_factor_t_per_mwh: float = 0.82
-    # 由效率锚点推得：3.6 / 0.42 = 8.5714 GJ/MWh（原为 9.0，隐含 40% 效率，
-    # 与 coal_plant_base_efficiency 不一致）。
-    heat_rate_gj_per_mwh: float = 8.5714
+    # 煤的排放因子，t CO2/GJ：等于 2026-10-02 前全国一个数的写法 0.82 t/MWh ÷ 8.5714 GJ/MWh（= 3.6 / 0.42），
+    # 95.7 kgCO2/GJ，介于 IPCC 2006 其他烟煤与次烟煤的缺省值（94.6、96.1）之间。煤电基线排放 = 发电量 x hub 毛热耗（`plants.csv` 的
+    # `heat_rate_gj_per_mwh`，逐台分档煤耗按装机加权，`builders.plants.unit_heat_rate_gj_per_mwh`）x 此因子；
+    # 工业捕集再生蒸汽的排放用同一因子。
+    coal_emission_factor_t_per_gj: float = 0.82 / 8.5714
     nh3_lhv_gj_per_kg: float = 0.0186
     # 美元汇率取整，约为 2023 年年均：美联储 H.10 年均 7.0809（`fred_h10`）；国家统计局 2023 年统计公报
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
@@ -56,22 +55,16 @@ class OptimizationAssumptions:
     # +1 000 CNY/kW 的"生物质改造增量"，与档位 capex 重复计费，已删除。
     ccs_retrofit_capex_cny_per_kw: float = 3500.0
     biomass_efficiency_penalty_per_ratio: float = 0.0373  # 15% 掺烧时效率下降 0.56%（Fan et al. 2023）
-    # 全机组基准发电效率，低位热值口径，全期取常数。Fan et al. 2023 SI 式 (S42) 设煤电效率由 2020 年 0.4 平滑升至
-    # 2060 年 0.5，按线性插值 0.42 约为其 2028 年值；Wang et al. 2025 SI Table 1（引 NDRC 2022 基准水平，
-    # 285-323 gce/kWh）各机型折 0.380-0.431。文献值应是供电（净）口径，模型的发电量按利用小时计、应属毛口径
-    # （两者都是推断，未核），差一个厂用电率，未修正。
-    coal_plant_base_efficiency: float = 0.42
     coal_fuel_cost_cny_per_gj: float = 38.2             # 查不到省名时用；⚠ 假设（设定值，见 README §0.1）
     # 捕集岛固定运维，按每年占（经学习曲线调整的）改造 CAPEX 的比例计；2026-09-30 起按建设年的 CAPEX、只计在役且在用的捕集岛。
     # An et al. 2025 (Nat Commun) SI Table 7 给出煤电 CCS 改造在每个预测年的
     # 固定运维 / 投资 = 20.7/381.9 = 5.4%；此处取 5%。
     ccs_om_fraction: float = 0.05
-    # CCS 能耗惩罚，表示为单位产出所需的额外燃料（无量纲，= 额外 GJ / 基线 GJ）。
-    # 取代旧的绝对效率惩罚点值：模型保持发电量不变、买入额外的煤，所以额外燃料比
-    # 才是真正进入成本与排放的量。水平锚定在 2030 年的 15%（⚠ 假设：15% 这个水平无出处）；下降路径沿用
-    # An et al. 2025 SI Table 7（煤电能耗惩罚 2030/2040/2050/2060 年为
-    # 22.2 / 15.6 / 13.3 / 11.1 %，即归一化后 1.000 / 0.703 / 0.599 / 0.500）。
-    ccs_energy_penalty_ratio_by_year: tuple[float, ...] = (0.1500, 0.1054, 0.0899, 0.0750)
+    # CCS 能耗惩罚，表示为单位产出所需的额外燃料（无量纲，= 额外 GJ / 基线 GJ）。模型保持发电量不变、买入额外的煤，
+    # 所以进入成本与排放的是额外燃料比。An et al. 2025 SI Table 7（PDF p20-21）的煤电能耗惩罚 2030/2040/2050/2060 年为
+    # 22.2 / 15.6 / 13.3 / 11.1 %，是出力损失 p；净出力不变时要多烧 p/(1-p) 的煤，即下面四个数。2026-10-02 前是
+    # (0.150, 0.1054, 0.0899, 0.075)：2030 年的 15% 无出处，之后按 An 的相对下降缩放。
+    ccs_energy_penalty_ratio_by_year: tuple[float, ...] = (0.2853, 0.1848, 0.1534, 0.1249)
 
     # 分省煤价，CNY/GJ = An et al. 2025（Nat Commun）SI Table 2 的 USD/GJ × 7。原表北京无煤价（9.92 $/GJ 是气价，
     # 2026-09-23 前误记为 69.4），京津两行气价、生物质价与潜力相同，取天津 5.51（38.6）；内蒙古取东、西两行 2.63 / 2.49 的均值。
@@ -264,8 +257,8 @@ class OptimizationAssumptions:
     #     摊到这批机组上，反推得 1.9-2.8 pp。
     #   * Qin et al. (2023), "Global assessment of the carbon-water tradeoff of dry cooling for
     #     thermal power generation", Nature Water 1(8), 682-693。机组级全球评估：空冷的能耗
-    #     与 CO2 惩罚为发电出力的 1-15%，随地点与气候而异。2.0 pp = 多耗 4.8% 燃料，落在
-    #     该区间内；旧的 1.5 pp = 3.6%，处在其下沿。
+    #     与 CO2 惩罚为发电出力的 1-15%，随地点与气候而异。2.0 pp 按 hub 效率（0.38-0.45）多耗 4.4%-5.2%
+    #     燃料，落在该区间内；旧的 1.5 pp 在 η = 0.42 时为 3.6%，处在其下沿。
     #
     # 已知简化，且会让空冷显得偏便宜。这里的惩罚是常数。Qin et al. 发现惩罚的恶化快于环境
     # 温度的上升，而在中国北方枯水季与高温季重合——所以本处低估惩罚的时段恰恰是水最紧缺的
@@ -544,8 +537,11 @@ class OptimizationScenario:
     retrofit_cf_boost: float = 1.15
     # 原址重建参数：到期电厂可按新建成本的 70% 重建
     rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%；⚠ 假设（无出处）
-    # 重建电厂取超超临界效率（基线为 0.42）：Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs"
-    # 一行为 270 gce/kWh，按低位热值折 0.455，取值低 1.1%。该行名原文如此、含义有歧义；NDRC 原文未核。
+    # 重建机组取超超临界效率：逐台毛热耗取 min(机组毛热耗, 3.6 / 0.45 = 8.0 GJ/MWh)，不劣于原值；空冷机组原址重建仍为
+    # 空冷，上限加空冷的 +15 g/kWh（折毛 0.418，即 8.418；`data_prep._with_expiry`）。
+    # Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs" 一行为 270 gce/kWh（供电），按低位热值折
+    # 0.455，取值低 1.1%；该行名原文如此、含义有歧义，NDRC 原文未核。这里把 0.45 直接当毛效率用，比按 5% 厂用电率折毛
+    # （270 -> 7.52 GJ/MWh）保守。
     rebuild_efficiency: float = 0.45
 
     def _interpolate_year_tuple(self, values: tuple[float, ...], year: int) -> float:

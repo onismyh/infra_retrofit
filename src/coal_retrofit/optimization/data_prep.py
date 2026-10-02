@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..constants import COAL_DESIGN_LIFE_YEARS
 from ..paths import ProjectPaths
 from ._shared import PreparedInputs
 from .network import build_runtime_network
@@ -22,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
     plants = pd.read_csv(paths.inputs_dir / "plants.csv").copy()
+    # hub 毛热耗（逐台分档煤耗按装机加权，`builders.plants.unit_heat_rate_gj_per_mwh`）：基线排放在下面，
+    # 燃料与各项惩罚在 `plant_matrices`。2026-10-02 前全国一个数（8.5714 GJ/MWh），没有这一列。
+    if "heat_rate_gj_per_mwh" not in plants.columns or not (plants["heat_rate_gj_per_mwh"].astype(float) > 0).all():
+        raise ValueError(
+            f"{paths.inputs_dir / 'plants.csv'} lacks positive heat_rate_gj_per_mwh values; "
+            "rebuild it with scripts/build_plant_inputs.py --hubs"
+        )
     # 省名换成分省煤价表的写法；仍查不到的告警，按缺省煤价与缺省利用小时计。
     plants["province_name"] = assumptions.canonical_provinces(plants["province_mode"], "plants")
     # 发电量按分省利用小时数计算
@@ -37,7 +45,8 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         (capacity * plants["province_cf"] * 8760.0).sum() / max(float(capacity.sum()), 1e-9)
     )
     plants["baseline_emissions_mt"] = (
-        plants["annual_generation_mwh"].astype(float) * assumptions.coal_emission_factor_t_per_mwh / 1_000_000.0
+        plants["annual_generation_mwh"].astype(float) * plants["heat_rate_gj_per_mwh"].astype(float)
+        * assumptions.coal_emission_factor_t_per_gj / 1_000_000.0
     )
     plants["effective_cooling_technology"] = (
         str(scenario.forced_cooling_technology)
@@ -95,6 +104,104 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
                                          "centroid_longitude": "longitude"})
         plants["basin_code"] = _assign_basin_codes(paths, located)
     return plants
+
+
+_UNIT_HUB_COLUMNS = ["plant_id", "capacity_mw", "commission_year", "combustion", "cooling_technology"]
+_UNIT_HUB_HINT = "rebuild plants.csv and plants_unit_hub.csv together with scripts/build_plant_inputs.py --hubs"
+
+
+def _read_unit_hub_map(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFrame:
+    """机组到 hub 的映射（`plants_unit_hub.csv`）；核对它与 `plants.csv` 出自同一次聚类：hub 相同、各 hub 装机相等。"""
+    path = paths.inputs_dir / "plants_unit_hub.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found; {_UNIT_HUB_HINT}.")
+    units = pd.read_csv(path)
+    missing = set(_UNIT_HUB_COLUMNS) - set(units.columns)
+    if missing:
+        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
+    units = units[_UNIT_HUB_COLUMNS]
+    hub_capacity = plants["total_capacity_mw"].astype(float).set_axis(plants["plant_id"].astype(str))
+    unit_capacity = units.groupby(units["plant_id"].astype(str))["capacity_mw"].sum()
+    if (
+        units.isna().any().any()
+        or not (units["capacity_mw"] > 0).all()
+        or set(unit_capacity.index) != set(hub_capacity.index)
+        or not np.allclose(unit_capacity.reindex(hub_capacity.index), hub_capacity, rtol=1e-9, atol=1e-6)
+    ):
+        raise ValueError(
+            f"{path} does not match plants.csv (empty values, other hubs or other hub capacities); {_UNIT_HUB_HINT}."
+        )
+    return units.assign(plant_id=units["plant_id"].astype(str))
+
+
+def _with_expiry(
+    paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, plants: pd.DataFrame
+) -> pd.DataFrame:
+    """加四组逐规划年的列（`plant_matrices` 用）：到期装机份额 `expired_share_{年}`（f）、剩余账面份额
+    `remaining_life_fraction_{年}`、未重建部分与重建部分的毛热耗 `heat_rate_unexpired_{年}`、`heat_rate_rebuilt_{年}`。
+
+    按机组计（`plants_unit_hub.csv`）：连续 hub（缺省）逐台在投产年 + 设计寿命到期；整数 hub 整个 hub 在
+    `retirement_year`（平均投产年 + 设计寿命）一起到期，f 只取 0 或 1。2026-10-02 前两种模式都按整个 hub 计。
+    剩余账面份额按装机加权 min(1, 剩余设计寿命 / 会计寿命)，到期装机为 0，搁浅资产按它计。
+    重建部分逐台取 min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加空冷的 +15 g/kWh) 按装机加权，重建机组不比它
+    替换的那台差（`builders.plants.unit_rebuild_heat_rate_cap_gj_per_mwh`，2026-10-02 起）；未重建部分取
+    (hub 毛热耗 - f x 到期机组的毛热耗) / (1 - f)，两部分按 f 加权正好还原 hub 毛热耗。f = 0 时两者都取 hub 毛热耗，
+    f = 1 时都取重建热耗，只有部分到期的 hub 两者不同（`constraints._add_rebuilt_split`）。逐台毛热耗与 hub 毛热耗
+    同一算法（`builders.plants.unit_heat_rate_gj_per_mwh`）。2026-10-02 前全国一个热耗 8.5714，整个 hub 自
+    `retirement_year` 起乘 0.42 / rebuild_efficiency，不论到期装机是重建还是退役。
+    """
+    from ..builders.plants import unit_heat_rate_gj_per_mwh, unit_rebuild_heat_rate_cap_gj_per_mwh
+
+    units = _read_unit_hub_map(paths, plants)
+    out = plants.copy()
+    plant_ids = out["plant_id"].astype(str)
+    by_hub = units["plant_id"]
+    capacity = units["capacity_mw"].astype(float)
+    if assumptions.hub_decisions_continuous:
+        end_year = units["commission_year"].astype(int) + COAL_DESIGN_LIFE_YEARS
+    else:
+        end_year = by_hub.map(out["retirement_year"].astype(int).set_axis(plant_ids))
+    unit_heat_rate = unit_heat_rate_gj_per_mwh(units)
+    rebuilt_heat_rate = np.minimum(
+        unit_heat_rate, unit_rebuild_heat_rate_cap_gj_per_mwh(units, max(float(scenario.rebuild_efficiency), 1e-9))
+    )
+    hub_heat_rate = out["heat_rate_gj_per_mwh"].astype(float).to_numpy()
+    life = max(1, int(assumptions.stranded_asset_accounting_life))
+
+    def by_plant(values: pd.Series) -> np.ndarray:
+        return plant_ids.map(values.groupby(by_hub).sum()).to_numpy()
+
+    total = by_plant(capacity)
+    # 部分到期 hub 的未重建部分由 hub 毛热耗反推，误差放大 1 / (1 - f) 倍，甚至为负：这些 hub 的 hub 值须与机组表按装机
+    # 加权的值一致（plants.csv 取四位小数），改了分档煤耗等常量而没重建输入时报错。
+    stale = np.abs(by_plant(capacity * unit_heat_rate) / total - hub_heat_rate) > 1e-4
+    for year in scenario.planning_years:
+        expired_capacity = capacity.where(end_year <= year, 0.0)
+        expired_total = by_plant(expired_capacity)
+        # 全部到期时分子分母是同一组数、同序求和，f 恰为 1.0，与整数 hub 加同一条约束（`model_year._add_expiry_rules`）。
+        expired = expired_total / total
+        some = expired > 0.0
+        expired_heat_rate = np.divide(
+            by_plant(expired_capacity * unit_heat_rate), expired_total, out=hub_heat_rate.copy(), where=some
+        )
+        rebuilt = np.divide(
+            by_plant(expired_capacity * rebuilt_heat_rate), expired_total, out=hub_heat_rate.copy(), where=some
+        )
+        unexpired = np.where(expired >= 1.0, rebuilt, hub_heat_rate)
+        part = some & (expired < 1.0)
+        if np.any(part & stale):
+            raise ValueError(
+                f"heat_rate_gj_per_mwh in plants.csv differs from the capacity-weighted unit heat rates for "
+                f"{int(np.sum(part & stale))} partly expired hubs, e.g. {list(plant_ids[part & stale][:5])}; "
+                f"{_UNIT_HUB_HINT}."
+            )
+        unexpired[part] = (hub_heat_rate[part] - expired[part] * expired_heat_rate[part]) / (1.0 - expired[part])
+        book = capacity * np.minimum(1.0, np.maximum(0, end_year - year) / life)
+        out[f"expired_share_{year}"] = expired
+        out[f"remaining_life_fraction_{year}"] = by_plant(book) / total
+        out[f"heat_rate_unexpired_{year}"] = unexpired
+        out[f"heat_rate_rebuilt_{year}"] = rebuilt
+    return out
 
 
 def _prepare_basin_caps(paths: ProjectPaths, scenario: OptimizationScenario) -> pd.DataFrame:
@@ -334,6 +441,7 @@ def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[st
     inputs = paths.inputs_dir
     files = {
         "plants": inputs / "plants.csv",
+        "plants_unit_hub": inputs / "plants_unit_hub.csv",  # 机组级到期与两部分毛热耗（`_with_expiry`）
         "storage_hubs": inputs / "storage_hubs.csv",
         "biomass_supply_curve": inputs / "biomass_supply_curve.csv",
         "ammonia_supply_curve": inputs / "ammonia_supply_curve.csv",  # 煤电掺氨与工业氢价共用
@@ -360,7 +468,7 @@ def prepare_inputs(
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
 ) -> PreparedInputs:
-    plants = _prepare_plants(paths, scenario, assumptions)
+    plants = _with_expiry(paths, scenario, assumptions, _prepare_plants(paths, scenario, assumptions))
     storages = _prepare_storages(paths, scenario, assumptions)
     biomass, biomass_links = _prepare_biomass(paths, scenario, assumptions, plants)
     ammonia_supply, ammonia_links = _prepare_ammonia_supply(paths, scenario, assumptions, plants)

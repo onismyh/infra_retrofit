@@ -207,6 +207,42 @@ COMBUSTION_CLASS_MAP = {
     "igcc": "supercritical",
 }
 
+# --- 逐台毛热耗：分档供电煤耗 x (1 - 厂用电率) x 标准煤热值（`builders.plants.unit_heat_rate_gj_per_mwh`）---------
+# 现役湿冷机组的基准水平，g 标准煤/kWh 供电：发改运行〔2022〕559 号原附件 p1（方法论 [A05]）；Wang et al. 2025
+# （`wang2025reducing`）SI Table 1 转述同一组数值（"级"写成容量阈值，未列空冷 +15），另列 CFB 290、IGCC 270，取用。
+# 原附件按"级"分档，键为 (机型, 级)。分档值是门槛，不是机组均值；Wang 假设现役机组都达到基准水平，这里同样假设，
+# 不校准到全国统计（2022 年 302.5，本表按装机加权 305.5）。2022 版已被 2025 版（发改运行〔2025〕1499 号）替代，
+# 2025 版原表未取得（docs/参数调研_20261001.md §2.1）。
+SUPPLY_COAL_RATE_G_PER_KWH: dict[tuple[str, str], float] = {
+    ("ultra-supercritical", "1000"): 285.0,
+    ("ultra-supercritical", "600"): 293.0,
+    ("supercritical", "600"): 300.0,
+    ("supercritical", "300"): 308.0,
+    ("subcritical", "600"): 314.0,
+    ("subcritical", "300"): 323.0,
+    ("cfb", ""): 290.0,
+    ("igcc", ""): 270.0,
+}
+AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH = 15.0  # 空冷机组 +15，同一附件
+# 铭牌容量归"级"：机型 -> (下限 MW, 达到下限的级, 其余的级)。超超临界 >=900 MW 为 1000MW 级；超临界与亚临界
+# >=450 MW 为 600MW 级。超超临界在 800-1000 MW 之间没有机组，超临界与亚临界在 450-600 MW 之间只有 6 台，分界在其间
+# 移动时全国均值变化不到 0.1 g/kWh。
+# Wang SI Table 1 把"级"写成容量阈值（超超临界 600 MW，超临界与亚临界 300 MW），按它读、空冷仍 +15 时全国 301.5。
+SUPPLY_COAL_RATE_CLASS_MIN_MW: dict[str, tuple[float, str, str]] = {
+    "ultra-supercritical": (900.0, "1000", "600"),
+    "supercritical": (450.0, "600", "300"),
+    "subcritical": (450.0, "600", "300"),
+}
+# 厂用电率：分档值按供电量计，模型的发电量（装机 x 利用小时）是机端毛发电量，折毛乘 (1 - 厂用电率)。取 5%：
+# 大型发电公司 4.66%-4.86%（华能国际燃煤、国电电力火电 2017 年，申能股份煤电 2017-2019、2021-2022 年；方法论 [A40]）；
+# 全国火电 6.0%-6.2%（国家能源局 2012-2016，含燃气、热电与小机组；[A41]）作敏感性。
+COAL_STATION_SERVICE_RATE = 0.05
+STANDARD_COAL_GJ_PER_KG = 0.0293076  # 标准煤低位热值 29.3076 MJ/kg；g/kWh 即 kg/MWh
+GJ_PER_MWH = 3.6  # 效率 = GJ_PER_MWH / 毛热耗（`optimization.plant_matrices`）
+# 煤电设计寿命 40 年：Fan et al. 2023（`fan2023cofiring`）SI Table 10（煤电 40 年）；Wang et al. 2025
+# （`wang2025reducing`）正文与 SI Table 3（40 年，区间 25-40）。hub 的 `retirement_year` 与机组级到期都用它。
+COAL_DESIGN_LIFE_YEARS = 40
+
 PLANNING_YEARS = [2030, 2040, 2050, 2060]
 # 模型的贴现率缺省值（`OptimizationScenario.discount_rate`）。模型自己折现与折年金的地方都用
 # 情景的这一个值，需要缺省贴现率时引用这里、不另写数字；氨价里的合成岛年金也按它重算。

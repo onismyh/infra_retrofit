@@ -261,6 +261,7 @@ def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -
             prepared, scenario, year, ys["share"],
             ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             year_data=ys["year_data"], air_share=ys["air_share"],
+            rebuilt_share=ys["rebuilt_share"], rebuilt_blend_x_share=ys["rebuilt_blend_x_share"],
         )
         assert float(pathways["abatement_mt"].sum()) == pytest.approx(float(ys["plant_reduction_mt"][0]), rel=1e-6)
         assert float(pathways["captured_mt"].sum()) == pytest.approx(float(ys["captured_mt_by_plant"][0]), rel=1e-6)

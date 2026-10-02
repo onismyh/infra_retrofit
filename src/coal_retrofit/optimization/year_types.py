@@ -32,11 +32,34 @@ GrbExpr = Any  # LinExpr、0 维 MLinExpr 或 float
 
 
 @dataclass(frozen=True)
+class RebuiltDelta:
+    """部分到期 hub 上，原址重建部分与未重建部分的系数之差（各按自己的毛热耗算，`plant_matrices`）。
+
+    字段与 `YearData` 的同名字段同形状、同单位，乘重建部分的份额进约束与成本（`constraints._add_rebuilt_split`）；
+    到期份额 f 为 0 或 1 的 hub 两部分毛热耗相同，差为零。空冷背压的排放与捕集按 hub 毛热耗计，没有差。
+    """
+
+    heat_rate_eff: np.ndarray
+    emissions_operating_mt: np.ndarray
+    emissions_retrofit_mt: np.ndarray
+    energy_penalty_matrix: np.ndarray
+    biomass_penalty_coeff_per_level: np.ndarray
+    ccs_penalty_emissions_matrix: np.ndarray
+    ccs_penalty_captured_matrix: np.ndarray
+    biomass_penalty_emissions_coeff_per_level: np.ndarray
+    beccs_penalty_emissions_coeff_per_level: np.ndarray
+    beccs_penalty_captured_coeff_per_level: np.ndarray
+    baseline_net_matrix: np.ndarray
+    air_penalty_cost_matrix: np.ndarray
+
+
+@dataclass(frozen=True)
 class YearData:
     """`_build_year_matrices` 的输出。煤电厂侧的路径矩阵形状 (plant_count, len(PATHWAYS))、列序同 PATHWAYS；
     其余形状不同的字段在旁边注明。"""
 
-    # --- 煤电厂侧（`plant_matrices._plant_operating_matrices`）---
+    # --- 煤电厂侧（`plant_matrices._plant_operating_matrices`）。随毛热耗变的系数按未重建部分的毛热耗
+    #     `heat_rate_eff`（未到期机组；全部到期的 hub 为重建热耗）算，部分到期 hub 的重建部分差在 `rebuilt_delta` ---
     hours_scale: float
     generation: np.ndarray
     generation_by_pathway: np.ndarray
@@ -44,6 +67,8 @@ class YearData:
     emissions_operating_mt: np.ndarray
     emissions_retrofit_mt: np.ndarray
     heat_rate_eff: np.ndarray
+    expired_share: np.ndarray  # (plant_count,) 本年已到期的装机份额 f（`data_prep._with_expiry`）
+    rebuilt_delta: RebuiltDelta
     capacity_mw: np.ndarray
     fixed_cost_matrix: np.ndarray
     energy_penalty_matrix: np.ndarray
@@ -133,8 +158,8 @@ class YearData:
 class YearPayload:
     """`add_year_block` 的输出：一年的变量、表达式与系数。
 
-    `cost_exprs`、`salvage_ledger`、`objective_expr` 由 `add_year_costs` 写入，
-    `_add_salvage_credit` 再补残值项并重算目标，所以这个类不冻结。
+    `cost_exprs`、`salvage_ledger`、`objective_expr` 由 `add_year_costs` 写入，`retirement.add_retired_rebuild_offset`
+    往台账补已退役重建装机的扣回项，`_add_salvage_credit` 再补残值项并重算目标，所以这个类不冻结。
     """
 
     year: int
@@ -182,16 +207,23 @@ class YearPayload:
     biomass_blend_x_share: list[GrbExpr]
     beccs_blend_x_share: list[GrbExpr]
     ammonia_blend_x_share: list[GrbExpr]
+    # 部分到期 hub 的原址重建部分（`constraints._add_rebuilt_split`），只含这些 hub：各运行路径份额与空冷份额里由重建机组
+    # 承担的部分，{厂: {路径列: 变量}}；掺烧三条路径上重建部分的 Σβ_l·rz_l，{(厂, 路径列): 表达式}。
+    rebuilt_share: dict[int, dict[int, gp.Var]]
+    rebuilt_air_share: dict[int, dict[int, gp.Var]]
+    rebuilt_blend_x_share: dict[tuple[int, int], GrbExpr]
     total_reduction_mt: GrbExpr
     total_bio_penalty: GrbExpr
     # `model_industry.add_industry_year` 的输出。
     industry: IndustryPayload
     # 成本类别 -> 折现并缩放后的表达式（碳价为零时碳成本是 0.0）。
     cost_exprs: dict[str, GrbExpr] = field(default_factory=dict)
-    # (名称, 未折现 capex 表达式, 经济寿命年)，供期末残值。
+    # (名称, 未折现 capex 表达式, 经济寿命年)，供期末残值；期末已退役重建装机的扣回项（`rebuild_retired`）为负。
     salvage_ledger: list[tuple[str, GrbExpr, int]] = field(default_factory=list)
     # `add_year_costs` 之前为 None。
     objective_expr: GrbExpr = None
+    # 逐厂搁浅资产（CNY，未折现未缩放），`add_year_costs` 写入；结果表的逐厂成本取它的解值。
+    stranded_by_plant: list[GrbExpr] = field(default_factory=list)
     # 三类分代能力本年的在役能力与固定运维（`model_linking.add_capacity_vintages` 写入，此前为 None）：
     # 煤电捕集岛（每厂一项）、工业捕集与氢路线能力（每 hub 一项）。
     ccs_island: StockYear | None = None
@@ -246,6 +278,8 @@ class YearSolution(TypedDict):
     retrofit_new: np.ndarray
     retrofit_alive: np.ndarray
     ccs_om_by_plant: np.ndarray
+    # 逐厂搁浅资产，CNY（未折现）：新增提前退役 x 每单位的剩余账面价值（`retirement.retirement_flows`）。
+    stranded_by_plant: np.ndarray
     pipe_count: np.ndarray
     industry_share: np.ndarray
     # 工业路线能力，Mt/yr (hub_count, len(INDUSTRY_ROUTES))：本年新建、在役；捕集的固定运维 (hub_count,)，CNY/yr。
@@ -258,6 +292,10 @@ class YearSolution(TypedDict):
     biomass_blend_x_share: np.ndarray
     beccs_blend_x_share: np.ndarray
     ammonia_blend_x_share: np.ndarray
+    # `YearPayload` 同名字段的值，(plant_count, len(PATHWAYS))，其余 hub 与列为零：各路径份额里的重建部分；
+    # 掺烧三列的 Σβ_l·rz_l（空冷份额的重建部分只进目标，不导出）。
+    rebuilt_share: np.ndarray
+    rebuilt_blend_x_share: np.ndarray
     total_reduction_mt: float
     cost_breakdown_cny: dict[str, float]
     slacks: SolveSlacks

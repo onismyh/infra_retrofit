@@ -17,7 +17,13 @@ from coal_retrofit.optimization.results import _build_plant_cost_table  # noqa: 
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.paths import ProjectPaths  # noqa: E402
-from toy_inputs import YEARS, _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
+from toy_inputs import (  # noqa: E402
+    TOY_HEAT_RATE_GJ_PER_MWH,
+    YEARS,
+    _toy_assumptions,
+    _write_targets,
+    _write_toy_inputs,
+)
 
 
 def _solve_toy(paths: ProjectPaths, scenario: OptimizationScenario) -> SolveResult:
@@ -44,16 +50,16 @@ def _expected_ccs(
     toy 电厂从不到期，所以 heat_rate_eff 等于基线热耗。
     """
     gen = 1000.0 * assumptions.province_cf("Shanxi") * 8760.0
-    e_mt = gen * assumptions.coal_emission_factor_t_per_mwh / 1e6
+    ef_t_per_gj = assumptions.coal_emission_factor_t_per_gj
+    e_mt = gen * TOY_HEAT_RATE_GJ_PER_MWH * ef_t_per_gj / 1e6
     boost = scenario.retrofit_cf_boost
     eta = scenario.capture_rate
-    ef_t_per_gj = assumptions.coal_emission_factor_t_per_mwh / assumptions.heat_rate_gj_per_mwh
     # 惩罚燃料在同一台锅炉里燃烧，所以只有未被捕集的部分排入大气。
     penalty_emissions_mt = (
         gen
         * boost
         * assumptions.ccs_energy_penalty_ratio(year)
-        * assumptions.heat_rate_gj_per_mwh
+        * TOY_HEAT_RATE_GJ_PER_MWH
         * ef_t_per_gj
         * (1.0 - eta)
         / 1e6
@@ -151,10 +157,10 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
     # 第 2 期没有重建 CAPEX，尽管电厂仍处于重建状态并在运行。
     assert y2["cost_breakdown_cny"]["rebuild_capex"] == pytest.approx(0.0, abs=1.0)
 
-    # 重建后的电厂按 rebuild_efficiency（超超临界，USC）运行：热耗改善为
-    # hr x 0.42/0.45，这必须体现在基线净运行成本里。
+    # 重建后的电厂按 rebuild_efficiency（超超临界，USC）运行：逐台毛热耗取 min(机组毛热耗, 3.6/0.45)，toy 为 8.0，
+    # 这必须体现在基线净运行成本里（2026-10-02 前是 hr x 0.42/0.45）。
     assumptions = _toy_assumptions()
-    hr_eff = assumptions.heat_rate_gj_per_mwh * assumptions.coal_plant_base_efficiency / scenario.rebuild_efficiency
+    hr_eff = min(TOY_HEAT_RATE_GJ_PER_MWH, 3.6 / scenario.rebuild_efficiency)
     net_pm = (
         hr_eff * assumptions.province_coal_cost("Shanxi")
         + assumptions.baseline_om_cost_cny_per_mwh
@@ -229,7 +235,7 @@ def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_pat
         2050: capex_rate[2050] * assumptions.ccs_om_fraction,
     }
     capex_indices = solution["capex_pathway_indices"]
-    for year, ys, prev in ((2030, y1, None), (2040, y2, y1), (2050, y3, y2)):
+    for year, ys in ((2030, y1), (2040, y2), (2050, y3)):
         df = 1.0 / (1.0 + rate) ** (year - scenario.discount_base_year)
         costs = ys["cost_breakdown_cny"]
         assert costs["ccs_retrofit_capex"] == pytest.approx(1000.0 * capex_paid[year] * s1_y2030 * df, rel=1e-3, abs=1.0), year
@@ -237,10 +243,10 @@ def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_pat
         # 逐厂成本表与模型一致（未折现）。
         plant_cost = _build_plant_cost_table(
             prepared, year, ys["year_data"], ys["share"], ys["biomass_use_gj"],
-            prev_share_values=None if prev is None else prev["share"],
             plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
-            capex_pathway_indices=capex_indices,
+            stranded_by_plant=ys["stranded_by_plant"],
+            capex_pathway_indices=capex_indices, rebuilt_share=ys["rebuilt_share"],
         )
         assert float(plant_cost["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
             1000.0 * capex_paid[year] * s1_y2030, rel=1e-3, abs=1.0

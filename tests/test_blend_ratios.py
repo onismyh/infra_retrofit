@@ -167,6 +167,7 @@ def test_pathway_split_charges_each_term_to_its_own_pathway() -> None:
     table = _build_pathway_table(
         _prepared(n), SCENARIO, 2050, share, np.array([0.0, 0.3]), np.array([0.0, 0.15]), np.array([0.05, 0.0]),
         year_data=year_data, air_share=air_share,
+        rebuilt_share=np.zeros_like(share), rebuilt_blend_x_share=np.zeros_like(share),
     )
     hub0 = table[table["plant_id"] == "P0"].set_index("pathway")
     assert hub0.loc["ccs", "abatement_mt"] == pytest.approx(4.425, rel=1e-9)
@@ -197,13 +198,14 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             emissions_mt=np.array([10.0, 4.0]), carbon_price=carbon_price,
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
-            energy_penalty_matrix=zeros_path, stranded_per_plant=np.zeros(n),
+            energy_penalty_matrix=zeros_path,
         ))
         return _build_plant_cost_table(
             _prepared(n), 2040, year_data, share, np.zeros(n),
             # 第 2 个 hub 的减排为负：惩罚燃料使排放高于基线，碳成本随之高于基线排放的碳价。
             plant_reduction_mt=np.array([7.5, -0.2]),
-            retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), capex_pathway_indices=(PATHWAY_INDEX["ccs"],),
+            retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), stranded_by_plant=np.zeros(n),
+            capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=zeros_path,
         )
 
     priced = table(100.0)
@@ -260,16 +262,26 @@ _ONLY = {
 }
 
 
-def _solve_blend_toy(root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None):
+def _solve_blend_toy(
+    root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None, units=None
+):
     """求解 2050、2060 两年的 toy，生物质与氨的供给挪到电厂旁边且充足。
 
-    `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`mip_gap` 缺省用情景的缺省值。
+    `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`mip_gap` 缺省用情景的缺省值；`units` 是 ((装机, 投产年), ...)，
+    换掉 toy 的机组表（装机合计仍 1 000 MW，机型同 toy 机组，hub 毛热耗随之取机组的），缺省一台机组、两年都不到期。
     返回 (scenario, assumptions, prepared, solution)；`prepared` 供结果表函数用。
     """
     from test_capex_stock_and_lifetimes import _solve_toy
-    from toy_inputs import _write_targets, _write_toy_inputs
+    from toy_inputs import TOY_UNIT_TYPE, _write_targets, _write_toy_inputs, _write_toy_units
 
     paths = _write_toy_inputs(root, retirement_year=9999)
+    if units is not None:
+        _write_toy_units(paths, pd.DataFrame(
+            {
+                "plant_id": "P1", "capacity_mw": [c for c, _ in units], "commission_year": [y for _, y in units],
+                **{column: values * len(units) for column, values in TOY_UNIT_TYPE.items()},
+            }
+        ))
     bio = pd.read_csv(paths.inputs_dir / "biomass_supply_curve.csv")
     bio["longitude"], bio["latitude"], bio["province_name"], bio["available_gj"] = 112.05, 37.0, "Shanxi", 1.0e9
     bio.to_csv(paths.inputs_dir / "biomass_supply_curve.csv", index=False)
@@ -317,6 +329,17 @@ def mixed_continuous(tmp_path_factory):
     )
 
 
+@pytest.fixture(scope="module")
+def mixed_partly_expired(tmp_path_factory):
+    """同 `mixed_continuous`，电厂换成两台机组：600 MW 2005 年投产（2045 年到期）、400 MW 2025 年投产（2065 年到期），
+    两年都部分到期（f = 0.6）。退役不开放，到期装机只能原址重建，重建与未重建部分按各自的毛热耗计。"""
+    pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
+    return _solve_blend_toy(
+        tmp_path_factory.mktemp("partly_expired"), ("retire",), {2050: 0.45, 2060: 0.2}, carbon=(300.0, 600.0),
+        units=((600.0, 2005), (400.0, 2025)),
+    )
+
+
 @pytest.mark.parametrize(
     ("pathway", "power_caps"), [("beccs", {2050: 0.0, 2060: 0.0}), ("ammonia", {2050: 0.75, 2060: 0.6})],
 )
@@ -358,18 +381,34 @@ def test_detail_ratio_is_the_unclipped_quotient(ammonia_continuous) -> None:
         assert float(detail["ammonia_blend_ratio"].iloc[0]) == pytest.approx(raw, abs=1e-6)
 
 
-@pytest.mark.parametrize("solved", ["ammonia_continuous", "mixed_continuous"])
+@pytest.mark.parametrize("solved", ["ammonia_continuous", "mixed_continuous", "mixed_partly_expired"])
 def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
-    """逐路径的减排量与捕集量逐厂相加，等于求解器的逐厂减排量与捕集量。拆分由份额、Σβ·z、空冷份额与 `year_data` 的
-    系数重算，求解器那边是约束表达式与捕集变量的取值，两边各算各的。合理性检查的 `pathway_split_closure` 行随之通过。"""
+    """逐路径的减排量与捕集量逐厂相加，等于求解器的逐厂减排量与捕集量。拆分由份额、Σβ·z、空冷份额、重建部分与
+    `year_data` 的系数重算，求解器那边是约束表达式与捕集变量的取值，两边各算各的。合理性检查的 `pathway_split_closure`
+    行随之通过。部分到期的 toy 里重建部分落在 CCS、掺氨（2050 年）与 BECCS（2060 年）上，这几条路径按两部分之差的项
+    被测到；生物质与空冷没用上。两边用同一组差值系数，这里核对的是逐项加总，系数本身由 `test_unit_expiry` 独立核对。"""
     scenario, _, prepared, solution = request.getfixturevalue(solved)
     captured_any = False
+    rebuilt_retrofit = 0.0
     for year, ys in solution["year_solutions"].items():
         pathways = _build_pathway_table(
             prepared, scenario, year, ys["share"],
             ys["biomass_blend_x_share"], ys["beccs_blend_x_share"], ys["ammonia_blend_x_share"],
             year_data=ys["year_data"], air_share=ys["air_share"],
+            rebuilt_share=ys["rebuilt_share"], rebuilt_blend_x_share=ys["rebuilt_blend_x_share"],
         )
+        rebuilt_retrofit += float(ys["rebuilt_share"][:, [PATHWAY_INDEX["ccs"], BIO, BECCS, AMM]].sum())
+        # 重建与未重建两部分各自恰好分摊到各档位上（`rzsum_*`、rz <= z）：Σβ·rz ÷ 重建份额、
+        # (Σβ·z - Σβ·rz) ÷ (份额 - 重建份额) 都落在档位之内。
+        for col, key, levels in (
+            (BIO, "biomass", LEVELS_B), (BECCS, "beccs", LEVELS_B), (AMM, "ammonia", LEVELS_A),
+        ):
+            rebuilt, rebuilt_xs = ys["rebuilt_share"][:, col], ys["rebuilt_blend_x_share"][:, col]
+            unexpired, unexpired_xs = ys["share"][:, col] - rebuilt, ys[f"{key}_blend_x_share"] - rebuilt_xs
+            for part, part_xs in ((rebuilt, rebuilt_xs), (unexpired, unexpired_xs)):
+                on = part > 1e-6
+                raw = part_xs[on] / part[on]
+                assert np.all((raw >= min(levels) - 1e-6) & (raw <= max(levels) + 1e-6)), (year, key, raw)
         by_plant = pathways.groupby("plant_id", sort=False)[["abatement_mt", "captured_mt"]].sum()
         np.testing.assert_allclose(by_plant["abatement_mt"], ys["plant_reduction_mt"], rtol=1e-6, atol=1e-9)
         np.testing.assert_allclose(by_plant["captured_mt"], ys["captured_mt_by_plant"], rtol=1e-6, atol=1e-9)
@@ -379,14 +418,16 @@ def test_pathway_split_adds_up_to_the_solver(request, solved) -> None:
             plant_reduction_mt=ys["plant_reduction_mt"], captured_mt=ys["captured_mt_by_plant"],
         ).set_index("check_name")
         assert checks.loc["pathway_split_closure", "status"] == "pass"
-    # 前提：混合 toy 至少有一年在捕集，否则捕集量的拆分没被测到。
+    # 前提：混合 toy 至少有一年在捕集，否则捕集量的拆分没被测到；部分到期的 toy 有重建部分在改造路径上。
     assert captured_any or solved == "ammonia_continuous"
+    assert (rebuilt_retrofit > 1e-6) == (solved == "mixed_partly_expired")
 
 
-def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(mixed_continuous) -> None:
-    """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）。
-    除退役外全部路径开放、连续 hub。"""
-    scenario, assumptions, prepared, solution = mixed_continuous
+@pytest.mark.parametrize("solved", ["mixed_continuous", "mixed_partly_expired"])
+def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -> None:
+    """有碳价时，成本表逐厂碳成本之和 + 工业残余排放的碳成本 = 目标函数当年的碳成本项（除去折现与年金系数）；
+    逐厂基线净运行成本之和 = 目标函数的同名项（部分到期的 toy 含重建部分的差）。除退役外全部路径开放、连续 hub。"""
+    scenario, assumptions, prepared, solution = request.getfixturevalue(solved)
     for year, ys in solution["year_solutions"].items():
         year_data = ys["year_data"]
         price = float(year_data.carbon_price)
@@ -394,7 +435,8 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(mixed_continuous) 
             prepared, year, year_data, ys["share"], ys["biomass_use_gj"],
             plant_reduction_mt=ys["plant_reduction_mt"],
             retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
-            capex_pathway_indices=solution["capex_pathway_indices"],
+            stranded_by_plant=ys["stranded_by_plant"], capex_pathway_indices=solution["capex_pathway_indices"],
+            rebuilt_share=ys["rebuilt_share"],
         )
         plant_carbon = float(table["carbon_cost_cny"].sum())
         industry = year_data.industry
@@ -408,6 +450,9 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(mixed_continuous) 
         assert price > 0.0 and plant_carbon != 0.0
         assert plant_carbon + price * 1e6 * industry_residual == pytest.approx(
             ys["cost_breakdown_cny"]["carbon_cost"] / weight, rel=1e-9
+        )
+        assert float(table["baseline_net_cost_cny"].sum()) == pytest.approx(
+            ys["cost_breakdown_cny"]["baseline_net_cost"] / weight, rel=1e-9
         )
 
 

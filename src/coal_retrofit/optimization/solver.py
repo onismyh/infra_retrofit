@@ -1,6 +1,6 @@
 """多期联合 MILP 的编排：建索引 → 逐年变量与约束 → 跨期约束与分代能力 → 容量与成本 → 残值 → 求解 → 提取。
 
-各步的实现在 `model_index` / `model_year` / `model_linking` / `model_costs` / `salvage` /
+各步的实现在 `model_index` / `model_year` / `model_linking` / `model_costs` / `retirement` / `salvage` /
 `solver_extract`；本文件只负责顺序与求解器参数。变量与约束的创建顺序决定 Gurobi 指纹，
 改动顺序会使新旧结果不可比。
 """
@@ -26,6 +26,7 @@ from .model_costs import add_year_costs
 from .model_index import build_model_index
 from .model_linking import add_capacity_constraints, add_capacity_vintages, add_inter_period_constraints
 from .model_year import add_year_block
+from .retirement import add_retired_rebuild_offset
 from .salvage import _add_salvage_credit
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .solver_extract import empty_year_solutions, extract_year_solutions
@@ -96,9 +97,10 @@ def _solve_joint_multi_period(
         )
         add_year_costs(
             model, payload, year_payloads, year_position, prepared, scenario, assumptions,
-            idx.retirement_years, idx.plant_count, idx.edge_count, idx.storage_count,
+            idx.plant_count, idx.edge_count, idx.storage_count,
         )
 
+    add_retired_rebuild_offset(model, year_payloads, scenario, assumptions, idx.plant_count)
     _add_salvage_credit(year_payloads, scenario, assumptions, _COST_SCALE)
     model.setObjective(gp.quicksum(payload.objective_expr for payload in year_payloads), GRB.MINIMIZE)
 

@@ -47,6 +47,7 @@ def empty_year_solutions(
             "retrofit_new": np.zeros((plant_count, len(idx.capex_pathway_indices))),
             "retrofit_alive": np.zeros(plant_count),
             "ccs_om_by_plant": np.zeros(plant_count),
+            "stranded_by_plant": np.zeros(plant_count),
             "pipe_count": np.zeros((edge_count, len(p.year_data.pipe_tiers_mtpa))),
             "industry_share": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
             "industry_new_capacity_mt": np.zeros((hub_count, len(INDUSTRY_ROUTES))),
@@ -57,6 +58,8 @@ def empty_year_solutions(
             "biomass_blend_x_share": np.zeros(plant_count),
             "beccs_blend_x_share": np.zeros(plant_count),
             "ammonia_blend_x_share": np.zeros(plant_count),
+            "rebuilt_share": np.zeros((plant_count, len(PATHWAYS))),
+            "rebuilt_blend_x_share": np.zeros((plant_count, len(PATHWAYS))),
             "total_reduction_mt": 0.0,
             "co2_flow_fwd": np.zeros(edge_count),
             "co2_flow_bwd": np.zeros(edge_count),
@@ -129,6 +132,7 @@ def extract_year_solutions(
             "retrofit_new": _var_value(payload.retrofit_new, (plant_count, len(idx.capex_pathway_indices))),
             "retrofit_alive": _values(island.alive),
             "ccs_om_by_plant": _values(island.fixed_om),
+            "stranded_by_plant": _values(payload.stranded_by_plant),
             "pipe_count": _var_value(payload.pipe_count, (edge_count, len(year_data.pipe_tiers_mtpa))),
             "industry_share": _var_value(industry.share, (hub_count, len(INDUSTRY_ROUTES))),
             "industry_new_capacity_mt": _var_value(industry.new_capacity_mt, (hub_count, len(INDUSTRY_ROUTES))),
@@ -143,6 +147,8 @@ def extract_year_solutions(
             "biomass_blend_x_share": np.array([_expr_value(e) for e in payload.biomass_blend_x_share], dtype=np.float64),
             "beccs_blend_x_share": np.array([_expr_value(e) for e in payload.beccs_blend_x_share], dtype=np.float64),
             "ammonia_blend_x_share": np.array([_expr_value(e) for e in payload.ammonia_blend_x_share], dtype=np.float64),
+            "rebuilt_share": _rebuilt_values(payload, plant_count),
+            "rebuilt_blend_x_share": _rebuilt_blend_values(payload, plant_count),
             "total_reduction_mt": _expr_value(payload.total_reduction_mt),
             "cost_breakdown_cny": {category: _expr_value(expr) * _COST_SCALE for category, expr in payload.cost_exprs.items()},
             "slacks": {
@@ -174,5 +180,22 @@ def extract_year_solutions(
 
 
 def _values(exprs: list[GrbExpr]) -> np.ndarray:
-    """分代能力（`vintage.StockYear`）逐单元表达式的解值；常数 0.0 读作 0。"""
+    """逐单元表达式（分代能力 `vintage.StockYear`、逐厂搁浅资产）的解值；常数 0.0 读作 0。"""
     return np.array([_expr_value(expr) for expr in exprs], dtype=np.float64)
+
+
+def _rebuilt_values(payload: YearPayload, plant_count: int) -> np.ndarray:
+    """部分到期 hub 各路径份额里的重建部分（`constraints._add_rebuilt_split`），(plant_count, len(PATHWAYS))。"""
+    out = np.zeros((plant_count, len(PATHWAYS)))
+    for p, part in payload.rebuilt_share.items():
+        for k, var in part.items():
+            out[p, k] = _var_scalar_value(var)
+    return out
+
+
+def _rebuilt_blend_values(payload: YearPayload, plant_count: int) -> np.ndarray:
+    """部分到期 hub 掺烧三列上重建部分的 Σβ_l·rz_l，(plant_count, len(PATHWAYS))。"""
+    out = np.zeros((plant_count, len(PATHWAYS)))
+    for (p, k), expr in payload.rebuilt_blend_x_share.items():
+        out[p, k] = _expr_value(expr)
+    return out

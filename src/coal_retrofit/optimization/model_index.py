@@ -20,7 +20,6 @@ class ModelIndex:
     edge_count: int
     n_nodes: int
     biomass_node_count: int
-    retirement_years: np.ndarray
     node_idx_dict: dict[str, int]
     plant_ids: list[str]
     storage_ids: list[str]
@@ -39,7 +38,6 @@ def build_model_index(
     from .industry import industry_year_data
 
     n_nodes = len(prepared.network.nodes)
-    retirement_years = prepared.plants["retirement_year"].astype(int).to_numpy()
     node_idx_dict = {
         str(row.node_id): i
         for i, row in enumerate(prepared.network.nodes.itertuples(index=False))
@@ -103,7 +101,6 @@ def build_model_index(
         edge_count=len(prepared.network.edges),
         n_nodes=n_nodes,
         biomass_node_count=len(prepared.biomass),
-        retirement_years=retirement_years,
         node_idx_dict=node_idx_dict,
         plant_ids=plant_ids,
         storage_ids=storage_ids,
