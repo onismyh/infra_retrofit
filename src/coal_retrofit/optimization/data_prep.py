@@ -478,6 +478,11 @@ def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[st
         "pipeline_nodes": inputs / "pipeline_nodes.csv",
         "pipeline_edges": inputs / "pipeline_candidate_edges.csv",
     }
+    # 工业 hub 的可捕集份额与份额为正的点源所占比例由点源表算（`industry_inputs._hub_source_shares`）；
+    # 没有点源表时（toy 输入）不读。
+    sources = inputs / "industry_sources.csv"
+    if sources.exists():
+        files["industry_sources"] = sources
     source = scenario.effective_output_index_source
     if source:
         files["industry_output_index"] = inputs / f"industry_output_index_{source}.csv"

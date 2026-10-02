@@ -150,7 +150,7 @@ def test_industry_capex_expr_charges_each_route_on_its_own_new_capacity() -> Non
 
 
 def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
-    """在 toy 输入上加一个长流程钢 hub（100 万 t/a，需氢 0.081 t/t，有氢路线）和紧挨它的氢节点，
+    """在 toy 输入上加一个长流程钢 hub（100 万 t/a，点源表需氢 0.081 t/t、模型取 0.063，有氢路线）和紧挨它的氢节点，
     钢铁组按 `steel_caps` 设上限；煤电组与水泥组仍是 `_write_toy_inputs` 写的 1.0。"""
     inputs = paths.inputs_dir
     hubs = pd.read_csv(inputs / "industry_hubs.csv")

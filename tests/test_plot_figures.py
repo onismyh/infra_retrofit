@@ -53,6 +53,25 @@ def test_fig3_capacity_split_and_checks(monkeypatch: pytest.MonkeyPatch) -> None
         fig3.check({**data, "sanity": sanity.assign(status="warn")})
 
 
+def test_fig4_counts_sources_left_unrebuilt_as_unabated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """混合原料的甲醇 hub 全部转氢时只有份额为正的点源改造（产量的 60%），其余计入未改造；结果表没有这一列
+    （2026-10-02 前的结果）时按 1；比例缺失或不在 [0, 1] 内时自检不通过。"""
+    fig4 = _load(monkeypatch, "plot_fig4_industry_routes")
+    detail = pd.DataFrame({
+        "year": [2030, 2030], "sector": ["methanol", "methanol"], "production_kt_per_year": [1000.0, 500.0],
+        "abatable_production_share": [0.6, 1.0],
+        "share_unabated": [0.0, 1.0], "share_ccs": [0.0, 0.0], "share_h2": [1.0, 0.0],
+    })
+    fig4.check(detail)
+    for bad in ([np.nan, 1.0], [1.5, 1.0]):
+        with pytest.raises(ValueError, match="产量比例"):
+            fig4.check(detail.assign(abatable_production_share=bad))
+    shares = fig4.route_shares(detail)["methanol"].loc[2030]
+    assert shares[["unabated", "ccs", "h2"]].tolist() == pytest.approx([60.0, 0.0, 40.0])
+    legacy = fig4.route_shares(detail.drop(columns="abatable_production_share"))["methanol"].loc[2030]
+    assert legacy[["unabated", "ccs", "h2"]].tolist() == pytest.approx([100.0 / 3.0, 0.0, 200.0 / 3.0])
+
+
 def _fig5_data(residual_2060: float, cap_fraction: float, shortfall: float, years=(2030, 2060)) -> dict:
     """电力一组：冻结技术排放 2030 年 10、2060 年 6（利用小时下降），残余 2030 年 9。"""
     residual = {2030: 9.0, 2060: residual_2060}

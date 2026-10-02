@@ -28,6 +28,8 @@ def _build_industry_detail_table(
     成本沿用模型自己的拆分：`cost_annual_cny` 是捕集能耗与耗材、在役且在用的捕集能力按建设年单价的固定运维
     （氢路线为固定运维与非氢运行差额），再加本年在该 hub 链路上实际买的氢；`cost_capital_cny` 是按本年新建
     能力计的一次性改造 capex。末尾四列（2026-10-02 起）把两者按捕集与氢路线分开，两两相加即这两列。
+    `abatable_production_share`（2026-10-02 起）是可捕集份额为正的点源占 hub 产量的比例：两条路线只改造这些点源
+    （混合原料的甲醇 hub 里份额为 0 的点源不改造，电炉钢为 0），没有点源表时为 1；按产量汇总路线构成时路线份额乘它，其余计入未改造。
     期末残值抵扣不分摊到各 hub，它是 `cost_breakdown.csv` 里的 `salvage_credit` 一行。
 
     Args:
@@ -46,7 +48,7 @@ def _build_industry_detail_table(
     """
     columns = [
         "year", "hub_id", "sector", "target_group", "province", "longitude", "latitude", "basin_code",
-        "output_index", "production_kt_per_year", "baseline_co2_mt", "process_co2_mt",
+        "output_index", "production_kt_per_year", "abatable_production_share", "baseline_co2_mt", "process_co2_mt",
         "share_unabated", "share_ccs", "share_h2", "capacity_ccs_mt", "capacity_h2_mt",
         "reduction_mt", "residual_mt", "captured_mt", "h2_kg",
         "water_m3", "water_base_m3", "water_capture_increment_m3",
@@ -101,6 +103,7 @@ def _build_industry_detail_table(
             "basin_code": str(getattr(hub, "basin_code", "")),
             "output_index": float(output_scale[hub_idx]),
             "production_kt_per_year": float(hub.production_kt_per_year) * float(output_scale[hub_idx]),
+            "abatable_production_share": float(getattr(hub, "abatable_production_share", 1.0)),
             "baseline_co2_mt": float(baseline[hub_idx]),
             "process_co2_mt": float(hub.process_co2_mt_per_year) * float(output_scale[hub_idx]),
             "share_unabated": float(share[_UNABATED]),
