@@ -147,17 +147,18 @@ def _build_year_matrices(
     capex_matrix = np.asarray(plant["ccs_retrofit_capex_matrix"], dtype=np.float64)
     retrofit_stock_capex = capex_matrix[:, [PATHWAY_INDEX["ccs"]]]
     retrofit_stock_om = retrofit_stock_capex * float(assumptions.ccs_om_fraction)
-    # 部分到期 hub 上重建部分与未重建部分的系数之差，厂侧与空冷燃料成本两处合成一份。
-    rebuilt_delta = RebuiltDelta(
-        **plant["rebuilt_delta"], air_penalty_cost_matrix=air.pop("air_penalty_cost_rebuilt_delta")
+    # 各类重建部分与未重建部分的系数之差，厂侧与空冷燃料成本两处合成一份，每类一份。
+    rebuilt_deltas = tuple(
+        RebuiltDelta(**delta, air_penalty_cost_matrix=air_delta)
+        for delta, air_delta in zip(plant["rebuilt_deltas"], air.pop("air_penalty_cost_rebuilt_deltas"), strict=True)
     )
 
     return YearData(
         **{
             k: v for k, v in plant.items()
-            if k not in ("generation_cost_basis", "coal_price_per_plant", "heat_rate_rebuilt", "rebuilt_delta")
+            if k not in ("generation_cost_basis", "coal_price_per_plant", "rebuilt_heat_rates", "rebuilt_deltas")
         },
-        rebuilt_delta=rebuilt_delta,
+        rebuilt_deltas=rebuilt_deltas,
         retrofit_stock_capex=retrofit_stock_capex,
         retrofit_stock_om=retrofit_stock_om,
         carbon_price=scenario.carbon_price_for_year(year),

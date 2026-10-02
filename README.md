@@ -154,7 +154,7 @@
 > 的份额比例分摊。
 > `plant_detail.csv` 的 `air_cooled_share` 拆成 `air_operating_share`（当年在运行路径上以空冷运行的份额，不含退役路径上模型
 > 可任取的那份）与 `air_installed_share`（已建成的空冷存量，只增不减；已全空冷的 hub 除外：两列不保证为零、也不保证只增不减，
-> 乘 1 − already_air_share 后为零）。
+> 乘 1 − already_air_share 后为零；2026-10-02 起改为在役的空冷能力，到寿命会降，见本节末）。
 > 经典比例函数 `optimization/emissions.py` 随之删去。模型、目标值与逐厂合计不变；此前落盘的结果图 3、图 7 拒绝出图，重解后再画。
 > 09-29 条说的 `test_blend_ratios.py` 那条核对两边是同一对数组、永远成立，改为拆分结果与求解器的约束表达式对拍。
 > 同日按 PR #20 复核修出图：同值的圆点、菱形、方块面积相同（此前后两者大 4/π，约 27%）；`save_fig` 先查字体，缺 SimHei 或
@@ -223,10 +223,11 @@
 >   原址重建不改冷却方式）；未重建部分取未到期机组的装机加权毛热耗（由 hub 值反推，两部分按 f 加权还原 hub 值；反推放大误差，
 >   部分到期 hub 的 hub 值与按现行分档基准逐台现算、按装机加权的值相差超过 1e-4 就报错）。0 < f < 1 的 hub
 >   把每条运行路径的份额、空冷份额与掺烧各档拆出重建机组承担的部分（运行的重建部分不超过重建份额，未重建部分不超过未到期装机
->   1 − f，`optimization/constraints.py:48-82`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
+>   1 − f，`optimization/constraints.py:49-101`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
 >   空冷背压惩罚的排放与捕集仍按 hub 毛热耗（作者决定维持）。哪几台机组运行、退役、改空冷由求解器定，模型不追踪逐台状态；
 >   拆到各路径的份额不受跨期约束，跨期约束只管 hub 合计与重建部分的运行合计（自愿退役核算，见下条）。f = 0 或 1 的 hub（整数
->   hub 都是）两部分相同，不加变量。此前整个 hub 自 `retirement_year` 起热耗乘 0.42 / 0.45，不论到期装机重建还是退役。
+>   hub 都是）两部分相同，不加变量（2026-10-02 起重建部分再按重建毛热耗分类，f = 1 而有两类以上的 hub 也拆，见本节末）。
+>   此前整个 hub 自 `retirement_year` 起热耗乘 0.42 / 0.45，不论到期装机重建还是退役。
 > - 自愿退役只计没到寿命就关停的装机（作者决定 2026-10-02），精确分开记（`optimization/retirement.py`）：hub
 >   装机分未到期在运行、提前退役（未到期就关停）、到期未重建（正常寿终）、重建在运行、重建后关停五部分，自愿退役是提前退役与重建
 >   后关停。提前退役按未到期机组等比例摊（与未重建部分的毛热耗、搁浅资产同一假设），上期的提前退役留到本期的是
@@ -271,6 +272,43 @@
 >   与 `from_province`、`to_province`。
 >
 > 模型、目标值与原有各列不变；此前落盘的结果没有这些列和工作簿，重解后才有。
+>
+> 2026-10-02 起空冷与掺烧能力按建设年分代、分代能力的残值只计期末在用的部分、重建部分按重建毛热耗分类（**模型改动**，作者批准
+> 2026-10-02；`docs/方法论.md` §3.3、§3.4、§4.1、§4.2、§4.3、§4.5）：
+> - 空冷与掺烧能力与捕集岛同样按建设年分代（`optimization/model_linking.add_capacity_vintages`、`optimization/vintage.py`）：
+>   capex 计在本期新建量上（空冷 300 元/kW × 仍湿冷的装机；掺烧每档生物质 500、氨 25 元/kW），v 年建的在 t − v < 20 年的
+>   规划年在役，在役之和不小于本期在用量，到寿命退出，还要用就按当期单价重建；在用量降了又升，寿命内不重复付钱。空冷的在用量是
+>   各运行路径的空冷份额之和（退役列的空冷份额恒为零）。掺烧能力（生物质含 BECCS、氨）按五个档位分层、每层单独分代：第 l 层的
+>   在用量是落在第 l 档及以上的路径份额，各层之和即 Σ 档位下标 × 落在该档的路径份额；闲置的低档能力不能顶替高档，已退役或改走
+>   别的路径的份额到寿命不用重建。独热档位下同样按装机 × 所选档位 × 路径份额计，不再按整个 hub 装机 × 所选档位计。掺烧档位锁定
+>   照旧，只约束改造到各档的容量份额（不计费），能力到寿命退出后也不解除：改造到高档的份额只能按原档重建或闲置，hub 其余（含
+>   未改造）的份额不够时掺烧份额才不能降档（偏保守）。此前空冷是只增不减、永不到期的存量，capex 计在存量的增量上；掺烧 capex
+>   计在改造档位（Σ 档位下标 × 改造到该档的份额）的增量上，也不到期：2030 年建的空冷与掺烧能力用到 2070 年，不付更换的钱。
+> - 期末残值：分代的能力（煤电捕集岛、空冷、掺烧能力，工业捕集与氢路线能力）只按最后一个规划年仍在用的部分计，各代的期末在用量
+>   不超过该代新建量、合计不超过当年所需（`optimization/vintage._end_in_use`），求解器先记在残值抵扣最多的一代上（单价相同即最新的
+>   一代）；管道仍按建成量计，原址重建仍按建成量计、扣回期末已关停的。现行寿命与 10 年网格下，煤电改造能力（20 年）只有 2060 年
+>   建的有残值，而它们都是当年要用才建的，数值不变；工业氢路线（25 年）2050 年建的能力到 2060 年因减产闲置的部分不再计残值。
+>   此前按建成量计，期末不在用的也抵扣。
+> - 重建部分按重建毛热耗分类（`optimization/data_prep._with_expiry`、`optimization/model_year.py:51-56`、
+>   `optimization/constraints.py:49-101`、`optimization/model_linking.py:103-118`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
+>   重建份额是各类之和，每类不超过该类已到期的装机份额、各自不减，先重建哪一类由求解器定；运行路径份额、空冷份额与掺烧各档的重建
+>   部分按类拆，系数取该类与未重建部分之差。ST 输入到 2060 年有到期机组的 324 个 hub 里，231 个只有一类（与此前相同），87 个两类、
+>   6 个三类，类间毛热耗相差 0.8%–6.4%；全部到期而有两类以上的 hub 也拆。此前重建部分取到期机组重建毛热耗的装机加权平均，不分实际
+>   重建的是哪几台，全部到期的 hub 不拆。
+> - 不改：原址重建的机组按设计寿命 40 年服役（与原机组同一常数），2030—2060 年建成的在规划期内（至 2069 年）都不到期，不用再建
+>   一代；残值仍按 30 年折旧（`rebuild_lifetime_years`）。改造资产按 hub 记，hub 内重建与未重建两部分谁接上捕集岛、空冷与掺烧设施
+>   是逐期的运行选择，不加跨期约束（方法论 §4.2 的假设）。
+>
+> 结果表列名不变，含义随之变：`plant_detail.csv` 的 `air_installed_share` 是在役的空冷能力（到寿命会降，可含闲置的）；
+> `biomass_blend_level`、`ammonia_blend_level` 是在用的掺烧能力（独热档位下是所选档位 × 路径份额，此前是所选档位；连续 hub 下此前
+> 含改造过而不在用的）；`cost_breakdown.csv` 的 `air_retrofit_capex`、`blend_upgrade_capex` 计本年新建（含到寿命重建）的能力。
+>
+> `ST_BASE`、`ST_WA_cwatm_126_dry_oq` 只建模不求解：两者都是变量 +25 497、约束 +27 830、非零元 +158 740，整数变量不变。重建热耗
+> 分类占变量 8 975、约束 7 323（每个 hub 每期每类一个重建份额，加各类之和与各类不减两组约束；拆分的（hub, 年）从 513 个增到 547 个，
+> 多出的 34 个是全部到期而有两类以上的，按类计从 513 增到 704）；期末在用量占 4 622、9 594；空冷与掺烧分代占 11 900、10 913（新建量
+> 换掉原来的已装存量与增量辅助变量；两类掺烧各 5 层，每层每 hub 每期一个新建量、一条在役约束，共 14 000 个、14 000 条；删去空冷
+> 存量单调约束 987 条）。
+> 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -280,15 +318,15 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；掺烧升级、空冷、原址重建计在存量增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:205`（`_one_off_capex`）、`optimization/model_year.py:185`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:232`（`industry_capex_expr`） |
-| 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:54-75`、`optimization/model_industry.py:177` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:43-44`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:70-80`、`optimization/industry_matrices.py:184`、`:219-222` |
-| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:67-70, 98-100`、`optimization/industry_matrices.py:144-149` |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:222`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:155-159`、`:234`（`industry_capex_expr`） |
+| 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:57-78`、`optimization/model_industry.py:177` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:44-45`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付 | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:149`、`optimization/vintage.py:79-89`、`optimization/industry_matrices.py:184`、`:219-222` |
+| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价，压缩与辅机按情景电价 | `optimization/plant_matrices.py:79-82, 110-112`、`optimization/industry_matrices.py:144-149` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:139` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:119`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
-| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年 | 寿命 CCS 20、H2 路线 25 年 | `optimization/salvage.py:63`、`optimization/model_costs.py:59-83` |
-| 到寿命后 | 管道到 30 年、捕集岛到 20 年退出，可在原址重铺、重建（捕集岛 2026-09-30 起）；掺烧升级、空冷、重建过了经济寿命照常运行，不再投资 | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:130`、`optimization/year_matrices.py:149`、`optimization/industry_matrices.py:177`、`:215` |
+| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:60-97`、`optimization/vintage.py`（`_end_in_use`） |
+| 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
 **本轮已统一的差异**（批 2）：
 
@@ -329,10 +367,10 @@
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:117` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:179-183`）。
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:196-200`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
-   煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:124-133`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
+   煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:139-149`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
    工业的所需能力是铭牌系数 × 当年捕集量（氢路线为产量，`optimization/industry_matrices.py:182`、`:217`），随产量指数变，
    `ST_` 下长流程钢 2060 年产量只有 2030 年的 23%，所需能力随之降到 23%，固定运维只付这部分。
    作者 2026-09-23 决定维持现状，只改正原来"两侧相同"的说法；2026-09-30 前两侧还按当年单价计，煤电按改造 MW × 份额、工业按当年捕集量。
@@ -369,7 +407,7 @@
 | | 搁浅资产会计寿命 | 20 年 | — | ⚠ 假设（无出处） |
 | | 设计寿命（决定搁浅的剩余寿命与重建时点） | 投产年 + 40 年（2026-10-02 起连续 hub 逐台到期；整数 hub 用按台数平均的投产年） | Fan et al. 2023 SI Table 10；Wang et al. 2025 正文与 SI Table 3（40 年，区间 25–40）（`constants.COAL_DESIGN_LIFE_YEARS`） | 有出处 |
 | 原址重建 | capex | 新建的 70%（2 450 元/kW） | — | ⚠ 假设（无出处） |
-| 各技术 | 残值寿命 | CCS 20、掺烧升级 20、空冷 20、重建 30 年 | 注释给了取值理由，无文献；CCS 的 20 年与工业捕集岛同值，后者的出处（NPC 2019）只含工业 | ⚠ 假设（设定值） |
+| 各技术 | 残值寿命 | CCS 20、掺烧升级 20、空冷 20、重建 30 年（前三项兼作在役寿命：到期退出，要用须重建） | 注释给了取值理由，无文献；CCS 的 20 年与工业捕集岛同值，后者的出处（NPC 2019）只含工业 | ⚠ 假设（设定值） |
 
 **工业**（与 `docs/工业部门参数溯源.md` §八逐项核对，数值一致）
 

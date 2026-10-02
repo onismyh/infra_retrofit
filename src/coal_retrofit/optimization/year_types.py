@@ -29,14 +29,17 @@ if TYPE_CHECKING:
 # 字段若直接标 `gp.MVar`，mypy 会在几十处正确的建模代码上报假阳性，所以按 Any 放行，别名只说明字段是什么。
 GrbMVar = Any
 GrbExpr = Any  # LinExpr、0 维 MLinExpr 或 float
+# 原址重建部分的份额：{厂: {重建热耗类: {路径列: 变量}}}，只含拆出重建部分的 hub（`constraints._add_rebuilt_split`）。
+RebuiltShares = dict[int, dict[int, dict[int, Any]]]
 
 
 @dataclass(frozen=True)
 class RebuiltDelta:
-    """部分到期 hub 上，原址重建部分与未重建部分的系数之差（各按自己的毛热耗算，`plant_matrices`）。
+    """一类原址重建部分与未重建部分的系数之差（各按自己的毛热耗算，`plant_matrices`），每个重建热耗类一份。
 
-    字段与 `YearData` 的同名字段同形状、同单位，乘重建部分的份额进约束与成本（`constraints._add_rebuilt_split`）；
-    到期份额 f 为 0 或 1 的 hub 两部分毛热耗相同，差为零。空冷背压的排放与捕集按 hub 毛热耗计，没有差。
+    字段与 `YearData` 的同名字段同形状、同单位，乘该类重建部分的份额进约束与成本（`constraints._add_rebuilt_split`）。
+    全部到期的 hub 没有未重建部分，系数取各类重建热耗的装机加权平均，差为该类与平均之差；没有该类的 hub 差为零。
+    空冷背压的排放与捕集按 hub 毛热耗计，没有差。
     """
 
     heat_rate_eff: np.ndarray
@@ -59,7 +62,7 @@ class YearData:
     其余形状不同的字段在旁边注明。"""
 
     # --- 煤电厂侧（`plant_matrices._plant_operating_matrices`）。随毛热耗变的系数按未重建部分的毛热耗
-    #     `heat_rate_eff`（未到期机组；全部到期的 hub 为重建热耗）算，部分到期 hub 的重建部分差在 `rebuilt_delta` ---
+    #     `heat_rate_eff`（未到期机组；全部到期的 hub 为各类重建热耗的平均）算，各类重建部分的差在 `rebuilt_deltas` ---
     hours_scale: float
     generation: np.ndarray
     generation_by_pathway: np.ndarray
@@ -68,7 +71,9 @@ class YearData:
     emissions_retrofit_mt: np.ndarray
     heat_rate_eff: np.ndarray
     expired_share: np.ndarray  # (plant_count,) 本年已到期的装机份额 f（`data_prep._with_expiry`）
-    rebuilt_delta: RebuiltDelta
+    # (plant_count, 类数) 本年已到期的装机里各重建热耗类的份额 f_c，按类相加为 f；类按重建热耗升序，各年同序。
+    rebuilt_class_share: np.ndarray
+    rebuilt_deltas: tuple[RebuiltDelta, ...]  # 每类一份，与 `rebuilt_class_share` 的列同序
     capacity_mw: np.ndarray
     fixed_cost_matrix: np.ndarray
     energy_penalty_matrix: np.ndarray
@@ -173,7 +178,14 @@ class YearPayload:
     add_cap: GrbMVar
     pipe_count: GrbMVar
     rebuild: GrbMVar
+    # (plant_count, 类数) 各重建热耗类的重建份额 ρ_c <= f_c，Σ_c ρ_c = rebuild，跨期不减。
+    rebuild_class: GrbMVar
     retrofit_new: GrbMVar
+    # 本年新建的空冷改造（占仍湿冷装机的份额）与掺烧能力（占装机的份额，按档位分层，(plant_count, 档位数)，第 j 列是第 j 层，
+    # 生物质、氨各一组），按建设年分代（`model_linking.add_capacity_vintages`）。
+    air_new: GrbMVar
+    blend_new_b: GrbMVar
+    blend_new_a: GrbMVar
     new_cap_mtpa: GrbMVar
     biomass_flow_gj: GrbMVar
     ammonia_flow_kg: GrbMVar
@@ -196,23 +208,26 @@ class YearPayload:
     ammonia_use_kg: GrbMVar
     water_use_m3: GrbMVar
     air_share: GrbMVar
-    air_installed: GrbMVar
     select_b: GrbMVar
     select_a: GrbMVar
-    # Σ l·select：独热档位下是所选档位；连续 hub 下是档位下标的加权和，非整数时对应不到任何一档，
-    # 恰为整数时也可能是几档的混合。
+    # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表
+    # （`constraints._add_blend_level_constraints`）。独热档位下是所选档位 x 路径份额；连续 hub 下非整数时对应不到任何一档。
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
+    # 在用的掺烧能力按档位分层，[厂][j] = 落在第 j+1 档及以上的份额 Σ_{l>=j} z_l（j、l 从 0 起），各层相加即上面的 blend_level；
+    # 各层是掺烧能力分代的所需能力。
+    blend_layers_b: list[list[GrbExpr]]
+    blend_layers_a: list[list[GrbExpr]]
     plant_reduction_exprs: list[GrbExpr]
     # 逐厂 Σβ_l·z_l（掺烧比例 × 路径份额），生物质、BECCS、氨各一份；只供结果表换算有效掺烧比例。
     biomass_blend_x_share: list[GrbExpr]
     beccs_blend_x_share: list[GrbExpr]
     ammonia_blend_x_share: list[GrbExpr]
-    # 部分到期 hub 的原址重建部分（`constraints._add_rebuilt_split`），只含这些 hub：各运行路径份额与空冷份额里由重建机组
-    # 承担的部分，{厂: {路径列: 变量}}；掺烧三条路径上重建部分的 Σβ_l·rz_l，{(厂, 路径列): 表达式}。
-    rebuilt_share: dict[int, dict[int, gp.Var]]
-    rebuilt_air_share: dict[int, dict[int, gp.Var]]
-    rebuilt_blend_x_share: dict[tuple[int, int], GrbExpr]
+    # 拆出原址重建部分的 hub（`constraints._add_rebuilt_split`），只含这些 hub：各运行路径份额与空冷份额里由各类重建机组
+    # 承担的部分，{厂: {类: {路径列: 变量}}}；掺烧三条路径上各类重建部分的 Σβ_l·rz_l，{(厂, 类, 路径列): 表达式}。
+    rebuilt_share: RebuiltShares
+    rebuilt_air_share: RebuiltShares
+    rebuilt_blend_x_share: dict[tuple[int, int, int], GrbExpr]
     total_reduction_mt: GrbExpr
     # 逐厂随掺烧档位变的生物质效率惩罚燃料费（CNY/yr，未折现），含重建部分的差；目标函数的 energy_penalty_cost 含其合计。
     bio_penalty_by_plant: list[GrbExpr]
@@ -229,9 +244,12 @@ class YearPayload:
     objective_expr: GrbExpr = None
     # 逐厂搁浅资产（CNY，未折现未缩放），`add_year_costs` 写入；结果表的逐厂成本取它的解值。
     stranded_by_plant: list[GrbExpr] = field(default_factory=list)
-    # 三类分代能力本年的在役能力与固定运维（`model_linking.add_capacity_vintages` 写入，此前为 None）：
-    # 煤电捕集岛（每厂一项）、工业捕集与氢路线能力（每 hub 一项）。
+    # 分代能力本年的在役能力、固定运维与期末在用量（`model_linking.add_capacity_vintages` 写入，此前为 None）：
+    # 煤电捕集岛、空冷改造、生物质与氨掺烧能力（每厂一项；掺烧按档位分层，每层一个），工业捕集与氢路线能力（每 hub 一项）。
     ccs_island: StockYear | None = None
+    air_cooling: StockYear | None = None
+    biomass_blend: list[StockYear] | None = None
+    ammonia_blend: list[StockYear] | None = None
     industry_ccs: StockYear | None = None
     industry_h2: StockYear | None = None
 
@@ -263,6 +281,7 @@ class YearSolution(TypedDict):
     share: np.ndarray
     build_edge: np.ndarray
     rebuild: np.ndarray
+    rebuild_class: np.ndarray  # (plant_count, 类数)
     new_cap_mtpa: np.ndarray
     edge_flow_mtpa: np.ndarray
     co2_flow_fwd: np.ndarray
@@ -276,7 +295,9 @@ class YearSolution(TypedDict):
     ammonia_flow_kg: np.ndarray
     captured_mt_by_plant: np.ndarray
     air_share: np.ndarray
+    # 在役的空冷改造（寿命内历年新建之和，占仍湿冷装机的份额）；2026-10-02 前是只增不减的已装存量。
     air_installed: np.ndarray
+    # 在用的掺烧能力（档位下标 x 份额，`YearPayload.blend_level_b`）；2026-10-02 前是 Σ 档位下标 x 改造到该档的容量份额。
     blend_level_b: np.ndarray
     blend_level_a: np.ndarray
     # 捕集岛：本年新建 (plant_count, 1)、在役 (plant_count,)、按建设年单价的固定运维 (plant_count,)，CNY/yr。
@@ -297,8 +318,8 @@ class YearSolution(TypedDict):
     biomass_blend_x_share: np.ndarray
     beccs_blend_x_share: np.ndarray
     ammonia_blend_x_share: np.ndarray
-    # `YearPayload` 同名字段的值，(plant_count, len(PATHWAYS))，其余 hub 与列为零：各路径份额与空冷份额里的重建部分；
-    # 掺烧三列的 Σβ_l·rz_l。
+    # `YearPayload` 同名字段的值，(类数, plant_count, len(PATHWAYS))，其余 hub 与列为零：各路径份额与空冷份额里各类的
+    # 重建部分；掺烧三列的 Σβ_l·rz_l。
     rebuilt_share: np.ndarray
     rebuilt_air_share: np.ndarray
     rebuilt_blend_x_share: np.ndarray

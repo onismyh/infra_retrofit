@@ -42,11 +42,12 @@ def test_pathway_split_unabated_uses_the_operating_emissions() -> None:
         ccs_penalty_emissions_matrix=zeros_k, ccs_penalty_captured_matrix=zeros_k,
         air_penalty_emissions_matrix=zeros_k, air_penalty_captured_matrix=zeros_k,
         biomass_penalty_emissions_coeff_per_level=np.zeros(n), beccs_penalty_emissions_coeff_per_level=np.zeros(n),
-        beccs_penalty_captured_coeff_per_level=np.zeros(n),
+        beccs_penalty_captured_coeff_per_level=np.zeros(n), rebuilt_deltas=(),
     ))
+    no_rebuilt = np.zeros((0, n, k))
     table = _build_pathway_table(
         _prepared(n), SCENARIO, 2050, share, np.zeros(n), np.zeros(n), np.zeros(n),
-        year_data=year_data, air_share=zeros_k, rebuilt_share=zeros_k, rebuilt_blend_x_share=zeros_k,
+        year_data=year_data, air_share=zeros_k, rebuilt_share=no_rebuilt, rebuilt_blend_x_share=no_rebuilt,
     ).set_index("pathway")
     assert table.loc["unabated", "abatement_mt"] == pytest.approx(0.6, rel=1e-12)
     assert table.loc["retire", "abatement_mt"] == pytest.approx(4.0, rel=1e-12)

@@ -197,16 +197,16 @@ def add_industry_monotonicity(model, payloads: list[IndustryPayload], hub_count:
 
 
 def add_industry_capacity(
-    model, years: Sequence[int], payloads: list[IndustryPayload]
+    model, years: Sequence[int], payloads: list[IndustryPayload], salvage_end_year: int | None = None
 ) -> tuple[list[StockYear], list[StockYear]]:
     """捕集与氢路线能力按建设年分代（`vintage.add_vintage_stock`）：在役 >= 所需能力 x 份额，到寿命退出。
 
     所需能力按铭牌产能定（`IndustryYearData.capacity_mt_per_share`），寿命取 `capex_lifetime_years`。
     捕集的固定运维按建设年的单价（`fixed_om_cny_per_mt`）；氢路线 capex 不随年份变，固定运维按当年单价
-    留在年度项里（`industry_matrices`），这里不单列。
+    留在年度项里（`industry_matrices`），这里不单列。*salvage_end_year* 不为 None 时建期末在用量，残值按它计。
 
     Returns:
-        逐年的（捕集，氢路线）在役能力与固定运维，每个 hub 一项。
+        逐年的（捕集，氢路线）在役能力、固定运维与期末在用量，每个 hub 一项。
     """
     hub_count = int(payloads[0].share.shape[0])
     lives = payloads[0].year_data.capex_lifetime_years
@@ -221,10 +221,12 @@ def add_industry_capacity(
         model, "ind_ccs_capacity", years,
         new=[p.new_capacity_mt[:, CCS] for p in payloads], required=required(CCS), life=int(lives[CCS]),
         om_unit=[np.asarray(p.year_data.fixed_om_cny_per_mt[:, CCS], dtype=np.float64) for p in payloads],
+        salvage_end_year=salvage_end_year,
     )
     h2 = add_vintage_stock(
         model, "ind_h2_capacity", years,
         new=[p.new_capacity_mt[:, H2] for p in payloads], required=required(H2), life=int(lives[H2]),
+        salvage_end_year=salvage_end_year,
     )
     return ccs, h2
 

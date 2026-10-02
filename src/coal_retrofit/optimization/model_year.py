@@ -48,6 +48,12 @@ def add_year_block(
         vtype=GRB.CONTINUOUS if assumptions.hub_decisions_continuous else GRB.BINARY,
         name=f"rebuild_{year_suffix}",
     )
+    # 各重建热耗类的重建份额 0 <= ρ_c <= 该类的到期份额 f_c，Σ_c ρ_c = ρ（2026-10-02 起）；跨期不减在 `model_linking`。
+    class_share = np.asarray(year_data.rebuilt_class_share, dtype=np.float64)
+    rebuild_class = model.addMVar(class_share.shape, lb=0.0, ub=class_share, name=f"rebuild_class_{year_suffix}")
+    model.addConstrs(
+        (rebuild_class[p, :].sum() == rebuild[p] for p in range(plant_count)), name=f"rebuild_by_class_{year_suffix}"
+    )
     co2_flow_fwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_fwd_{year_suffix}")
     co2_flow_bwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_bwd_{year_suffix}")
     co2_node_outflow = model.addMVar(idx.n_nodes, lb=-GRB.INFINITY, name=f"co2_node_outflow_{year_suffix}")
@@ -84,15 +90,19 @@ def add_year_block(
 
     (
         captured_mt_by_plant, biomass_use_gj, ammonia_use_kg, water_use_m3, total_reduction_mt,
-        select_b, select_a, blend_level_b, blend_level_a,
-        bio_penalty_by_plant, plant_reduction_exprs, air_share, air_installed,
+        select_b, select_a, blend_level_b, blend_level_a, blend_layers_b, blend_layers_a,
+        bio_penalty_by_plant, plant_reduction_exprs, air_share, air_new,
         bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
         rebuilt_share, rebuilt_air_share, rebuilt_blend_x_share,
     ) = _add_plant_path_constraints(
-        model, share, rebuild, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
+        model, share, rebuild_class, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
     )
     model.addConstrs((share[plant_idx, :].sum() == 1.0 for plant_idx in range(plant_count)), name=f"share_sum_{year_suffix}")
     retrofit_new = _add_retrofit_new(model, plant_count, year_suffix)
+    # 本年新建的掺烧能力（占装机的份额），按档位分层（第 j 列是第 j+1 层，j 从 0 起），生物质、氨各一组；在役 >= 在用、到寿命退出在
+    # `model_linking`。
+    blend_new_b = model.addMVar((plant_count, len(scenario.biomass_blend_levels)), lb=0.0, name=f"blend_new_b_{year_suffix}")
+    blend_new_a = model.addMVar((plant_count, len(scenario.ammonia_blend_levels)), lb=0.0, name=f"blend_new_a_{year_suffix}")
     _add_expiry_rules(model, share, rebuild, year_data.expired_share, plant_count, year_suffix)
 
     # --- CO2 管网节点平衡；工业捕集在 hub 自己的节点进入同一张图，所以工业年块建在两段之间 ---
@@ -142,7 +152,11 @@ def add_year_block(
         add_cap=add_cap,
         pipe_count=pipe_count,
         rebuild=rebuild,
+        rebuild_class=rebuild_class,
         retrofit_new=retrofit_new,
+        air_new=air_new,
+        blend_new_b=blend_new_b,
+        blend_new_a=blend_new_a,
         new_cap_mtpa=new_cap_mtpa,
         biomass_flow_gj=biomass_flow_gj,
         ammonia_flow_kg=ammonia_flow_kg,
@@ -164,11 +178,12 @@ def add_year_block(
         ammonia_use_kg=ammonia_use_kg,
         water_use_m3=water_use_m3,
         air_share=air_share,
-        air_installed=air_installed,
         select_b=select_b,
         select_a=select_a,
         blend_level_b=blend_level_b,
         blend_level_a=blend_level_a,
+        blend_layers_b=blend_layers_b,
+        blend_layers_a=blend_layers_a,
         plant_reduction_exprs=plant_reduction_exprs,
         biomass_blend_x_share=bio_blend_x_share,
         beccs_blend_x_share=beccs_blend_x_share,

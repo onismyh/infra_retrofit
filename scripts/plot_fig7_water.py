@@ -8,9 +8,8 @@
   b  各规划年当年以空冷运行的改造容量（GW）= 装机 × 空冷运行份额（air_operating_share）× 仍湿冷的比例
      （1 − already_air_share），逐厂相加；已是空冷的部分不重复计（plant_matrices._air_cooling_matrices）。
 读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
-  空冷容量，不是累计改造量：退役路径上的空冷份额不计入；已建成的空冷存量（plant_detail.csv 的 air_installed_share，
-  只增不减，含此后退役的容量；已全空冷的 hub 除外：两列不保证为零、也不保证只增不减，乘 1 − already_air_share 后为零）
-  这里不画。
+  空冷容量，不是累计改造量；在役的空冷能力（plant_detail.csv 的 air_installed_share，不小于运行份额、可含闲置的，
+  建成 20 年后退出；已全空冷的 hub 两列不保证为零，乘 1 − already_air_share 后为零）这里不画。
 数据：_indtree/results/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
 自检：各流域超出余量的取水 = slack_detail.csv 记的该流域松弛（没超的流域没有松弛），两边各算各的；流域代码都在
   BASIN_ORDER 里；空冷运行份额与已空冷比例都在 [0, 1]。
