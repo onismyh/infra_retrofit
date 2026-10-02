@@ -10,11 +10,15 @@ from ..constants_industry import (
     INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2,
     INDUSTRY_CCS_FIXED_OM_FRACTION,
     INDUSTRY_H2_ABATEMENT_FRACTION,
+    INDUSTRY_H2_INTENSITY_T_PER_T,
     INDUSTRY_H2_LIFETIME_YEARS,
     INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION,
     INDUSTRY_H2_USES_ADVANCED_QUOTA,
     INDUSTRY_ROUTES,
+    INDUSTRY_SECTORS,
     SECTOR_HAS_H2_ROUTE,
+    SECTORS_H2_ABATES_CAPTURABLE_SHARE,
+    capturable_share,
     capture_capex_cny_per_t_yr,
     capture_steam_co2_t_per_t,
     capture_variable_cost_cny_per_t,
@@ -22,7 +26,7 @@ from ..constants_industry import (
     h2_route_opex_delta_cny_per_t,
     water_quota,
 )
-from .industry_inputs import IndustryInputs
+from .industry_inputs import ABATABLE_SHARE_COLUMNS, IndustryInputs
 
 ROUTE_INDEX = {name: index for index, name in enumerate(INDUSTRY_ROUTES)}
 UNABATED, CCS, H2 = ROUTE_INDEX["unabated"], ROUTE_INDEX["ccs"], ROUTE_INDEX["h2"]
@@ -85,6 +89,45 @@ def _advanced_quota_ratio(sector: str) -> float:
     return float(advanced) / float(general)
 
 
+def _capturable_share(industry: IndustryInputs, sectors: np.ndarray) -> np.ndarray:
+    """各 hub 的可捕集份额：hub 表有 `capturable_share` 列（`prepare_industry` 按点源 CO2 加权）就用，没有就按各部门
+    default 原料的份额（只有 hub 表的 toy 输入）。"""
+    if "capturable_share" in industry.hubs.columns:
+        share = industry.hubs["capturable_share"].astype(float).to_numpy()
+    else:
+        share = np.array([capturable_share(str(s)) for s in sectors], dtype=np.float64)
+    if not np.all((share >= 0.0) & (share <= 1.0)):
+        raise ValueError("capturable_share must lie in [0, 1] for every industrial hub")
+    return share
+
+
+def _abatable_shares(industry: IndustryInputs) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """可捕集份额为正的点源占各 hub 产量、铭牌产能与取水的比例（`prepare_industry` 由点源表算）；没有这几列（只有
+    hub 表的 toy 输入）时都取 1。"""
+    hubs = industry.hubs
+    ones = np.ones(len(hubs), dtype=np.float64)
+    production, capacity, water = (
+        hubs[column].astype(float).to_numpy() if column in hubs.columns else ones for column in ABATABLE_SHARE_COLUMNS
+    )
+    return production, capacity, water
+
+
+def _waste_heat_share(assumptions, sectors: np.ndarray) -> np.ndarray:
+    """各 hub 再生蒸汽中由余热供给的份额，取 `assumptions.industry_capture_waste_heat_share`，没写的部门为 0。
+
+    Raises:
+        ValueError: 键不是模型内的部门，或份额不在 [0, 1]（含 NaN）。
+    """
+    shares = {str(k): float(v) for k, v in assumptions.industry_capture_waste_heat_share.items()}
+    unknown = sorted(set(shares) - set(INDUSTRY_SECTORS))
+    if unknown:
+        raise ValueError(f"industry_capture_waste_heat_share has unknown sector(s) {unknown}; use {list(INDUSTRY_SECTORS)}")
+    invalid = {k: v for k, v in shares.items() if not 0.0 <= v <= 1.0}
+    if invalid:
+        raise ValueError(f"industry_capture_waste_heat_share must lie in [0, 1], got {invalid}")
+    return np.array([shares.get(str(s), 0.0) for s in sectors], dtype=np.float64)
+
+
 def _output_scale(industry: IndustryInputs, sectors: np.ndarray, year: int) -> np.ndarray:
     if not industry.output_index:
         return np.ones(len(sectors), dtype=np.float64)
@@ -103,13 +146,14 @@ def industry_year_data(
     除另有注明外，数组形状均为 `(hub_count, len(INDUSTRY_ROUTES))`。成本分成年度部分
     （`opex_cny` = 捕集能耗 + 耗材；氢路线为固定运维 + 非氢运行差额，每个运行年按路线份额计）、一次性部分
     （`capex_cny_per_mt` x 本年新建能力）与捕集的固定运维（`fixed_om_cny_per_mt` x 在役且在用的能力，按建设年的单价）。
-    份额为 1 时所需能力 `capacity_mt_per_share` 按铭牌产能定（产量 x max(1, 铭牌 / 产量)），随产量指数变化。
-    氢路线的买氢不在 `opex_cny` 里：它在求解器里按链路购买。`reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
+    份额为 1 时所需能力 `capacity_mt_per_share` 按铭牌产能定（产量 x max(1, 铭牌 / 产量)），随产量指数变化；CCS 与
+    合成氨、甲醇的氢路线只计可捕集份额为正的点源（`_abatable_shares`）。氢路线的买氢不在 `opex_cny` 里：它在求解器里
+    按链路购买。CCS 只捕集 hub 排放中可捕集的份额（`_capturable_share`），`reduction_mt[:, CCS]` 已扣除放空的再生蒸汽 CO2。
 
     Args:
         industry: 准备好的工业输入。
         scenario: `OptimizationScenario`；从中读取捕集率、两个工业成本乘数、贴现率与本年电价。
-        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线、分省煤价与燃煤排放因子（t/GJ）。
+        assumptions: `OptimizationAssumptions`；从中读取 CCS 学习曲线、分省煤价、燃煤排放因子（t/GJ）与再生蒸汽的余热份额。
         year: 规划年。
 
     Returns:
@@ -132,6 +176,21 @@ def industry_year_data(
         np.where(production_now > 0, production_now, np.nan),
     )
     h2_intensity_t_per_t = np.nan_to_num(h2_intensity_t_per_t, nan=0.0)
+    # 长流程钢的需氢量取 `INDUSTRY_H2_INTENSITY_T_PER_T`（63 kg/t，2026-10-02 起；此前取点源表的 81），其余部门照用点源表。
+    for sector, intensity in INDUSTRY_H2_INTENSITY_T_PER_T.items():
+        h2_intensity_t_per_t[sectors == sector] = intensity
+    capturable = _capturable_share(industry, sectors)
+    # 可捕集份额为正的点源：CCS 只捕集它们的排放，捕集能力按它们的铭牌系数定；合成氨、甲醇的氢路线也只改造它们（见下文）。
+    # 长流程钢、水泥的点源都在内，与整个 hub 相同。
+    abatable_production, abatable_capacity, abatable_water = _abatable_shares(industry)
+    abatable_production_now = production_now * abatable_production
+    abatable_nameplate_factor = np.ones(n, dtype=np.float64)  # 这些点源没有产量时取 1：氢路线由下文的改造产量门关闭，CCS 按捕集量定能力
+    positive = abatable_production_now > 0.0
+    abatable_nameplate_factor[positive] = np.maximum(
+        1.0,
+        hubs["capacity_kt_per_year"].astype(float).to_numpy()[positive] * abatable_capacity[positive]
+        / abatable_production_now[positive],
+    )
 
     capture_rate = float(scenario.capture_rate)
     # 与煤电改造用同一条外生学习曲线，两个部门的捕集成本一起下降。给工业另用一条曲线，
@@ -151,7 +210,7 @@ def industry_year_data(
 
     route_available = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=bool)
     route_available[:, UNABATED] = True
-    route_available[:, CCS] = True
+    route_available[:, CCS] = capturable > 0.0  # 份额为 0 的 hub（电炉钢、焦炉煤气与天然气制甲醇）不开放 CCS
     reduction_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     captured_mt = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
     opex_cny = np.zeros((n, len(INDUSTRY_ROUTES)), dtype=np.float64)
@@ -164,9 +223,10 @@ def industry_year_data(
     # unabated：hub 按现状运行。无减排、无额外成本，取水保持现状。
     water_m3[:, UNABATED] = base_water_m3
 
-    # ccs：按 `capture_rate` 捕集 hub 的全部排放，燃烧排放与工艺排放一视同仁——这对水泥
-    # 恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。
-    captured_mt[:, CCS] = co2_mt * capture_rate
+    # ccs：按 `capture_rate` 捕集 hub 排放中可捕集的那部分（2026-10-02 起；此前是全部排放）。长流程钢、水泥的份额为 1，
+    # 燃烧排放与工艺排放一视同仁——这对水泥恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。合成氨、甲醇
+    # 只捕集原料制氢的纯流股，与其纯流股参数（无再沸器蒸汽、450 元/(t·a)）同一口径。
+    captured_mt[:, CCS] = co2_mt * capturable * capture_rate
     captured_t = captured_mt[:, CCS] * 1e6
     # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造一样做学习调整；
     # 捕集能力 = 捕集量 x 铭牌系数。固定运维取 capex 的一个比例，按在役且在用的能力与建设年的单价计（与煤电捕集岛
@@ -175,34 +235,52 @@ def industry_year_data(
     # （2026-09-23 前也乘）。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
+    waste_heat = _waste_heat_share(assumptions, sectors)
     variable_unit = np.array(
-        [capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh) for s, c in zip(sectors, coal_price_gj)],
+        [
+            capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh, float(w))
+            for s, c, w in zip(sectors, coal_price_gj, waste_heat, strict=True)
+        ],
         dtype=np.float64,
     )
-    capacity_mt[:, CCS] = captured_mt[:, CCS] * nameplate_factor
+    capacity_mt[:, CCS] = captured_mt[:, CCS] * abatable_nameplate_factor
     capex_cny_per_mt[:, CCS] = capex_unit * 1e6
     fixed_om_cny_per_mt[:, CCS] = capex_cny_per_mt[:, CCS] * INDUSTRY_CCS_FIXED_OM_FRACTION
     opex_cny[:, CCS] = captured_t * variable_unit
     # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
-    # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。
+    # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。由余热供给的那部分蒸汽
+    # （`industry_capture_waste_heat_share`，缺省 0）不烧煤、不排，用煤与排放都乘 (1 − 余热份额)。
     steam_co2_per_t = np.array(
-        [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj) for s in sectors], dtype=np.float64
+        [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj, float(w)) for s, w in zip(sectors, waste_heat, strict=True)],
+        dtype=np.float64,
     )
     reduction_mt[:, CCS] = captured_mt[:, CCS] * (1.0 - steam_co2_per_t)
     water_m3[:, CCS] = base_water_m3 + captured_t * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
 
-    # h2：只在该行业确有氢路线时开放。
+    # h2：只在该行业确有氢路线、且减排比例为正时开放。合成氨、甲醇的绿氢只替代原料制氢（2026-10-02 起）：减排比例取 hub
+    # 的可捕集份额（此前氨 0.95、甲醇 0.90），产量、能力、需氢、运行差额与取水只计可捕集份额为正的点源（此前按整个 hub），
+    # 份额为 0 的 hub（焦炉煤气与天然气制甲醇）不开放。
     quota_ratio = {s: _advanced_quota_ratio(s) for s in set(sectors) if SECTOR_HAS_H2_ROUTE.get(s, False)}
     for hub_idx in range(n):
         sector = sectors[hub_idx]
         if not SECTOR_HAS_H2_ROUTE.get(sector, False):
             continue
-        if h2_intensity_t_per_t[hub_idx] <= 0.0 or production_t[hub_idx] <= 0.0:
-            # 所在行业有氢路线、但点源表里没有需氢量的 hub 无法定价。
+        if sector in SECTORS_H2_ABATES_CAPTURABLE_SHARE:
+            fraction = float(capturable[hub_idx])
+            route_production_t = production_t[hub_idx] * abatable_production[hub_idx]
+            route_factor = abatable_nameplate_factor[hub_idx]
+            route_water_m3 = base_water_m3[hub_idx] * abatable_water[hub_idx]
+        else:
+            fraction = float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
+            route_production_t = production_t[hub_idx]
+            route_factor = nameplate_factor[hub_idx]
+            route_water_m3 = base_water_m3[hub_idx]
+        if fraction <= 0.0 or h2_intensity_t_per_t[hub_idx] <= 0.0 or route_production_t <= 0.0:
+            # 减排比例为 0，或没有需氢量（长流程钢取上面的常量，其余部门取点源表）、没有产量的 hub 无法定价：
             # 宁可让该路线保持关闭，也不按零价计。
             continue
         route_available[hub_idx, H2] = True
-        reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * float(INDUSTRY_H2_ABATEMENT_FRACTION[sector])
+        reduction_mt[hub_idx, H2] = co2_mt[hub_idx] * fraction
         k_kg_per_t = float(h2_intensity_t_per_t[hub_idx]) * 1000.0
         # 重建路线的能力按铭牌产能定（产量 x 铭牌系数），capex 与固定运维都按它计；再加按产量计的、由文献锚点
         # 反推的非氢运行差额（见 `industry.py` 的模块 docstring）。路线 capex 不随年份变（不乘学习曲线），
@@ -214,15 +292,16 @@ def industry_year_data(
         # 成本，使锚点价下的平准化溢价恰为乘子 x 锚点溢价。
         route_capex_unit = h2_route_capex_cny_per_t_yr(sector) * h2_multiplier
         opex_delta_unit = h2_route_opex_delta_cny_per_t(sector, float(h2_intensity_t_per_t[hub_idx]), rate)
-        capacity_mt[hub_idx, H2] = production_t[hub_idx] * nameplate_factor[hub_idx] / 1e6
+        capacity_mt[hub_idx, H2] = route_production_t * route_factor / 1e6
         capex_cny_per_mt[hub_idx, H2] = route_capex_unit * 1e6
         opex_cny[hub_idx, H2] = (
             capacity_mt[hub_idx, H2] * 1e6 * route_capex_unit * INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION
-            + production_t[hub_idx] * opex_delta_unit
+            + route_production_t * opex_delta_unit
         )
-        h2_demand_kg[hub_idx] = k_kg_per_t * production_t[hub_idx]
+        h2_demand_kg[hub_idx] = k_kg_per_t * route_production_t
         ratio = quota_ratio[sector] if INDUSTRY_H2_USES_ADVANCED_QUOTA else 1.0
-        water_m3[hub_idx, H2] = base_water_m3[hub_idx] * ratio
+        # 改造的点源按先进值取水，其余照旧（写成两项之和，全部改造时与 `base x ratio` 逐位相同）。
+        water_m3[hub_idx, H2] = (base_water_m3[hub_idx] - route_water_m3) + route_water_m3 * ratio
 
     # 注意：`scenario.water_multiplier` 缩放的是可用水量而不是需水量，所以这里故意不乘——
     # 它只在 `_basin_cap_data` 里对流域余量乘一次。

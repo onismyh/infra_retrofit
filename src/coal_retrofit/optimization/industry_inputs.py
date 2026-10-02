@@ -1,4 +1,4 @@
-"""工业点源的输入准备：读 hub 表、全国氢均价（只作报告）、hub 到氨节点的候选氢链路。"""
+"""工业点源的输入准备：读 hub 表与各 hub 的可捕集份额、全国氢均价（只作报告）、hub 到氨节点的候选氢链路。"""
 from __future__ import annotations
 
 import logging
@@ -12,10 +12,18 @@ from ..constants_industry import (
     INDUSTRY_SECTORS,
     SECTOR_HAS_H2_ROUTE,
     SECTOR_TARGET_GROUP,
+    capturable_share,
 )
 from ..paths import ProjectPaths
 
 logger = logging.getLogger(__name__)
+
+# 可捕集份额为正的点源占 hub 的比例：{hub 表的列: 点源表里求比例的量}（`_hub_source_shares`）。
+ABATABLE_SHARE_COLUMNS: dict[str, str] = {
+    "abatable_production_share": "production_kt_per_year",
+    "abatable_capacity_share": "capacity_kt_per_year",
+    "abatable_water_share": "water_m3_per_year",
+}
 
 
 @dataclass(frozen=True)
@@ -23,7 +31,8 @@ class IndustryInputs:
     """为优化准备好的工业 hub，以及氢价路径。"""
 
     hubs: pd.DataFrame
-    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，省名已换成分省煤价表的写法，并加上 `basin_code`。
+    # 按 INDUSTRY_SECTORS 筛选后的 industry_hubs.csv，省名已换成分省煤价表的写法，并加上 `capturable_share` 与
+    # `ABATABLE_SHARE_COLUMNS` 的三列（有点源表时）、`basin_code`（有水约束时）。
     h2_price_cny_per_kg: dict[int, float]
     # 每个规划年的全国供给加权 LCOH，自 2026-09-10 起只作报告：
     # 模型按链路、以各节点自己的价格买氢。
@@ -61,6 +70,40 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
     return prices
 
 
+def _hub_source_shares(paths: ProjectPaths, hub_ids: pd.Series) -> pd.DataFrame | None:
+    """各 hub 由点源表（`industry_sources.csv`）算出的份额，行序同 `hub_ids`。
+
+    `capturable_share`：成员点源按（部门，原料）取可捕集份额，按点源 CO2 加权。`ABATABLE_SHARE_COLUMNS`：可捕集份额为正的
+    点源占 hub 产量、铭牌产能与取水的比例（合成氨、甲醇的路线只作用于这些点源，`industry_matrices`）。没有点源表时返回
+    None，`industry_year_data` 按各部门 default 原料的份额计、三个比例取 1（只有 hub 表的 toy 输入）。
+
+    Raises:
+        ValueError: 有 hub 在点源表里没有点源，或其点源 CO2 合计不为正。
+    """
+    path = paths.inputs_dir / "industry_sources.csv"
+    if not path.exists():
+        logger.warning("industry: %s absent; capturable shares fall back to each sector's default feedstock", path.name)
+        return None
+    amounts = ["co2_mt_per_year", *ABATABLE_SHARE_COLUMNS.values()]
+    sources = pd.read_csv(path, usecols=["hub_id", "sector", "feedstock", *amounts])
+    shares = np.array([capturable_share(str(s), str(f)) for s, f in zip(sources["sector"], sources["feedstock"], strict=True)])
+    by_hub = sources["hub_id"].astype(str)
+    values = sources[amounts].astype(float)
+    total = values.groupby(by_hub).sum().reindex(hub_ids)
+    no_sources = hub_ids[~(total["co2_mt_per_year"].to_numpy() > 0.0)]
+    if len(no_sources):
+        raise ValueError(
+            f"hub(s) {sorted(no_sources)[:5]} have no point sources with positive CO2 in {path.name}; "
+            "their capturable share is weighted from those sources"
+        )
+    weighted = (values["co2_mt_per_year"] * shares).groupby(by_hub).sum().reindex(hub_ids)
+    abatable = values.mul(shares > 0.0, axis=0).groupby(by_hub).sum().reindex(hub_ids) / total
+    out = pd.DataFrame({"capturable_share": (weighted / total["co2_mt_per_year"]).to_numpy(dtype=np.float64)})
+    for column, amount in ABATABLE_SHARE_COLUMNS.items():
+        out[column] = abatable[amount].fillna(0.0).to_numpy(dtype=np.float64)  # 合计为 0（没有取水）时取 0
+    return out
+
+
 def prepare_industry(
     paths: ProjectPaths,
     assumptions,
@@ -81,7 +124,7 @@ def prepare_industry(
 
     Raises:
         FileNotFoundError: `industry_hubs.csv` 还没有构建。
-        ValueError: 有 hub 所属的行业在本模块里没有参数，或铭牌产能、产量缺失或不为正。
+        ValueError: 有 hub 所属的行业在本模块里没有参数，铭牌产能、产量缺失或不为正，或在点源表里没有点源。
     """
     path = paths.inputs_dir / "industry_hubs.csv"
     if not path.exists():
@@ -115,6 +158,10 @@ def prepare_industry(
     hubs["target_group"] = hubs["sector"].astype(str).map(SECTOR_TARGET_GROUP)
     if hubs["target_group"].isna().any():
         raise ValueError("a hub's sector has no entry in SECTOR_TARGET_GROUP")
+    source_shares = _hub_source_shares(paths, hubs["hub_id"].astype(str))
+    if source_shares is not None:
+        for column, values in source_shares.items():
+            hubs[column] = values.to_numpy()
     # 省名换成分省煤价表的写法；仍查不到的告警，其捕集蒸汽按缺省煤价计。
     hubs["province"] = assumptions.canonical_provinces(hubs["province"], "industry hubs")
 

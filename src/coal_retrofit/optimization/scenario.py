@@ -25,6 +25,11 @@ class OptimizationAssumptions:
     # `heat_rate_gj_per_mwh`，逐台分档煤耗按装机加权，`builders.plants.unit_heat_rate_gj_per_mwh`）x 此因子；
     # 工业捕集再生蒸汽的排放用同一因子。
     coal_emission_factor_t_per_gj: float = 0.82 / 8.5714
+    # 工业捕集的再生蒸汽中由窑 / 炉余热供给的份额，按部门（键为 `constants_industry.INDUSTRY_SECTORS`，没写的部门为 0），
+    # 蒸汽用煤与蒸汽的 CO2 都乘 (1 − 份额)（`industry_matrices`，2026-10-02 起）。缺省全为 0，即全部由燃煤锅炉供；余热挪作捕集后
+    # 少发的余热电不计。水泥窑余热约可供 90% 捕集所需热的 44%–68%（B，推算，方法论附录 B.5）；敏感性用
+    # `--set 'assumptions.industry_capture_waste_heat_share={cement=0.6}' --as …`。
+    industry_capture_waste_heat_share: dict[str, float] = field(default_factory=dict)
     nh3_lhv_gj_per_kg: float = 0.0186
     # 美元汇率取整，约为 2023 年年均：美联储 H.10 年均 7.0809（`fred_h10`）；国家统计局 2023 年统计公报
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。

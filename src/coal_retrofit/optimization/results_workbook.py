@@ -100,7 +100,8 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
         ["本模型另加的表", "Plant_Pathways：煤电 hub 各年各路径的份额；already_air 是原本就是空冷的份额，air_retrofit_operating、"
                          "air_retrofit_installed 是湿冷改空冷的装机里当年在运行的与在役的（建成未满改造寿命），都按占全厂的份额（plant_detail.csv "
                          "的 air_operating_share、air_installed_share 乘 1 − already_air_share）。Industry_Routes：工业 hub 各年"
-                         "各路线的份额。"],
+                         "各路线的份额（混合原料的甲醇 hub 是份额为正的点源那部分产量的份额，占全厂产量的比例见 industry_detail.csv 的 "
+                         "abatable_production_share）。"],
         ["不出的表", "num_total_well_new：模型没有注入井（ChinaCCS 用注入量除以单井注入率算，模型没有单井注入率）。"
                    "Cost_Analysis 的静态投资回收期：CCS 链条除 EOR 抵扣外没有收入（售电收入计在煤电的基线净成本里），算不出"
                    "回收期。ChinaCCS 的「产品收益」（= Revenue_EOR）在本表是「EOR 抵扣」一行，记负。"],

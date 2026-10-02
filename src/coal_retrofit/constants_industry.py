@@ -234,6 +234,48 @@ def water_quota(sector: str, feedstock: str, advanced: bool = False) -> float:
 
 INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 
+# --- CO2 捕集：可捕集份额 ----------------------------------------------------------------------
+# CCS 能捕集的 CO2 占排放的份额，按 (部门, 原料) 给；hub 的份额按成员点源的 CO2 加权（`industry_inputs.prepare_industry`）。
+# 捕集量 = hub CO2 x 份额 x 捕集率，份额为 0 的 hub 不开放 CCS（2026-10-02 起；此前都按 1.0，化工的纯流股参数用在全厂 CO2 上）。
+#   合成氨、甲醇  只有原料制氢（气化 + 变换）经低温甲醇洗脱出的高浓度流股按下文的纯流股参数（无再沸器蒸汽，450 元/(t·a)）
+#                 捕集；燃料燃烧与公用工程的烟气不开放，本轮不加胺法路线（作者 2026-10-02）。B 级、待核：煤头合成氨 0.75
+#                 （IEA 2021 Ammonia Technology Roadmap，检索摘要：原料流股约 75%、燃料燃烧 25%；另一摘要 65.2%–77.7%，来源未指认），
+#                 气头合成氨 0.67（同一摘要，约 2/3）；煤制甲醇 0.57（检索摘要 53.5%–60%，来源未能唯一指认）。油头合成氨与电石炉、
+#                 矿热炉尾气制甲醇按煤头取；焦炉煤气、天然气制甲醇取 0：这两类没有排放 CO2 的纯流股（推断，未见文献）。
+#   长流程钢、水泥  1.0：胺法捕集全厂烟气，即原口径。
+#   电炉钢        0：不开放 CCS（作者 2026-10-02）。它的捕集 capex 借用水泥的值、没有出处，点源表的 0.4 t/t 很可能含外购电
+#                 排放（MPP 废钢电炉的直接排放为 0.163 t/t，`mpp_steel`）。
+# 合成氨、甲醇的氢路线同样只替代原料制氢，减排比例也取这个份额（`SECTORS_H2_ABATES_CAPTURABLE_SHARE`）；混合原料的 hub 里，
+# 两条路线都只作用于份额为正的点源（`industry_matrices`：能力的铭牌系数，氢路线的产量、需氢与取水）。
+INDUSTRY_CAPTURABLE_SHARE: Final[dict[tuple[str, str], float]] = {
+    (SECTOR_STEEL_BF, "default"): 1.0,
+    (SECTOR_STEEL_EAF, "default"): 0.0,
+    (SECTOR_CEMENT, "default"): 1.0,
+    (SECTOR_AMMONIA, "Coal"): 0.75,
+    (SECTOR_AMMONIA, "Gas"): 0.67,
+    (SECTOR_AMMONIA, "Oil"): 0.75,
+    (SECTOR_AMMONIA, "default"): 0.75,       # 原料为空 / 未映射时按煤头，同取水定额
+    (SECTOR_METHANOL, "Coal"): 0.57,
+    (SECTOR_METHANOL, "Coke oven gas"): 0.0,
+    (SECTOR_METHANOL, "Gas"): 0.0,
+    (SECTOR_METHANOL, "矿热炉尾气"): 0.57,
+    (SECTOR_METHANOL, "电石炉尾气"): 0.57,
+    (SECTOR_METHANOL, "default"): 0.57,      # 回退：煤头
+}
+
+
+def capturable_share(sector: str, feedstock: str = "default") -> float:
+    """CCS 可捕集的 CO2 占排放的份额；表里没有的原料按该部门的 default 行。
+
+    Raises:
+        KeyError: 该部门在表里没有 default 行。
+    """
+    key = (sector, feedstock) if (sector, feedstock) in INDUSTRY_CAPTURABLE_SHARE else (sector, "default")
+    if key not in INDUSTRY_CAPTURABLE_SHARE:
+        raise KeyError(f"no capturable share for sector {sector!r}; refusing to guess")
+    return float(INDUSTRY_CAPTURABLE_SHARE[key])
+
+
 # --- CO2 捕集：改造 capex，单位为每吨年捕集能力的 CNY -------------------------------------
 # 基准年 2030（由煤电改造同样使用的 `ccs_learning_factor` 对其缩放），含压缩至管输压力，只计捕集岛。水泥参照
 # 三个中国项目公告；长流程钢参照两个项目公告、北大宝武案例与 IEAGHG 各一个值；电炉钢与合成氨 / 甲醇为 ⚠ 假设：
@@ -249,7 +291,7 @@ INDUSTRY_ROUTES: Final[tuple[str, ...]] = ("unabated", "ccs", "h2")
 #            IEAGHG 2013/04 Table 6, Case 2A：捕集装置 US$(2010) 679 M，对应捕集量
 #            ~4.7 Mt/a -> ~145 USD/(t·a) ~ 1 000 元/(t·a)。取 1 000 作中心值（四个值的中位数约 910）。
 #   steel_eaf ⚠ 假设（无出处）。尾气稀薄且间歇，即难度高于水泥窑，所以取水泥的值。
-#            EAF 占模型内工业 CO2 的 1.7%。
+#            EAF 占模型内工业 CO2 的 1.7%。2026-10-02 起电炉不开放 CCS（可捕集份额 0），这个值只在份额改回正数时用。
 #   ammonia / methanol   高浓度（>95%）气化尾气：无需吸收，只需脱水 + 压缩/液化。
 #            延长石油榆林煤化 30 万 t/a（2022）报告捕集全成本 105 元/t；扣除 ~110 kWh/t
 #            压缩电耗（按 ~0.45 元/kWh 计）与 5 元/t 耗材（下文 `INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2`）
@@ -312,6 +354,8 @@ INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
 # 2026-09-22 之前，模型把 ACCA21 单位成本视为已含能耗，且什么都不排空。
 # 效率 0.88：DEA 311.1a 燃煤蒸汽锅炉年均净效率 89%（2030 年区间 87-90.8；`dea_iph`），是为捕集新建锅炉的口径；
 # 若蒸汽取自存量工业锅炉，运行效率低得多（检索摘要称 60-72%，未核原文）。
+# 蒸汽可有一部分取自窑 / 炉余热（2026-10-02 起）：份额按部门由 `OptimizationAssumptions.industry_capture_waste_heat_share`
+# 给，缺省 0（全部由燃煤锅炉供），蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)。余热原用于余热发电，挪作捕集后少发的电不计。
 INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
 # 捕集岛的经济寿命 20 a：NPC 2019 的钢铁、水泥、合成氨、乙醇捕集改造都取 20 a（`npc2019dualchallenge`，经
 # `pypsa_techdata`）；DEA 401 的技术寿命为 25 a（`dea_ccts`），可作敏感性。PKU/Baowu 假定 25 a；煤电侧的改造
@@ -349,14 +393,23 @@ INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2: Final[float] = 1.65
 #                 排放；1.8 与 MPP 同一行里 BAT 高炉-转炉的 1.794 相近，但数值相近说明不了口径。二是 TIMES 钢铁
 #                 部门的 CO2 为直接排放口径（`scripts/build_sector_targets.py` 文件头写能源 + 过程，TIMES 文档未核）。
 #                 2026-09-23 前取 0.85，把 EAF 用的网电排放也算作残余；按直接排放口径，那属于电力部门。
-#   ammonia       绿氢完全替代气化 + 水煤气变换；公用工程和空分装置仍在。⚠ 假设（无直接出处）：
-#                 只去掉过程排放时约 0.67，连公用工程一起电气化时接近 1.0（只见检索摘要），0.95 取上端。
-#   methanol      绿氢调节 H/C 比，并不去除碳原料，所以残余比合成氨大。⚠ 假设（无直接出处）：
-#                 绿氢耦合煤制甲醇的案例减排约 70%-98%（化工学报 2022 等，只见检索摘要）。
+#   合成氨、甲醇  2026-10-02 起不在这张表里：绿氢只替代原料制氢（气化 + 水煤气变换），燃料燃烧与公用工程的 CO2 不变，
+#                 减排比例取 hub 的可捕集份额（`INDUSTRY_CAPTURABLE_SHARE`：煤头合成氨 0.75、气头 0.67、煤制甲醇 0.57，B 级），
+#                 份额为 0 的 hub 不开放氢路线。此前氨 0.95、甲醇 0.90（⚠ 假设），按上述份额推算，隐含另外消除约 80%、77% 的
+#                 燃料燃烧 CO2，模型没有那部分的成本。甲醇路线是绿氢耦合煤制甲醇：氢替代变换段调节 H/C 比，碳原料不变。
 INDUSTRY_H2_ABATEMENT_FRACTION: Final[dict[str, float]] = {
     SECTOR_STEEL_BF: 0.95,
-    SECTOR_AMMONIA: 0.95,
-    SECTOR_METHANOL: 0.90,
+}
+# 氢路线减排比例取可捕集份额的部门。
+SECTORS_H2_ABATES_CAPTURABLE_SHARE: Final[frozenset[str]] = frozenset({SECTOR_AMMONIA, SECTOR_METHANOL})
+
+# 氢路线每吨产品的需氢量，t H2/t 产品，覆盖点源表的 h2_demand / production（2026-10-02 起）；不在表里的部门照用点源表。
+#   steel_bf_bof  0.063：PyPSA technology-data（`pypsa_techdata`）outputs/costs_2030.csv 的氢直接还原竖炉 hydrogen-input
+#                 2.1 MWh H2/t HBI，按 LHV 33.33 MWh/t 折 63 kg/t，按 1 t HBI/t 钢折成吨钢；PyPSA 注明 MPP 文档为 63 kg/t，MPP
+#                 原始输入的 73 "probably incorrect"。此前取点源表的 81（口径不明，可能含循环与加热用氢）；Vogl 2018 与 PyPSA-Eur
+#                 为 51，GCAM 2025 年 61，化学计量下限 54。由下文钢铁溢价锚点的数字反推的斜率约 62.5（B，推算），与 63 一致。
+INDUSTRY_H2_INTENSITY_T_PER_T: Final[dict[str, float]] = {
+    SECTOR_STEEL_BF: 0.063,
 }
 
 # 氢路线的净增量成本，单位为每吨产品的 CNY，对应旁边给出的参考氢价。"净" = 绿氢采购
@@ -365,9 +418,9 @@ INDUSTRY_H2_ABATEMENT_FRACTION: Final[dict[str, float]] = {
 #     premium(P) = premium_ref + h2_intensity_t_per_t * 1000 * (P - P_ref)   [CNY / t 产品]
 #
 # 即在文献点附近做一阶展开。在氢价维度上精确——氢价是主导项（据 NER 2024，占绿色
-# 甲醇成本的 ~70%）——其余各方面保持不变。这里 `h2_intensity` 不是常数：它取自点源表
-# 自身的 h2_demand_kt_per_year / production_kt_per_year（每吨钢 / 氨 / 甲醇分别为
-# 81 / 180 / 190 kg H2），所以斜率逐 hub 不同。
+# 甲醇成本的 ~70%）——其余各方面保持不变。这里的 `h2_intensity` 即每吨产品的需氢量：长流程钢取上面
+# `INDUSTRY_H2_INTENSITY_T_PER_T` 的 63 kg/t（2026-10-02 前取点源表的 81），合成氨、甲醇取点源表自身的
+# h2_demand_kt_per_year / production_kt_per_year（180 / 190 kg/t，表里同一部门逐厂相同）。
 #
 # 锚点，均为中国：
 #   steel     氢价 5 USD/kg H2 时绿色溢价 ~225 USD/t 粗钢（Transition Asia / Global
@@ -377,7 +430,9 @@ INDUSTRY_H2_ABATEMENT_FRACTION: Final[dict[str, float]] = {
 #             （China Energy News 2023）-> 溢价 ~400 CNY/t，对应该案例风光假设所隐含的
 #             ~12 CNY/kg 氢价。
 #   methanol  氢价 15-18 CNY/kg 时绿氢甲醇 4500-5500 CNY/t，对比化石路线 ~2000 CNY/t
-#             （NER 2024）-> 溢价 ~3000 CNY/t，参考价 16.5 CNY/kg。
+#             （NER 2024）-> 溢价 ~3000 CNY/t，参考价 16.5 CNY/kg。这是全绿氢 CO2 加氢甲醇的成本，点源表的 190 kg/t 也是
+#             CO2 加氢（CO2 + 3H2）的化学计量；模型的路线却是绿氢耦合煤制甲醇（减排 = 可捕集份额），按化学计量只需外购约
+#             63–126 kg/t（随粗煤气的 H2/CO 比，推算）。两者口径不一，本轮未改（作者 2026-10-02），需氢量与成本很可能偏高。
 # 三个锚点有意落在三个不同的参考氢价上：每个都按其来源自身假设的氢价引用，再由展开式
 # 各自移到模型的氢价。先把它们平均到同一参考价只会丢信息，而不会增加信息。
 INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT: Final[dict[str, tuple[float, float]]] = {
@@ -435,8 +490,9 @@ INDUSTRY_H2_USES_ADVANCED_QUOTA: Final[bool] = True
 # 未建模，而且这一点必须保持醒目：电解制氢的原水需求为 10-22 L/kg H2
 # （Arup, "Water for Hydrogen" 2022；Energy UK 2022 review），它落在电解槽所在的流域，
 # 而不是工业 hub 所在的流域。煤电侧的掺氨同样不计这部分水，所以不计它至少在两边是
-# 一致的——但按工业全面替代所需的 103 Mt/yr 氢计，它是 1.0-2.3e9 m3/yr，即 10-23
-# 亿 m3，是流域 K 全部被执行余量的 5-11 倍。以后无论怎么补上，它都属于供给节点，
+# 一致的——但按工业全面替代所需的约 83 Mt/yr 氢计（2030 年产量；长流程钢 63 kg/t，合成氨、甲醇只计有纯流股的点源，
+# 2026-10-02 起；按点源表的需氢量为 103 Mt/yr），它是 0.8-1.8e9 m3/yr，即 8-18 亿 m3，是流域 K 全部被执行余量的
+# 4-9 倍（按 103 Mt/yr 为 10-23 亿 m3、5-11 倍）。以后无论怎么补上，它都属于供给节点，
 # 而且两类用氢方必须同时计费。
 
 
@@ -481,7 +537,7 @@ def capture_capex_cny_per_t_yr(sector: str) -> float:
 
 
 def capture_variable_cost_cny_per_t(
-    sector: str, coal_price_cny_per_gj: float, electricity_price_cny_per_mwh: float
+    sector: str, coal_price_cny_per_gj: float, electricity_price_cny_per_mwh: float, waste_heat_share: float = 0.0
 ) -> float:
     """按给定燃料与电力价格计的每吨捕集 CO2 的能源与耗材成本。
 
@@ -489,6 +545,7 @@ def capture_variable_cost_cny_per_t(
         sector: `INDUSTRY_SECTORS` 之一。
         coal_price_cny_per_gj: 用于产生再沸器蒸汽的煤的到厂价。
         electricity_price_cny_per_mwh: 所计价年份的电价。
+        waste_heat_share: 再沸器蒸汽中由窑 / 炉余热供给的份额，这部分不烧煤。
 
     Returns:
         每吨捕集 CO2 的 CNY：蒸汽用煤 + 电力 + 耗材。
@@ -496,14 +553,14 @@ def capture_variable_cost_cny_per_t(
     steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
     kwh = _require(INDUSTRY_CCS_ELECTRICITY_KWH_PER_T_CO2, sector, "capture electricity")
     consumables = _require(INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2, sector, "capture consumables")
-    steam_coal = steam_gj / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_price_cny_per_gj)
+    steam_coal = steam_gj * (1.0 - float(waste_heat_share)) / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_price_cny_per_gj)
     return steam_coal + kwh / 1000.0 * float(electricity_price_cny_per_mwh) + consumables
 
 
-def capture_steam_co2_t_per_t(sector: str, coal_emission_factor_t_per_gj: float) -> float:
-    """产生再沸器蒸汽所排空的 CO2，单位为每吨捕集 CO2 对应的吨数。"""
+def capture_steam_co2_t_per_t(sector: str, coal_emission_factor_t_per_gj: float, waste_heat_share: float = 0.0) -> float:
+    """产生再沸器蒸汽所排空的 CO2，单位为每吨捕集 CO2 对应的吨数；余热供给的那部分蒸汽（`waste_heat_share`）不排。"""
     steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
-    return steam_gj / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_emission_factor_t_per_gj)
+    return steam_gj * (1.0 - float(waste_heat_share)) / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_emission_factor_t_per_gj)
 
 
 def levelised_capture_cost_cny_per_t(

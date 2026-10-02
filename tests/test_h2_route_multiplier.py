@@ -14,7 +14,7 @@ from coal_retrofit.optimization.scenario import OptimizationAssumptions, Optimiz
 
 
 def _steel_hub(capacity_kt: float = 1000.0) -> IndustryInputs:
-    """一个长流程钢 hub：产量 100 万 t/a，氢强度 0.081 t/t（有氢路线）；铭牌产能缺省与产量相同。"""
+    """一个长流程钢 hub：产量 100 万 t/a，点源表需氢 0.081 t/t（模型 2026-10-02 起取 0.063，有氢路线）；铭牌产能缺省与产量相同。"""
     hubs = pd.DataFrame({
         "hub_id": ["S1"], "sector": ["steel_bf_bof"], "province": ["Shanxi"],
         "longitude": [112.0], "latitude": [37.0],
@@ -38,7 +38,9 @@ def test_industry_h2_multiplier_scales_route_capex_and_its_fixed_om_only() -> No
     )
     production_t = 1.0e6
     capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
-    delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", 0.081, base_scenario.discount_rate)
+    delta = ci.h2_route_opex_delta_cny_per_t(
+        "steel_bf_bof", ci.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"], base_scenario.discount_rate
+    )
     assert delta != 0.0
     assert base.route_available[0, H2] and doubled.route_available[0, H2]
     assert doubled.capex_cny_per_mt[0, H2] == pytest.approx(2.0 * base.capex_cny_per_mt[0, H2], rel=1e-12)

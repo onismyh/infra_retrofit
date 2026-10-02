@@ -79,6 +79,18 @@ def test_input_files_are_what_prepare_inputs_reads_with_water(tmp_path, monkeypa
     assert files["basin_polygons"] == polygons
 
 
+def test_input_files_include_the_point_source_table_when_it_exists(tmp_path, monkeypatch) -> None:
+    """有点源表时 `prepare_industry` 读它（按点源 CO2 加权 hub 的可捕集份额），清单里也要有；toy 缺省没有这张表、不读。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    hubs = pd.read_csv(paths.inputs_dir / "industry_hubs.csv")
+    columns = ["hub_id", "sector", "co2_mt_per_year", "production_kt_per_year", "capacity_kt_per_year", "water_m3_per_year"]
+    hubs[columns].assign(feedstock="default").to_csv(paths.inputs_dir / "industry_sources.csv", index=False)
+    scenario = _scenario()
+    files = _input_files(paths, scenario)
+    assert files["industry_sources"] == paths.inputs_dir / "industry_sources.csv"
+    assert _reads_during_prepare(paths, scenario, monkeypatch) == {p.resolve() for p in files.values()}
+
+
 def test_digest_covers_the_files_that_were_read(tmp_path) -> None:
     scenario = _scenario()
     paths_a = _write_toy_inputs(tmp_path / "tree_a", retirement_year=9999)

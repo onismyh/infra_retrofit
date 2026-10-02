@@ -84,10 +84,13 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
     assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
     # 未知省份不崩溃。合成氨捕集不用蒸汽，煤价不进这一项，所以这里测不出回退到哪个煤价；
-    # 回退煤价由 `test_province_names.py` 用水泥 hub 测。
+    # 回退煤价由 `test_province_names.py` 用水泥 hub 测。合成氨只捕集原料流股（2026-10-02 起）：hub 表没有
+    # `capturable_share` 列，按 default 原料（煤头）0.75。
     var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
     capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
-    assert data.opex_cny[2, CCS] == pytest.approx(1.0e6 * scenario.capture_rate * var_nat, rel=1e-9)
+    assert data.opex_cny[2, CCS] == pytest.approx(
+        1.0e6 * ci.capturable_share("ammonia") * scenario.capture_rate * var_nat, rel=1e-9
+    )
     assert data.fixed_om_cny_per_mt[2, CCS] == pytest.approx(capex_nat * 1e6 * ci.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
 
     # H2 路线：capex 按铭牌产能计（这里 = 产量）；年度项 = 固定运维 + opex 差额，固定运维不单列；氢逐链路购买。
@@ -95,7 +98,9 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert not data.route_available[1, H2]
     production = 1000.0e3
     route_capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
-    delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", 0.081, scenario.discount_rate)
+    # 长流程钢的需氢量取 63 kg/t（2026-10-02 起），不取 hub 表里点源库的 81。
+    intensity = ci.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"]
+    delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", intensity, scenario.discount_rate)
     assert data.capacity_mt_per_share[0, H2] == pytest.approx(production / 1e6, rel=1e-12)
     assert data.capex_cny_per_mt[0, H2] * data.capacity_mt_per_share[0, H2] == pytest.approx(
         production * route_capex, rel=1e-9
@@ -103,7 +108,7 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     assert data.opex_cny[0, H2] == pytest.approx(
         production * (route_capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
-    assert data.h2_demand_kg_per_share[0] == pytest.approx(81.0e6, rel=1e-9)
+    assert data.h2_demand_kg_per_share[0] == pytest.approx(intensity * 1000.0 * production, rel=1e-9)
     assert data.capex_lifetime_years == {
         CCS: ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
         H2: ci.INDUSTRY_H2_LIFETIME_YEARS,
