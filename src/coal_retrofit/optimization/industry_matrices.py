@@ -249,7 +249,8 @@ def industry_year_data(
     opex_cny[:, CCS] = captured_t * variable_unit
     # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
     # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。由余热供给的那部分蒸汽
-    # （`industry_capture_waste_heat_share`，缺省 0）不烧煤、不排，用煤与排放都乘 (1 − 余热份额)。
+    # （`industry_capture_waste_heat_share`，水泥缺省 0.3、其余 0）不烧煤、不排，用煤与排放都乘 (1 − 余热份额)；少发的余热电
+    # 在 `variable_unit` 里按情景电价计（`capture_variable_cost_cny_per_t`）。
     steam_co2_per_t = np.array(
         [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj, float(w)) for s, w in zip(sectors, waste_heat, strict=True)],
         dtype=np.float64,

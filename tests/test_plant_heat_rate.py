@@ -13,8 +13,11 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.builders.plants import (
+    _combustion_class,
     _supply_coal_rate_g_per_kwh,
     build_plant_dataframe,
+    is_cfb,
+    mark_named_cfb,
     unit_heat_rate_gj_per_mwh,
     unit_rebuild_heat_rate_cap_gj_per_mwh,
 )
@@ -43,10 +46,36 @@ GROSS = (1.0 - COAL_STATION_SERVICE_RATE) * STANDARD_COAL_GJ_PER_KG  # g/kWh 供
         ("igcc", 250.0, "recirculating", 270.0),
         ("supercritical", 600.0, "air", 315.0),  # 空冷 +15
         ("Ultra-Supercritical/CCS", 1000.0, "recirculating", 285.0),  # /CCS 按本体机型
+        ("ultra-supercritical/CFB", 660.0, "recirculating", 293.0),  # /CFB 同样按本体机型
     ],
 )
 def test_supply_coal_rate_follows_the_class_table(combustion, capacity_mw, cooling, expected) -> None:
     assert _supply_coal_rate_g_per_kwh(combustion, capacity_mw, cooling) == expected
+
+
+def test_named_cfb_units_get_a_cfb_mark_and_keep_their_steam_class() -> None:
+    """厂名写明 CFB 的机组（`GEM_NAMED_CFB_UNIT_IDS`）加 `/CFB`（2026-10-07 起）：`is_cfb` 认它，毛热耗与用水强度的机型不变；
+    不在名单上的、已是 CFB 的不动，重复调用不再加，入参不变。`is_cfb` 对缺失值、空串为否。"""
+    units = pd.DataFrame({
+        "unit_id": ["G100000115436", "G100000107349", "G999", "G100000115465"],
+        "combustion": ["ultra-supercritical", "subcritical", "subcritical", "CFB"],
+        "capacity_mw": [700.0, 300.0, 300.0, 660.0],
+        "cooling_technology": ["recirculating"] * 4,
+    })
+    original = units.copy()
+    marked = mark_named_cfb(units)
+    pd.testing.assert_frame_equal(units, original)
+    assert marked.tolist() == ["ultra-supercritical/CFB", "subcritical/CFB", "subcritical", "CFB"]
+    assert mark_named_cfb(units.assign(combustion=marked)).tolist() == marked.tolist()
+    assert is_cfb(marked).tolist() == [True, True, False, True]
+    labels = pd.Series(["CFB/CCS", " cfb", "supercritical/CCS", "supercritical/CFB/CCS", "", None, float("nan")])
+    assert is_cfb(labels).tolist() == [True, True, False, True, False, False, False]
+    assert is_cfb(pd.Series([None, float("nan"), pd.NA], dtype=object)).tolist() == [False, False, False]
+    assert is_cfb(pd.Series([float("nan")])).tolist() == [False]
+    pd.testing.assert_series_equal(
+        unit_heat_rate_gj_per_mwh(units.assign(combustion=marked)), unit_heat_rate_gj_per_mwh(units)
+    )
+    assert [_combustion_class(label) for label in marked] == [_combustion_class(label) for label in units["combustion"]]
 
 
 def test_unknown_combustion_label_raises() -> None:

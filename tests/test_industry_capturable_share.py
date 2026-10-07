@@ -3,7 +3,8 @@
 可捕集份额按（部门，原料）给，按点源 CO2 加权到 hub（`prepare_industry`）；捕集量 = hub CO2 x 份额 x 捕集率，份额为 0 的
 hub 不开放 CCS（电炉钢、焦炉煤气与天然气制甲醇）。合成氨、甲醇的氢路线减排比例也取这个份额，为 0 时不开放；混合原料的
 hub 里，两条路线都只作用于份额为正的点源（能力的铭牌系数、氢路线的产量、需氢与取水）。长流程钢的需氢量取 63 kg/t。
-余热份额按部门给，蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，缺省 0。这些测试不求解，不依赖 Gurobi。
+余热份额按部门给，蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，少发的余热电按情景电价计，水泥缺省 0.3、其余 0（2026-10-07
+起）。这些测试不求解，不依赖 Gurobi。
 """
 from __future__ import annotations
 
@@ -183,24 +184,57 @@ def test_steel_h2_route_buys_63_kg_per_tonne(table_h2_kt: float) -> None:
     assert data.reduction_mt[0, H2] == pytest.approx(0.95 * 2.0, rel=1e-12)
 
 
-@pytest.mark.parametrize("share", [0.0, 0.6])
-def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share: float) -> None:
-    """长流程钢 + 水泥两个 hub，只给水泥设余热份额：水泥的蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，钢铁不变；
-    份额 0 与缺省（空表）相同。"""
+def _steel_and_cement_hubs() -> IndustryInputs:
     steel = _steel_hub().hubs
     hubs = pd.concat([steel, steel.assign(hub_id="C1", sector="cement", h2_demand_kt_per_year=0.0)], ignore_index=True)
-    industry = IndustryInputs(hubs=hubs, h2_price_cny_per_kg={2030: 20.0})
+    return IndustryInputs(hubs=hubs, h2_price_cny_per_kg={2030: 20.0})
+
+
+@pytest.mark.parametrize("share", [0.0, 0.3, 0.6])
+def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share: float) -> None:
+    """长流程钢 + 水泥两个 hub，只给水泥设余热份额：水泥的蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，每 GJ 余热蒸汽少发的
+    55 kWh 余热电按情景电价加进运行费（2026-10-07 起），钢铁不变；份额 0 与空表相同。"""
+    industry = _steel_and_cement_hubs()
     assumptions = OptimizationAssumptions(industry_capture_waste_heat_share={"cement": share})
-    base = industry_year_data(industry, _SCENARIO, OptimizationAssumptions(), 2030)
+    base = industry_year_data(industry, _SCENARIO, OptimizationAssumptions(industry_capture_waste_heat_share={}), 2030)
     data = industry_year_data(industry, _SCENARIO, assumptions, 2030)
-    coal_per_t = ci.INDUSTRY_CCS_STEAM_GJ_PER_T_CO2["cement"] / ci.INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY
+    steam_gj = ci.INDUSTRY_CCS_STEAM_GJ_PER_T_CO2["cement"]
+    coal_per_t = steam_gj / ci.INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY
     coal_cost_per_t = coal_per_t * assumptions.province_coal_cost("Shanxi")
+    lost_power_cost_per_t = steam_gj * 55.0 / 1000.0 * _SCENARIO.electricity_price_for_year(2030)
     captured_t = data.captured_mt[1, CCS] * 1e6
-    assert data.opex_cny[1, CCS] == pytest.approx(base.opex_cny[1, CCS] - share * captured_t * coal_cost_per_t, rel=1e-12)
+    assert data.opex_cny[1, CCS] == pytest.approx(
+        base.opex_cny[1, CCS] + share * captured_t * (lost_power_cost_per_t - coal_cost_per_t), rel=1e-12
+    )
     steam_co2 = coal_per_t * assumptions.coal_emission_factor_t_per_gj
     assert data.reduction_mt[1, CCS] == pytest.approx(data.captured_mt[1, CCS] * (1.0 - (1.0 - share) * steam_co2), rel=1e-12)
     np.testing.assert_array_equal(data.opex_cny[0], base.opex_cny[0])
     np.testing.assert_array_equal(data.reduction_mt[0], base.reduction_mt[0])
+
+
+def test_cement_takes_waste_heat_share_0p3_by_default() -> None:
+    """主线（2026-10-07 起）：水泥再生蒸汽的余热份额缺省 0.3、其余部门 0，净减排系数 0.9 x (1 − 0.7 x 0.3044) = 0.708。"""
+    assert OptimizationAssumptions().industry_capture_waste_heat_share == {"cement": 0.3}
+    assert ci.INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ == {"cement": 55.0}
+    data = industry_year_data(_steel_and_cement_hubs(), _SCENARIO, OptimizationAssumptions(), 2030)
+    explicit = industry_year_data(
+        _steel_and_cement_hubs(), _SCENARIO, OptimizationAssumptions(industry_capture_waste_heat_share={"cement": 0.3}), 2030
+    )
+    np.testing.assert_array_equal(data.opex_cny, explicit.opex_cny)
+    np.testing.assert_array_equal(data.reduction_mt, explicit.reduction_mt)
+    co2_mt = float(_steel_and_cement_hubs().hubs["co2_mt_per_year"].iloc[1])  # 水泥可捕集份额 1
+    assert data.reduction_mt[1, CCS] / co2_mt == pytest.approx(0.708, abs=5e-4)
+
+
+def test_waste_heat_share_without_a_lost_power_value_is_refused() -> None:
+    """有再沸器蒸汽的部门（长流程钢）设了正的余热份额、却没有少发余热电的值时报错，不按 0 计；没有再沸器蒸汽的部门
+    （合成氨、甲醇只压缩）不用这个值，份额为正也不改成本与蒸汽 CO2。"""
+    assumptions = OptimizationAssumptions(industry_capture_waste_heat_share={"steel_bf_bof": 0.2})
+    with pytest.raises(KeyError, match="waste-heat lost power"):
+        industry_year_data(_steel_hub(), _SCENARIO, assumptions, 2030)
+    for sector in ("ammonia", "methanol"):
+        assert ci.capture_variable_cost_cny_per_t(sector, 30.0, 400.0, 0.5) == ci.capture_variable_cost_cny_per_t(sector, 30.0, 400.0)
+        assert ci.capture_steam_co2_t_per_t(sector, 0.0957, 0.5) == ci.capture_steam_co2_t_per_t(sector, 0.0957) == 0.0
 
 
 @pytest.mark.parametrize("value", [{"cemnt": 0.5}, {"cement": 1.5}, {"cement": -0.1}, {"cement": float("nan")}])
@@ -211,8 +245,9 @@ def test_invalid_waste_heat_share_is_refused(value: dict[str, float]) -> None:
         industry_year_data(_steel_hub(), _SCENARIO, assumptions, 2030)
 
 
-def test_waste_heat_share_can_be_set_from_the_command_line() -> None:
-    """敏感性按字段注释写的 `--set` 跑：值按 TOML 内联表读成 {部门: 份额}。"""
-    assert parse_set("assumptions.industry_capture_waste_heat_share={cement=0.6}") == (
-        "assumptions", "industry_capture_waste_heat_share", {"cement": 0.6},
+@pytest.mark.parametrize(("text", "share"), [("0", 0.0), ("0.53", 0.53)])
+def test_waste_heat_share_can_be_set_from_the_command_line(text: str, share: float) -> None:
+    """敏感性按字段注释写的 `--set` 跑：值按 TOML 内联表读成 {部门: 份额}，整数 0 也行。"""
+    assert parse_set(f"assumptions.industry_capture_waste_heat_share={{cement={text}}}") == (
+        "assumptions", "industry_capture_waste_heat_share", {"cement": share},
     )

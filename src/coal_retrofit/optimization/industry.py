@@ -51,7 +51,7 @@ CCS 路线（`constants_industry.INDUSTRY_CCS_*`）：按每吨年捕集能力�
 捕集量 = hub CO2 x 可捕集份额 x 捕集率（`INDUSTRY_CAPTURABLE_SHARE`，按点源 CO2 加权到 hub，2026-10-02 起；此前份额都是 1）：
 合成氨、甲醇只捕集原料制氢的纯流股（煤头合成氨 0.75、气头 0.67、煤制甲醇 0.57，B 级待核；焦炉煤气、天然气制甲醇为 0），
 电炉钢为 0，长流程钢、水泥为 1；捕集能力按份额为正的点源的铭牌系数定。再生蒸汽可按部门设一部分取自余热
-（`industry_capture_waste_heat_share`，缺省 0），这部分不烧煤、不排。
+（`industry_capture_waste_heat_share`，水泥缺省 0.3、其余 0），这部分不烧煤、不排，少发的余热电按情景电价计。
 
 氢路线（`INDUSTRY_H2_ROUTE_*`）：按每吨年产品产能计的 capex（H2-DRI 竖炉 + 电炉 3 500；
 合成氨 / 甲醇的氢接入 500 CNY/(t/a)），固定运维 3.5%/a，以及由文献溢价锚点反推的非氢

@@ -264,8 +264,14 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > ⚠ **模型改动（2026-10-02，工业 CCS 的可捕集份额与氢路线）**：工业 CCS 只捕集可捕集的份额（长流程钢、水泥 1，煤头合成氨 0.75、
 > 气头 0.67，煤制甲醇 0.57，焦炉煤气与天然气制甲醇 0，按点源 CO₂ 加权到 hub），份额为 0 的 hub 不开放 CCS；电炉钢不开放 CCS；
 > 合成氨、甲醇的氢路线减排比例取可捕集份额（此前 0.95、0.90），hub 内份额为 0 的点源不改造（CCS 能力与这两条氢路线的产量、需氢、
-> 取水只计份额为正的点源）；长流程钢需氢 81 → 63 kg/t；再生蒸汽可按部门设余热份额，缺省 0
+> 取水只计份额为正的点源）；长流程钢需氢 81 → 63 kg/t；再生蒸汽可按部门设余热份额，缺省 0（2026-10-07 起水泥 0.3，见下条）
 > （`docs/方法论.md` §5.1、§5.2、附录 B.5）。下表的结果都在此之前落盘，**不得与改后的求解相减**，要用须重解。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-07，水泥余热与 CFB 改标）**：水泥捕集的再生蒸汽缺省三成取自窑余热（`industry_capture_waste_heat_share`
+> 缺省 `{cement: 0.3}`，此前各部门 0），少发的余热电每 GJ 余热蒸汽 55 kWh，按情景电价买电补上；厂名写明循环流化床的 5 台煤电
+> 机组（2.92 GW）加 `/CFB` 标记、计入 CFB 装机份额（P0099、P0110、P0143 三个 hub 开放 0.20 的掺生物质档），毛热耗与用水不变；
+> 部分负荷修正定为主线不开（`docs/方法论.md` §4.1、§4.3、§5.2、§5.3、§8.1、附录 B.5）。下表的结果都在此之前落盘，**不得与改后的求解
+> 相减**，要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
@@ -307,6 +313,14 @@ python -m coal_retrofit run ST_BASE --set scenario.coal_capacity_price_cny_per_k
 python -m coal_retrofit run ST_BASE --set scenario.coal_capacity_price_cny_per_kw_yr=165 --as ST_BASE_cap165 --threads 8
 python -m coal_retrofit run ST_BASE --set scenario.coal_part_load_online_hours=7500 --as ST_BASE_pl7500 --threads 8
 python -m coal_retrofit run ST_BASE --set scenario.coal_part_load_online_hours=6500 --as ST_BASE_pl6500 --threads 8
+```
+
+水泥余热份额是主线参数（缺省 0.3，2026-10-07 起），敏感性两档 0 与 0.53（0.53 那档的少发电按每 GJ 余热蒸汽 55 kWh 线性外推，
+超过余热发电总量，偏高，见根 README §0），同样用 `--set` 跑：
+
+```bash
+python -m coal_retrofit run ST_BASE --set 'assumptions.industry_capture_waste_heat_share={cement=0}' --as ST_BASE_wh0 --threads 8
+python -m coal_retrofit run ST_BASE --set 'assumptions.industry_capture_waste_heat_share={cement=0.53}' --as ST_BASE_wh053 --threads 8
 ```
 
 贴现率或容量电价与对照不同，目标函数口径就不同，`--pair` 判不过，只能比路径结构；同一组 `--set` 下的 `ST_BASE` 与

@@ -14,6 +14,7 @@ from ..constants import (
     COAL_STATION_SERVICE_RATE,
     COMBUSTION_CLASS_MAP,
     COOLING_WATER_INTENSITY_M3_PER_MWH,
+    GEM_NAMED_CFB_UNIT_IDS,
     GJ_PER_MWH,
     PLANT_YEAR_BASIS,
     STANDARD_COAL_GJ_PER_KG,
@@ -84,6 +85,7 @@ def build_plants_unit_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             "longitude": pd.to_numeric(df[col_lon], errors="coerce"),
         }
     )
+    out["combustion"] = mark_named_cfb(out)
     out["source"] = source_file.name
     out["year_basis"] = PLANT_YEAR_BASIS
     return out[
@@ -101,6 +103,23 @@ def build_plants_unit_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             "year_basis",
         ]
     ]
+
+
+def is_cfb(labels: pd.Series) -> pd.Series:
+    """机型标签按 `/` 分段（去首尾空格、小写）后有一段是 `cfb`：本体机型为 CFB（`CFB`、`CFB/CCS`），或带 `/CFB` 标记
+    （`mark_named_cfb`）。缺失值为否。"""
+    return labels.map(lambda label: "cfb" in {part.strip() for part in str(label).lower().split("/")}).astype(bool)
+
+
+def mark_named_cfb(units: pd.DataFrame) -> pd.Series:
+    """`constants.GEM_NAMED_CFB_UNIT_IDS` 里的机组在机型标签后加 `/CFB`（已有 `cfb` 段的不再加，可重复调用），其余不变。
+
+    本体机型（`/` 前的部分）不变，毛热耗与用水强度照旧按它查表；hub 的 CFB 装机份额按 `is_cfb` 计。
+    """
+    combustion = units["combustion"].copy()
+    named = units["unit_id"].astype(str).isin(GEM_NAMED_CFB_UNIT_IDS) & ~is_cfb(combustion)
+    combustion[named] = combustion[named].astype(str) + "/CFB"
+    return combustion
 
 
 def most_common_string(values: pd.Series) -> str:
@@ -301,7 +320,8 @@ def _cooling_class(label: str) -> str:
 def unit_heat_rate_gj_per_mwh(units: pd.DataFrame) -> pd.Series:
     """逐台毛热耗（GJ/MWh）= 分档供电煤耗（空冷 +15）x (1 - 厂用电率) x 标准煤热值，见 `constants`。
 
-    带 `/CCS` 后缀的机组按本体机型归档：后缀是改造状态，这些机组在模型里按未改造计。
+    带 `/CCS` 后缀的机组按本体机型归档：后缀是改造状态，这些机组在模型里按未改造计。`/CFB` 后缀（`mark_named_cfb`）
+    标的是炉型，同样按本体机型归档。
     """
     rates = [
         _supply_coal_rate_g_per_kwh(combustion, float(capacity), _cooling_class(cooling))
