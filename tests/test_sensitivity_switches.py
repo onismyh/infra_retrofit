@@ -171,8 +171,9 @@ def test_coal_price_multiplier_scales_plant_and_industry_coal(tmp_path) -> None:
     # 水泥 CCS 的年度成本 = 捕集量 x (蒸汽用煤 + 电 + 耗材)：只有蒸汽用煤一项乘 0.89。
     elec = SCENARIO.electricity_price_for_year(2040)
     captured_t = off_data.industry.captured_mt[0, CCS] * 1e6
-    steam_coal = (capture_variable_cost_cny_per_t("cement", base.province_coal_cost("Shanxi"), elec)
-                  - capture_variable_cost_cny_per_t("cement", 0.0, elec))
+    waste_heat = base.industry_capture_waste_heat_share["cement"]
+    steam_coal = (capture_variable_cost_cny_per_t("cement", base.province_coal_cost("Shanxi"), elec, waste_heat)
+                  - capture_variable_cost_cny_per_t("cement", 0.0, elec, waste_heat))
     assert on_data.industry.opex_cny[0, CCS] - off_data.industry.opex_cny[0, CCS] == pytest.approx(
         -0.11 * steam_coal * captured_t, rel=1e-9
     )

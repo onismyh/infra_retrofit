@@ -26,10 +26,12 @@ class OptimizationAssumptions:
     # 工业捕集再生蒸汽的排放用同一因子。
     coal_emission_factor_t_per_gj: float = 0.82 / 8.5714
     # 工业捕集的再生蒸汽中由窑 / 炉余热供给的份额，按部门（键为 `constants_industry.INDUSTRY_SECTORS`，没写的部门为 0），
-    # 蒸汽用煤与蒸汽的 CO2 都乘 (1 − 份额)（`industry_matrices`，2026-10-02 起）。缺省全为 0，即全部由燃煤锅炉供；余热挪作捕集后
-    # 少发的余热电不计。水泥窑余热约可供 90% 捕集所需热的 44%–68%（B，推算，方法论附录 B.5）；敏感性用
-    # `--set 'assumptions.industry_capture_waste_heat_share={cement=0.6}' --as …`。
-    industry_capture_waste_heat_share: dict[str, float] = field(default_factory=dict)
+    # 蒸汽用煤与蒸汽的 CO2 都乘 (1 − 份额)（`industry_matrices`，2026-10-02 起），少发的余热电按情景电价买电补上
+    # （`constants_industry.INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ`，2026-10-07 起）。水泥缺省 0.3（2026-10-07 起；此前各部门 0，
+    # 即全部由燃煤锅炉供）：3-5 bara 低压汽只能把约 350 °C 的窑废气冷到约 155 °C，可取 0.58-0.67 GJ/t 熟料，合 90% 捕集所需热的
+    # 0.27-0.32；CEMCAP 的最高情景为 30%（B，推算与检索摘要，方法论附录 B.5）。敏感性 0 与 0.53（0.4-0.5 t 低压汽/t 熟料推算的中点，
+    # 热平衡上偏高，少发电也偏高），如 `--set 'assumptions.industry_capture_waste_heat_share={cement=0}' --as …`。
+    industry_capture_waste_heat_share: dict[str, float] = field(default_factory=lambda: {"cement": 0.3})
     nh3_lhv_gj_per_kg: float = 0.0186
     # 美元汇率取整，约为 2023 年年均：美联储 H.10 年均 7.0809（`fred_h10`）；国家统计局 2023 年统计公报
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。

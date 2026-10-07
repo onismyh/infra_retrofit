@@ -76,9 +76,10 @@ def test_unknown_province_warns_and_prices_steam_at_the_default_coal_price(tmp_p
     assert "Atlantis" in warnings[0] and "Inner Mongolia" not in warnings[0]
     data = industry_year_data(industry, _SCENARIO, assumptions, 2030)
     elec = _SCENARIO.electricity_price_for_year(2030)
+    waste_heat = assumptions.industry_capture_waste_heat_share["cement"]
     gap_per_t = capture_variable_cost_cny_per_t(
-        "cement", assumptions.coal_fuel_cost_cny_per_gj, elec
-    ) - capture_variable_cost_cny_per_t("cement", assumptions.province_coal_cost("Inner Mongolia"), elec)
+        "cement", assumptions.coal_fuel_cost_cny_per_gj, elec, waste_heat
+    ) - capture_variable_cost_cny_per_t("cement", assumptions.province_coal_cost("Inner Mongolia"), elec, waste_heat)
     assert gap_per_t > 0.0
     captured_t = data.captured_mt[0, CCS] * 1e6
     assert data.opex_cny[1, CCS] - data.opex_cny[0, CCS] == pytest.approx(captured_t * gap_per_t, rel=1e-9)

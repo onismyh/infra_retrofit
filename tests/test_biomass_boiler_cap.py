@@ -97,9 +97,9 @@ def test_bad_levels_and_caps_are_rejected() -> None:
 @pytest.mark.parametrize("continuous", [True, False])
 def test_cfb_share_is_the_cfb_capacity_share_of_the_hub(tmp_path, continuous: bool) -> None:
     """hub 的 CFB 装机份额按机组表的 `combustion` 计，到年度数据 `YearData.cfb_share`：600 MW CFB（带空格、`/CCS` 后缀、
-    小写的也算）+ 400 MW 超临界为 0.6。不随规划年变：2050 年 CFB 机组已到期（连续 hub）、整个 hub 已到期（整数 hub），
+    小写的也算，厂名写明 CFB 的 `/CFB` 标记也算）+ 400 MW 超临界为 0.6。不随规划年变：2050 年 CFB 机组已到期（连续 hub）、整个 hub 已到期（整数 hub），
     份额都不变。"""
-    for label in ("CFB", " cfb/CCS"):
+    for label in ("CFB", " cfb/CCS", "supercritical/CFB"):
         paths = _unit_toy(tmp_path / label.strip().replace("/", "_"), combustion=(label, "supercritical"))
         scenario = OptimizationScenario(
             experiment_id="T", description="toy", planning_years=(2040, 2050), sector_target_source="toy"

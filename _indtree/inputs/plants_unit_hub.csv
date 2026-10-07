@@ -1703,7 +1703,7 @@ G100000115708,贵阳市开阳工业园区核心区热电联产项目,50.0,2024,C
 G100000115709,贵阳市开阳工业园区核心区热电联产项目,50.0,2024,CFB,recirculating,Guizhou,27.132813,106.915939,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0150,8.0742
 G100000105449,"云南红河开远发电厂, 云南能投红河700MW超超临界循环流化床CFB燃煤发电机组",300.0,2006,subcritical,recirculating,Yunnan,23.7434315,103.2197961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0143,8.993
 G100000105450,"云南红河开远发电厂, 云南能投红河700MW超超临界循环流化床CFB燃煤发电机组",300.0,2007,subcritical,recirculating,Yunnan,23.7434315,103.2197961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0143,8.993
-G100000115436,"云南红河开远发电厂, 云南能投红河700MW超超临界循环流化床CFB燃煤发电机组",700.0,2025,ultra-supercritical,recirculating,Yunnan,23.7434315,103.2197961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0143,8.1578
+G100000115436,"云南红河开远发电厂, 云南能投红河700MW超超临界循环流化床CFB燃煤发电机组",700.0,2025,ultra-supercritical/CFB,recirculating,Yunnan,23.7434315,103.2197961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0143,8.1578
 G100000105542,京能内蒙古康巴什热电,350.0,2013,supercritical,recirculating,Inner Mongolia,39.59759,109.90929,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0103,8.5754
 G100000105543,京能内蒙古康巴什热电,350.0,2014,supercritical,recirculating,Inner Mongolia,39.59759,109.90929,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0103,8.5754
 G100000105545,国电康平发电厂,600.0,2008,supercritical,recirculating,Liaoning,42.7009353,123.3658456,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0012,8.3527
@@ -2022,8 +2022,8 @@ G100000107324,"阳长火电厂, 国家电投纳雍发电二厂",300.0,2005,subcr
 G100000107325,"阳长火电厂, 国家电投纳雍发电二厂",300.0,2005,subcritical,recirculating,Guizhou,26.599771,105.202447,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0119,8.993
 G100000107326,"阳长火电厂, 国家电投纳雍发电二厂",300.0,2006,subcritical,recirculating,Guizhou,26.5975701,105.2028759,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0119,8.993
 G100000107327,"阳长火电厂, 国家电投纳雍发电二厂",300.0,2006,subcritical,recirculating,Guizhou,26.5975701,105.2028759,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0119,8.993
-G100000107349,"神华国能四川白马循环流化床示范电站 (Unit 4, Unit 5), 华电内江白马燃气轮机创新发展示范项目(1-1,1-2), 内江白马发电厂",300.0,2006,subcritical,recirculating,Sichuan,29.5245118,105.0120762,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0099,8.993
-G100000107350,"神华国能四川白马循环流化床示范电站 (Unit 4, Unit 5), 华电内江白马燃气轮机创新发展示范项目(1-1,1-2), 内江白马发电厂",600.0,2013,supercritical,recirculating,Sichuan,29.5245118,105.0120762,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0099,8.3527
+G100000107349,"神华国能四川白马循环流化床示范电站 (Unit 4, Unit 5), 华电内江白马燃气轮机创新发展示范项目(1-1,1-2), 内江白马发电厂",300.0,2006,subcritical/CFB,recirculating,Sichuan,29.5245118,105.0120762,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0099,8.993
+G100000107350,"神华国能四川白马循环流化床示范电站 (Unit 4, Unit 5), 华电内江白马燃气轮机创新发展示范项目(1-1,1-2), 内江白马发电厂",600.0,2013,supercritical/CFB,recirculating,Sichuan,29.5245118,105.0120762,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0099,8.3527
 G100000107351,华电内江高坝发电厂,100.0,1996,subcritical,recirculating,Sichuan,29.554579,105.084595,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0099,8.993
 G100000107449,金光集团宁波亚洲浆纸自备电厂,62.4,1998,subcritical,recirculating,Zhejiang,29.963037,121.769786,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0046,8.993
 G100000107450,金光集团宁波亚洲浆纸自备电厂,62.4,1998,subcritical,recirculating,Zhejiang,29.963037,121.769786,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0046,8.993
@@ -2101,8 +2101,8 @@ G100000113713,鄂尔多斯资源集团高新材料公司棋盘井低热值煤电
 G100000113714,鄂尔多斯资源集团高新材料公司棋盘井低热值煤电厂,330.0,2015,subcritical,Air,Inner Mongolia,39.350291,107.01002,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0129,9.4107
 G100000109101,神华煤制油化工公司鄂尔多斯煤制油分公司自备电厂,100.0,2007,subcritical,recirculating,Inner Mongolia,39.32929,110.151818,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0074,8.993
 G100000109102,神华煤制油化工公司鄂尔多斯煤制油分公司自备电厂,100.0,2007,subcritical,recirculating,Inner Mongolia,39.32929,110.151818,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0074,8.993
-G100000115465,"贵州盘南低热值煤资源综合利用发电项目, 盘南2×660MW超超临界CFB燃煤发电机组",660.0,2025,ultra-supercritical,recirculating,Guizhou,25.431494,104.647459,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
-G100000115466,"贵州盘南低热值煤资源综合利用发电项目, 盘南2×660MW超超临界CFB燃煤发电机组",660.0,2026,ultra-supercritical,recirculating,Guizhou,25.431494,104.647459,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
+G100000115465,"贵州盘南低热值煤资源综合利用发电项目, 盘南2×660MW超超临界CFB燃煤发电机组",660.0,2025,ultra-supercritical/CFB,recirculating,Guizhou,25.431494,104.647459,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
+G100000115466,"贵州盘南低热值煤资源综合利用发电项目, 盘南2×660MW超超临界CFB燃煤发电机组",660.0,2026,ultra-supercritical/CFB,recirculating,Guizhou,25.431494,104.647459,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
 G100000108894,贵州盘江电力新光电厂,660.0,2024,ultra-supercritical,recirculating,Guizhou,25.390694,104.651007,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
 G100000108895,贵州盘江电力新光电厂,660.0,2024,ultra-supercritical,recirculating,Guizhou,25.390694,104.651007,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0110,8.1578
 G100000107753,国投盘江盘北电厂,300.0,2013,subcritical,recirculating,Guizhou,26.064595,104.534107,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0071,8.993

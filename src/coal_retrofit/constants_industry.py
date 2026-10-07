@@ -355,8 +355,15 @@ INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
 # 效率 0.88：DEA 311.1a 燃煤蒸汽锅炉年均净效率 89%（2030 年区间 87-90.8；`dea_iph`），是为捕集新建锅炉的口径；
 # 若蒸汽取自存量工业锅炉，运行效率低得多（检索摘要称 60-72%，未核原文）。
 # 蒸汽可有一部分取自窑 / 炉余热（2026-10-02 起）：份额按部门由 `OptimizationAssumptions.industry_capture_waste_heat_share`
-# 给，缺省 0（全部由燃煤锅炉供），蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)。余热原用于余热发电，挪作捕集后少发的电不计。
+# 给（水泥缺省 0.3，2026-10-07 起；此前各部门 0），蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，少发的余热电见下。
 INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
+# 余热改供再生蒸汽后每 GJ 余热蒸汽少发的余热电，kWh（2026-10-07 起计入，按情景电价买电补上；此前不计）；有再沸器蒸汽而没有这个值的
+# 部门（钢铁）设了正的余热份额时报错（`capture_variable_cost_cny_per_t`）。水泥 55（47-63），推算（B）：新型干法窑纯低温余热发电
+# 30-40 kWh/t 熟料（检索摘要列有 30-38、32-40、30-40），用的是 3-5 bara 低压汽能取的那段废气热，按 0.3 x 2.8 GJ/t x 0.755 t 捕集量/t
+# 熟料 = 0.634 GJ/t 熟料折算：35 / 0.634 = 55。份额 0.3 时整套余热发电都让给捕集，更高的份额线性外推会超过余热发电总量（0.53 时约 62 kWh/t 熟料）。
+INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ: Final[dict[str, float]] = {
+    SECTOR_CEMENT: 55.0,
+}
 # 捕集岛的经济寿命 20 a：NPC 2019 的钢铁、水泥、合成氨、乙醇捕集改造都取 20 a（`npc2019dualchallenge`，经
 # `pypsa_techdata`）；DEA 401 的技术寿命为 25 a（`dea_ccts`），可作敏感性。PKU/Baowu 假定 25 a；煤电侧的改造
 # 捕集岛依附于剩余 15-25 a 的机组；两侧统一取 20 a，使残值规则对捕集岛一视同仁，无论它建在哪里。捕集能力按这个
@@ -545,14 +552,21 @@ def capture_variable_cost_cny_per_t(
         sector: `INDUSTRY_SECTORS` 之一。
         coal_price_cny_per_gj: 用于产生再沸器蒸汽的煤的到厂价。
         electricity_price_cny_per_mwh: 所计价年份的电价。
-        waste_heat_share: 再沸器蒸汽中由窑 / 炉余热供给的份额，这部分不烧煤。
+        waste_heat_share: 再沸器蒸汽中由窑 / 炉余热供给的份额，这部分不烧煤，但少发余热电
+            （`INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ`），按同一电价买电补上。
 
     Returns:
-        每吨捕集 CO2 的 CNY：蒸汽用煤 + 电力 + 耗材。
+        每吨捕集 CO2 的 CNY：蒸汽用煤 + 电力（含少发的余热电）+ 耗材。
+
+    Raises:
+        KeyError: 部门缺参数；有再沸器蒸汽的部门设了正的余热份额、却没有少发余热电的值时也报错。
     """
     steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
     kwh = _require(INDUSTRY_CCS_ELECTRICITY_KWH_PER_T_CO2, sector, "capture electricity")
     consumables = _require(INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2, sector, "capture consumables")
+    waste_heat_gj = steam_gj * float(waste_heat_share)
+    if waste_heat_gj > 0.0:
+        kwh += waste_heat_gj * _require(INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ, sector, "waste-heat lost power")
     steam_coal = steam_gj * (1.0 - float(waste_heat_share)) / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_price_cny_per_gj)
     return steam_coal + kwh / 1000.0 * float(electricity_price_cny_per_mwh) + consumables
 
@@ -572,7 +586,7 @@ def levelised_capture_cost_cny_per_t(
 ) -> float:
     """capex + 运维 + 能耗参数折合成的平准化成本，单位为每吨捕集量的 CNY。
 
-    只作报告与交叉核对（对照 `INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T`）；
+    只作报告与交叉核对（对照 `INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T`，按余热份额 0 计）；
     目标函数从不使用平准化数值。
     """
     capex = capture_capex_cny_per_t_yr(sector) * float(learning)
