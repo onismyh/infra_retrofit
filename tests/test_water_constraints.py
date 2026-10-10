@@ -89,7 +89,7 @@ def _solve(
         solver_time_limit=300,
     )
     assumptions = OptimizationAssumptions(
-        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), **assumption_overrides
+        **assumption_overrides
     )
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.planning_years
@@ -276,6 +276,7 @@ def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -
             capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
             air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
             bio_penalty_by_plant=ys["bio_penalty_by_plant"], blend_level_b=ys["blend_level_b"],
+            blend_level_a=ys["blend_level_a"],
         )
         assert float(cost["air_penalty_cny"].iloc[0]) > 0.0
         kind, weight = ys["cost_weights"]["energy_penalty_cost"]

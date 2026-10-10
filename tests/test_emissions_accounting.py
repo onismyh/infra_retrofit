@@ -55,7 +55,7 @@ def test_pathway_split_unabated_uses_the_operating_emissions() -> None:
 
 SLACKS = {
     "target_shortfall_mt": 0.0, "target_shortfall_by_group": {}, "biomass_slack_gj": np.zeros(0),
-    "ammonia_slack_kg": np.zeros(0), "water_slack_m3": np.zeros(0), "injectivity_slack_mtpa": np.zeros(0),
+    "h2_slack_kg": np.zeros(0), "water_slack_m3": np.zeros(0), "injectivity_slack_mtpa": np.zeros(0),
     "storage_slack_mt": np.zeros(0), "edge_slack_mtpa": np.zeros(0),
 }
 

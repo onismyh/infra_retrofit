@@ -80,7 +80,7 @@ def add_year_block(
     # 总缺口 = 各组缺口之和，老读者继续读标量。
     target_shortfall_mt = model.addVar(lb=0.0, name=f"target_shortfall_mt_{year_suffix}")
     biomass_slack_gj = model.addMVar(idx.biomass_node_count, lb=0.0, name=f"biomass_slack_gj_{year_suffix}")
-    ammonia_slack_kg = model.addMVar(ammonia_node_count, lb=0.0, name=f"ammonia_slack_kg_{year_suffix}")
+    h2_slack_kg = model.addMVar(ammonia_node_count, lb=0.0, name=f"h2_slack_kg_{year_suffix}")
     water_slack_m3 = model.addMVar(water_node_count, lb=0.0, name=f"water_slack_m3_{year_suffix}")
     injectivity_slack_mtpa = model.addMVar(storage_count, lb=0.0, name=f"injectivity_slack_mtpa_{year_suffix}")
     storage_slack_mt = model.addMVar(storage_count, lb=0.0, name=f"storage_slack_mt_{year_suffix}")
@@ -125,7 +125,7 @@ def add_year_block(
         model, year_data, assumptions, year, plant_count, idx.biomass_node_count,
         biomass_flow_gj=biomass_flow_gj, ammonia_flow_kg=ammonia_flow_kg, water_flow_m3=water_flow_m3,
         biomass_use_gj=biomass_use_gj, ammonia_use_kg=ammonia_use_kg, water_use_m3=water_use_m3,
-        biomass_slack_gj=biomass_slack_gj, ammonia_slack_kg=ammonia_slack_kg, water_slack_m3=water_slack_m3,
+        biomass_slack_gj=biomass_slack_gj, h2_slack_kg=h2_slack_kg, water_slack_m3=water_slack_m3,
         industry_h2_flow_kg=industry_payload.h2_flow_kg, year_suffix=year_suffix,
     )
     water_basin_slack_m3, water_basin_use_m3 = add_basin_withdrawal_cap(
@@ -164,7 +164,7 @@ def add_year_block(
         target_shortfall_mt=target_shortfall_mt,
         target_shortfall_by_group=target_shortfall_by_group,
         biomass_slack_gj=biomass_slack_gj,
-        ammonia_slack_kg=ammonia_slack_kg,
+        h2_slack_kg=h2_slack_kg,
         water_slack_m3=water_slack_m3,
         water_basin_slack_m3=water_basin_slack_m3,
         water_basin_use_m3=water_basin_use_m3,
@@ -311,7 +311,7 @@ def _add_injectivity_limit(
     storage_count: int,
     year_suffix: str,
 ) -> None:
-    """本年可用注入速率 = 可建速率 x 部署进度。"""
+    """各汇年注入量 <= 该汇的年注入上限（+ 松弛）；全国合计 <= 本年部署进度（设了才加）。"""
     injectivity_year = np.asarray(year_data.storage_injectivity_mtpa, dtype=np.float64)
     model.addConstrs(
         (
@@ -321,6 +321,9 @@ def _add_injectivity_limit(
         ),
         name=f"injectivity_limit_{year_suffix}",
     )
+    national = float(year_data.storage_national_injection_mtpa)
+    if np.isfinite(national):
+        model.addConstr(storage_use_mtpa.sum() <= national, name=f"national_injection_limit_{year_suffix}")
 
 
 def _add_sector_targets(
@@ -337,25 +340,39 @@ def _add_sector_targets(
     """部门残余排放上限：residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)。
 
     煤电整体为 power 组；工业 hub 经 SECTOR_TARGET_GROUP 映射到 steel / cement / chemicals。
-    返回各组缺口变量；总缺口 `target_shortfall_mt` 约束为其和。
+    `sector_target_mode` 为 "total" 时（2026-10-10 起）四组合成一条：sum_g residual_g <= sum_g cap_g x baseline_g + shortfall，
+    缺口记在键 "total" 下。返回各组（或 total）缺口变量；总缺口 `target_shortfall_mt` 约束为其和。
     """
     caps = year_data.sector_cap_fraction
     target_shortfall_by_group: dict[str, gp.Var] = {}
-    residual_exprs: dict[str, object] = {
+    residual_exprs: dict[str, GrbExpr] = {
         POWER_TARGET_GROUP: float(year_data.emissions_mt.sum()) - total_reduction_mt
     }
     residual_exprs.update(industry_residual_by_group)
-    for group, residual in residual_exprs.items():
+    for group in residual_exprs:
         if group not in caps:
             raise ValueError(
                 f"sector_targets_{scenario.sector_target_source}.csv has no {year} cap for group {group!r}"
             )
-        shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
-        target_shortfall_by_group[group] = shortfall
+    mode = str(scenario.sector_target_mode)
+    if mode == "total":
+        shortfall = model.addVar(lb=0.0, name=f"target_shortfall_all_{year_suffix}")
+        target_shortfall_by_group["total"] = shortfall
         model.addConstr(
-            residual - shortfall <= float(caps[group]) * float(idx.sector_base_2030[group]),
-            name=f"sector_target_{group}_{year_suffix}",
+            gp.quicksum(residual_exprs.values()) - shortfall
+            <= sum(float(caps[group]) * float(idx.sector_base_2030[group]) for group in residual_exprs),
+            name=f"sector_target_total_{year_suffix}",
         )
+    elif mode == "sector":
+        for group, residual in residual_exprs.items():
+            shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
+            target_shortfall_by_group[group] = shortfall
+            model.addConstr(
+                residual - shortfall <= float(caps[group]) * float(idx.sector_base_2030[group]),
+                name=f"sector_target_{group}_{year_suffix}",
+            )
+    else:
+        raise ValueError(f"sector_target_mode = {mode!r}：只能是 \"sector\" 或 \"total\"")
     model.addConstr(
         target_shortfall_mt == gp.quicksum(target_shortfall_by_group.values()),
         name=f"target_shortfall_total_{year_suffix}",

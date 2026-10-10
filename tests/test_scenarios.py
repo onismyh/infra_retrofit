@@ -64,8 +64,8 @@ def test_repo_registry_builds_every_runnable_scenario() -> None:
         scenario, assumptions = build_parameters(spec, name)
         assert scenario.experiment_id == name and scenario.solver_threads == 8
         if name.startswith("ST_"):
-            # CLAUDE.md 二.2：ST_ 系 MIPGap 统一 3%，求解走 LP 松弛热启动；二.6：只在 v9.2 管网（_indtree/inputs/）上求解。
-            assert scenario.mip_gap == 0.03 and scenario.warm_start == "lp_relax" and shown_path(spec.tree) == "_indtree"
+            # CLAUDE.md 二.2：ST_ 系 MIPGap 统一 2%，求解走 LP 松弛热启动；二.6：只在 v9.2 管网（_indtree/inputs/）上求解。
+            assert scenario.mip_gap == 0.02 and scenario.warm_start == "lp_relax" and shown_path(spec.tree) == "_indtree"
 
 
 def test_st_water_scenario_differs_from_base_only_in_water() -> None:
@@ -80,6 +80,18 @@ def test_st_water_scenario_differs_from_base_only_in_water() -> None:
     assert [key for key, _, _ in diffs] == [
         "scenario.water_mode", "scenario.water_scenario_id", "scenario.water_season",
     ]
+
+
+def test_st_total_target_scenario_differs_from_base_only_in_the_target_mode() -> None:
+    """ST_TOT_BASE 是碳目标的另一个入口（合计总量上限）：与 ST_BASE 只差 `sector_target_mode`。"""
+    registry = load_registry()
+
+    def params(name: str) -> dict:
+        scenario, assumptions = build_parameters(registry.get(name), name)
+        return {"tree": "t", "scenario": asdict(scenario), "assumptions": asdict(assumptions)}
+
+    diffs = diff_resolved(params("ST_BASE"), params("ST_TOT_BASE"))
+    assert [(key, a, b) for key, a, b in diffs] == [("scenario.sector_target_mode", "sector", "total")]
 
 
 def test_inheritance_merges_sections_and_keeps_note_local(tmp_path) -> None:

@@ -171,7 +171,9 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
     annuity = (1.0 - (1.0 + rate) ** -10.0) / rate
     df = 1.0 / (1.0 + rate) ** (2050 - scenario.discount_base_year)
     expected_baseline_net = net_pm * gen * annuity * df
-    assert y1["cost_breakdown_cny"]["baseline_net_cost"] == pytest.approx(expected_baseline_net, rel=1e-3)
+    # 目标里是相对参照（全部维持不改造运行）的差，加回参照即基线净运行成本（增量口径，2026-10-10 起）。
+    reference = float(y1["year_data"].baseline_reference_cny.sum()) * annuity * df
+    assert y1["cost_breakdown_cny"]["coal_operating_delta"] + reference == pytest.approx(expected_baseline_net, rel=1e-3)
 
 
 def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_path) -> None:
@@ -248,7 +250,7 @@ def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_pat
             stranded_by_plant=ys["stranded_by_plant"],
             capex_pathway_indices=capex_indices, rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
-            blend_level_b=ys["blend_level_b"],
+            blend_level_b=ys["blend_level_b"], blend_level_a=ys["blend_level_a"],
         )
         assert float(plant_cost["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
             1000.0 * capex_paid[year] * s1_y2030, rel=1e-3, abs=1.0

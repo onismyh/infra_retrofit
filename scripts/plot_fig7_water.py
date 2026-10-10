@@ -10,7 +10,7 @@
 读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
   空冷容量，不是累计改造量；在役的空冷能力（plant_detail.csv 的 air_installed_share，不小于运行份额、可含闲置的，
   建成 20 年后退出；已全空冷的 hub 两列不保证为零，乘 1 − already_air_share 后为零）这里不画。
-数据：_indtree/results/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
+数据：results/solved/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
 自检：各流域超出余量的取水 = slack_detail.csv 记的该流域松弛（没超的流域没有松弛），两边各算各的；流域代码都在
   BASIN_ORDER 里；空冷运行份额与已空冷比例都在 [0, 1]。
 输出：_indtree/results/figures/fig7_water{,_en}.{pdf,png}

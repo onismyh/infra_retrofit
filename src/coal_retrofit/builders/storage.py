@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 _DILATION_PIXELS = 2
 # 丢弃储量低于阈值的噪声连通域
 _MIN_STORAGE_MT = 10.0
+# Fan 2025 数据集栅格的逐格注入能力之和（Mt/a）：DSA 按加权平均法（DSA-injection-AVG-Recommended.tif），EOR 每格取格内
+# 油田的最大值（EOR-injectionl.tif）。每格一个注入点、格值即该点的年注入能力（Fan et al. 2025 Sci Data 12:640，式 8、12）。
+_FAN_RASTER_INJECTION_MTPA = {"DSA": 532_344.6, "EOR": 24_309.3}
 
 
 def _extract_storage_nodes(
@@ -200,8 +203,8 @@ def _flag_offshore(paths: ProjectPaths, hubs: pd.DataFrame) -> pd.Series:
     """标记注入中心落在中国陆地省份之外的 hub。
 
     DSA 封存栅格约有 46% 位于省级陆地边界之外——即海域盆地（东海、珠江口、渤海、
-    北部湾）。这些 hub 需要海底管道和平台，因此优化器会按系数缩放其运输成本
-    （OptimizationAssumptions.offshore_transport_multiplier）。
+    北部湾）。这个标记决定封存单价的海上倍率（OptimizationAssumptions.offshore_storage_multiplier）；
+    管道的海上倍率 2026-10-10 起按每条边的海上段计（`network_offshore`），运行期新建的支线接海上汇时整条计。
     """
     from shapely.geometry import Point
 
@@ -297,6 +300,17 @@ def _validate_against_source_dataset(frame: pd.DataFrame) -> None:
         )
         if not inside:
             logger.warning("%s storage total %.1f Gt falls outside the published range", name, value)
+    # 注入能力：论文没有给全国合计，对照数据集栅格自身的逐格之和（`_FAN_RASTER_INJECTION_MTPA`）。汇的年注入上限就是
+    # 汇内逐格之和（`data_prep._prepare_storages`），提取只丢储量不足 `_MIN_STORAGE_MT` 的碎片，不应少于九成。
+    for name, column in (("DSA", "injectivity_dsa_avg_mtpa"), ("EOR", "injectivity_eor_avg_mtpa")):
+        value, total = float(frame[column].sum()), _FAN_RASTER_INJECTION_MTPA[name]
+        inside = 0.9 * total <= value <= total * (1 + 1e-9)
+        logger.info(
+            "injection extraction %s: %.0f Mt/a of the raster's %.0f Mt/a -- %s",
+            name, value, total, "OK" if inside else "OUT OF RANGE",
+        )
+        if not inside:
+            logger.warning("%s injection total %.0f Mt/a is not within 90-100%% of the raster total", name, value)
 
 
 def build_storage_hub_dataframe(

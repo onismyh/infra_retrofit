@@ -1,10 +1,10 @@
-"""资源结果表：生物质 / 氨 / 水（含流域指标）的节点用量与可用量，及逐链路流量。"""
+"""资源结果表：生物质 / 绿氢 / 水（含流域指标）的节点用量与可用量，及逐链路流量。"""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
+from ..constants import AMMONIA_FLOW_SCALE, NH3_H2_RATIO, WATER_FLOW_SCALE
 from ._shared import PreparedInputs
 from .year_types import YearData
 
@@ -17,7 +17,10 @@ def _build_supply_table(
     ammonia_flow_kg: np.ndarray,
     water_flow_m3: np.ndarray,
     basin_use_m3: np.ndarray,
+    industry_h2_flow_kg: np.ndarray | None = None,
 ) -> pd.DataFrame:
+    """各节点一行。绿氢节点（2026-10-10 起按绿氢计，`resource_type` = green_h2）的用量 = 煤电氨流量 x NH3_H2_RATIO
+    + 工业氢流量（与节点约束 `model_resources.add_resource_balances` 同口径；此前只计了煤电氨）。"""
     biomass_links = prepared.biomass_links[["biomass_node_id"]].copy()
     biomass_links["used"] = np.asarray(biomass_flow_gj, dtype=np.float64)
     biomass_grouped = biomass_links.groupby("biomass_node_id", as_index=False)["used"].sum()
@@ -31,18 +34,21 @@ def _build_supply_table(
     biomass_table["unit"] = "GJ/yr"
 
     ammonia_links = year_data.ammonia_links[["ammonia_node_id"]].copy()
-    ammonia_links["used"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
+    ammonia_links["used"] = np.asarray(ammonia_flow_kg, dtype=np.float64) * NH3_H2_RATIO
     ammonia_grouped = ammonia_links.groupby("ammonia_node_id", as_index=False)["used"].sum()
     ammonia_table = year_data.ammonia_nodes.copy()
     # 求解器返回的 `used` 是物理单位，而可用量向量仍是求解器的缩放单位，
     # 所以必须还原缩放，否则利用率会读成 1e6。
-    ammonia_table["available"] = np.asarray(year_data.ammonia_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE
+    ammonia_table["available"] = np.asarray(year_data.h2_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE
     ammonia_table = ammonia_table.merge(ammonia_grouped, on="ammonia_node_id", how="left").fillna({"used": 0.0})
+    membership = getattr(year_data, "industry_h2_node_membership", None)
+    if membership is not None and industry_h2_flow_kg is not None and len(industry_h2_flow_kg):
+        ammonia_table["used"] += np.asarray(membership @ np.asarray(industry_h2_flow_kg, dtype=np.float64)).ravel()
     ammonia_table["year"] = year
-    ammonia_table["resource_type"] = "ammonia"
+    ammonia_table["resource_type"] = "green_h2"
     ammonia_table["region"] = ammonia_table["ammonia_node_id"]
-    ammonia_table["competition_scope"] = "shared_ammonia_node"
-    ammonia_table["unit"] = "kg/yr"
+    ammonia_table["competition_scope"] = "shared_green_h2_node"
+    ammonia_table["unit"] = "kg H2/yr"
 
     water_links = year_data.water_links[["water_node_id"]].copy()
     water_links["used"] = np.asarray(water_flow_m3, dtype=np.float64)

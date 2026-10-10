@@ -59,7 +59,7 @@ def node_provinces(prepared: PreparedInputs, provinces_path: Path) -> dict[str, 
     """管网每个节点的省名（`PROVINCES` 的写法或 `OFFSHORE`）。
 
     依次取第一个有的：源的省（煤电 `province_name`、工业 `province`）；本情景纳入的封存汇（`prepared.storages`）在
-    `offshore` 为真时记海上（与运输成本的海上倍率同一标记，`year_matrices._offshore_edge_mask`），否则取
+    `offshore` 为真时记海上（与封存成本的海上倍率同一标记，`data_prep._prepare_storages`），否则取
     `storage_hubs.csv` 的省名；`pipeline_nodes.csv` 自带的省名。拼法统一换成 `PROVINCES` 的写法（`PROVINCE_NAME_ALIASES`）。
     都没有的（走廊节点、没填省名的封存汇）按经纬度落在省界图层哪个省，落在所有省之外记海上，与 builders 标记海上封存汇
     同一判据（`builders.storage._flag_offshore`）；只有这时才读图层。

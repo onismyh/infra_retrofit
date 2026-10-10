@@ -165,7 +165,7 @@ def _add_blend_level_constraints(
     blend_level_b : MVar (plant_count,)   — 在用的生物质掺烧能力 Σ_l (l+1)·(z_bio[p,l] + z_beccs[p,l])，即档位下标 x
         落在该档的份额（生物质与 BECCS 共用档位能力），供结果表与掺烧能力的固定运维（`model_costs._operating_costs`，
         2026-10-02 起）。2026-10-02 前是 Σ l·select_b，capex 计在它的增量上
-    blend_level_a : MVar (plant_count,)   — 在用的掺氨能力 Σ_l (l+1)·z_amm[p,l]，只供结果表
+    blend_level_a : MVar (plant_count,)   — 在用的掺氨能力 Σ_l (l+1)·z_amm[p,l]，供结果表与掺氨能力的固定运维（2026-10-10 起）
     bio_layers : list[list[LinExpr]]      — [厂][j] 在用掺烧能力的第 j+1 层 Σ_{l>=j} (z_bio[p,l] + z_beccs[p,l])（j、l 从 0
         起，即落在第 j+1 档及以上的份额），各层相加即 blend_level_b；掺烧能力按层分代、计 capex（`model_linking.add_capacity_vintages`）
     amm_layers : list[list[LinExpr]]      — 同上，Σ_{l>=j} z_amm[p,l]

@@ -22,7 +22,7 @@ from coal_retrofit.optimization.salvage import horizon_end_year, remaining_fract
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
-from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs
+from toy_inputs import _write_targets, _write_toy_inputs
 
 
 # ---------------------------------------------------------------------------- 闭式检查 ---
@@ -151,11 +151,7 @@ def _solve(paths, salvage: bool, power_caps=(1.0, 1.0, 0.5), cement_caps=(1.0, 1
         pathway_disable=("retire",),
         solver_time_limit=300,
     )
-    base = _toy_assumptions()
-    assumptions = OptimizationAssumptions(
-        storage_deployment_fraction_by_year=base.storage_deployment_fraction_by_year,
-        end_of_horizon_salvage=salvage,
-    )
+    assumptions = OptimizationAssumptions(end_of_horizon_salvage=salvage)
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.planning_years
     state = SolveState(

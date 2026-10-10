@@ -311,17 +311,20 @@ def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, reti
         capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
         air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
         bio_penalty_by_plant=ys["bio_penalty_by_plant"], blend_level_b=ys["blend_level_b"],
+        blend_level_a=ys["blend_level_a"],
     )
     margin = assumptions.baseline_om_cost_cny_per_mwh - scenario.electricity_price_for_year(2050)
     expected = float(year_data.generation[0]) * (
         running_heat * assumptions.province_coal_cost("Shanxi") + (1.0 - retired) * margin
     )
-    assert table["baseline_net_cost_cny"].iloc[0] == pytest.approx(expected, rel=1e-6)
+    # 表与目标里都是相对参照（全部维持不改造运行）的差，加回参照即基线净运行成本（增量口径，2026-10-10 起）。
+    reference = float(year_data.baseline_reference_cny[0])
+    assert table["coal_operating_delta_cny"].iloc[0] + reference == pytest.approx(expected, rel=1e-6)
     # 目标函数里的同一项（除去折现与年金系数）。
     weight = _discount_factor(2050, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
         scenario.interval_years(YEARS, 0, assumptions), scenario.discount_rate
     )
-    assert ys["cost_breakdown_cny"]["baseline_net_cost"] / weight == pytest.approx(expected, rel=1e-6)
+    assert ys["cost_breakdown_cny"]["coal_operating_delta"] / weight + reference == pytest.approx(expected, rel=1e-6)
 
 
 def test_rebuild_picks_the_efficient_heat_rate_class(tmp_path) -> None:

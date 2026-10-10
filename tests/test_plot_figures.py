@@ -1,7 +1,7 @@
 """出图脚本（scripts/plot_fig*.py、plot_style）的数据函数与出图前自检：不画整张图、不求解，不需要 Gurobi。
 
 各图的自检是"图上要画的量与模型记的量对不上就报错、不出图"，这里用最小的表造出对得上与对不上两种情形；
-另查 plot_style 的三件事：同值的圆点、菱形、方块面积相同，本机没有所用字体时 save_fig 拒绝出图，没有文件头的脚本
+另查 plot_style 的四件事：旧模型分段的结果读不进来，同值的圆点、菱形、方块面积相同，本机没有所用字体时 save_fig 拒绝出图，没有文件头的脚本
 也能建命令行；最后一条查底图：南海小图不压台湾与大陆沿海，图例压到国土会报错（要 geopandas 与仓库里的 data/ChinaMapTHT）。
 """
 from __future__ import annotations
@@ -104,6 +104,11 @@ def test_fig5_cap_is_fraction_of_2030_baseline(monkeypatch: pytest.MonkeyPatch) 
         fig5.check(slack, fig5.sector_table(slack))
     with pytest.raises(ValueError, match="2030"):
         fig5.sector_table(_fig5_data(residual_2060=4.0, cap_fraction=0.3, shortfall=1.0, years=(2060,)))
+    pooled = _fig5_data(residual_2060=4.0, cap_fraction=0.3, shortfall=1.0)   # 合计总量上限：缺口只记在 total 下
+    for year in pooled["result"]["years"].values():
+        year["target_shortfall_by_group_mt"] = {"total": year["target_shortfall_by_group_mt"]["power"]}
+    with pytest.raises(ValueError, match="合计总量上限"):
+        fig5.sector_table(pooled)
 
 
 def test_fig6_mass_balance_and_legend_levels(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,6 +175,28 @@ def test_same_value_gives_same_marker_area(monkeypatch: pytest.MonkeyPatch) -> N
     assert areas["s"] == pytest.approx(areas["o"], rel=2e-3)
     handle = plot_style.size_legend([3.0], 10.0, "D", "grey")[0]
     assert handle.get_markersize() ** 2 == pytest.approx(float(plot_style.area_scale([3.0], 10.0, marker="D")[0]))
+
+
+def test_results_of_an_old_model_segment_are_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`--scenario` 给路径时读那里；result.json 没有记模型分段号或分段号不是当前代码的，读结果表之前就拒绝。"""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import json
+
+    import plot_style
+    from coal_retrofit.segment import MODEL_SEGMENT, StaleResultError
+
+    (tmp_path / "R").mkdir()
+    pd.DataFrame({"a": [1]}).to_csv(tmp_path / "R" / "t.csv", index=False, encoding="utf-8-sig")
+    for segment, ok in ((None, False), (MODEL_SEGMENT - 1, False), (MODEL_SEGMENT, True)):
+        resolved = {} if segment is None else {"model_segment": segment}
+        (tmp_path / "R.json").write_text(json.dumps({"resolved": resolved}), encoding="utf-8")
+        plot_style.read_result_json.cache_clear()
+        if ok:
+            assert plot_style.read_result(str(tmp_path / "R"), "t").columns.tolist() == ["a"]
+        else:
+            with pytest.raises(StaleResultError, match="重解"):
+                plot_style.read_result(str(tmp_path / "R"), "t")
+    assert plot_style.result_dir("ST_BASE") == plot_style.SOLVED_DIR / "ST_BASE"
 
 
 def test_save_fig_refuses_a_missing_font(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

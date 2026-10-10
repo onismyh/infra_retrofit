@@ -9,7 +9,7 @@
   拆分（含改造后利用小时提升与惩罚燃料），逐厂相加即模型的逐厂减排量。改造路径按提升后的利用小时排放，低比例掺烧
   可能比基线多排，这时该路径的减排为负，画在零线以下；"未改造"一栏是到期原址重建后效率提高少排的量减去空冷背压
   多排的量，通常很小。
-数据：_indtree/results/<情景>/plant_detail.csv、pathway_shares.csv、sanity_checks.csv，_indtree/results/<情景>.json。
+数据：results/solved/<情景>/plant_detail.csv、pathway_shares.csv、sanity_checks.csv，results/solved/<情景>.json。
 自检：结果表是按约束逐项拆分的（sanity_checks.csv 有 pathway_split_closure 行且通过；此前落盘的结果没有这一行，
   b 会画成旧口径，报错）；每个厂每年的路径份额之和为 1；逐厂各路径减排之和 = 该厂 reduction_mt（差额是份额合计为 1
   的可行性容差乘基线排放）；逐年合计 = result.json 的 coal_reduction_mt。

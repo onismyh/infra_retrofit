@@ -165,8 +165,13 @@ def test_flat_heat_rate_reproduces_the_old_formulas(tmp_path, retirement_year: i
     air_cost = basis * assumptions.air_retrofit_efficiency_penalty_pp / own_eta * hr_eff * price
     air_cost[:, PATHWAY_INDEX["retire"]] = 0.0
     life_left = max(0, retirement_year - year)
-    # 名称: (新, 旧, rtol)。只含热耗与排放因子的项相等；含效率或重建热耗的项差 3.3e-6。
+    # 基线净运行成本的旧公式；2026-10-10 起进目标的是它减去未改造列（参照，增量口径）。
+    net = gen_by_path * (hr_eff * price + assumptions.baseline_om_cost_cny_per_mwh - SCENARIO.electricity_price_for_year(year))
+    # 名称: (新, 旧, rtol)。只含热耗与排放因子的项相等；含效率或重建热耗的项差 3.3e-6。基线净运行成本是燃料 + 运维 − 售电，
+    # 燃料项的差按 燃料 / |净值| 放大。
     loose = 1e-5 if year >= retirement_year else 1e-12
+    margin = hr_eff * price + assumptions.baseline_om_cost_cny_per_mwh - SCENARIO.electricity_price_for_year(year)
+    loose_net = loose * hr_eff * price / abs(margin)
     pairs = {
         "emissions_mt": (data.emissions_mt, gen * 0.82 / 1e6, 1e-12),
         "heat_rate_eff": (data.heat_rate_eff, np.full(1, hr_eff), loose),
@@ -181,12 +186,8 @@ def test_flat_heat_rate_reproduces_the_old_formulas(tmp_path, retirement_year: i
         ),
         "air_penalty_emissions_matrix": (data.air_penalty_emissions_matrix, air_gross * (1 - ccs_cols * capture), 1e-5),
         "air_penalty_cost_matrix": (data.air_penalty_cost_matrix, air_cost, 1e-5),
-        "baseline_net_matrix": (
-            data.baseline_net_matrix,
-            gen_by_path
-            * (hr_eff * price + assumptions.baseline_om_cost_cny_per_mwh - SCENARIO.electricity_price_for_year(year)),
-            loose,
-        ),
+        "baseline_net_matrix": (data.baseline_net_matrix, net - net[:, [PATHWAY_INDEX["unabated"]]], loose_net),
+        "baseline_reference_cny": (data.baseline_reference_cny, net[:, PATHWAY_INDEX["unabated"]], loose_net),
         "stranded_per_plant": (
             data.stranded_per_plant,
             np.full(1, 1000.0 * assumptions.stranded_asset_base_cny_per_kw * 1000.0 * min(1.0, life_left / 20)),

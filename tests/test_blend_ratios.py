@@ -198,7 +198,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             emissions_mt=np.array([10.0, 4.0]), carbon_price=carbon_price,
             retrofit_stock_capex=np.zeros((n, 1)), baseline_net_matrix=zeros_path,
             biomass_flow_scale=1.0, coal_savings_per_gj=np.zeros(n), fixed_cost_matrix=zeros_path,
-            biomass_blend_om_per_level=np.zeros(n),
+            biomass_blend_om_per_level=np.zeros(n), ammonia_blend_om_per_level=np.zeros(n),
             energy_penalty_matrix=zeros_path, air_penalty_cost_matrix=zeros_path, allow_air_cooling_retrofit=False,
             rebuilt_deltas=(),
         ))
@@ -210,7 +210,7 @@ def test_plant_cost_carbon_cost_is_the_objective_expression() -> None:
             retrofit_new=np.zeros((n, 1)), ccs_om_by_plant=np.zeros(n), stranded_by_plant=np.zeros(n),
             capex_pathway_indices=(PATHWAY_INDEX["ccs"],), rebuilt_share=no_rebuilt,
             air_share=zeros_path, rebuilt_air_share=no_rebuilt, bio_penalty_by_plant=np.zeros(n),
-            blend_level_b=np.zeros(n),
+            blend_level_b=np.zeros(n), blend_level_a=np.zeros(n),
         )
 
     priced = table(100.0)
@@ -240,7 +240,7 @@ def test_solved_blend_x_share_is_the_quantity_the_constraints_use(tmp_path) -> N
         pathway_disable=("retire", "ccs", "biomass", "ammonia"),
         solver_time_limit=300,
     )
-    assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+    assumptions = OptimizationAssumptions()
     y50 = _solve_toy(paths, scenario, assumptions)["year_solutions"][2050]
 
     bio_xs, beccs_xs = float(y50["biomass_blend_x_share"][0]), float(y50["beccs_blend_x_share"][0])
@@ -268,11 +268,13 @@ _ONLY = {
 
 
 def _solve_blend_toy(
-    root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None, units=None
+    root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None, units=None,
+    ammonia_per_mwh=None,
 ):
     """求解 2050、2060 两年的 toy，生物质与氨的供给挪到电厂旁边且充足。
 
-    `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`mip_gap` 缺省用情景的缺省值；`units` 是 ((装机, 投产年), ...)，
+    `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`ammonia_per_mwh` 给掺氨路径另设每 MWh 运维
+    （`ammonia_fixed_cost_cny_per_mwh`，缺省 0）；`mip_gap` 缺省用情景的缺省值；`units` 是 ((装机, 投产年), ...)，
     换掉 toy 的机组表（装机合计仍 1 000 MW，机型同 toy 机组，hub 毛热耗随之取机组的），缺省一台机组、两年都不到期。
     返回 (scenario, assumptions, prepared, solution)；`prepared` 供结果表函数用。
     """
@@ -294,7 +296,7 @@ def _solve_blend_toy(
     amm = pd.read_csv(paths.inputs_dir / "ammonia_supply_curve.csv")
     amm = pd.concat([amm.assign(year=2050), amm.assign(year=2060)], ignore_index=True)
     amm["longitude"], amm["latitude"], amm["province_name"] = 112.05, 37.0, "Shanxi"
-    amm["nh3_supply_kg_per_year"], amm["nh3_cost_lb_usd_per_kg"] = 1.0e10, 0.05
+    amm["nh3_supply_kg_per_year"], amm["h2_supply_kg_per_year"], amm["nh3_cost_lb_usd_per_kg"] = 1.0e10, 1.8e9, 0.05
     amm.to_csv(paths.inputs_dir / "ammonia_supply_curve.csv", index=False)
     _write_targets(paths, {2030: 1.0, 2040: 1.0, **power_caps})
     scenario = OptimizationScenario(
@@ -308,21 +310,26 @@ def _solve_blend_toy(
     if mip_gap is not None:
         scenario = replace(scenario, mip_gap=mip_gap)
     assumptions = OptimizationAssumptions(
-        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), hub_decisions_continuous=continuous,
+        hub_decisions_continuous=continuous,
     )
     if coal is not None:
         assumptions = replace(
             assumptions, province_coal_cost_cny_per_gj={**assumptions.province_coal_cost_cny_per_gj, "Shanxi": coal},
         )
+    if ammonia_per_mwh is not None:
+        assumptions = replace(assumptions, ammonia_fixed_cost_cny_per_mwh=ammonia_per_mwh)
     solution = _solve_toy(paths, scenario, assumptions)
     return scenario, assumptions, prepare_inputs(paths, scenario, assumptions), solution
 
 
 @pytest.fixture(scope="module")
 def ammonia_continuous(tmp_path_factory):
-    """连续 hub、只开放掺氨，电力上限 2050 年 0.75、2060 年 0.6：两年都只改造一部分份额。"""
+    """连续 hub、只开放掺氨，电力上限 2050 年 0.75、2060 年 0.6：两年都只改造一部分份额。toy 的氨比煤便宜，掺氨路径
+    另收每 MWh 80 元（2026-10-10 前的缺省），改造多发不划算，份额才停在上限要求的那部分。"""
     pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
-    return _solve_blend_toy(tmp_path_factory.mktemp("ammonia"), _ONLY["ammonia"], {2050: 0.75, 2060: 0.6})
+    return _solve_blend_toy(
+        tmp_path_factory.mktemp("ammonia"), _ONLY["ammonia"], {2050: 0.75, 2060: 0.6}, ammonia_per_mwh=80.0,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -449,7 +456,7 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
             stranded_by_plant=ys["stranded_by_plant"], capex_pathway_indices=solution["capex_pathway_indices"],
             rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
-            blend_level_b=ys["blend_level_b"],
+            blend_level_b=ys["blend_level_b"], blend_level_a=ys["blend_level_a"],
         )
         plant_carbon = float(table["carbon_cost_cny"].sum())
         industry = year_data.industry
@@ -464,8 +471,8 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
         assert plant_carbon + price * 1e6 * industry_residual == pytest.approx(
             ys["cost_breakdown_cny"]["carbon_cost"] / weight, rel=1e-9
         )
-        assert float(table["baseline_net_cost_cny"].sum()) == pytest.approx(
-            ys["cost_breakdown_cny"]["baseline_net_cost"] / weight, rel=1e-9
+        assert float(table["coal_operating_delta_cny"].sum()) == pytest.approx(
+            ys["cost_breakdown_cny"]["coal_operating_delta"] / weight, rel=1e-9
         )
         penalties = table[["energy_penalty_cny", "air_penalty_cny", "biomass_penalty_cny"]].sum()
         biomass_penalty += float(penalties["biomass_penalty_cny"])
@@ -483,6 +490,37 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
         blend_om += float(year_data.biomass_blend_om_per_level @ ys["blend_level_b"])
     assert biomass_penalty > 0.0, "前提：2060 年走 BECCS，有生物质效率惩罚"
     assert blend_om > 0.0, "前提：有在用的生物质掺烧能力，掺烧运维被测到"
+
+
+def test_plant_cost_ammonia_blend_om_adds_up_to_the_objective_term(ammonia_continuous) -> None:
+    """只开放掺氨时，成本表逐厂增量运维之和 = 目标函数的 incremental_om，且其中掺氨能力的固定运维 = 在用的掺氨能力 x
+    capex 单价 x `ammonia_upgrade_om_fraction`（2026-10-10 起；夹具另收的每 MWh 运维在 `fixed_cost_matrix` 里，一并核对）。"""
+    scenario, assumptions, prepared, solution = ammonia_continuous
+    blend_om = 0.0
+    for year, ys in solution["year_solutions"].items():
+        year_data = ys["year_data"]
+        table = _build_plant_cost_table(
+            prepared, year, year_data, ys["share"], ys["biomass_use_gj"],
+            plant_reduction_mt=ys["plant_reduction_mt"],
+            retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
+            stranded_by_plant=ys["stranded_by_plant"], capex_pathway_indices=solution["capex_pathway_indices"],
+            rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
+            rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
+            blend_level_b=ys["blend_level_b"], blend_level_a=ys["blend_level_a"],
+        )
+        interval = scenario.interval_years(scenario.planning_years, scenario.planning_years.index(year), assumptions)
+        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
+            interval, scenario.discount_rate
+        )
+        unit = year_data.capacity_mw * assumptions.ammonia_upgrade_capex_cny_per_mw_per_level
+        np.testing.assert_allclose(
+            year_data.ammonia_blend_om_per_level, unit * assumptions.ammonia_upgrade_om_fraction, rtol=1e-12
+        )
+        assert float(table["incremental_om_cny"].sum()) == pytest.approx(
+            ys["cost_breakdown_cny"]["incremental_om"] / weight, rel=1e-9
+        )
+        blend_om += float(year_data.ammonia_blend_om_per_level @ ys["blend_level_a"])
+    assert blend_om > 0.0, "前提：有在用的掺氨能力，掺氨运维被测到"
 
 
 def test_ammonia_blend_x_share_is_the_quantity_the_constraints_use(ammonia_continuous) -> None:

@@ -27,7 +27,9 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
 `--pair A B` 核这两次求解：缺一边、任一边没有 `resolved` 段（2026-09-27 之前落盘，参数与环境变量都核不了）、
 两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
-本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录。
+本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录（如入库的 `results/solved/`）。
+2026-10-10 起 `--pair` 还核模型分段号（`resolved.model_segment`，`coal_retrofit.segment`）：任一边不是当前代码的分段
+（没有记分段号的都早于第 9 段）记 failure，两段之间不得相减（CLAUDE.md 二.7）。
 
 2026-09-28 起（求解流程进情景定义）又加了几条：
 - 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`）；没有这个键（旧结果）或记的
@@ -57,6 +59,7 @@ from pathlib import Path
 from _bootstrap import ROOT  # 导入时把仓库根的 src/ 放进 sys.path
 
 from coal_retrofit.scenarios import diff_resolved
+from coal_retrofit.segment import MODEL_SEGMENT, result_segment
 
 RESULTS = ROOT / "results"
 
@@ -234,6 +237,12 @@ def check_contrasts(failures, warnings, strict, contrasts, results=RESULTS):
         before = len(failures)
         for line in describe_params(label, (base, variant), a, b, failures, warnings):
             print(line)
+        stale = [f"{name}（{result_segment({'resolved': row['resolved']}) or '未记录'}）"
+                 for name, row in ((base, a), (variant, b))
+                 if result_segment({"resolved": row["resolved"]}) != MODEL_SEGMENT]
+        if stale:
+            failures.append(f"{label}: {'、'.join(stale)}的模型分段号不是当前代码的第 {MODEL_SEGMENT} 段，"
+                            f"旧口径的结果不能相减，重解后再比")
         unchecked = [name for name, row in ((base, a), (variant, b)) if row["resolved"] is None]
         if unchecked:
             failures.append(f"{label}: {'、'.join(unchecked)} 没有 resolved 段（2026-09-27 之前落盘），"

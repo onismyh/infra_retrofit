@@ -272,6 +272,14 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > 机组（2.92 GW）加 `/CFB` 标记、计入 CFB 装机份额（P0099、P0110、P0143 三个 hub 开放 0.20 的掺生物质档），毛热耗与用水不变；
 > 部分负荷修正定为主线不开（`docs/方法论.md` §4.1、§4.3、§5.2、§5.3、§8.1、附录 B.5）。下表的结果都在此之前落盘，**不得与改后的求解
 > 相减**，要用须重解。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-10，模型分段 9）**：氨氢节点上限只按绿氢计，煤电用氨按 0.18 kg H₂/kg NH₃ 折成氢扣减，删去煤电绿氨的全国上限；
+> 碳目标多一个合计入口（`sector_target_mode = "total"`，情景 `ST_TOT_BASE`）；海上管道只有海上段按 1.5 倍计价；单汇注入上限改为
+> 聚类范围内 Fan 2025 逐格注入能力之和，全国合计另受 210 / 750 / 1 020 / 1 410 Mt/a 约束（此前逐汇乘部署系数）；煤电成本改增量口径；
+> 掺氨运维改为掺烧 capex × 3%/年，基线燃煤运维 80 → 110 元/MWh；`ST_` 系 MIPGap 3% → 2%（`docs/方法论.md` §3.6、§6.2、§6.3、§7.1、
+> §7.4、§8.1）。求解改在作者本机做，结果拷进仓库根 `results/solved/`（见那里的 README）；result.json 记 `resolved.model_segment`，
+> 分段号与当前代码不同的结果，出图与 `check_run_provenance.py --pair` 都拒绝。下表的结果都在此之前落盘（第八段及更早），
+> **不得与改后的求解相减**，要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
@@ -291,7 +299,8 @@ python -m coal_retrofit run ST_BASE --threads 8
 （第 2、3 步）。
 
 情景登记在仓库根 `scenarios/st.toml`（2026-09-27 起），`python -m coal_retrofit list` 列出情景，
-`python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq` 核对两者只差水的三项。`python -m coal_retrofit`
+`python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq` 核对两者只差水的三项，`diff ST_BASE ST_TOT_BASE` 只应列出
+`sector_target_mode`（合计上限情景用 `python -m coal_retrofit run ST_TOT_BASE --threads 8` 求解，2026-10-10 起）。`python -m coal_retrofit`
 要先 `pip install -e .`；没装时 `python scripts/run_single.py ST_BASE --threads 8` 等价，参数相同。
 两次求解相减之前，在仓库根跑 `python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
 列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
@@ -334,8 +343,8 @@ python -m coal_retrofit run ST_BASE --set 'assumptions.industry_capture_waste_he
 | `ST_WA_cwatm_126_dry_oq` | hub 决策连续 | ✅ gap 3% | 4.570460e12 | 2.99%（下界 4.4338e12） | 303 s | 缺口全零；K 流域 2030 年超指标 0.74 亿 m³、2040 年 0.013 亿 m³（I21，结构性，作者决定不动），罚项 0.41e12 计入目标 |
 | `ST_CP_BASE` | 碳价对照（无部门目标，默认碳价，煤电与工业对称计费） | ✅ gap 3% | 1.995842e13 | 2.87%（下界 1.9386e13） | 48 s | 碳价支出 13.2e12 占目标函数 66%；缺口与松弛全零。煤电 2050/2060 残余 −167 / −240 Mt（BECCS 15% / 19%）；工业走氢路线 45% / 54% / 55%（2040/50/60），CCS 仅 8% / 16% / 27%；工业 2060 残余 920 Mt，远高于目标情景的 572 Mt。**目标函数含碳价支出，与 ST_BASE 不可直接相减**，只能比路径结构 |
 
-**`ST_` 系 MIPGap 统一 3%**（作者决定 2026-09-11，CLAUDE.md §二.2 例外条款）：剩余 gap 是整数管径的固有间隙，
-差值只能按可证区间报告。1% 版停摆时的水约束目标函数差：下限 (4 445 − 3 896)/3 896 = 14.1%，
+**`ST_` 系 MIPGap 统一 3%**（作者决定 2026-09-11，CLAUDE.md §二.2 例外条款；2026-10-10 起改为 2%，上表都是 3% 时的求解）：
+剩余 gap 是整数管径的固有间隙，差值只能按可证区间报告。1% 版停摆时的水约束目标函数差：下限 (4 445 − 3 896)/3 896 = 14.1%，
 上限 (4 570 − 3 781)/3 781 = 20.9%。
 **3% 版定稿区间**：下限 (4 433.8 − 3 896.2)/3 896.2 = **13.8%**，上限 (4 570.5 − 3 779.8)/3 779.8 = **20.9%**，
 即水约束把目标函数抬高 13.8–20.9%（含 K 流域罚项 0.41e12；扣掉罚项后下限约 3.2%——罚项是否算成本由作者定）。

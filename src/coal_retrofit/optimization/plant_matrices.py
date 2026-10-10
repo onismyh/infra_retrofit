@@ -132,6 +132,7 @@ def _plant_operating_matrices(
             "beccs_penalty_emissions_coeff_per_level": biomass_penalty_emissions * uncaptured,
             "beccs_penalty_captured_coeff_per_level": biomass_penalty_emissions * float(scenario.capture_rate),
             # 基线净运行成本（煤 + 运维 - 电量电费 - 容量电费）：未改造列按基线发电量，改造列含 CF 提升，退役列为零。
+            # 进目标的是它与参照之差（见下方 `baseline_reference_cny`）。
             "baseline_net_matrix": generation_by_pathway * (
                 heat_rate * coal_price_per_plant + assumptions.baseline_om_cost_cny_per_mwh - elec_price_year
             )[:, None] - capacity_revenue_matrix,
@@ -154,11 +155,16 @@ def _plant_operating_matrices(
     capacity_mw = prepared.plants["total_capacity_mw"].astype(float).to_numpy()
     ccs_retrofit_capex_matrix = capacity_mw[:, None] * ccs_capex_per_mw[None, :]
     # 捕集岛的固定运维（ccs_om_fraction x 这笔 capex，每年）在 `year_matrices` 里随 capex 系数一起给。
-    # 生物质掺烧能力的固定运维（CNY/yr，每单位掺烧能力 = 一个档位层 x 占装机的份额）：capex 单价
-    # （`model_costs._blend_unit_capex`）x biomass_upgrade_om_fraction，乘在用的掺烧能力计入 `incremental_om`。
+    # 生物质与掺氨掺烧能力的固定运维（CNY/yr，每单位掺烧能力 = 一个档位层 x 占装机的份额）：capex 单价
+    # （`model_costs._blend_unit_capex`）x biomass_upgrade_om_fraction / ammonia_upgrade_om_fraction，乘在用的掺烧能力
+    # 计入 `incremental_om`。
     biomass_blend_om_per_level = (
         capacity_mw * float(assumptions.biomass_upgrade_capex_cny_per_mw_per_level)
         * float(assumptions.biomass_upgrade_om_fraction)
+    )
+    ammonia_blend_om_per_level = (
+        capacity_mw * float(assumptions.ammonia_upgrade_capex_cny_per_mw_per_level)
+        * float(assumptions.ammonia_upgrade_om_fraction)
     )
 
     fixed_cost_matrix = generation_cost_basis * pathway_fixed_costs[None, :]
@@ -174,6 +180,15 @@ def _plant_operating_matrices(
     )
     stranded_per_plant = capacity_mw * assumptions.stranded_asset_base_cny_per_kw * 1000.0 * book_of_unexpired
 
+    rebuilt_deltas = [
+        {name: value - unexpired_terms[name] for name, value in by_heat_rate(heat_rate).items()}
+        for heat_rate in rebuilt_heat_rates
+    ]
+    # 增量口径（2026-10-10 起，与工业同口径）：参照是"全部维持不改造运行"，即未改造列的基线净运行成本（逐 hub 一个常数）。
+    # 各列减去参照：未改造列为零，退役列为省下的参照（参照为负即失去的毛利），改造列为 CF 提升带来的差。份额和为 1
+    # （`model_year`），目标只差一个常数，最优解不变；重建部分的差（`rebuilt_deltas`）与参照无关。参照另记在 result.json 的
+    # 年度摘要（`coal_operating_reference_cny`，`runner`）。
+    baseline_reference = unexpired_terms["baseline_net_matrix"][:, PATHWAY_INDEX["unabated"]].copy()
     return {
         "hours_scale": hours_scale,
         "part_load_factor": part_load,
@@ -182,20 +197,20 @@ def _plant_operating_matrices(
         "generation_cost_basis": generation_cost_basis,
         "emissions_mt": emissions_mt,
         **unexpired_terms,
+        "baseline_net_matrix": unexpired_terms["baseline_net_matrix"] - baseline_reference[:, None],
+        "baseline_reference_cny": baseline_reference,
         "expired_share": expired_share,
         "capacity_mw": capacity_mw,
         "coal_price_per_plant": coal_price_per_plant,
         "fixed_cost_matrix": fixed_cost_matrix,
         "biomass_blend_om_per_level": biomass_blend_om_per_level,
+        "ammonia_blend_om_per_level": ammonia_blend_om_per_level,
         "cfb_share": prepared.plants["cfb_share"].astype(float).to_numpy(),
         "ccs_retrofit_capex_matrix": ccs_retrofit_capex_matrix,
         "stranded_per_plant": stranded_per_plant,
         "rebuilt_class_share": rebuilt_class_share,
         "rebuilt_heat_rates": rebuilt_heat_rates,
-        "rebuilt_deltas": [
-            {name: value - unexpired_terms[name] for name, value in by_heat_rate(heat_rate).items()}
-            for heat_rate in rebuilt_heat_rates
-        ],
+        "rebuilt_deltas": rebuilt_deltas,
     }
 
 
