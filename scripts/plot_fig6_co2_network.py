@@ -3,13 +3,15 @@
 图含义：两个规划年（缺省 2040 与 2060）的 CO2 捕集、输送与封存。蓝线是有流量的管段，线宽 ∝ √年流量（正反两向
   之和，细管段有下限）；灰色圆点是有捕集的煤电厂址，菱形是有捕集的工业 hub（颜色按部门，同图 1），面积随捕集量
   线性增大；方块是有注入的封存汇（深蓝深部咸水层、浅蓝驱油封存），面积随注入量线性增大。点面积有下限，同值的
-  圆点、菱形、方块面积相同。两年用同一尺度，左上角是当年封存总量。
-读图注意：画的是年流量，不是建成的管道能力；管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）
-  按两端直线画。
+  圆点、菱形、方块面积相同。浅蓝细线是在役而当年没有流量的管道（寿命内的建成容量与既有走廊容量之和为正、当年闲置；
+  既有走廊容量 existing_corridor_capacity_mtpa 缺省为 0，设了正值时没用上的走廊也画成这一类）。两年用同一尺度，左上角是
+  当年封存总量。
+读图注意：蓝线画的是年流量，不是建成的管道能力；在役管道按 network.csv 的 total_capacity_mtpa（既有走廊容量 + 寿命内的
+  建成容量）判断。管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）按两端直线画。
 数据：results/solved/<情景>/network.csv、sources.csv（煤电、工业取 source_type 为 coal、industry 的行）、sinks.csv，
   _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
-  封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）。
+  封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）；图例不压国土。
 输出：_indtree/results/figures/fig6_co2_network{,_en}.{pdf,png}
 用法：python scripts/plot_fig6_co2_network.py [--scenario 情景] [--years 2040 2060] [--lang zh|en|both]
 """
@@ -25,7 +27,8 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 
 from plot_style import (
-    INK, MARKERS, MM, MT_CO2_YR, PIPE_COLOR, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS,
+    FULL_WIDTH_MM, IDLE_PIPE_COLOR, INK, MARKERS, MM, MT_CO2_YR, NEUTRAL, PIPE_COLOR, SECTOR_COLORS, SECTOR_ORDER,
+    SINK_COLORS, SINK_EDGE,
     add_scs_inset, apply_style, area_scale, check_close, check_off_land, draw_china_basemap, edge_lines, figure_cli,
     figure_label, fmt_number, labels, langs, mainland_extent, read_input, read_result, save_fig, size_legend,
     to_map_xy,
@@ -33,14 +36,15 @@ from plot_style import (
 
 NAME = "fig6_co2_network"
 DEFAULT_YEARS = (2040, 2060)
-FLOW_MIN = 1e-3              # Mt/yr；流量、捕集、注入低于它不画（求解器容差量级）
+FLOW_MIN = 1e-3              # Mt/yr；流量、捕集、注入、在役容量低于它不画（求解器容差量级）
 LW_MAX = 2.8                 # 最大流量管段的线宽（pt）
 SMAX = 40.0                  # 最大捕集 / 注入处圆点的 s（pt²，外接正方形面积）；画出的面积是 π/4·SMAX，各形状同值同面积
 TEXT = {
     "zh": {"total": "{year} 年封存 {v} ", "flow": "管段年流量（" + MT_CO2_YR + "）",
-           "size": "捕集量 / 注入量（" + MT_CO2_YR + "）", "industry": "工业 hub"},
+           "size": "捕集量 / 注入量（" + MT_CO2_YR + "）", "industry": "工业 hub", "idle": "在役、当年无流量"},
     "en": {"total": "Stored in {year}: {v} ", "flow": "Pipeline flow (" + MT_CO2_YR + ")",
-           "size": "Captured / injected (" + MT_CO2_YR + ")", "industry": "Industrial hubs"},
+           "size": "Captured / injected (" + MT_CO2_YR + ")", "industry": "Industrial hubs",
+           "idle": "In service, no flow"},
 }
 
 
@@ -73,15 +77,18 @@ def node_table(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def year_layers(data: dict[str, pd.DataFrame], year: int) -> dict[str, pd.DataFrame]:
-    """某年要画的管段、捕集源与封存汇（低于 FLOW_MIN 的不画）。"""
-    edges = data["edges"]
-    edges = edges[(edges["year"] == year) & (edges["flow_mtpa"] > FLOW_MIN)]
+    """某年要画的管段（有流量的、在役而无流量的）、捕集源与封存汇（低于 FLOW_MIN 的不画）。"""
+    edges = data["edges"][data["edges"]["year"] == year]
+    idle = edges[(edges["flow_mtpa"] <= FLOW_MIN) & (edges["total_capacity_mtpa"] > FLOW_MIN)]
+    edges = edges[edges["flow_mtpa"] > FLOW_MIN]
     if "geometry_wkt" in data["candidates"].columns:
-        edges = edges.merge(data["candidates"][["edge_id", "geometry_wkt"]], on="edge_id", how="left")
+        wkt = data["candidates"][["edge_id", "geometry_wkt"]]
+        edges = edges.merge(wkt, on="edge_id", how="left")
+        idle = idle.merge(wkt, on="edge_id", how="left")
     plants = data["plants"][(data["plants"]["year"] == year) & (data["plants"]["captured_co2_mtpa"] > FLOW_MIN)]
     industry = data["industry"][(data["industry"]["year"] == year) & (data["industry"]["captured_co2_mtpa"] > FLOW_MIN)]
     storage = data["storage"][(data["storage"]["year"] == year) & (data["storage"]["injected_mtpa"] > FLOW_MIN)]
-    return {"edges": edges, "plants": plants, "industry": industry, "storage": storage}
+    return {"edges": edges, "idle": idle, "plants": plants, "industry": industry, "storage": storage}
 
 
 def check(data: dict[str, pd.DataFrame], years: tuple[int, ...]) -> None:
@@ -123,7 +130,9 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
 
     def layers(ax, year: int, k: float = 1.0) -> None:
         layer = by_year[year]
-        ax.add_collection(LineCollection(lines[year], colors=PIPE_COLOR,
+        ax.add_collection(LineCollection(lines[year]["idle"], colors=IDLE_PIPE_COLOR, linewidths=0.35 * k,
+                                         capstyle="round", zorder=2.5))
+        ax.add_collection(LineCollection(lines[year]["edges"], colors=PIPE_COLOR,
                                          linewidths=width(layer["edges"]["flow_mtpa"]) * k,
                                          capstyle="round", joinstyle="round", alpha=0.9, zorder=3))
         px, py = to_map_xy(layer["plants"]["longitude"], layer["plants"]["latitude"])
@@ -139,11 +148,13 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
             part = layer["storage"][layer["storage"]["storage_type"] == kind]
             sx, sy = to_map_xy(part["longitude"], part["latitude"])
             ax.scatter(sx, sy, s=area_scale(part["injected_mtpa"], smax, smax=SMAX, marker=MARKERS["sink"]) * k,
-                       c=colour, marker=MARKERS["sink"], edgecolors="#08519C", linewidths=0.4 * k, zorder=5)
+                       c=colour, marker=MARKERS["sink"], edgecolors=SINK_EDGE, linewidths=0.4 * k, zorder=5)
 
-    fig = plt.figure(figsize=(183 * MM, 85 * MM))
+    fig = plt.figure(figsize=(FULL_WIDTH_MM * MM, 85 * MM))
+    maps = []
     for i, year in enumerate(years):
         ax = fig.add_axes((0.505 * i, 0.1, 0.495, 0.87))
+        maps.append(ax)
         draw_china_basemap(ax)
         layers(ax, year)
         mainland_extent(ax)
@@ -157,7 +168,8 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
 
     flow_handles = [Line2D([], [], color=PIPE_COLOR, linewidth=float(width(v)), label=f"{v:g}")
                     for v in nice_levels(fmax)]
-    size_handles = size_legend(nice_levels(smax), smax, "o", "#B0B0B0", fmt="{:g}", smax=SMAX)
+    flow_handles.append(Line2D([], [], color=IDLE_PIPE_COLOR, linewidth=0.6, label=text["idle"]))
+    size_handles = size_legend(nice_levels(smax), smax, "o", NEUTRAL, fmt="{:g}", smax=SMAX)
     industry = tuple(Line2D([], [], marker=MARKERS["industry"], linestyle="none", markersize=3,
                             markerfacecolor=SECTOR_COLORS[s], markeredgecolor="white", markeredgewidth=0.3)
                      for s in SECTOR_ORDER[1:])
@@ -166,15 +178,19 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
                                markerfacecolor=SECTOR_COLORS["coal"], markeredgecolor="white", markeredgewidth=0.3),
                         industry]
     kinds += [Line2D([], [], marker=MARKERS["sink"], linestyle="none", markersize=3.5, markerfacecolor=colour,
-                     markeredgecolor="#08519C", markeredgewidth=0.4) for colour in SINK_COLORS.values()]
+                     markeredgecolor=SINK_EDGE, markeredgewidth=0.4) for colour in SINK_COLORS.values()]
     names = [lab["sector"]["coal"], text["industry"]] + [lab["sink"][k] for k in SINK_COLORS]
     common = {"frameon": False, "borderaxespad": 0.3}
-    fig.add_artist(fig.legend(handles=flow_handles, title=text["flow"], loc="lower left", bbox_to_anchor=(0.01, 0.0),
-                              ncol=3, alignment="left", **common))
-    fig.add_artist(fig.legend(handles=size_handles, title=text["size"], loc="lower center",
-                              bbox_to_anchor=(0.46, 0.0), ncol=3, alignment="left", **common))
-    fig.legend(kinds, names, loc="lower right", bbox_to_anchor=(0.995, 0.0), ncol=2, handlelength=3.2,
-               handler_map={tuple: HandlerTuple(ndivide=None, pad=0.15)}, **common)
+    legends = [
+        fig.legend(handles=flow_handles, title=text["flow"], loc="lower left", bbox_to_anchor=(0.01, 0.0),
+                   ncol=len(flow_handles), alignment="left", **common),   # 一行：多行时按列排，代表值会错位
+        fig.legend(handles=size_handles, title=text["size"], loc="lower center",
+                   bbox_to_anchor=(0.46, 0.0), ncol=3, alignment="left", **common),
+        fig.legend(kinds, names, loc="lower right", bbox_to_anchor=(0.995, 0.0), ncol=2, handlelength=3.2,
+                   handler_map={tuple: HandlerTuple(ndivide=None, pad=0.15)}, **common),
+    ]
+    for ax in maps:
+        check_off_land(ax, *legends)
     return fig
 
 
@@ -186,7 +202,8 @@ def main(argv: list[str] | None = None) -> None:
     data = load(args.scenario)
     check(data, years)
     nodes = node_table(data)
-    lines = {y: edge_lines(year_layers(data, y)["edges"], nodes) for y in years}
+    by_year = {y: year_layers(data, y) for y in years}
+    lines = {y: {k: edge_lines(by_year[y][k], nodes) for k in ("edges", "idle")} for y in years}
     for lang in langs(args.lang):
         apply_style(lang)
         save_fig(draw(data, years, lines, lang), NAME, lang)

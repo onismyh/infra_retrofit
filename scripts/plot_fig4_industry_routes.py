@@ -1,11 +1,12 @@
 """图 4  工业减排路线（求解结果）
 
-图含义：各工业部门在各规划年的路线构成（%）：未改造、CCS、氢路线，按当年产量加权到部门。CCS 与氢路线只计改造的
+图含义：各工业部门（面板 a 起各一个）在各规划年的路线构成（%）：未改造、CCS、氢路线，按当年产量加权到部门。CCS 与氢路线只计改造的
   点源（结果表的 `abatable_production_share`；混合原料的甲醇 hub 里份额为 0 的焦炉煤气制、天然气制点源不改造，计入
   未改造，2026-10-02 起；此前的结果没有这一列，按 1 取）。氢路线在长流程钢铁
   是氢直接还原，在合成氨、甲醇是绿氢替代或补充原料氢；电炉钢与水泥没有氢路线（constants_industry.SECTOR_HAS_H2_ROUTE）。
 读图注意：份额由模型的决策变量（每个 hub 各路线份额之和为 1）按改造的产量加权，当年产量 = 基年产量 × 产量指数；份额不是减排量，
-  各部门排放与碳目标的对照见图 5。
+  各部门排放与碳目标的对照见图 5。CCS 份额是产量份额，不是捕集份额：合成氨、甲醇的 CCS 只捕集纯流股
+  （constants_industry.INDUSTRY_CAPTURABLE_SHARE），产量全走 CCS 也只捕集一部分排放；各部门按路线的减排量与捕集量见图 8。
 数据：results/solved/<情景>/sources.csv（source_type 为 industry 的行；产量即 activity，kt/yr）。
 自检：每个 hub 每年的路线份额之和为 1；部门都在 SECTOR_ORDER 里；产量为正；改造点源的产量比例在 [0, 1] 内（有这一列时）。
 输出：_indtree/results/figures/fig4_industry_routes{,_en}.{pdf,png}
@@ -18,8 +19,9 @@ import numpy as np
 import pandas as pd
 
 from plot_style import (
-    MM, ROUTE_COLORS, ROUTE_ORDER, SECTOR_ORDER,
-    apply_style, check_close, figure_cli, labels, langs, legend_patches, read_result, save_fig, stacked_bars,
+    FULL_WIDTH_MM, MM, ROUTE_COLORS, ROUTE_ORDER, SECTOR_ORDER,
+    apply_style, check_close, figure_cli, labels, langs, legend_patches, panel_label, read_result, save_fig,
+    stacked_bars,
 )
 
 NAME = "fig4_industry_routes"
@@ -59,7 +61,7 @@ def check(detail: pd.DataFrame) -> None:
 def draw(detail: pd.DataFrame, lang: str):
     lab, text = labels(lang), TEXT[lang]
     shares = route_shares(detail)
-    fig, axes = plt.subplots(1, len(shares), figsize=(183 * MM, 58 * MM), sharey=True, squeeze=False,
+    fig, axes = plt.subplots(1, len(shares), figsize=(FULL_WIDTH_MM * MM, 58 * MM), sharey=True, squeeze=False,
                              gridspec_kw={"wspace": 0.12})
     fig.subplots_adjust(left=0.07, right=0.99, bottom=0.14, top=0.8)
     for i, (ax, (sector, table)) in enumerate(zip(axes[0], shares.items())):
@@ -70,6 +72,7 @@ def draw(detail: pd.DataFrame, lang: str):
         ax.set_ylim(0, 100)
         ax.set_yticks([0, 25, 50, 75, 100])
         ax.set_title(lab["sector"][sector], pad=4)
+        panel_label(ax, "abcdefg"[i], x=-0.06)
         if i == 0:
             ax.set_ylabel(text["y"])
         else:

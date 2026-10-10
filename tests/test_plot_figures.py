@@ -1,4 +1,4 @@
-"""出图脚本（scripts/plot_fig*.py、plot_style）的数据函数与出图前自检：不画整张图、不求解，不需要 Gurobi。
+"""出图脚本（scripts/plot_fig1 … plot_fig10、plot_style）的数据函数与出图前自检：不画整张图、不求解，不需要 Gurobi。
 
 各图的自检是"图上要画的量与模型记的量对不上就报错、不出图"，这里用最小的表造出对得上与对不上两种情形；
 另查 plot_style 的四件事：旧模型分段的结果读不进来，同值的圆点、菱形、方块面积相同，本机没有所用字体时 save_fig 拒绝出图，没有文件头的脚本
@@ -27,6 +27,63 @@ def _load(monkeypatch: pytest.MonkeyPatch, name: str) -> ModuleType:
     monkeypatch.setitem(sys.modules, spec.name, module)
     spec.loader.exec_module(module)
     return module
+
+
+def test_fig1_checks_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """缺坐标或排放的源、不认识的部门、不认识的封存汇类型都拒绝出图（缺值的点会被 scatter 静默丢掉）。"""
+    fig1 = _load(monkeypatch, "plot_fig1_sources_sinks")
+    data = {"sources": pd.DataFrame({"sector": ["coal", "cement"], "lon": [110.0, 115.0], "lat": [30.0, 35.0],
+                                     "co2_mt": [5.0, 1.0]}),
+            "sinks": pd.DataFrame({"storage_type": ["dsa", "eor"], "longitude": [100.0, 120.0],
+                                   "latitude": [40.0, 38.0]})}
+    fig1.check(data)
+    with pytest.raises(ValueError, match="缺坐标"):
+        fig1.check({**data, "sources": data["sources"].assign(lat=[30.0, np.nan])})
+    with pytest.raises(ValueError, match="SECTOR_ORDER"):
+        fig1.check({**data, "sources": data["sources"].assign(sector=["coal", "glass"])})
+    with pytest.raises(ValueError, match="dsa / eor"):
+        fig1.check({**data, "sinks": data["sinks"].assign(storage_type=["dsa", "ecbm"])})
+
+
+def test_fig2_edge_classes_and_industry_sectors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """四类边各归各类，不认识的 edge_class 报错（否则少画而图例条数照样对得上）；工业 hub 配不上部门也报错。
+    边色取 Blues，不与部门色相撞。"""
+    fig2 = _load(monkeypatch, "plot_fig2_candidate_network")
+    edges = pd.DataFrame({"edge_class": ["existing_main_corridor", "hub_to_corridor_branch",
+                                         "corridor_to_storage_branch", "runtime_direct_fallback",
+                                         "triangulation_candidate"]})
+    data = {"edges": edges, "storage": pd.DataFrame({"storage_type": ["dsa", "eor"]}),
+            "industry": pd.DataFrame({"sector": ["cement", "methanol"]})}
+    groups = fig2.classify(edges)
+    assert {k: len(v) for k, v in groups.items()} == {"triangulation": 1, "branch": 2, "direct": 1, "corridor": 1}
+    fig2.check(data, groups)
+    odd = pd.concat([edges, pd.DataFrame({"edge_class": ["ferry"]})], ignore_index=True)
+    with pytest.raises(ValueError, match="ferry"):
+        fig2.check({**data, "edges": odd}, fig2.classify(odd))
+    with pytest.raises(ValueError, match="部门"):
+        fig2.check({**data, "industry": pd.DataFrame({"sector": ["cement", np.nan]})}, groups)
+    edge_colors = {style[1] for style in fig2.EDGE_STYLE.values()}
+    assert not edge_colors & set(fig2.SECTOR_COLORS.values())
+
+
+def test_fig2_load_takes_industry_sector_from_hub_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """工业 hub 的部门按管网节点表的 industry_hub_id 从 industry_hubs.csv 取；同一个 hub 在部门表里出现两次就报错。"""
+    fig2 = _load(monkeypatch, "plot_fig2_candidate_network")
+    tables = {
+        "pipeline_nodes": pd.DataFrame({"node_id": ["n1", "n2", "n3"], "lon": [110.0, 115.0, 120.0],
+                                        "lat": [30.0, 35.0, 38.0], "node_type": ["industry_hub", "plant", "storage_hub"],
+                                        "industry_hub_id": ["cement_000", np.nan, np.nan],
+                                        "storage_hub_id": [np.nan, np.nan, "S1"]}),
+        "pipeline_candidate_edges": pd.DataFrame({"edge_class": ["triangulation_candidate"]}),
+        "storage_hubs": pd.DataFrame({"storage_hub_id": ["S1"], "storage_type": ["dsa"]}),
+        "industry_hubs": pd.DataFrame({"hub_id": ["cement_000", "steel_eaf_000"], "sector": ["cement", "steel_eaf"]}),
+    }
+    monkeypatch.setattr(fig2, "read_input", lambda name: tables[name].copy())
+    data = fig2.load()
+    assert data["industry"]["sector"].tolist() == ["cement"]
+    tables["industry_hubs"] = pd.concat([tables["industry_hubs"]] * 2, ignore_index=True)
+    with pytest.raises(pd.errors.MergeError):
+        fig2.load()
 
 
 def test_fig3_capacity_split_and_checks(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,6 +184,107 @@ def test_fig6_mass_balance_and_legend_levels(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(ValueError, match="SECTOR_ORDER"):     # 不认识的部门画不出来，守恒照样对得上
         fig6.check({**data, "industry": data["industry"].assign(sector="glass")}, (2040,))
     assert fig6.nice_levels(87.0) == [1.0, 10.0, 50.0]
+
+
+def test_fig6_draws_idle_in_service_pipelines(monkeypatch: pytest.MonkeyPatch) -> None:
+    """当年无流量、但在役容量为正的管段另成一层（浅蓝细线）；没有容量也没有流量的候选边不画。"""
+    fig6 = _load(monkeypatch, "plot_fig6_co2_network")
+    edges = pd.DataFrame({"year": 2040, "edge_id": ["E1", "E2", "E3", "E4"], "flow_mtpa": [3.0, 0.0, 0.0, 5e-4],
+                          "total_capacity_mtpa": [4.0, 2.0, 0.0, 2.0]})
+    empty = pd.DataFrame({"year": [], "captured_co2_mtpa": [], "injected_mtpa": []})
+    candidates = pd.DataFrame({"edge_id": ["E1", "E2", "E4"],
+                               "geometry_wkt": ["LINESTRING (110 30, 111 31)", "LINESTRING (112 32, 113 33)", ""]})
+    layer = fig6.year_layers({"edges": edges, "candidates": candidates, "plants": empty, "industry": empty,
+                              "storage": empty}, 2040)
+    assert layer["edges"]["edge_id"].tolist() == ["E1"]
+    assert layer["idle"]["edge_id"].tolist() == ["E2", "E4"]          # 流量低于 FLOW_MIN 的在役管段也算闲置
+    assert layer["idle"]["geometry_wkt"].tolist()[0].startswith("LINESTRING (112")   # 闲置管段也按 WKT 折线画
+
+
+def test_fig8_industry_abatement_by_sector_and_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """逐 hub 各路线的减排与捕集按部门汇总；各路线之和对不上 sources.csv、合计对不上 result.json、未改造路线有减排
+    都报错。"""
+    fig8 = _load(monkeypatch, "plot_fig8_industry_abatement")
+    hubs = pd.DataFrame({"year": 2040, "source_id": ["A1", "C1"], "sector": ["ammonia", "cement"],
+                         "reduction_co2_mtpa": [3.0, 2.0], "captured_co2_mtpa": [1.5, 2.4]})
+    routes = pd.DataFrame({"year": 2040, "source_id": ["A1", "A1", "A1", "C1", "C1", "C1"],
+                           "route": ["unabated", "ccs", "h2"] * 2,
+                           "reduction_co2_mtpa": [0.0, 1.0, 2.0, 0.0, 2.0, 0.0],
+                           "captured_co2_mtpa": [0.0, 1.5, 0.0, 0.0, 2.4, 0.0]})
+    result = {"years": {"2040": {"industry": {"reduction_mt": 5.0, "captured_mt": 3.9}}}}
+    data = {"hubs": hubs, "routes": routes, "result": result}
+    fig8.check(data)
+    sectors = fig8.by_sector(data)
+    assert list(sectors) == ["cement", "ammonia"]                        # SECTOR_ORDER 的顺序
+    assert sectors["ammonia"]["reduction"].loc[2040].tolist() == pytest.approx([1.0, 2.0])   # CCS、氢路线
+    assert sectors["ammonia"]["captured"].loc[2040] == pytest.approx(1.5)
+    with pytest.raises(ValueError, match="reduction_co2_mtpa"):
+        fig8.check({**data, "hubs": hubs.assign(reduction_co2_mtpa=[3.5, 2.0])})
+    with pytest.raises(ValueError, match="captured_mt"):
+        fig8.check({**data, "result": {"years": {"2040": {"industry": {"reduction_mt": 5.0, "captured_mt": 3.0}}}}})
+    leaky = routes.assign(reduction_co2_mtpa=[0.5, 0.5, 2.0, 0.0, 2.0, 0.0])
+    with pytest.raises(ValueError, match="未改造"):
+        fig8.check({**data, "routes": leaky})
+    with pytest.raises(ValueError, match="captured_co2_mtpa"):
+        fig8.check({**data, "hubs": hubs.assign(captured_co2_mtpa=[1.5, 2.0])})
+    with pytest.raises(ValueError, match="ROUTE_ORDER"):
+        fig8.check({**data, "routes": routes.assign(route=["unabated", "ccs", "biochar"] * 2)})
+    stray = pd.concat([routes, routes.iloc[:1].assign(source_id="X9")], ignore_index=True)
+    with pytest.raises(ValueError, match="sources.csv 里没有"):
+        fig8.check({**data, "routes": stray})
+    with pytest.raises(ValueError, match="没有工业 hub"):
+        fig8.check({**data, "hubs": hubs.iloc[:0], "routes": routes.iloc[:0]})
+
+
+def test_fig9_storage_by_type_and_offshore(monkeypatch: pytest.MonkeyPatch) -> None:
+    """年注入与累计封存按汇型 × 陆海汇总（累计量换成 Gt）；注入不等于捕集、超过全国部署上限、海上标记不认识都报错；
+    不设上限（null）的年份不查。"""
+    fig9 = _load(monkeypatch, "plot_fig9_storage")
+    sinks = pd.DataFrame({"year": 2040, "storage_type": ["dsa", "dsa", "eor"], "offshore": [False, True, False],
+                          "injected_mtpa": [10.0, 4.0, 1.0], "cumulative_injected_mt": [100.0, 40.0, 10.0]})
+    result = {"years": {"2040": {"storage_national_injection_mtpa": 20.0}}}
+    data = {"sinks": sinks, "captured": pd.Series({2040: 15.0}), "result": result}
+    fig9.check(data)
+    tables = fig9.summary(sinks)
+    assert tables["annual"].loc[2040].tolist() == pytest.approx([10.0, 4.0, 1.0, 0.0])
+    assert tables["cumulative"].loc[2040, "dsa_offshore"] == pytest.approx(0.04)
+    with pytest.raises(ValueError, match="守恒"):
+        fig9.check({**data, "captured": pd.Series({2040: 14.0})})
+    with pytest.raises(ValueError, match="部署上限"):
+        fig9.check({**data, "result": {"years": {"2040": {"storage_national_injection_mtpa": 12.0}}}})
+    fig9.check({**data, "result": {"years": {"2040": {"storage_national_injection_mtpa": None}}}})
+    with pytest.raises(ValueError, match="offshore"):
+        fig9.check({**data, "sinks": sinks.assign(offshore=["no", "yes", "no"])})
+
+
+def test_fig10_cost_groups_and_objective(monkeypatch: pytest.MonkeyPatch) -> None:
+    """成本类别归成十类：年度费用与一次性投资按不折现值，折现值合计等于目标函数；类别没归类、成本对账没通过、合计对不上
+    目标函数都报错。"""
+    fig10 = _load(monkeypatch, "plot_fig10_costs")
+    system = pd.DataFrame({
+        "year": [2030, 2030, 2030, 2030, 2060],
+        "category": ["coal_operating_delta", "coal_savings_credit", "ccs_retrofit_capex", "storage_cost",
+                     "salvage_credit"],
+        "kind": ["annual", "annual", "one_off", "annual", "horizon_end"],
+        "cost_cny": [5e9, -2e9, 8e9, 1e9, -4e9],
+        "cost_discounted_cny": [40e9, -16e9, 8e9, 8e9, -1e9],
+    })
+    checks = pd.DataFrame({"check_name": ["cost_attribution_closure"], "status": ["pass"]})
+    data = {"system": system, "checks": checks, "result": {"global_objective_cny": 39e9}}
+    fig10.check(data)
+    tables = fig10.grouped(system)
+    assert tables["annual"].loc[2030].to_dict() == pytest.approx({"coal_operating": 3.0, "storage": 1.0})
+    assert tables["annual"].loc[2060].sum() == 0.0                       # 期末残值（horizon_end）不进年度费用
+    assert tables["one_off"].loc[2030, "coal_capex"] == pytest.approx(8.0)
+    assert tables["present"]["salvage"] == pytest.approx(-1.0)
+    assert float(tables["present"].sum()) == pytest.approx(39.0)
+    assert set(fig10.CATEGORY_GROUP.values()) == set(fig10.COST_ORDER)
+    with pytest.raises(ValueError, match="归类"):
+        fig10.check({**data, "system": system.assign(category=["mystery", *system["category"][1:]])})
+    with pytest.raises(ValueError, match="cost_attribution_closure"):
+        fig10.check({**data, "checks": checks.assign(status="fail")})
+    with pytest.raises(ValueError, match="global_objective_cny"):
+        fig10.check({**data, "result": {"global_objective_cny": 40e9}})
 
 
 def test_fig7_utilization_and_converted_capacity(monkeypatch: pytest.MonkeyPatch) -> None:

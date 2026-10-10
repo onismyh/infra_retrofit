@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 
 from plot_style import (
-    INK, MM, MT_CO2_YR, PATHWAY_COLORS, PATHWAY_ORDER,
+    FULL_WIDTH_MM, INK, MM, MT_CO2_YR, PATHWAY_COLORS, PATHWAY_ORDER,
     apply_style, check_close, figure_cli, fmt_number, labels, langs, legend_patches, panel_label, read_result,
     read_result_json, save_fig, stacked_bars,
 )
@@ -85,7 +85,7 @@ def draw(data: dict, lang: str):
     abatement = abatement_by_pathway(data["pathways"])
     years = capacity.index.to_numpy()
     x = np.arange(len(years))
-    fig, axes = plt.subplots(1, 2, figsize=(183 * MM, 66 * MM), gridspec_kw={"wspace": 0.3})
+    fig, axes = plt.subplots(1, 2, figsize=(FULL_WIDTH_MM * MM, 66 * MM), gridspec_kw={"wspace": 0.3})
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.12, top=0.83)
     for ax, table, ylabel, letter in ((axes[0], capacity, text["a"], "a"), (axes[1], abatement, text["b"], "b")):
         stacked_bars(ax, x, table, PATHWAY_COLORS)

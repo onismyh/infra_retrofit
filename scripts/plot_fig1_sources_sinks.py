@@ -23,9 +23,10 @@ from matplotlib.lines import Line2D
 
 from _bootstrap import ROOT
 from plot_style import (
-    INK, MAP_LEGEND, MARKERS, MM, MT_CO2_YR, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS,
-    add_scs_inset, apply_style, area_scale, check_off_land, draw_china_basemap, figure_cli, figure_label,
-    labels, langs, mainland_extent, read_input, save_fig, size_legend, to_map_xy,
+    FULL_WIDTH_MM, INK, MAP_LEGEND, MARKERS, MM, MT_CO2_YR, NEUTRAL, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS,
+    SINK_EDGE,
+    add_scs_inset, apply_style, area_scale, check_off_land, draw_china_basemap, figure_cli, figure_label, labels,
+    langs, mainland_extent, read_input, save_fig, size_legend, to_map_xy,
 )
 
 NAME = "fig1_sources_sinks"
@@ -89,9 +90,9 @@ def draw(data: dict[str, pd.DataFrame], lang: str):
         for kind, colour in SINK_COLORS.items():
             part = sinks[sinks["storage_type"] == kind]
             ax.scatter(part["x"], part["y"], s=6 * k, c=colour, marker=MARKERS["sink"],
-                       edgecolors="#08519C", linewidths=0.3 * k, zorder=4)
+                       edgecolors=SINK_EDGE, linewidths=0.3 * k, zorder=4)
 
-    fig = plt.figure(figsize=(183 * MM, 98 * MM))
+    fig = plt.figure(figsize=(FULL_WIDTH_MM * MM, 98 * MM))
     ax = fig.add_axes((0.0, 0.0, 0.64, 0.97))
     draw_china_basemap(ax)
     layers(ax)
@@ -110,9 +111,9 @@ def draw(data: dict[str, pd.DataFrame], lang: str):
              text["count"].format(name=text["industry"], n=n_industry)]
     for kind, colour in SINK_COLORS.items():
         handles.append(Line2D([], [], marker=MARKERS["sink"], linestyle="none", markersize=3,
-                              markerfacecolor=colour, markeredgecolor="#08519C", markeredgewidth=0.3))
+                              markerfacecolor=colour, markeredgecolor=SINK_EDGE, markeredgewidth=0.3))
         names.append(text["count"].format(name=lab["sink"][kind], n=int((sinks["storage_type"] == kind).sum())))
-    size = ax.legend(handles=size_legend(SIZE_TICKS, vmax, "o", "#B0B0B0", smax=SMAX), loc="lower left",
+    size = ax.legend(handles=size_legend(SIZE_TICKS, vmax, "o", NEUTRAL, smax=SMAX), loc="lower left",
                      bbox_to_anchor=(0.0, 0.0), ncol=len(SIZE_TICKS), title=text["size"], alignment="left",
                      **MAP_LEGEND)
     ax.add_artist(size)
