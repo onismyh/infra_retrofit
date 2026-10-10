@@ -16,7 +16,8 @@ result.json 末尾多一段 `resolved`，记全部参数、求解树、`--set` �
 之前定好，缺省界图层等错误在 MIP 求解之前就报（`warm_start = "lp_relax"` 的情景在热启动第 1 步之后）。
 
 2026-10-10 另加：`resolved.model_segment` 记模型分段号（`segment.MODEL_SEGMENT`），读结果时与当前代码比对；结果表换成
-按源、汇、管网、资源、系统分组的九张（`results_tables`），工作簿改由它们生成。
+按源、汇、管网、资源、系统分组的九张（`results_tables`），工作簿改由它们生成。有水约束且指定了水文成员时，求解之前
+核该成员各规划年、这次读的季节的数据（`hydrology.check_member`），缺行就拒绝：模型遇到缺行会静默补零。
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ import numpy as np
 
 from .constants import PLANNING_YEARS
 from .constants_industry import INDUSTRY_ROUTES
+from .hydrology import check_member
 from .optimization._shared import PATHWAY_INDEX
 from .optimization.data_prep import _input_files, prepare_inputs
 from .optimization.results_regions import node_provinces
@@ -241,6 +243,13 @@ def run(
     out_file = tree / "results" / f"{name}.json"
     if out_file.exists() and not force:
         raise RunError(f"{shown_path(out_file)} 已存在：要覆盖加 --force，或先把旧结果移走")
+    # 只核这次求解读的季节；成员留空（按 water_mode 的族取第一个成员，`water_access._water_member_rows`）时不预查。
+    if scenario.water_mode != "no_water" and scenario.water_scenario_id:
+        problems = check_member(tree, scenario.water_scenario_id, scenario.planning_years, scenario.water_season,
+                                check_bias=not assumptions.apply_bias_correction)
+        if problems:
+            raise RunError(f"水文成员 {scenario.water_scenario_id} 的数据不全（python -m coal_retrofit water-members"
+                           f" 查全部）：{'；'.join(problems)}")
     controls, sol = env_controls(), None
     if scenario.warm_start == "lp_relax":
         check_warm_start_env()

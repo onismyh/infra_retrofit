@@ -115,6 +115,9 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
 > v9 / v9.1 登记表：两棵旧树（`_v9tree`、`_v91tree`）的树内 `src/` 已于 892c877 删除，树本身与图幅版本目录 `results/figures/v9/`、
 > `v9.1/` 2026-09-28 移出当前版本。v9 / v9.1 / `IND_` 的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，
 > 当前版本不再维护复现步骤（README §0）；`IND_` 系的旧图在 `cf073be` 的副本里重画（`_indtree/README.md` 的"图"一节）。
+> 2026-10-10 起其余水文成员不另登记：`run <情景> --water 水文模型/GCM/SSP [--season annual|dry] [--targets sector|total]`
+> 的结果名自动拼成 `<情景>_<水文模型>_<GCM>_<SSP>_<季节>[_<目标>]`（成员 id 原样，如 `ST_BASE_cwatm_gfdl-esm4_ssp370_dry`），
+> 成员见 `python -m coal_retrofit water-members`。
 
 ---
 
