@@ -14,30 +14,6 @@ from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matri
 from .year_types import RebuiltDelta, YearData
 
 
-def _offshore_edge_mask(prepared: PreparedInputs) -> np.ndarray:
-    """触及海上封存 hub 的边（海底管道 / 平台）。"""
-    edges = prepared.network.edges
-    storages = prepared.storages
-    if "offshore" not in storages.columns:
-        return np.zeros(len(edges), dtype=bool)
-    offshore_hubs = {
-        str(hub_id)
-        for hub_id, flag in zip(storages["storage_hub_id"], storages["offshore"].astype(bool))
-        if flag
-    }
-    offshore_nodes = {
-        node_id
-        for hub_id, node_id in prepared.network.storage_node_ids.items()
-        if str(hub_id) in offshore_hubs
-    }
-    if not offshore_nodes:
-        return np.zeros(len(edges), dtype=bool)
-    return (
-        edges["from_node_id"].astype(str).isin(offshore_nodes)
-        | edges["to_node_id"].astype(str).isin(offshore_nodes)
-    ).to_numpy()
-
-
 def _edge_capex_multiplier(edge_class: str, existing_flag: int, assumptions: OptimizationAssumptions) -> float:
     label = str(edge_class)
     if label == "runtime_direct_fallback":
@@ -52,7 +28,7 @@ def _edge_capex_multiplier(edge_class: str, existing_flag: int, assumptions: Opt
 def _edge_matrices(
     prepared: PreparedInputs, assumptions: OptimizationAssumptions, state: SolveState
 ) -> dict[str, Any]:
-    """管网边：存量与可新增容量、各管径档单根 capex、运输运维系数（均含海上倍率）。"""
+    """管网边：存量与可新增容量、各管径档单根 capex、运输运维系数（均按海上段计海上倍率）。"""
     edge_base_stock = (
         prepared.network.edges["existing_corridor_flag"].fillna(0).astype(float).to_numpy() * assumptions.existing_corridor_capacity_mtpa
         + state.edge_added_stock_mtpa
@@ -60,8 +36,10 @@ def _edge_matrices(
     edge_max_total = np.full(len(prepared.network.edges), assumptions.standard_pipe_capacity_mtpa * assumptions.max_parallel_pipes)
     edge_max_new = np.maximum(0.0, edge_max_total - edge_base_stock)
     edge_length_km = prepared.network.edges["length_km"].astype(float).to_numpy()
-    offshore_edges = _offshore_edge_mask(prepared)
-    offshore_factor = np.where(offshore_edges, assumptions.offshore_transport_multiplier, 1.0)
+    # 计价长度：海上段（`builders.network_offshore`）乘海上倍率，陆上段按原长。
+    priced_length_km = edge_length_km + (assumptions.offshore_transport_multiplier - 1.0) * (
+        prepared.network.edges["offshore_length_km"].astype(float).to_numpy()
+    )
     edge_class_multiplier = prepared.network.edges.apply(
         lambda row: _edge_capex_multiplier(str(row["edge_class"]), int(row["existing_corridor_flag"]), assumptions),
         axis=1,
@@ -72,12 +50,12 @@ def _edge_matrices(
         raise ValueError("pipe_capacity_tiers_mtpa and pipe_capex_cny_per_km_by_tier must be non-empty and equal length")
     # (n_edges, n_tiers)：每条边每档一根管的 CNY。
     edge_tier_capex = (
-        (edge_length_km * edge_class_multiplier * offshore_factor)[:, None]
+        (priced_length_km * edge_class_multiplier)[:, None]
         * np.asarray(tier_capex_per_km, dtype=np.float64)[None, :]
     )
     # 每条边的运输运维系数（CNY / Mt 流量）。
     edge_route_opex_coeff = (
-        edge_length_km * assumptions.route_opex_cny_per_t_km * 1_000_000.0 * offshore_factor
+        priced_length_km * assumptions.route_opex_cny_per_t_km * 1_000_000.0
     )
     return {
         "edge_base_stock_mtpa": edge_base_stock,
@@ -128,11 +106,8 @@ def _build_year_matrices(
     coal_savings_per_kg_nh3 = (
         coal_price_per_plant * float(assumptions.nh3_lhv_gj_per_kg) * float(ammonia_data.get("ammonia_flow_scale", 1.0))
     )
-    # 封存：2060 规模的可建注入速率 x 本年部署进度。
-    storage_injectivity_mtpa = (
-        prepared.storages["injectivity_mtpa"].astype(float).to_numpy()
-        * float(assumptions.storage_deployment_fraction(int(year)))
-    )
+    # 封存：各汇的年注入上限（不随年份变）；全国合计另受本年的部署进度约束。
+    storage_injectivity_mtpa = prepared.storages["injectivity_mtpa"].astype(float).to_numpy()
     # 本年各组上限，各组自身 2030 基线的比例。
     rows = prepared.sector_targets[prepared.sector_targets["planning_year"].astype(int) == int(year)]
     if rows.empty:
@@ -165,7 +140,7 @@ def _build_year_matrices(
         coal_savings_per_gj=coal_savings_per_gj,
         coal_savings_per_kg_nh3=coal_savings_per_kg_nh3,
         storage_injectivity_mtpa=storage_injectivity_mtpa,
-        storage_deployment_fraction=float(assumptions.storage_deployment_fraction(int(year))),
+        storage_national_injection_mtpa=float(assumptions.storage_national_injection_mtpa(int(year))),
         sector_cap_fraction=sector_cap_fraction,
         industry_h2_links=industry_h2_data["links"],
         industry_h2_hub_membership=industry_h2_data["hub_membership"],
@@ -180,7 +155,7 @@ def _build_year_matrices(
         ammonia_links=ammonia_data["links"],
         ammonia_link_hub_membership=ammonia_data["hub_membership"],
         ammonia_link_node_membership=ammonia_data["node_membership"],
-        ammonia_available_kg=ammonia_data["available_kg"],
+        h2_available_kg=ammonia_data["h2_available_kg"],
         ammonia_link_cost_cny_per_kg=ammonia_data["link_cost_cny_per_kg"],
         water_nodes=water_data["nodes"],
         water_links=water_data["links"],

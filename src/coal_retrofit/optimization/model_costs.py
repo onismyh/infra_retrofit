@@ -109,7 +109,8 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
     """煤电运行项与碳成本（CNY/yr，未折现未缩放），键与 `cost_exprs` 同名同序。"""
     year_data = payload.year_data
 
-    # 基线净运行成本（煤 + 运维 - 电量电费 - 容量电费）：未改造按基线发电量，改造路径含 CF 提升，退役为零。
+    # 基线净运行成本（煤 + 运维 - 电量电费 - 容量电费）相对参照"全部维持不改造运行"的差（增量口径，2026-10-10 起；
+    # 参照不进目标，`plant_matrices` 的 `baseline_reference`）：未改造为零，改造路径为 CF 提升的差，退役为省下的参照。
     baseline_net = gp.quicksum(
         float(year_data.baseline_net_matrix[p, k]) * payload.share[p, k]
         for p in range(plant_count) for k in range(len(PATHWAYS))
@@ -138,11 +139,16 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             float(nh3_savings_vec[p]) * payload.ammonia_use_kg[p] for p in range(plant_count)
         )
 
-    # 路径增量运维（每 MWh 附加项）+ 生物质掺烧能力的固定运维：在用的掺烧能力 x 每单位的运维（2026-10-02 起）。
-    incremental_om = gp.quicksum(
-        float(year_data.fixed_cost_matrix[p, k]) * payload.share[p, k]
-        for p in range(plant_count) for k in range(len(PATHWAYS))
-    ) + _priced(year_data.biomass_blend_om_per_level, payload.blend_level_b)
+    # 路径增量运维（每 MWh 附加项）+ 掺烧能力的固定运维：在用的掺烧能力 x 每单位的运维（生物质 2026-10-02 起，
+    # 掺氨 2026-10-10 起）。
+    incremental_om = (
+        gp.quicksum(
+            float(year_data.fixed_cost_matrix[p, k]) * payload.share[p, k]
+            for p in range(plant_count) for k in range(len(PATHWAYS))
+        )
+        + _priced(year_data.biomass_blend_om_per_level, payload.blend_level_b)
+        + _priced(year_data.ammonia_blend_om_per_level, payload.blend_level_a)
+    )
 
     # 能耗惩罚：CCS 固定项 + 空冷背压项（仅转换份额）；生物质档位相关项在 constraints 里线性化。
     energy_penalty_cost = gp.quicksum(
@@ -174,7 +180,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
     assert payload.ccs_island is not None, "add_capacity_vintages must run before add_year_costs"
     ccs_om_cost = gp.quicksum(payload.ccs_island.fixed_om)
     return {
-        "baseline_net_cost": baseline_net,
+        "coal_operating_delta": baseline_net,
         "carbon_cost": carbon_cost,
         "coal_savings_credit": -coal_savings,
         "energy_penalty_cost": energy_penalty_cost + gp.quicksum(payload.bio_penalty_by_plant),
@@ -343,7 +349,8 @@ def _air_unit_capex(year_data: YearData) -> np.ndarray:
 def _blend_unit_capex(year_data: YearData, assumptions: OptimizationAssumptions) -> tuple[np.ndarray, np.ndarray]:
     """每单位掺烧能力（一个档位层 x 占装机的份额）的 capex，CNY，每厂一项；生物质（BECCS 共用）、氨各一份。
 
-    生物质掺烧能力的固定运维按同一单价计（`plant_matrices` 的 `biomass_blend_om_per_level`），改这里须同改。
+    掺烧能力的固定运维按同一单价计（`plant_matrices` 的 `biomass_blend_om_per_level`、`ammonia_blend_om_per_level`），
+    改这里须同改。
     """
     capacity_mw = np.asarray(year_data.capacity_mw, dtype=np.float64)
     return (
@@ -361,7 +368,7 @@ def _slack_penalty(payload: YearPayload, assumptions: OptimizationAssumptions) -
     return (
         payload.target_shortfall_mt * assumptions.slack_penalty_cny_per_unit
         + payload.biomass_slack_gj.sum() * 2_000.0 * _bio_scale
-        + payload.ammonia_slack_kg.sum() * 1_000.0 * _amm_scale
+        + payload.h2_slack_kg.sum() * 1_000.0 * _amm_scale
         + payload.water_slack_m3.sum() * 1_000.0 * _wat_scale
         + (payload.water_basin_slack_m3.sum() * 1_000.0 * _wat_scale
            if payload.water_basin_slack_m3 is not None else 0.0)

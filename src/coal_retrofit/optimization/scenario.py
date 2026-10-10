@@ -37,14 +37,15 @@ class OptimizationAssumptions:
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
     usd_to_cny: float = 7.0
     retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
-    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），生物质掺烧运维按每年
-    # biomass_upgrade_om_fraction x 掺烧能力的 capex 计（2026-10-02 起），都不另设每 MWh 附加项：两者并存会把同一笔
-    # 成本重复计算。此前生物质与 BECCS 的掺烧运维各 30 CNY/MWh，按改造路径的全部发电量收，与掺烧比例无关：Wang & Cai
-    # 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr 按约 4 400 h 折算（这个小时数无出处）。
+    # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），生物质与掺氨的掺烧运维按每年
+    # biomass_upgrade_om_fraction / ammonia_upgrade_om_fraction x 掺烧能力的 capex 计（生物质 2026-10-02 起、掺氨 2026-10-10
+    # 起），都不另设每 MWh 附加项：两者并存会把同一笔成本重复计算。此前生物质与 BECCS 的掺烧运维各 30 CNY/MWh，按改造路径的
+    # 全部发电量收，与掺烧比例无关：Wang & Cai 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr 按约 4 400 h 折算（这个
+    # 小时数无出处）；掺氨此前 80 CNY/MWh（无出处）。
     ccs_fixed_cost_cny_per_mwh: float = 0.0
     biomass_fixed_cost_cny_per_mwh: float = 0.0
     beccs_fixed_cost_cny_per_mwh: float = 0.0
-    ammonia_fixed_cost_cny_per_mwh: float = 80.0  # 掺氨运维；⚠ 假设（无出处）
+    ammonia_fixed_cost_cny_per_mwh: float = 0.0
     # 学习参考年（2030）的捕集岛改造 CAPEX，含压缩，在既有 300-1000 MW 机组上做 90% 胺法
     # 捕集。文献综述 2026-09-10（docs/工业联合减排实现说明.md §9.6）：中值 3 500 CNY/kW，
     # 区间 2 700-4 400（区间的出处没有记录；主引、上沿与国能锦界原文未核，本地 PDF 的对照值见 README §0.2）。
@@ -129,7 +130,11 @@ class OptimizationAssumptions:
     ccs_deployment_doubling_years: float = 5.6
     ccs_learning_reference_year: int = 2030
     # 系统净成本框架
-    baseline_om_cost_cny_per_mwh: float = 80.0       # 基线燃煤运行的非燃料运维；⚠ 假设（无出处）
+    # 基线燃煤运行的非燃料运维（2026-10-10 起；此前 80，无出处）：Wang & Cai 2024 SI Table 3 的固定运维 β2 41.66
+    # (29.3-54.0) $/kW 与可变运维 β3 31.35 (24.0-38.7) $/kW（表里单位 $/kW，按每年读）合 511 CNY/kW/yr，按该 SI 数据处理
+    # 说明 c 的全国平均利用小时 4 611.83 h 折成 110.8 (80.9-140.7) CNY/MWh，取 110。模型按发电量收，固定运维部分实际随
+    # 利用小时变（作者决定 2026-10-10）。
+    baseline_om_cost_cny_per_mwh: float = 110.0
     # 计算搁浅资产用的新建成本。对照 Fan et al. 2023（`fan2023cofiring`）SI Table 15 的煤电初始投资
     # 3 636 000 CNY/MW（取值比原文低 3.7%）；电规总院 2020 年水平 660-1 000 MW 超超临界 3 309-3 636 元/kW
     # （经《中国能源报》2023-04-24 转述，该文即按 3 500 元/kW 计；未核原文）。
@@ -144,21 +149,6 @@ class OptimizationAssumptions:
     # (CRF + 0.12) x 525 / ((CRF + 0.06) x 350) = 2.21（贴现率 5%–8% 为 2.13–2.26；建设期 5 / 3 年按年中均匀投入计息、运维按隔夜投资计为 2.23），取 2.2。
     # 只按投资比为 1.5。与管道的 offshore_transport_multiplier 分开设，设 1.0 即不分陆海。
     offshore_storage_multiplier: float = 2.2
-    # --- hub 注入速率，由候选场址密度推得 ------------------------------------------------
-    # 源栅格（Fan 5 km 网格；见 data/封存汇图层-Fan）按每个 5x5 km 格子存的是地层能接受的
-    # 地质注入速率（全国均值 8.0，单格最大 134 Mt/a）——已用数据集自带的分省表核对，
-    # 其 Max 列逐省复现了栅格的单格最大值。因此把一个盆地内的格子加总没有工程意义
-    # （全国合计 555 Gt/yr）。
-    # 可建速率改为如下推得：
-    #     hub 注入能力 = (hub 内格子数 / storage_site_block_pixels) x 单场址项目速率
-    # 即每个 50x50 km 区块（=100 个 5 km 格子；按压力干扰定的间距）一个封存项目，每个项目
-    # 取真实项目规模（齐鲁-胜利 1 Mt/yr、Gorgon 设计 4 Mt/yr -> 中值 2 Mt/yr）。全国合计
-    # = 1 350 Mt/yr，落在 ACCA21/CAEP 2060 年 CCUS 部署区间 1 000-1 800 Mt/yr 内。
-    # max_hub_injectivity_mtpa 现在只是给个别异常 hub 的上限。三者都在
-    # injectivity_multiplier 之前施加。
-    storage_site_block_pixels: float = 100.0
-    storage_site_project_rate_mtpa: float = 2.0
-    max_hub_injectivity_mtpa: float = 200.0
     # 管道运维（2026-10-02 起）：每年 pipe_fixed_om_fraction x 在役管道的 capex（建设年的单价，含类别与海上倍率），在役与
     # 流量上限同一判据，含到寿命后原址重铺的那一代，闲置的管也付（`model_costs._transport_storage_costs`）。4% 取 Fan et al.
     # 2023 SI p.12（PDF 第 13 页）式 (S29) 后：单位管长运维 = 单位管长建造成本（式 S26）x 4%，引其文献 18，原文未核；DEA 陆上 0.9% 作敏感性。
@@ -167,8 +157,10 @@ class OptimizationAssumptions:
     # 成本 0.026 (0.020-0.036) $/(t·km) = 0.182 CNY/(t·km) 减去 20 Mt 档满负荷的 capex 年化 ~0.029；满负荷时相当于每年
     # capex 的 15% / 21% / 38%（类别倍率 1.0 的边，2 / 5 / 20 Mt 档）。设回 0.15、pipe_fixed_om_fraction 设 0 即复原旧口径，两项同开会重复计费。
     route_opex_cny_per_t_km: float = 0.0
-    # 海上盆地（东海、珠江口、渤海、北部湾）要承担海底管道与平台成本：凡与海上封存 hub
-    # 相连的边，运输 CAPEX 与 OPEX 都乘以此系数。⚠ 假设（无出处）。
+    # 海底管道单位长度造价相对陆上的倍数（作者定 1.5，2026-10-10）：只乘在每条边的海上段上（`offshore_length_km`，
+    # 边的几何落在陆地省界之外的部分，`builders.network_offshore`；2026-10-10 前是凡接海上汇的边整条乘），capex 与按 capex
+    # 比例计的固定运维随之同乘。文献（来源索引）：[R15] 转述 USAID 2002、ZEP 2011、Knoope 2014 为 1.6（1.5–2.0），
+    # [A19] PyPSA technology-data（转录 DEA）海底管道投资为陆上 2.0 倍；1.5 在区间低端。
     offshore_transport_multiplier: float = 1.5
     # 沿既有油气干线的 62 条候选边（`existing_corridor_flag`）所记的免费 CO2 容量。
     # 2026-09-10 之前为 20 Mtpa（无出处）；文献综述（docs/工业联合减排实现说明.md §9.6）
@@ -201,13 +193,12 @@ class OptimizationAssumptions:
     # 这一费率原先是字段 `pipe_capex_cny_per_mtpa_km`；分档之后它只流向一个没人读的报告系数，已删除。
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
-    # 封存部署爬坡。`injectivity_mtpa` 是 2060 年规模的可建速率（按 ACCA21 的 2060 年区间
-    # 标定，见 storage_site_project_rate_mtpa）。2030 年就全部开放时，旧情景 `IND_BASE_t95` 仅凭碳价
-    # 就在 2040 年注入了 1 265 Mt/yr，而目前全国注入量为 ~4 Mt/yr。各规划年的可用比例取
-    # ACCA21 (2021) CCUS 路线图的区间中点：2030 年 0.2-4.08 亿 t（中点 2.1），2050 年 6-14.5
-    # （10.2），2060 年 10-18.2（14.1）；2040 年在 2035 年与 2050 年的区间之间插值（~7.5）。
-    # 再除以全国可建速率 12.8 亿 t/yr，并以 1 封顶。
-    storage_deployment_fraction_by_year: tuple[float, ...] = (0.17, 0.58, 0.80, 1.00)
+    # 封存部署进度：全国各汇合计的年注入量上限（Mt/a，各规划年一个；空元组即不设），各汇另受自身年注入上限
+    # （`injectivity_mtpa`，Fan 2025 逐格注入能力之和，不随年份变）约束（`model_year._add_injectivity_limit`）。取 ACCA21 (2021)
+    # CCUS 路线图的区间中点：2030 年 0.2-4.08 亿 t（中点 2.1）、2050 年 6-14.5（10.2）、2060 年 10-18.2（14.1），2040 年在 2035 与
+    # 2050 年的区间之间插值（~7.5）。作者定（2026-10-10）：部署进度直接作全国速率，各汇不再按进度缩放；此前是各汇可建速率 x 比例
+    # (0.17, 0.58, 0.80, 1.00)，比例 = 上面的中点 ÷ 旧的全国可建速率 12.8 亿 t/a、以 1 封顶。
+    storage_national_injection_mtpa_by_year: tuple[float, ...] = (210.0, 750.0, 1020.0, 1410.0)
     # 绿氨供给爬坡，同一机制。供给曲线只是技术潜力（2025 年 8 551 Mt NH3/yr，而全机组
     # 50% 掺烧只需 ~1 600 Mt），所以没有爬坡时节点上限永不绑定。默认全为 1，因为仓库里
     # 还没有有出处的中国绿氨建设轨迹；有了再设。
@@ -332,18 +323,8 @@ class OptimizationAssumptions:
     # one-hot 二元变量时松弛太弱，部门上限 MIP 跑 10 h 后仍停在 4-15% gap（下界一直停在
     # 根节点 LP 上）。管道保持整数。False 恢复二元形式。
     hub_decisions_continuous: bool = True
-    # 煤电机组掺烧绿氨的全国上限，每个规划年（2030/2040/2050/2060）的 Mt NH3。节点层是
-    # 电解制氨潜力（2030 年 ~8 800 Mt NH3），永不绑定；2026-09-10 的文献综述（见
-    # docs/工业联合减排实现说明.md §9.6）给出的可供电力使用的氨为：
-    #   2050  47 Mt  -- Xiong et al. 2022, 储能科学与技术 11(12)，掺氨发电渗透率 30%
-    #                  （DOI 10.19799/j.cnki.2095-4239.2022.0364），可直接引用；
-    #   2030   2 Mt  -- 示范规模：2030 年全国绿氨产能 4.5 Mt
-    #                  （中国化工节能技术协会，经中国能源报 2025-09-01 转引），化肥优先；
-    #   2040  12 Mt  -- 在 Xiong 的 2035 年掺烧需求（5.4 Mt）与 2050 年之间内插；
-    #   2060  55 Mt  -- Xiong 2060 年氨总量 120 Mt，可再生比例 >97%，其中约一半为能源用途
-    #                  （RMI/CPCIF 2024）；取 50-60 Mt 区间的中点。
-    # 2030/2040/2060 是推导值，不是引文原值——已为作者标出。空元组 = 关闭。
-    ammonia_fleet_cap_mt_by_year: tuple[float, ...] = (2.0, 12.0, 47.0, 55.0)
+    # 2026-10-10 之前另有一条煤电掺烧绿氨的全国上限 `ammonia_fleet_cap_mt_by_year`（2 / 12 / 47 / 55 Mt NH3，2030-2060），
+    # 已删：氨在节点上由绿氢合成，节点与全国都只设绿氢上限，煤电用氨按 NH3_H2_RATIO 折成氢计入（作者决定 2026-10-10）。
     # 所有用户从共享电解节点取用的绿氢全国上限（机组用氨按 NH3_H2_RATIO 折成 H2
     # + 工业用氢），每个规划年的 Mt H2。2030 与 2060 取自中国氢能联盟
     # 《中国氢能技术发展路线图研究》(2024-12)：2030 年可再生氢 3.5-6.5 Mt，2060 年
@@ -371,6 +352,9 @@ class OptimizationAssumptions:
     # （Deng et al. 2024）；仅燃烧器 121.6 CNY/kW（Li & Li 2022，未确认）。三者口径各异，中位数
     # 121.6，取 125（每档 25 的整数倍），对应第 5 档；每档线性 25 CNY/kW，这个形状：⚠ 假设（无出处）。
     # （原值 800,000 是中国文献集中区间的 ~30 倍。）
+    # 掺氨能力的固定运维，每年占其 capex 的比例，按在用的掺氨能力计，与生物质同口径（作者决定 2026-10-10；掺氨没有同口径
+    # 的出处）。此前见上方 `ammonia_fixed_cost_cny_per_mwh`。
+    ammonia_upgrade_om_fraction: float = 0.03
     # 生物质到厂成本构成（Wang et al. 2024, Nat Commun）
     # 收购价 base_cost_cny_per_gj 在供给曲线 CSV 里（`constants.BIOMASS_COST_BASE` = 20 元/GJ）。
     biomass_pretreatment_cost_cny_per_gj: float = 11.96     # γ₅: 6.15 $/MWh × 7.0 / 3.6 (Wang et al. 2024, Nat Commun)
@@ -439,19 +423,15 @@ class OptimizationAssumptions:
         nearest = min(mapping, key=lambda candidate: abs(candidate - year))
         return float(mapping[nearest])
 
-    def storage_deployment_fraction(self, year: int) -> float:
-        """2060 年规模的注入速率中，在 `year` 已建成可用的份额。"""
-        return self._fraction_for_year(self.storage_deployment_fraction_by_year, year)
+    def storage_national_injection_mtpa(self, year: int) -> float:
+        """`year` 全国各汇合计的年注入量上限（Mt/a）；没有设（空元组）时为 inf。"""
+        if not self.storage_national_injection_mtpa_by_year:
+            return float("inf")
+        return self._fraction_for_year(self.storage_national_injection_mtpa_by_year, year)
 
     def ammonia_supply_deployment_fraction(self, year: int) -> float:
         """绿氨技术潜力中，在 `year` 已建成的份额。"""
         return self._fraction_for_year(self.ammonia_supply_deployment_fraction_by_year, year)
-
-    def ammonia_fleet_cap_mt(self, year: int) -> float:
-        """煤电掺氨在 `year` 的全国绿氨上限，Mt NH3（0 = 关闭）。"""
-        if not self.ammonia_fleet_cap_mt_by_year:
-            return 0.0
-        return self._fraction_for_year(self.ammonia_fleet_cap_mt_by_year, year)
 
     def green_h2_national_cap_mt(self, year: int) -> float:
         """所有节点用户在 `year` 的全国绿氢上限，Mt H2（0 = 关闭）。"""
@@ -486,6 +466,10 @@ class OptimizationScenario:
     # g 属于 {power, steel, cement, chemicals}；baseline_g(2030) 是本模型自身的 2030 冻结技术排放，
     # 即 TIMES 轨迹给形状、模型给水平。煤电整体为 power 组。
     sector_target_source: str = "times_cn60"
+    # 碳目标的两个入口（作者决定 2026-10-10）："sector" 四组各一条上限（上式）；"total" 电力加工业合计一条总量上限，
+    # 额度 = 四组额度之和，sum_g residual_g(y) <= sum_g cap_fraction_g(y) x baseline_g(2030) + shortfall(y)，部门间可以调剂
+    # （`model_year._add_sector_targets`）。
+    sector_target_mode: str = "sector"
     # 各规划年的煤电机组利用小时，全国按容量加权。为空时四个年份都冻结在分省统计值上
     # （2026-09-10 之前的行为，此时机组 2060 年发电 6 576 TWh，与 2030 年相同）。设定后，
     # 每个 hub 所在省的小时数乘以 hours_y / 全机组当前平均小时数（4 643 h），从而保留省间
@@ -561,7 +545,7 @@ class OptimizationScenario:
     discount_base_year: int = 2025
     # 系统净成本参数
     # 碳价，元/t CO2，2030/2040/2050/2060 年：⚠ 假设（情景设定，无出处），每 10 年加 380 元的直线；模型没有价格指数，
-    # 按不变价用。登记表里只有 `ST_CP_BASE` 用它，另两个 `ST_` 情景置零（`scenarios/st.toml`）。对照（都只见
+    # 按不变价用。登记表里只有 `ST_CP_BASE` 用它，另三个 `ST_` 情景置零（`scenarios/st.toml`）。对照（都只见
     # 检索摘要，未核原文）：ICF 2022 中国碳价调查对 2030 年的预期 130 元/t；C-GEM（张希良等 2022，管理世界 38(1)）
     # 2030 年 100 以上、2060 年 2 700 以上；Zhang & Chen 2022（`zhang2022probabilistic`）2060 年中位数 168-1 096 USD/t。
     carbon_price_cny_per_t_by_year: tuple[float, ...] = (120.0, 500.0, 880.0, 1260.0)

@@ -6,7 +6,7 @@
   是氢直接还原，在合成氨、甲醇是绿氢替代或补充原料氢；电炉钢与水泥没有氢路线（constants_industry.SECTOR_HAS_H2_ROUTE）。
 读图注意：份额由模型的决策变量（每个 hub 各路线份额之和为 1）按改造的产量加权，当年产量 = 基年产量 × 产量指数；份额不是减排量，
   各部门排放与碳目标的对照见图 5。
-数据：_indtree/results/<情景>/industry_detail.csv。
+数据：results/solved/<情景>/industry_detail.csv。
 自检：每个 hub 每年的路线份额之和为 1；部门都在 SECTOR_ORDER 里；产量为正；改造点源的产量比例在 [0, 1] 内（有这一列时）。
 输出：_indtree/results/figures/fig4_industry_routes{,_en}.{pdf,png}
 用法：python scripts/plot_fig4_industry_routes.py [--scenario 情景] [--lang zh|en|both]

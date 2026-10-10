@@ -293,13 +293,15 @@ def _build_plant_cost_table(
     rebuilt_air_share: np.ndarray,
     bio_penalty_by_plant: np.ndarray,
     blend_level_b: np.ndarray,
+    blend_level_a: np.ndarray,
 ) -> pd.DataFrame:
     """逐厂成本分解：由求解得到的变量值计算。
 
     未折现的逐年口径。一次性 CAPEX 列与模型一致：搁浅资产取求解器的逐厂值 `stranded_by_plant`（计在新增提前退役上，
     `retirement.retirement_flows`），CCS 改造 CAPEX 计在本年新建的捕集岛 `retrofit_new` 上，并含学习
-    曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。增量运维含生物质
-    掺烧能力的固定运维：求解器的在用掺烧能力 `blend_level_b` x 每单位运维（2026-10-02 起）。
+    曲线成本系数。捕集岛固定运维取求解器按在用的各代与建设年单价算的 `ccs_om_by_plant`（`vintage`）。增量运维含掺烧
+    能力的固定运维：求解器的在用掺烧能力 `blend_level_b`、`blend_level_a` x 每单位运维（生物质 2026-10-02 起，掺氨
+    2026-10-10 起）。
     碳成本与目标函数同式，用求解器的逐厂减排量 `plant_reduction_mt`。基线净成本、CCS 能耗惩罚与空冷背压燃料含各类
     重建部分的差（`rebuilt_share`、`rebuilt_air_share`，求解器的同名值，形状 (类数, plant_count, len(PATHWAYS))；
     没有拆出重建部分的 hub 时全为零）。
@@ -324,8 +326,7 @@ def _build_plant_cost_table(
         e = float(emissions[p])
         cap = float(capacity_mw[p])
 
-        # 基线净成本：逐路径（燃料 + 运维 - 电量电费 - 容量电费）矩阵行 × 份额
-        # （改造列含 CF 提升，退役列为零）
+        # 基线净运行成本相对参照（全部维持不改造运行）的差：逐路径矩阵行 × 份额（增量口径，与目标函数同式）
         baseline_net = sum(
             float(year_data.baseline_net_matrix[p, k]) * float(share[k])
             for k in range(len(PATHWAYS))
@@ -344,9 +345,10 @@ def _build_plant_cost_table(
         _cspg = year_data.coal_savings_per_gj
         _cspg_val = float(_cspg[p]) if hasattr(_cspg, '__getitem__') and not isinstance(_cspg, (int, float)) else float(_cspg)
         coal_savings = (_cspg_val / _bio_scale) * float(biomass_use_gj[p])
-        # 增量运维：每 MWh 附加项 + 生物质掺烧能力的固定运维（在用的掺烧能力，与目标函数同式）
+        # 增量运维：每 MWh 附加项 + 生物质、掺氨掺烧能力的固定运维（在用的掺烧能力，与目标函数同式）
         incr_om = sum(float(year_data.fixed_cost_matrix[p, k]) * float(share[k]) for k in range(len(PATHWAYS)))
         incr_om += float(year_data.biomass_blend_om_per_level[p]) * float(blend_level_b[p])
+        incr_om += float(year_data.ammonia_blend_om_per_level[p]) * float(blend_level_a[p])
         # 捕集岛固定运维：在役且在用的捕集岛 x 建设年单价，取求解器的值
         ccs_om = float(ccs_om_by_plant[p])
         # 搁浅资产：取求解器的值（新增提前退役 n^o x 每单位的剩余账面价值，`retirement.retirement_flows`）
@@ -365,7 +367,7 @@ def _build_plant_cost_table(
             "plant_id": plants.iloc[p]["plant_id"],
             "province_name": plants.iloc[p]["province_name"],
             "capacity_mw": cap,
-            "baseline_net_cost_cny": baseline_net,
+            "coal_operating_delta_cny": baseline_net,
             "carbon_cost_cny": carbon_cost,
             "coal_savings_cny": -coal_savings,
             "incremental_om_cny": incr_om,

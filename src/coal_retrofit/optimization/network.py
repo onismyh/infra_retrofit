@@ -33,7 +33,7 @@ class RuntimeNetwork:
     # 列包括：node_id, lon, lat, node_type, plant_id, storage_hub_id, ...
 
     edges: pd.DataFrame
-    # 列包括：edge_id, from_node_id, to_node_id, length_km,
+    # 列包括：edge_id, from_node_id, to_node_id, length_km, offshore_length_km,
     #         existing_corridor_flag, edge_class, source, year_basis
 
     incidence: np.ndarray
@@ -106,6 +106,7 @@ def _append_runtime_edge(
     edge_class: str,
     source: str,
     year_basis: str,
+    offshore_length_km: float = 0.0,
 ) -> None:
     edge_rows.append(
         {
@@ -113,6 +114,7 @@ def _append_runtime_edge(
             "from_node_id": from_node_id,
             "to_node_id": to_node_id,
             "length_km": round(length_km, 3),
+            "offshore_length_km": round(offshore_length_km, 3),
             "corridor_type": "runtime",
             "existing_corridor_flag": 0,
             "edge_class": edge_class,
@@ -171,6 +173,17 @@ def build_runtime_network(
 ) -> RuntimeNetwork:
     base_nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
     base_edges = pd.read_csv(paths.inputs_dir / "pipeline_candidate_edges.csv")
+    if "offshore_length_km" not in base_edges.columns:
+        raise ValueError(
+            f"{paths.inputs_dir / 'pipeline_candidate_edges.csv'} 没有 offshore_length_km 列（每条边的海上段长度，"
+            "2026-10-10 起按它计海上倍率）：先运行 scripts/build_network_inputs.py --offshore-only"
+        )
+    offshore = base_edges["offshore_length_km"].astype(float)
+    if not (np.isfinite(offshore).all() and (offshore >= 0.0).all() and (offshore <= base_edges["length_km"] + 1e-3).all()):
+        raise ValueError(
+            "pipeline_candidate_edges.csv 的 offshore_length_km 须无缺失、在 0 与 length_km 之间："
+            "重新运行 scripts/build_network_inputs.py --offshore-only"
+        )
     graph = _build_base_graph(base_nodes, base_edges, scenario)
     nodes = base_nodes.copy()
     runtime_edge_rows: list[dict[str, object]] = []
@@ -229,6 +242,8 @@ def build_runtime_network(
             edge_class="runtime_storage_branch",
             source="runtime_short_link_rule",
             year_basis="runtime",
+            # 运行期支线没有几何：接海上汇的整条算海上段，其余支线（接电厂、工业）都在陆上。
+            offshore_length_km=length_km if bool(getattr(row, "offshore", False)) else 0.0,
         )
         nodes = pd.concat(
             [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "storage_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],

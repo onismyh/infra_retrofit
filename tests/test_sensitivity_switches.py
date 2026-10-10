@@ -83,6 +83,11 @@ def test_part_load_rejects_impossible_online_hours(online: float) -> None:
         scenario.part_load_factor(2030, 4643.0)
 
 
+def _net(data: YearData) -> np.ndarray:
+    """基线净运行成本的绝对值：进目标的是相对未改造列的差，参照另存（2026-10-10 起，`plant_matrices`）。"""
+    return data.baseline_net_matrix + data.baseline_reference_cny[:, None]
+
+
 @pytest.mark.parametrize("retirement_year", [9999, 2045])
 def test_part_load_scales_heat_rates_emissions_and_penalties(tmp_path, retirement_year: int) -> None:
     """2050 年 2 000 h、在线 7 500 h（κ = 1.353）：排放、毛热耗、CCS 能耗惩罚与燃料成本乘 κ；生物质与空冷背压的惩罚燃料按
@@ -108,7 +113,7 @@ def test_part_load_scales_heat_rates_emissions_and_penalties(tmp_path, retiremen
     # 基线净运行成本只有燃料一项随毛热耗变：差 = 发电量 x 毛热耗 x (κ − 1) x 煤价。
     fuel = off_data.generation_by_pathway * (off_data.heat_rate_eff * assumptions.province_coal_cost("Shanxi"))[:, None]
     np.testing.assert_allclose(
-        on_data.baseline_net_matrix - off_data.baseline_net_matrix, (kappa - 1.0) * fuel, rtol=1e-9, atol=1e-3
+        _net(on_data) - _net(off_data), (kappa - 1.0) * fuel, rtol=1e-9, atol=1e-3
     )
 
 
@@ -166,7 +171,7 @@ def test_coal_price_multiplier_scales_plant_and_industry_coal(tmp_path) -> None:
     np.testing.assert_array_equal(on_data.emissions_mt, off_data.emissions_mt)
     fuel = off_data.generation_by_pathway * (off_data.heat_rate_eff * base.province_coal_cost("Shanxi"))[:, None]
     np.testing.assert_allclose(
-        on_data.baseline_net_matrix - off_data.baseline_net_matrix, -0.11 * fuel, rtol=1e-9, atol=1e-3
+        _net(on_data) - _net(off_data), -0.11 * fuel, rtol=1e-9, atol=1e-3
     )
     # 水泥 CCS 的年度成本 = 捕集量 x (蒸汽用煤 + 电 + 耗材)：只有蒸汽用煤一项乘 0.89。
     elec = SCENARIO.electricity_price_for_year(2040)
@@ -198,13 +203,13 @@ def test_capacity_price_moves_revenue_from_energy_to_capacity(tmp_path, hours_pa
     hours_now, capacity_kw = 4629.5, 1000.0 * 1000.0
     expected = on_data.generation_by_pathway * (100.0 * 1000.0 / hours_now) - 100.0 * capacity_kw
     expected[:, PATHWAY_INDEX["retire"]] = 0.0
-    np.testing.assert_allclose(on_data.baseline_net_matrix - off_data.baseline_net_matrix, expected, rtol=1e-9, atol=1e-3)
-    assert on_data.baseline_net_matrix[0, PATHWAY_INDEX["retire"]] == 0.0
+    np.testing.assert_allclose(_net(on_data) - _net(off_data), expected, rtol=1e-9, atol=1e-3)
+    assert _net(on_data)[0, PATHWAY_INDEX["retire"]] == 0.0
     unabated = PATHWAY_INDEX["unabated"]
     if not hours_path:  # 按现状小时：总收入不变
-        assert on_data.baseline_net_matrix[0, unabated] == pytest.approx(off_data.baseline_net_matrix[0, unabated], rel=1e-9)
+        assert _net(on_data)[0, unabated] == pytest.approx(_net(off_data)[0, unabated], rel=1e-9)
     else:  # 2 000 h：容量电费 1e8 元，少收的电量电费 2 000 h x 1 000 MW x 21.6 元/MWh = 4.32e7 元
-        assert on_data.baseline_net_matrix[0, unabated] - off_data.baseline_net_matrix[0, unabated] == pytest.approx(
+        assert _net(on_data)[0, unabated] - _net(off_data)[0, unabated] == pytest.approx(
             100.0 * capacity_kw * (2000.0 / hours_now - 1.0), rel=1e-6
         )
     # 工业买电仍按全价：水泥 CCS 的年度成本不变。

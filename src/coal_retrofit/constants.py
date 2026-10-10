@@ -33,7 +33,10 @@ BIOMASS_COST_HIGH = 26.0
 BIOMASS_MATCH_BUFFER_KM = 150.0  # 只写进供给曲线的 buffer_km 列，模型不读；资源链路半径是 resource_match_radius_km（200 km）
 BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 
-NH3_H2_RATIO = 0.176
+# 合成氨的氢耗，kg H2/kg NH3：DEA 可再生燃料技术数据表 98 Ammonia from hydrogen（[R09]）的工程值 0.18，含合成回路损耗；
+# 化学计量 1.5 x 2.016 / 17.031 = 0.1776，DECHEMA 2017 为 0.178（经 PyPSA technology-data）。2026-10-10 之前为 0.176，
+# 低于化学计量。节点上限按绿氢计，煤电用氨按此折成氢扣减；到厂氨价里的氢成本同按此折算（`builders.supply.reprice_h2_component`）。
+NH3_H2_RATIO = 0.18
 # 合成岛用电（合成回路 + 空分 + 辅助），kWh/kg NH3，按同址风光 LCOE 计价：⚠ 假设（无单一出处）。"合成回路 + 空分"
 # 口径的开源数据在 0.55-1.17 之间：下端 0.55 = DEA 103 合成回路 0.34 + DEA 空分 0.25 MWh/t N2 x 0.839 t N2/t NH3
 # （后一项 0.21；`dea_renewable_fuels`，经 `pypsa_techdata`）；上端是 Joule 2018

@@ -13,6 +13,8 @@ from types import ModuleType
 
 import pytest
 
+from coal_retrofit.segment import MODEL_SEGMENT
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "scripts"
 CODE = {"commit": "a" * 40, "dirty": False}
@@ -21,9 +23,10 @@ FILES = {"plants": "inputs/plants.csv", "sector_targets": "inputs/sector_targets
 
 def _result(env: dict[str, str] | None, objective: float = 4.0e12, mip_gap: float | None = 0.03, *,
             code: dict | None = CODE, bound: float | None = None, digests: dict[str, str] | None = None,
-            input_files: dict[str, str] | None = None, **scenario: object) -> dict:
+            input_files: dict[str, str] | None = None, segment: int | None = MODEL_SEGMENT, **scenario: object) -> dict:
     """一份 result.json。*env* 为 None 表示没有 `resolved` 段（2026-09-27 之前落盘）；*code* 为 None 表示 `resolved`
-    里没有 `code`（加上这一项之前落盘）；*bound* 是 ObjBound，缺省不记（更早的结果没有这个键）。"""
+    里没有 `code`（加上这一项之前落盘）；*bound* 是 ObjBound，缺省不记（更早的结果没有这个键）；*segment* 是模型分段号，
+    None 表示没有记（2026-10-10 之前落盘）。"""
     quality: dict = {"fingerprint": "0x1", "num_vars": 10, "num_constrs": 5, "num_nonzeros": 30,
                      "threads_param": 8, "threads_pinned": True, "seed": 0, "mip_focus": 1, "mip_gap": mip_gap,
                      **(digests or {})}
@@ -36,6 +39,8 @@ def _result(env: dict[str, str] | None, objective: float = 4.0e12, mip_gap: floa
             resolved["code"] = code
         if input_files is not None:
             resolved["input_files"] = input_files
+        if segment is not None:
+            resolved["model_segment"] = segment
         payload["resolved"] = resolved
     return payload
 
@@ -52,6 +57,8 @@ RESULTS = {
     "OLD": _result(None),
     "OLD2": _result(None),
     "NOCODE": _result({}, code=None),
+    "SEG_OLD": _result({}, segment=MODEL_SEGMENT - 1),
+    "NOSEG": _result({}, segment=None),
     "OTHER_COMMIT": _result({}, code={"commit": "b" * 40, "dirty": False}),
     "DIRTY": _result({}, code={"commit": "a" * 40, "dirty": True}),
     "NOGIT": _result({}, code={"commit": None, "dirty": None}),
@@ -142,6 +149,8 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
         ("MIP", "NOPE", "下没有 NOPE 的结果"),
         ("MIP", "NOCODE", "NOCODE 的 resolved 段没有 code"),  # 分不出是不是在模型改动之后求解的
         ("NOCODE", "MIP", "NOCODE 的 resolved 段没有 code"),
+        ("MIP", "SEG_OLD", f"SEG_OLD（{MODEL_SEGMENT - 1}）的模型分段号不是当前代码的"),  # 二.7：段与段之间不得相减
+        ("NOSEG", "MIP", "NOSEG（未记录）的模型分段号不是当前代码的"),  # 2026-10-10 之前落盘：都早于第 9 段
         ("CP0", "CP1", "carbon_price_cny_per_t_by_year 两边不同"),  # 目标函数的口径不同
         ("DR6", "DR8", "discount_rate 两边不同"),  # 折现的贴现率不同
         ("CAP0", "CAP100", "coal_capacity_price_cny_per_kw_yr 两边不同"),  # 目标函数含的容量电费收入不同

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 
+import pandas as pd
 from _bootstrap import ROOT
+from coal_retrofit.artifacts import write_csv
 from coal_retrofit.builders.network import load_corridor_layer, write_network_inputs
+from coal_retrofit.builders.network_offshore import offshore_length_km
 from coal_retrofit.paths import ProjectPaths
 
 
@@ -11,9 +14,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-corridors", action="store_true",
                         help="Build terminal-only network (no existing oil/gas corridors)")
+    parser.add_argument("--offshore-only", action="store_true",
+                        help="不重建管网，只给现有 pipeline_candidate_edges.csv 补算 offshore_length_km 列")
     args = parser.parse_args()
 
     paths = ProjectPaths(ROOT)
+    if args.offshore_only:
+        edges_path = paths.inputs_dir / "pipeline_candidate_edges.csv"
+        nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
+        edges = pd.read_csv(edges_path)
+        edges["offshore_length_km"] = offshore_length_km(paths, nodes, edges)
+        write_csv(edges, edges_path)
+        print(f"{edges_path}: {int((edges['offshore_length_km'] > 0).sum())} of {len(edges)} edges have "
+              f"offshore segments, {edges['offshore_length_km'].sum():.1f} km")
+        return
     use_corridors = not args.no_corridors
 
     if use_corridors:

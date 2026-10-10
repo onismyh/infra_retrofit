@@ -25,7 +25,7 @@ def add_resource_balances(
     ammonia_use_kg: GrbMVar,
     water_use_m3: GrbMVar,
     biomass_slack_gj: GrbMVar,
-    ammonia_slack_kg: GrbMVar,
+    h2_slack_kg: GrbMVar,
     water_slack_m3: GrbMVar,
     industry_h2_flow_kg: GrbMVar,
     year_suffix: str,
@@ -55,29 +55,25 @@ def add_resource_balances(
             / float(year_data.biomass_flow_scale),
             name=f"biomass_national_cap_{year_suffix}",
         )
-    # 工业氢与煤电氨共用节点，氢按 NH3 当量计入节点上限。
+    # 节点是绿氢产地，上限只按绿氢计（2026-10-10 起）：煤电用的氨在节点上由绿氢合成，按 NH3_H2_RATIO（kg H2/kg NH3）
+    # 折成氢扣减，工业氢路线直接扣减，两者共用节点的绿氢上限与全国绿氢上限。此前节点上限按折成氨的量计，另有一条
+    # 全国绿氨上限（已删）。
+    h2_node_expr = ammonia_node_expr * NH3_H2_RATIO
     if (
         year_data.industry_h2_node_membership is not None
         and int(industry_h2_flow_kg.shape[0]) > 0
     ):
-        h2_node_draw_nh3_eq = (year_data.industry_h2_node_membership @ industry_h2_flow_kg) * (1.0 / NH3_H2_RATIO)
-        ammonia_node_expr = ammonia_node_expr + h2_node_draw_nh3_eq
+        h2_node_expr = h2_node_expr + year_data.industry_h2_node_membership @ industry_h2_flow_kg
     _add_vector_upper_bound(
-        model, ammonia_node_expr, year_data.ammonia_available_kg + ammonia_slack_kg,
-        ammonia_node_count, f"ammonia_node_limit_{year_suffix}",
+        model, h2_node_expr, year_data.h2_available_kg + h2_slack_kg,
+        ammonia_node_count, f"green_h2_node_limit_{year_suffix}",
     )
-    # 全国上限：(1) 煤电可用绿氨 Mt NH3/yr；(2) 所有用户从共享电解节点取的绿氢 Mt H2/yr。
-    _nh3_scale = float(year_data.ammonia_flow_scale)
-    _fleet_cap_mt = assumptions.ammonia_fleet_cap_mt(year)
-    if _fleet_cap_mt > 0:
-        model.addConstr(
-            ammonia_use_kg.sum() <= _fleet_cap_mt * 1e9 / _nh3_scale,
-            name=f"ammonia_fleet_cap_{year_suffix}",
-        )
+    # 全国绿氢上限 Mt H2/yr（所有用户从共享电解节点取的绿氢）。
+    _h2_scale = float(year_data.ammonia_flow_scale)
     _h2_cap_mt = assumptions.green_h2_national_cap_mt(year)
     if _h2_cap_mt > 0:
         model.addConstr(
-            ammonia_node_expr.sum() * NH3_H2_RATIO <= _h2_cap_mt * 1e9 / _nh3_scale,
+            h2_node_expr.sum() <= _h2_cap_mt * 1e9 / _h2_scale,
             name=f"green_h2_national_cap_{year_suffix}",
         )
     # 水节点上限（物理半边：环境流量规则，作用于耗水）。no_water 模式下不加。

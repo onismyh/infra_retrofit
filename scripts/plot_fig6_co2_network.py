@@ -6,7 +6,7 @@
   圆点、菱形、方块面积相同。两年用同一尺度，左上角是当年封存总量。
 读图注意：画的是年流量，不是建成的管道能力；管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）
   按两端直线画。
-数据：_indtree/results/<情景>/network_edges.csv、plant_detail.csv、industry_detail.csv、storage_utilization.csv，
+数据：results/solved/<情景>/network_edges.csv、plant_detail.csv、industry_detail.csv、storage_utilization.csv，
   _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
   封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）。

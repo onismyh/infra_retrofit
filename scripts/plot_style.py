@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import warnings
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +32,13 @@ from matplotlib.text import Text  # noqa: E402
 
 from _bootstrap import REPO_ROOT, ROOT  # noqa: E402  数据树 _indtree/
 from coal_retrofit.constants_water_quota import BASIN_NAMES_ZH  # noqa: E402
+from coal_retrofit.segment import check_segment  # noqa: E402
 
 INPUTS_DIR = ROOT / "inputs"
-RESULTS_DIR = ROOT / "results"
-FIGURES_DIR = RESULTS_DIR / "figures"
+# 结果图读入库的 `results/solved/<结果名>(.json)`（作者本机求解后拷进来，见该目录的 README.md）；`--scenario` 给路径时
+# 读那里（例如本机求解树的 `_indtree/results/<结果名>`）。图写到 `_indtree/results/figures/`，不入库。
+SOLVED_DIR = REPO_ROOT / "results" / "solved"
+FIGURES_DIR = ROOT / "results" / "figures"
 # 结果图缺省画的主情景（scenarios/st.toml）。只画单个情景：ST_ 系的差值只能按可证区间报告（CLAUDE.md 二.2）。
 MAIN_SCENARIO = "ST_WA_cwatm_126_dry_oq"
 
@@ -182,7 +186,8 @@ def figure_cli(doc: str | None, *, scenario: bool = True) -> argparse.ArgumentPa
                         help="出中文版、英文版或两版（缺省 both；英文版文件名加 _en）")
     if scenario:
         parser.add_argument("--scenario", default=MAIN_SCENARIO,
-                            help=f"读 _indtree/results/<情景>/ 的结果表（缺省 {MAIN_SCENARIO}）")
+                            help=f"结果名，读 results/solved/<结果名>/ 的结果表（缺省 {MAIN_SCENARIO}）；"
+                                 "给路径（含 /）时读该目录，如 _indtree/results/ST_BASE")
     return parser
 
 
@@ -191,26 +196,35 @@ def langs(choice: str) -> tuple[str, ...]:
 
 
 def result_dir(scenario: str) -> Path:
-    return RESULTS_DIR / scenario
+    """结果表目录：结果名在 `SOLVED_DIR` 下找，含路径分隔符的按路径（相对仓库根或绝对路径）。"""
+    if "/" in scenario or "\\" in scenario:
+        path = Path(scenario)
+        return path if path.is_absolute() else REPO_ROOT / path
+    return SOLVED_DIR / scenario
 
 
 def read_result(scenario: str, table: str) -> pd.DataFrame:
-    """读 `_indtree/results/<情景>/<表>.csv`；没有就报错并提示先求解。"""
+    """读 `<结果目录>/<表>.csv`（`result_dir`）；同名 result.json 的模型分段号须是当前代码的（`read_result_json`）。"""
+    read_result_json(scenario)
     path = result_dir(scenario) / f"{table}.csv"
     if not path.exists():
-        raise FileNotFoundError(f"{path} 不存在：先求解 python -m coal_retrofit run {scenario}")
-    return pd.read_csv(path)
+        raise FileNotFoundError(f"{path} 不存在：结果目录里缺这张表")
+    return pd.read_csv(path, encoding="utf-8-sig")
 
 
+@lru_cache(maxsize=None)
 def read_result_json(scenario: str) -> dict:
-    """读 `_indtree/results/<情景>.json`，并打印求解时的提交号，便于核对结果来自哪一版代码。"""
-    path = RESULTS_DIR / f"{scenario}.json"
+    """读结果目录旁的 `<结果名>.json`，核模型分段号（不是当前代码的就抛 `StaleResultError`），打印求解时的提交号。"""
+    folder = result_dir(scenario)
+    path = folder.parent / f"{folder.name}.json"
     if not path.exists():
-        raise FileNotFoundError(f"{path} 不存在：先求解 python -m coal_retrofit run {scenario}")
+        raise FileNotFoundError(f"{path} 不存在：先在本机求解 python -m coal_retrofit run {folder.name}，"
+                                "再把结果拷进 results/solved/（见该目录的 README.md）")
     with path.open(encoding="utf-8") as f:
         result = json.load(f)
+    check_segment(result, path)
     code = (result.get("resolved") or {}).get("code") or {}
-    print(f"  {scenario}：求解提交 {code.get('commit') or '未记录'}"
+    print(f"  {folder.name}：求解提交 {code.get('commit') or '未记录'}"
           f"{'（有未提交的改动）' if code.get('dirty') else ''}")
     return result
 

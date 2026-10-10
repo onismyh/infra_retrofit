@@ -111,7 +111,7 @@ def test_pipe_om_is_charged_on_the_capex_of_pipes_in_service(tmp_path) -> None:
         solver_time_limit=300,
     )
     assumptions = OptimizationAssumptions(
-        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), standard_pipe_capacity_mtpa=5.0, max_parallel_pipes=1,
+        standard_pipe_capacity_mtpa=5.0, max_parallel_pipes=1,
     )
     assert assumptions.pipe_fixed_om_fraction == 0.04 and assumptions.route_opex_cny_per_t_km == 0.0
     prepared = prepare_inputs(paths, scenario, assumptions)
@@ -141,3 +141,31 @@ def test_negative_or_nan_pipe_om_fraction_is_rejected(fraction: float) -> None:
     assumptions = OptimizationAssumptions(pipe_fixed_om_fraction=fraction)
     with pytest.raises(ValueError, match="pipe_fixed_om_fraction"):
         _transport_storage_costs(payload, [payload], 0, SimpleNamespace(), assumptions, 0, 0)  # type: ignore[arg-type, list-item]
+
+
+def test_national_injection_cap_limits_total_storage_use(tmp_path) -> None:
+    """部署进度是全国各汇合计的年注入上限（2026-10-10 起）：设成 1 Mt/a 时两年的注入合计都不超过它，余下的减排要求
+    落进缺口；空元组即不设，toy 每年注入约 2.6 Mt（目标所需），没有缺口。"""
+    pytest.importorskip("gurobipy", reason=GUROBI)
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2030: 0.5, 2040: 0.5})
+    years = (2030, 2040)
+    scenario = OptimizationScenario(
+        experiment_id="TEST-NATIONAL-INJECTION", description="toy", planning_years=years, sector_target_source="toy",
+        carbon_price_cny_per_t_by_year=(0.0, 0.0), electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
+        pathway_disable=("retire", "biomass", "beccs", "ammonia"), solver_time_limit=300,
+    )
+
+    def run(cap: tuple[float, ...]):
+        assumptions = OptimizationAssumptions(storage_national_injection_mtpa_by_year=cap)
+        prepared = prepare_inputs(paths, scenario, assumptions)
+        solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, initial_state(prepared))
+        assert solution["status"] == "optimal"
+        return solution["year_solutions"]
+
+    free, capped = run(()), run((1.0, 1.0, 1.0, 1.0))
+    for year in years:
+        assert float(np.sum(free[year]["storage_use_mtpa"])) > 1.0 + 1e-3
+        assert float(free[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6)
+        assert float(np.sum(capped[year]["storage_use_mtpa"])) <= 1.0 + 1e-6
+        assert float(capped[year]["slacks"]["target_shortfall_mt"]) > 0.0

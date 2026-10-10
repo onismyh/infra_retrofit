@@ -73,7 +73,7 @@ def empty_year_solutions(
                 "target_shortfall_mt": 0.0,
                 "target_shortfall_by_group": {},
                 "biomass_slack_gj": np.zeros(len(prepared.biomass)),
-                "ammonia_slack_kg": np.zeros(len(p.year_data.ammonia_nodes)),
+                "h2_slack_kg": np.zeros(len(p.year_data.ammonia_nodes)),
                 "water_slack_m3": np.zeros(len(p.year_data.water_nodes)),
                 "water_basin_slack_m3": np.zeros(
                     len(p.year_data.water_basin_codes or [])),
@@ -170,7 +170,7 @@ def extract_year_solutions(
                     for group, var in payload.target_shortfall_by_group.items()
                 },
                 "biomass_slack_gj": _var_value(payload.biomass_slack_gj, biomass_node_count) * _bio_s,
-                "ammonia_slack_kg": _var_value(payload.ammonia_slack_kg, ammonia_node_count) * _amm_s,
+                "h2_slack_kg": _var_value(payload.h2_slack_kg, ammonia_node_count) * _amm_s,
                 "water_slack_m3": _var_value(payload.water_slack_m3, water_node_count) * _wat_s,
                 # 流域指标未激活时为零长度数组，下游读者统一按数组处理。
                 "water_basin_slack_m3": (

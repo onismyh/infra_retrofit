@@ -309,27 +309,13 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
     if scenario.storage_scope == "dsa_only":
         storages = storages[storages["storage_type"].astype(str) == "dsa"].copy()
     storages["available_capacity_mt"] = storages["storage_all_mt"].astype(float).clip(lower=0.0)
-    # 可建注入速率按候选场址密度推算，而不是把栅格逐格的地质速率加总
-    # （见 OptimizationAssumptions.storage_site_block_pixels）。
-    # 由 5 km 栅格组成的每个 50x50 km 区块算一个项目，按真实项目规模计。栅格加总值仍作为
-    # 地质上限施加，使 hub 永远不会超过地层能接受的量。以上全部在乘 injectivity_multiplier
-    # 之前定下，这样对它的敏感性（v9 的 `SA_injectivity_half`）依然起作用。
-    geological_ceiling = (
-        storages["injectivity_dsa_avg_mtpa"].astype(float) + storages["injectivity_eor_avg_mtpa"].astype(float)
-    ).clip(lower=0.0)
-    if "pixel_count" in storages.columns:
-        site_count = storages["pixel_count"].astype(float) / max(1e-9, assumptions.storage_site_block_pixels)
-        buildable = (site_count * assumptions.storage_site_project_rate_mtpa).clip(
-            lower=0.0, upper=assumptions.max_hub_injectivity_mtpa
-        )
-    else:
-        # 没有栅格像元计数的输入（例如手写的测试夹具）退回到
-        # 上限之内的原始速率。
-        logger.warning("storage_hubs.csv has no pixel_count column; using raw injectivity under the hub ceiling")
-        buildable = geological_ceiling.clip(upper=assumptions.max_hub_injectivity_mtpa)
+    # 年注入上限 = 汇内（建汇时的聚类范围，`builders.storage`）Fan 2025 逐格注入能力之和，DSA 与 EOR 两列相加，再乘
+    # injectivity_multiplier，不随年份变；全国合计另受逐年的部署上限约束（`model_year._add_injectivity_limit`）。
+    # 2026-10-10 前按每 100 格一个 2 Mt/a 项目推算、单汇封顶 200 Mt/a（`storage_site_block_pixels` 等三个参数，已删），
+    # 逐格之和只作地质上限，各年再乘逐汇的部署进度。
     storages["injectivity_mtpa"] = (
-        np.minimum(buildable, geological_ceiling) * scenario.injectivity_multiplier
-    )
+        storages["injectivity_dsa_avg_mtpa"].astype(float) + storages["injectivity_eor_avg_mtpa"].astype(float)
+    ).clip(lower=0.0) * scenario.injectivity_multiplier
     # 每吨封存成本 = 基准封存成本 x 海上倍率（`offshore` 为真的汇，2026-10-02 起）− EOR 容量份额 x EOR 抵扣（credit）。
     # 按容量拆分计价，而不是按 `storage_type`，因为只要一个 hub 两者兼有，这个标签就只是
     # 多数表决的结果。不做距离合并建出的汇是纯的，份额非 0 即 1，此式与旧规则完全一致；
@@ -387,11 +373,12 @@ def _prepare_ammonia_supply(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     ammonia = pd.read_csv(paths.inputs_dir / "ammonia_supply_curve.csv").copy()
     ammonia = ammonia.replace([np.inf, -np.inf], np.nan)
-    ammonia = ammonia.dropna(subset=["ammonia_node_id", "year", "nh3_supply_kg_per_year", "nh3_cost_lb_usd_per_kg"])
-    # 合成岛 capex 年金按情景贴现率重算（CSV 里那一份是构建输入时算的）。
-    from ..builders.supply import reprice_hb_capex
+    ammonia = ammonia.dropna(subset=["ammonia_node_id", "year", "h2_supply_kg_per_year", "nh3_cost_lb_usd_per_kg"])
+    # 到厂氨价 = 绿氢 x NH3_H2_RATIO + 合成岛电耗 + 合成岛 capex 年金 + 储存（+ 运输）。氢成本按当前折算比例、合成岛年金按
+    # 情景贴现率重算（CSV 里那一份是构建输入时算的）。
+    from ..builders.supply import reprice_h2_component, reprice_hb_capex
 
-    ammonia = reprice_hb_capex(ammonia, float(scenario.discount_rate))
+    ammonia = reprice_hb_capex(reprice_h2_component(ammonia), float(scenario.discount_rate))
     ammonia["cost_cny_per_kg"] = (
         (ammonia["nh3_cost_lb_usd_per_kg"].astype(float) + scenario.ammonia_transport_adder_usd_per_kg)
         * assumptions.usd_to_cny

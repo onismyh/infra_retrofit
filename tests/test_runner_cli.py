@@ -36,7 +36,7 @@ electricity_price_cny_per_mwh_by_year = [490.0, 550.0]
 carbon_price_cny_per_t_by_year = [150.0, 300.0]
 
 [TOY.assumptions]
-storage_deployment_fraction_by_year = [1.0, 1.0, 1.0, 1.0]
+storage_national_injection_mtpa_by_year = [500.0, 800.0, 1000.0, 1500.0]
 
 [TOY_WARM]
 extends = "TOY"
@@ -83,7 +83,7 @@ def test_run_writes_tables_result_and_resolved(tmp_path, capsys) -> None:
     assert resolved["options"] == {"threads": 1, "time_limit": 60, "mip_gap": None, "sol_dir": None, "force": False}
     assert resolved["scenario"]["solver_threads"] == 1 and resolved["scenario"]["solver_time_limit"] == 60
     assert resolved["scenario"]["planning_years"] == [2050, 2060]
-    assert resolved["assumptions"]["storage_deployment_fraction_by_year"] == [1.0, 1.0, 1.0, 1.0]
+    assert resolved["assumptions"]["storage_national_injection_mtpa_by_year"] == [500.0, 800.0, 1000.0, 1500.0]
     assert resolved["warm_start"] is None and set(resolved["code"]) == {"commit", "dirty"}
     # 摘要按逻辑名记，`input_files` 同名：check_run_provenance --pair 靠它分辨两边读的是不是同一个文件。
     assert resolved["input_files"]["sector_targets"] == "inputs/sector_targets_toy.csv"

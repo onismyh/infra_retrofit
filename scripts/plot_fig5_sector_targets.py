@@ -6,7 +6,7 @@
 读图注意：电力的残余排放 = 冻结技术排放 − 逐厂减排量之和；工业按 hub 的 baseline − reduction 汇总到目标组
   （constants_industry.SECTOR_TARGET_GROUP）。超过上限的部分由带罚项的目标缺口变量承担，即该组目标没达到。
   结果里只记了上限的比例，2030 年的基线要从 2030 年的结果里取，所以 2030 必须是规划年，否则脚本报错。
-数据：_indtree/results/<情景>/plant_detail.csv、industry_detail.csv，_indtree/results/<情景>.json。
+数据：results/solved/<情景>/plant_detail.csv、industry_detail.csv，results/solved/<情景>.json。
 自检：各组逐年的残余与冻结技术排放 = result.json 记的值；目标缺口 = max(0, 残余 − 上限)（模型约束 残余 − 缺口 ≤ 上限，
   缺口带罚项取到最小），上限算高、算低都对不上。
 输出：_indtree/results/figures/fig5_sector_targets{,_en}.{pdf,png}
@@ -50,6 +50,8 @@ def load(scenario: str) -> dict:
 def sector_table(data: dict) -> pd.DataFrame:
     """每组每年一行：冻结技术排放、残余排放、上限、目标缺口（Mt/yr）。"""
     plants, industry, years = data["plants"], data["industry"], data["result"]["years"]
+    if any("total" in years[y]["target_shortfall_by_group_mt"] for y in years):
+        raise ValueError("结果是合计总量上限（sector_target_mode = \"total\"），图 5 按组画上限与缺口，不适用")
     power = plants.groupby("year")[["baseline_emissions_mt", "reduction_mt"]].sum()
     frames = [pd.DataFrame({"group": POWER_TARGET_GROUP, "year": power.index,
                             "baseline": power["baseline_emissions_mt"],

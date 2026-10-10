@@ -77,9 +77,10 @@ class YearData:
     rebuilt_deltas: tuple[RebuiltDelta, ...]  # 每类一份，与 `rebuilt_class_share` 的列同序
     capacity_mw: np.ndarray
     fixed_cost_matrix: np.ndarray
-    # (plant_count,) 生物质掺烧能力的固定运维，CNY/yr 每单位掺烧能力（一个档位层 x 占装机的份额），乘在用的掺烧能力
-    # 计入 `incremental_om`（2026-10-02 起）。
+    # (plant_count,) 生物质、掺氨掺烧能力的固定运维，CNY/yr 每单位掺烧能力（一个档位层 x 占装机的份额），乘在用的掺烧
+    # 能力计入 `incremental_om`（生物质 2026-10-02 起，掺氨 2026-10-10 起）。
     biomass_blend_om_per_level: np.ndarray
+    ammonia_blend_om_per_level: np.ndarray
     cfb_share: np.ndarray  # (plant_count,) CFB 装机份额（`data_prep._with_expiry`），掺生物质比例的炉型上限用
     energy_penalty_matrix: np.ndarray
     biomass_penalty_coeff_per_level: np.ndarray
@@ -89,7 +90,9 @@ class YearData:
     beccs_penalty_emissions_coeff_per_level: np.ndarray
     beccs_penalty_captured_coeff_per_level: np.ndarray
     ccs_retrofit_capex_matrix: np.ndarray
-    baseline_net_matrix: np.ndarray
+    baseline_net_matrix: np.ndarray  # 基线净运行成本减去参照 `baseline_reference_cny`（增量口径，2026-10-10 起）
+    # (plant_count,) 参照：全部维持不改造运行的基线净运行成本，CNY/yr；不进目标，合计记在 result.json 的年度摘要。
+    baseline_reference_cny: np.ndarray
     stranded_per_plant: np.ndarray
     # 本年建成的捕集岛 (plant_count, 1)：只有一列，按 CCS capex 计（见 `model_year`）。capex 是一次性的；
     # 固定运维是它在役且在用的每一年都付的数，按本年（建设年）的单价（`vintage`）。
@@ -101,7 +104,7 @@ class YearData:
     coal_savings_per_gj: np.ndarray
     coal_savings_per_kg_nh3: np.ndarray
     storage_injectivity_mtpa: np.ndarray
-    storage_deployment_fraction: float
+    storage_national_injection_mtpa: float  # 全国各汇合计的年注入量上限，Mt/a；inf 即不设
     sector_cap_fraction: dict[str, float]
 
     # --- 工业氢链路（与煤电氨共用节点；本年输入没有链路时两个关联矩阵为 None，
@@ -118,12 +121,12 @@ class YearData:
     biomass_link_cost_cny_per_gj: np.ndarray
     biomass_flow_scale: float
 
-    # --- 氨 ---
+    # --- 氨（节点是绿氢产地，上限按绿氢计，缩放 kg H2）---
     ammonia_nodes: pd.DataFrame
     ammonia_links: pd.DataFrame
     ammonia_link_hub_membership: sparse.csr_matrix
     ammonia_link_node_membership: sparse.csr_matrix
-    ammonia_available_kg: np.ndarray
+    h2_available_kg: np.ndarray
     ammonia_link_cost_cny_per_kg: np.ndarray
 
     # --- 水：节点与链路、耗水与取水强度、流域指标（未激活时为 None / 空）---
@@ -198,7 +201,7 @@ class YearPayload:
     target_shortfall_mt: gp.Var
     target_shortfall_by_group: dict[str, gp.Var]
     biomass_slack_gj: GrbMVar
-    ammonia_slack_kg: GrbMVar
+    h2_slack_kg: GrbMVar
     water_slack_m3: GrbMVar
     # 流域指标未激活时为 None。
     water_basin_slack_m3: GrbMVar | None
@@ -265,7 +268,7 @@ class SolveSlacks(TypedDict):
     target_shortfall_mt: float
     target_shortfall_by_group: dict[str, float]
     biomass_slack_gj: np.ndarray
-    ammonia_slack_kg: np.ndarray
+    h2_slack_kg: np.ndarray
     water_slack_m3: np.ndarray
     water_basin_slack_m3: np.ndarray
     water_basin_use_m3: np.ndarray

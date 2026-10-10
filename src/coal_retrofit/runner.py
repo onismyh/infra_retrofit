@@ -13,6 +13,8 @@ result.json 末尾多一段 `resolved`，记全部参数、求解树、`--set` �
 2026-10-02 另加：同目录多写一个参照 ChinaCCS.xlsm 版式的结果工作簿 `ccs_results.xlsx`（`results_workbook`），它出错只记
 日志并删掉工作簿（删不掉也只记日志），CSV 与 result.json 照写；管网节点的省（`results_regions.node_provinces`）在建模
 之前定好，缺省界图层等错误在 MIP 求解之前就报（`warm_start = "lp_relax"` 的情景在热启动第 1 步之后）。
+
+2026-10-10 另加：`resolved.model_segment` 记模型分段号（`segment.MODEL_SEGMENT`），读结果时与当前代码比对。
 """
 from __future__ import annotations
 
@@ -65,6 +67,7 @@ from .run_controls import (
     sol_path,
 )
 from .scenarios import ScenarioRegistryError, ScenarioSpec, convert_field, shown_path
+from .segment import MODEL_SEGMENT
 
 logger = logging.getLogger(__name__)
 
@@ -216,9 +219,11 @@ def solve(
             "coal_reduction_mt": coal_reduction,
             "coal_residual_mt": coal_baseline_year - coal_reduction,
             "sector_cap_fraction": dict(year_data.sector_cap_fraction or {}),
-            "storage_deployment_fraction": float(year_data.storage_deployment_fraction),
+            "storage_national_injection_mtpa": (float(year_data.storage_national_injection_mtpa) if np.isfinite(year_data.storage_national_injection_mtpa) else None),  # 不设上限时记 null
             "industry": industry_summary,
             "cost_breakdown": {k: float(v) for k, v in ys["cost_breakdown_cny"].items()},
+            # 煤电参照（全部维持不改造运行）的基线净运行成本，CNY/yr、不折现、不进目标（增量口径，2026-10-10 起）；上面的 cost_breakdown 是折现并乘区间权重后的值，二者相加前先换到同一口径（cost_breakdown.csv 有不折现列）。
+            "coal_operating_reference_cny": float(np.sum(year_data.baseline_reference_cny)),
             "target_shortfall_mt": float(ys["slacks"]["target_shortfall_mt"]),
             "target_shortfall_by_group_mt": {
                 k: float(v) for k, v in ys["slacks"]["target_shortfall_by_group"].items()
@@ -245,7 +250,7 @@ def solve(
             prepared, year, ys["storage_use_mtpa"], state_before, interval_years,
             injectivity_mtpa=year_data.storage_injectivity_mtpa,
         ))
-        supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"]["water_basin_use_m3"]))
+        supply_tables.append(_build_supply_table(prepared, year, year_data, ys["biomass_flow_gj"], ys["ammonia_flow_kg"], ys["water_flow_m3"], ys["slacks"]["water_basin_use_m3"], ys["industry_h2_flow_kg"]))
         cost_tables.append(_build_cost_breakdown(year, ys["cost_breakdown_cny"], ys["cost_weights"]))
         sanity_tables.append(_build_sanity_checks(
             year, ys["slacks"], pw_table, prov_table,
@@ -279,7 +284,7 @@ def solve(
             capex_pathway_indices=solution["capex_pathway_indices"],
             rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
             rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
-            blend_level_b=ys["blend_level_b"],
+            blend_level_b=ys["blend_level_b"], blend_level_a=ys["blend_level_a"],
         ))
 
         new_cap_by_year[year] = ys["new_cap_mtpa"]
@@ -378,6 +383,8 @@ def run(
         # 摘要（solver_quality 的 digest_*）按逻辑名记；部门目标、产量指数的文件随情景的来源换，--pair 靠这里区分。
         "input_files": {key: _tree_relative(path, tree) for key, path in _input_files(paths, scenario).items()},
         "code": code,
+        # 读结果时与当前代码比对（`segment.check_segment`），分段号不同的旧结果不能用。
+        "model_segment": MODEL_SEGMENT,
     }
     out_file.parent.mkdir(parents=True, exist_ok=True)
     with open(out_file, "w", encoding="utf-8") as f:

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
+from coal_retrofit.constants import NH3_H2_RATIO  # noqa: E402
 from coal_retrofit.optimization._shared import SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
@@ -22,7 +23,7 @@ YEARS = (2030, 2040)
 
 
 def _solve(paths, scenario: OptimizationScenario) -> SolveResult:
-    assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+    assumptions = OptimizationAssumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.planning_years
     state = SolveState(
@@ -128,7 +129,6 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
 
     def _run(cap_gj: float):
         assumptions = OptimizationAssumptions(
-            storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0),
             biomass_national_cap_gj_per_year=cap_gj,
             biomass_blend_max_pulverized=1.0, biomass_blend_max_cfb=1.0,
         )
@@ -155,9 +155,9 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
     assert y_cap["slacks"]["target_shortfall_by_group"]["power"] > 0.0
 
 
-def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
-    """与生物质测试同构，唯一路径换成掺氨：不设上限时，2040 年的减排要求得以满足；
-    机组群上限设为该需求的一半时恰好绑定，其余部分成为 power 组缺口。"""
+def test_green_h2_cap_binds_ammonia_and_lands_in_shortfall(tmp_path) -> None:
+    """与生物质测试同构，唯一路径换成掺氨：不设上限时，2040 年的减排要求得以满足；全国绿氢上限设为该需求折成氢
+    （x NH3_H2_RATIO）的一半时恰好绑定，氨用量为一半，其余部分成为 power 组缺口（2026-10-10 起氨只受绿氢上限约束）。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     pd.DataFrame(
         {
@@ -186,9 +186,7 @@ def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
 
     def _run(cap_mt: tuple[float, ...]):
         assumptions = OptimizationAssumptions(
-            storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0),
-            ammonia_fleet_cap_mt_by_year=cap_mt,
-            green_h2_national_cap_mt_by_year=(),
+            green_h2_national_cap_mt_by_year=cap_mt,
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
         years = scenario.planning_years
@@ -205,9 +203,36 @@ def test_fleet_ammonia_cap_binds_and_lands_in_shortfall(tmp_path) -> None:
     demand_kg = float(np.sum(y_free["ammonia_use_kg"]))
     assert demand_kg > 0.0
 
-    cap_mt = 0.5 * demand_kg / 1e9
+    cap_mt = 0.5 * demand_kg * NH3_H2_RATIO / 1e9
     capped = _run((cap_mt, cap_mt))
     assert capped["status"] == "optimal"
     y_cap = capped["year_solutions"][2040]
-    assert float(np.sum(y_cap["ammonia_use_kg"])) == pytest.approx(cap_mt * 1e9, rel=1e-6)
+    assert float(np.sum(y_cap["ammonia_use_kg"])) == pytest.approx(0.5 * demand_kg, rel=1e-6)
     assert y_cap["slacks"]["target_shortfall_by_group"]["power"] > 0.0
+
+
+def test_total_target_mode_pools_the_groups_into_one_cap(tmp_path) -> None:
+    """`sector_target_mode = "total"`：四组合成一条上限（额度 = 各组额度之和），缺口只记在 total 下。电力组的上限够不到时，
+    分部门口径下水泥照自身上限（1.0，不必减排）不动，缺口全在电力；合计口径下水泥多减的部分抵掉电力的缺口，总缺口更小。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    _write_targets(paths, {2030: 1.0, 2040: -0.5})
+
+    def run(mode: str) -> dict:
+        scenario = OptimizationScenario(
+            experiment_id=f"TEST-TARGET-{mode}", description="toy", planning_years=YEARS, sector_target_source="toy",
+            sector_target_mode=mode, carbon_price_cny_per_t_by_year=(0.0, 0.0),
+            electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
+            pathway_disable=("retire", "biomass", "beccs", "ammonia"), solver_time_limit=300,
+        )
+        solution = _solve(paths, scenario)
+        assert solution["status"] == "optimal"
+        return solution["year_solutions"][2040]["slacks"]
+
+    by_sector, pooled = run("sector"), run("total")
+    assert set(by_sector["target_shortfall_by_group"]) == {"power", "cement"}
+    assert set(pooled["target_shortfall_by_group"]) == {"total"}
+    assert pooled["target_shortfall_mt"] == pytest.approx(pooled["target_shortfall_by_group"]["total"], rel=1e-9)
+    assert pooled["target_shortfall_mt"] < by_sector["target_shortfall_mt"] - 0.1
+
+    with pytest.raises(ValueError, match="sector_target_mode"):
+        run("by_group")

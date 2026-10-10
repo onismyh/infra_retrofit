@@ -89,6 +89,35 @@ def hb_capex_annuity_usd_per_kg(discount_rate: float) -> float:
     return NH3_HB_CAPEX_USD_PER_TONNE_YEAR * crf / 1000.0
 
 
+def reprice_h2_component(ammonia: pd.DataFrame) -> pd.DataFrame:
+    """把氨价里的氢成本换成按当前 `NH3_H2_RATIO` 折算的，返回新表，不改动传入的表。
+
+    `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_h2_cost_component_usd_per_kg`、加上 `weighted_lcoh_usd_per_kg_h2 x NH3_H2_RATIO`，
+    两列随之改写：表里那一份是构建输入时按当时的比例算的（2026-10-10 前的输入按 0.176）。没有这两列的表
+    （toy 测试的输入）原样使用。由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。
+
+    Raises:
+        ValueError: 两列有缺失值或非数值时，免得 NaN 价格进入目标函数。
+    """
+    repriced = ammonia.copy()
+    if not {"nh3_h2_cost_component_usd_per_kg", "weighted_lcoh_usd_per_kg_h2"} <= set(repriced.columns):
+        return repriced
+    cost = pd.to_numeric(repriced["nh3_cost_lb_usd_per_kg"], errors="coerce")
+    old_h2 = pd.to_numeric(repriced["nh3_h2_cost_component_usd_per_kg"], errors="coerce")
+    lcoh = pd.to_numeric(repriced["weighted_lcoh_usd_per_kg_h2"], errors="coerce")
+    bad = cost.isna() | old_h2.isna() | lcoh.isna()
+    if bad.any():
+        nodes = repriced.loc[bad, "ammonia_node_id"] if "ammonia_node_id" in repriced.columns else repriced.index[bad]
+        raise ValueError(
+            "ammonia supply curve has missing or non-numeric nh3_cost_lb / nh3_h2_cost_component / weighted_lcoh "
+            f"in {int(bad.sum())} rows; ammonia_node_id: {sorted({str(node) for node in nodes})[:10]}"
+        )
+    new_h2 = lcoh * NH3_H2_RATIO
+    repriced["nh3_cost_lb_usd_per_kg"] = cost - old_h2 + new_h2
+    repriced["nh3_h2_cost_component_usd_per_kg"] = new_h2
+    return repriced
+
+
 def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFrame:
     """把氨供给曲线里的合成岛年金换成按 `discount_rate` 算的，返回新表，不改动传入的表。
 

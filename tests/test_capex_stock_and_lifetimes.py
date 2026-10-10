@@ -244,7 +244,7 @@ def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_
         pathway_disable=("retire", "ccs", "biomass", "ammonia"),
         solver_time_limit=300,
     )
-    assumptions = OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+    assumptions = OptimizationAssumptions()
     y50 = _solve_toy(paths, scenario, assumptions)["year_solutions"][2050]
     capacity_mw = 1000.0
     beccs_share = float(y50["share"][0, PATHWAY_INDEX["beccs"]])
@@ -265,7 +265,6 @@ def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_
 def _one_pipe_assumptions() -> OptimizationAssumptions:
     """每条边只容一根 5 Mtpa 管（标准管 5 x 1 根）；封存不爬坡。"""
     return OptimizationAssumptions(
-        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0),
         standard_pipe_capacity_mtpa=5.0,
         max_parallel_pipes=1,
     )

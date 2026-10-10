@@ -83,6 +83,7 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "from_node_id": ["N1"],
             "to_node_id": ["N2"],
             "length_km": [100.0],
+            "offshore_length_km": [0.0],
             "existing_corridor_flag": [0],
             "edge_class": ["triangulation_candidate"],
             "corridor_type": ["candidate"],
@@ -188,7 +189,6 @@ def _write_targets(
 
 
 def _toy_assumptions() -> OptimizationAssumptions:
-    """默认假设，但去掉封存部署爬坡：toy 汇每年都必须提供满额 10 Mtpa，
-    否则 2030 年目标会靠缺口松弛而不是捕集来满足
-    （有爬坡时 2030 年只剩 1.7 Mtpa，低于目标所需的 ~2.6 Mt/yr）。"""
-    return OptimizationAssumptions(storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0))
+    """默认假设。toy 汇每年都提供满额 10 Mtpa：2026-10-10 起部署进度是全国合计的上限（2030 年 210 Mt/a），
+    不再缩放各汇（此前要去掉爬坡，否则 2030 年只剩 1.7 Mtpa，低于目标所需的 ~2.6 Mt/yr）。"""
+    return OptimizationAssumptions()

@@ -1,5 +1,7 @@
-# 源数据（20 GB 栅格 / netCDF）不入库，只放开仓库根 data/ 下出图、求解与重建输入要读的三样：ChinaMapTHT/（出图底图）、
-# ChinaMap/（重建输入时 builders 读省界与海岸线）、ChinaBasins/basin_l1.gpkg（开水约束的求解读）。
+# 源数据（20 GB 栅格 / netCDF）不入库，只放开仓库根 data/ 下出图、求解与重建输入要读的五样：ChinaMapTHT/（出图底图）、
+# ChinaMap/（重建输入时 builders 读省界与海岸线）、ChinaBasins/basin_l1.gpkg（开水约束的求解读）、
+# 封存汇图层-Fan/（Fan 2025 封存与注入栅格，重建 storage_hubs.csv 用，0.5 MB，CC BY 4.0）、
+# NaturalEarth/（1:10m 陆地，量管道海上段时补上邻国陆地，1.2 MB，公有领域）。
 # `data/` 一行照旧忽略任何一层名为 data 的目录（如 results/figures/<版本>/data/ 的结果拷贝），`!/data/` 一行只放开仓库根那一个。
 data/
 !/data/
@@ -9,6 +11,8 @@ data/
 !/data/ChinaBasins/
 /data/ChinaBasins/*
 !/data/ChinaBasins/basin_l1.gpkg
+!/data/封存汇图层-Fan/
+!/data/NaturalEarth/
 
 # 归档区（2.4 GB，2026-09-06 从主线移出，见 _archive_20260906/README.md）
 _archive_20260906/
@@ -30,6 +34,8 @@ __pycache__/
 # never be mistaken for a published one (CLAUDE.md 二.6).
 /results/*
 !/results/figures/
+# 作者本机求解后拷进来的结果（2026-10-10 起，出图与对账读这里；见 results/solved/README.md）。
+!/results/solved/
 
 # v9.1 solve tree: removed from the current version on 2026-09-28 (still in a303f05). Its results/ and
 # the data junction to the main data/ were never tracked; keep ignoring them in existing checkouts.

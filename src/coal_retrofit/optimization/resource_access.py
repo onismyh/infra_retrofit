@@ -106,7 +106,13 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
 def _ammonia_access_data(
     prepared: PreparedInputs, year: int, assumptions: OptimizationAssumptions
 ) -> dict[str, Any]:
-    """煤电侧 `year` 的氨链路：稀疏关联矩阵、到厂成本、按部署进度缩放的节点供给。"""
+    """煤电侧 `year` 的氨链路：稀疏关联矩阵、到厂成本、按部署进度缩放的节点绿氢供给。
+
+    节点是绿氢的产地（风光电解），上限只按绿氢计（`h2_supply_kg_per_year`，2026-10-10 起；此前按折成氨的
+    `nh3_supply_kg_per_year` 计，另有一条全国绿氨上限）：煤电用的氨在节点上由绿氢合成，按 `NH3_H2_RATIO` 折成氢
+    从同一上限里扣，工业氢路线直接扣（`model_resources.add_resource_balances`）。到厂的氨价 = 绿氢 x 折算系数
+    + 合成岛电耗与 capex 年金 + 储存（`nh3_cost_lb_usd_per_kg`，`builders.supply`）+ 运输。
+    """
     from ..constants import AMMONIA_FLOW_SCALE
     source_year = _nearest_year(year, prepared.available_ammonia_years)
     nodes = prepared.ammonia_supply[prepared.ammonia_supply["year"].astype(int) == int(source_year)].copy()
@@ -140,7 +146,7 @@ def _ammonia_access_data(
     node_membership = _sparse_membership(node_rows, link_count, len(nodes))
     ramp = float(assumptions.ammonia_supply_deployment_fraction(int(year)))
     available_scaled = (
-        nodes["nh3_supply_kg_per_year"].astype(float).to_numpy() / AMMONIA_FLOW_SCALE * ramp
+        nodes["h2_supply_kg_per_year"].astype(float).to_numpy() / AMMONIA_FLOW_SCALE * ramp
         if not nodes.empty else np.zeros(0, dtype=np.float64)
     )
     return {
@@ -148,7 +154,7 @@ def _ammonia_access_data(
         "links": links,
         "hub_membership": hub_membership,
         "node_membership": node_membership,
-        "available_kg": available_scaled,
+        "h2_available_kg": available_scaled,
         "link_cost_cny_per_kg": link_costs,
         "ammonia_flow_scale": AMMONIA_FLOW_SCALE,
         "deployment_fraction": ramp,

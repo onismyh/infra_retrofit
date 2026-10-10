@@ -22,7 +22,7 @@ def _prepared_ammonia(root, discount_rate: float) -> tuple[pd.DataFrame, pd.Data
     paths = ProjectPaths(root=root)
     paths.ensure_inputs_dir()
     pd.DataFrame({
-        "ammonia_node_id": ["A1"], "year": [2050], "nh3_supply_kg_per_year": [1.0e9],
+        "ammonia_node_id": ["A1"], "year": [2050], "nh3_supply_kg_per_year": [1.0e9], "h2_supply_kg_per_year": [1.8e8],
         "nh3_hb_capex_usd_per_kg": [_HB_ANNUITY_AT_8PCT], "nh3_cost_lb_usd_per_kg": [1.5],
         "longitude": [112.2], "latitude": [37.0], "province_name": ["Shanxi"],
     }).to_csv(paths.inputs_dir / "ammonia_supply_curve.csv", index=False)
@@ -85,3 +85,20 @@ def test_reprice_hb_capex_rejects_missing_or_non_numeric_costs() -> None:
         reprice_hb_capex(curve, 0.06)
     message = str(error.value)
     assert "A2" in message and "A3" in message and "A1" not in message
+
+
+def test_ammonia_hydrogen_cost_follows_the_current_conversion_ratio(tmp_path) -> None:
+    """CSV 里按构建时的比例（0.176）折算的氢成本，求解时换成按当前 NH3_H2_RATIO 折算的；没有这两列的表原样使用。"""
+    from coal_retrofit.builders.supply import reprice_h2_component
+    from coal_retrofit.constants import NH3_H2_RATIO
+
+    curve = pd.DataFrame({"ammonia_node_id": ["A1"], "nh3_cost_lb_usd_per_kg": [1.0],
+                          "nh3_h2_cost_component_usd_per_kg": [4.0 * 0.176], "weighted_lcoh_usd_per_kg_h2": [4.0]})
+    repriced = reprice_h2_component(curve)
+    assert repriced.loc[0, "nh3_cost_lb_usd_per_kg"] == pytest.approx(1.0 - 4.0 * 0.176 + 4.0 * NH3_H2_RATIO)
+    assert repriced.loc[0, "nh3_h2_cost_component_usd_per_kg"] == pytest.approx(4.0 * NH3_H2_RATIO)
+    assert curve.loc[0, "nh3_cost_lb_usd_per_kg"] == 1.0  # 不改动传入的表
+    bare = curve.drop(columns=["nh3_h2_cost_component_usd_per_kg"])
+    assert reprice_h2_component(bare).equals(bare)
+    with pytest.raises(ValueError, match="non-numeric"):
+        reprice_h2_component(curve.assign(weighted_lcoh_usd_per_kg_h2=["n/a"]))

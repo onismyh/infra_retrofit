@@ -242,7 +242,7 @@ def test_solver_books_blend_capex_om_and_salvage_on_every_level_layer(tmp_path) 
         pathway_disable=("retire", "ccs", "biomass", "ammonia"), solver_time_limit=300,
     )
     assumptions = OptimizationAssumptions(
-        storage_deployment_fraction_by_year=(1.0, 1.0, 1.0, 1.0), hub_decisions_continuous=False,
+        hub_decisions_continuous=False,
     )
     y60 = _solve_toy(paths, scenario, assumptions)["year_solutions"][2060]
     share = float(y60["share"][0, PATHWAY_INDEX["beccs"]])

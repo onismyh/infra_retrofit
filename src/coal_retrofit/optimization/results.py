@@ -101,7 +101,7 @@ def _build_sanity_checks(
         })
     rows += [
         {"year": year, "check_name": "biomass_overuse", "status": "warn" if float(np.sum(slacks["biomass_slack_gj"])) > 1e-3 else "pass", "metric": "GJ", "value": float(np.sum(slacks["biomass_slack_gj"])), "threshold": 0.0, "detail": "Biomass use should fit shared biomass-node availability within hub buffers."},
-        {"year": year, "check_name": "ammonia_overuse", "status": "warn" if float(np.sum(slacks["ammonia_slack_kg"])) > 1e-3 else "pass", "metric": "kg", "value": float(np.sum(slacks["ammonia_slack_kg"])), "threshold": 0.0, "detail": "Ammonia use should fit shared ammonia-node availability under hub competition."},
+        {"year": year, "check_name": "green_h2_overuse", "status": "warn" if float(np.sum(slacks["h2_slack_kg"])) > 1e-3 else "pass", "metric": "kg H2", "value": float(np.sum(slacks["h2_slack_kg"])), "threshold": 0.0, "detail": "Green H2 drawn by coal ammonia (as H2) and industry H2 should fit the shared node H2 supply."},
         {"year": year, "check_name": "water_overuse", "status": "warn" if float(np.sum(slacks["water_slack_m3"])) > 1e-3 else "pass", "metric": "m3", "value": float(np.sum(slacks["water_slack_m3"])), "threshold": 0.0, "detail": "Consumptive water use should fit the shared grid-water-node availability proxy under local competition."},
         # 官方指标流域上限。总是输出（水预算关闭时值为零），这样读者能区分"上限守住了"
         # 与"上限从未施加"，缺了这一行就做不到。任何正值都表示某个流域的用水总量控制指标
@@ -129,11 +129,11 @@ def _build_slack_detail_table(
         if bio_slack[i] > 1e-6:
             rows.append({"year": year, "constraint_type": "biomass_supply", "node_id": str(node.biomass_node_id), "province": str(node.province_name), "slack_value": float(bio_slack[i]), "unit": "GJ"})
 
-    amm_slack = np.asarray(slacks["ammonia_slack_kg"], dtype=np.float64)
+    amm_slack = np.asarray(slacks["h2_slack_kg"], dtype=np.float64)
     amm_nodes = year_data.ammonia_nodes
     for i in range(len(amm_nodes)):
         if amm_slack[i] > 1e-6:
-            rows.append({"year": year, "constraint_type": "ammonia_supply", "node_id": str(amm_nodes.iloc[i]["ammonia_node_id"]), "province": str(amm_nodes.iloc[i].get("province_name", "")), "slack_value": float(amm_slack[i]), "unit": "kg"})
+            rows.append({"year": year, "constraint_type": "green_h2_supply", "node_id": str(amm_nodes.iloc[i]["ammonia_node_id"]), "province": str(amm_nodes.iloc[i].get("province_name", "")), "slack_value": float(amm_slack[i]), "unit": "kg H2"})
 
     water_slack = np.asarray(slacks["water_slack_m3"], dtype=np.float64)
     water_nodes = year_data.water_nodes

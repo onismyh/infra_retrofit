@@ -30,6 +30,7 @@ from ..constants import (
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, geometry_parts
 from .network_branches import build_attachment_tables
+from .network_offshore import offshore_length_km
 from .network_repair import (
     _build_edge_geometry,
     _drop_edges_over_excluded_region,
@@ -495,6 +496,7 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
         raise ValueError(
             f"{len(stranded)} plant nodes still cannot reach a storage hub: {sorted(stranded)[:8]}"
         )
+    edges["offshore_length_km"] = offshore_length_km(paths, nodes, edges)
     logger.info(
         "candidate network: %d nodes, %d edges (%s)",
         len(nodes), len(edges),
