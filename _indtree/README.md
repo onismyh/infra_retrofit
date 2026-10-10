@@ -336,6 +336,20 @@ python -m coal_retrofit run ST_BASE --set 'assumptions.industry_capture_waste_he
 贴现率或容量电价与对照不同，目标函数口径就不同，`--pair` 判不过，只能比路径结构；同一组 `--set` 下的 `ST_BASE` 与
 `ST_WA_cwatm_126_dry_oq` 照常按可证区间比。
 
+水文边界条件（2026-10-10 起）：`python -m coal_retrofit water-members` 列出 20 个水文成员（cwatm、watergap2-2e 各 5 个
+GCM × ssp126 / ssp370），逐个核四个规划年的可用水量与生活、灌溉耗水。任一成员都可直接并到登记情景上求解，结果名自动拼出：
+
+```bash
+python -m coal_retrofit run ST_BASE --water cwatm/gfdl-esm4/ssp370 --season dry --threads 8
+python -m coal_retrofit run ST_TOT_BASE --water watergap2-2e/ukesm1-0-ll/ssp126 --season dry --threads 8
+python -m coal_retrofit run ST_BASE --water cwatm/gfdl-esm4/ssp126 --season dry --targets total --threads 8
+```
+
+结果名依次是 `ST_BASE_cwatm_gfdl-esm4_ssp370_dry`、`ST_TOT_BASE_watergap2-2e_ukesm1-0-ll_ssp126_dry`、
+`ST_BASE_cwatm_gfdl-esm4_ssp126_dry_total`（`--as` 可另起）。无水约束的基底另设 `water_mode = "grid_supply"`，所以
+`ST_BASE --water cwatm/gfdl-esm4/ssp126 --season dry` 与登记的 `ST_WA_cwatm_126_dry_oq` 参数相同；`--season` 不给时取基底的
+（缺省 annual，全年）。先用 `show` 加同样的选项看参数与结果名；与基准相减照常先跑 `--pair`。
+
 | 情景 | 模型 | 状态 | 目标函数 | gap | 用时 | 备注 |
 |---|---|---|---|---|---|---|
 | `ST_BASE_inthub` | hub 决策整数 | ⏱ 时限 | 4.008e12 | 4.22% | 36 256 s | 下界停在根 LP 3.839e12；四年缺口全零；**只作参照** |

@@ -568,6 +568,16 @@
 > - 散在各脚本的颜色收进 `plot_style`（`SINK_EDGE`、`NEUTRAL`、`BASELINE_COLOR`、`BLUES`、`IDLE_PIPE_COLOR`、`COST_COLORS`），
 >   图宽一律取 `FULL_WIDTH_MM`；`stacked_bars`、`legend_patches` 可加斜线（图 9 的海上汇）。
 > - `tests/test_plot_figures.py` 补图 1、图 2、图 6（空闲管道）、图 8–10 的自检测试。
+>
+> 2026-10-10 起水文边界条件有了统一入口（作者批准的计划 I），模型不变（`coal_retrofit/hydrology.py`；`docs/方法论.md` §8.1）：
+> - `python -m coal_retrofit run <情景> --water 水文模型/GCM/SSP [--season annual|dry] [--targets sector|total]`：把水文成员、
+>   季节与碳目标入口并到登记情景上（无水约束的基底另设 `water_mode = "grid_supply"`），覆盖项与 `--set` 一样记进 `resolved.set`。
+>   不给 `--as` 时结果名自动拼成 `<情景>_<水文模型>_<GCM>_<SSP>_<季节>[_<目标>]`，如 `ST_BASE_cwatm_gfdl-esm4_ssp370_dry`。
+>   `ST_BASE --water cwatm/gfdl-esm4/ssp126 --season dry` 与登记的 `ST_WA_cwatm_126_dry_oq` 参数相同。`show` 认同样的选项。
+> - `python -m coal_retrofit water-members` 列出 `_indtree/inputs/water_scenarios.csv` 的 20 个成员，逐个核四个规划年每个
+>   水节点的可用水量、每个流域的生活与灌溉耗水（现有 20 个都齐全）。有水约束且指定了成员的 run 在求解之前也核这个成员（只核它读的
+>   季节）：模型遇到缺行或径流为空的节点会静默补零（`water_access._water_available_by_node`）。
+> - `scenario.sector_target_mode` 写错（如 `totl`）读登记表或 `--set` 时就报错，此前要到建模型时才报。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
