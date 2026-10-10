@@ -16,6 +16,8 @@ import pytest
 
 from coal_retrofit.optimization.data_prep import _prepare_storages, prepare_inputs
 from coal_retrofit.optimization.model_costs import _transport_storage_costs
+from coal_retrofit.optimization.results_costs import COST_COLUMNS, SYSTEM_COLUMNS
+from coal_retrofit.optimization.results_network import _build_sinks_table
 from coal_retrofit.optimization.results_regions import OFFSHORE
 from coal_retrofit.optimization.results_workbook_network import cost_lines
 from coal_retrofit.optimization.results_workbook_sources import sinks_frame
@@ -68,20 +70,31 @@ def test_storage_is_priced_by_sink_type(tmp_path) -> None:
 
 
 def test_workbook_backs_the_eor_credit_out_of_each_sinks_own_price(tmp_path) -> None:
-    """封存费 = 封存量 x 各汇的扣前单价，EOR 抵扣 = 封存量 x（扣前 − 扣后），两种单价经 `sinks_frame` 取自
-    `_prepare_storages`：只有 EOR 汇有抵扣，海上 DSA 汇的抵扣为 0（按全国一个基准价 35 反推会记出 −42 元/t）；
-    封存费 − 抵扣 = Σ 封存量 x 扣后单价，即目标函数的 storage_cost。"""
+    """封存费 = 封存量 x 各汇的扣前单价，EOR 抵扣 = 封存量 x（扣前 − 扣后），两种单价经 `sinks.csv`（`_build_sinks_table`）
+    与 `sinks_frame` 取自 `_prepare_storages`：只有 EOR 汇有抵扣，海上 DSA 汇的抵扣为 0（按全国一个基准价 35 反推会记出
+    −42 元/t）；封存费 − 抵扣 = Σ 封存量 x 扣后单价，即目标函数的 storage_cost。"""
     storages = _storages(tmp_path, SINKS)
     ids = storages["storage_hub_id"].tolist()
     prepared = SimpleNamespace(storages=storages, network=SimpleNamespace(storage_node_ids={i: f"n_{i}" for i in ids}))
     node_province = {f"n_{i}": OFFSHORE if offshore else "Shanxi" for i, offshore in zip(ids, storages["offshore"])}
     years = [2050, 2060]
+    injected = {2050: [1.0, 2.0, 3.0, 4.0], 2060: [0.0, 5.0, 0.0, 6.0]}
+    capacity = storages["available_capacity_mt"].astype(float).to_numpy()
+
+    def sinks_table(year: int) -> pd.DataFrame:
+        ys = {
+            "storage_use_mtpa": np.array(injected[year]),
+            "year_data": SimpleNamespace(storage_injectivity_mtpa=storages["injectivity_mtpa"].astype(float).to_numpy()),
+            "slacks": {"injectivity_slack_mtpa": np.zeros(len(ids)), "storage_slack_mt": np.zeros(len(ids))},
+        }
+        return _build_sinks_table(
+            prepared, year, ys, SimpleNamespace(remaining_storage_mt=capacity), 10, node_province,  # type: ignore[arg-type]
+        )
+
     tables = {
-        "storage_utilization.csv": pd.DataFrame({"year": [2050] * 4 + [2060] * 4, "storage_hub_id": ids * 2,
-                                                  "storage_use_mtpa": [1.0, 2.0, 3.0, 4.0, 0.0, 5.0, 0.0, 6.0]}),
-        "plant_cost.csv": pd.DataFrame(columns=["year", "ccs_retrofit_capex_cny", "ccs_om_cny", "energy_penalty_cny"]),
-        "industry_detail.csv": pd.DataFrame(columns=["year", "cost_capital_ccs_cny", "cost_annual_ccs_cny"]),
-        "cost_breakdown.csv": pd.DataFrame(columns=["year", "category", "cost_undiscounted_cny"]),
+        "sinks": pd.concat([sinks_table(year) for year in years], ignore_index=True),
+        "costs": pd.DataFrame(columns=COST_COLUMNS),
+        "system": pd.DataFrame(columns=SYSTEM_COLUMNS),
     }
     sinks = sinks_frame(tables, prepared, node_province)  # type: ignore[arg-type]
     lines = cost_lines(tables, sinks, years)

@@ -1,7 +1,8 @@
 """结果工作簿 `ccs_results.xlsx`（2026-10-02 起）：表名与行列结构参照 ChinaCCS.xlsm 的结果表，数字全部取自本次求解。
 
-`runner.solve` 写完 15 张 CSV 后调用，写在同一目录；工作簿出错只记日志并删掉工作簿（删不掉也只记日志），CSV 与
-result.json 照写。输入是那 15 张表（键为文件名）与 CSV 里没有的几样：各年成本类别的折现权重与残值台账（`solution`）、
+`runner.solve` 写完九张 CSV 后调用，写在同一目录；工作簿出错只记日志并删掉工作簿（删不掉也只记日志），CSV 与
+result.json 照写。输入是那九张表（`results_tables.build_result_tables`，键为表名，2026-10-10 前是 15 张、键为文件名）与
+CSV 里没有的几样：各年成本类别的折现权重与残值台账（`solution`）、
 源与汇所在的节点、节点经纬度、封存汇的每吨封存成本（`prepared`）、节点的省（`results_regions.node_provinces`）。各表的
 口径写在工作簿的「说明」表（`_notes`）；源、汇与输送各表在 `results_workbook_sources`，管道与成本各表在
 `results_workbook_network`。
@@ -50,7 +51,7 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
     return [
         ["项目", "说明"],
         ["来源", "每次求解后由 coal_retrofit.optimization.results_workbook 写出，表名与行列结构参照 ChinaCCS.xlsm 的结果表，"
-                "数字全部来自本次求解，与同目录的 15 张 CSV 是同一组结果。"],
+                "数字全部来自本次求解，与同目录的九张 CSV 是同一组结果。"],
         ["年份", "列名里的年份是规划年。捕集、注入、流量与运行费是该年一年的量，投资是该年一次性的支出。"],
         ["单位", "捕集、注入、输送、流量 Mt/yr；管长、距离 km；成本 百万元（人民币；ChinaCCS 原表为百万美元，这里不换算）；"
                 "每吨成本 元/t。"],
@@ -65,8 +66,8 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
               "storage_hubs.csv 的省名，没填的同下条的其余管网节点。"],
         ["节点的省", "源节点取源的省；本情景纳入的封存节点见上，不纳入的（如 dsa_only 去掉的 EOR 汇）同其余管网节点；"
                   "其余管网节点取 pipeline_nodes.csv 自带的省名，没有的按经纬度落在 "
-                  "data/ChinaMap/provinces.shp 的哪个省，落在所有省之外的（海上或近岸）记 Offshore。network_edges.csv 的 "
-                  "from_province、to_province 同此。"],
+                  "data/ChinaMap/provinces.shp 的哪个省，落在所有省之外的（海上或近岸）记 Offshore。network.csv 的 "
+                  "from_province、to_province 与 sinks.csv 的 province 同此。"],
         ["Source_Results", "每个源一行。CO2_emit_rate 是本年的基线排放（不改造时的排放）；CAPEX_Capture 是本年新建捕集能力的"
                            "投资；OPEX_Capture_p、_c、_i、_a 依次是电力、水泥、钢铁、化工源本年的捕集运行费（煤电 = 捕集岛固定"
                            "运维 + CCS 额外燃料，工业 = 捕集路线的年度费）；其后是分部门的基线排放与捕集量。右侧是分区与分省的"
@@ -95,12 +96,12 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
                           "现值（投资减去期末残值抵扣，折现与目标函数相同）÷ 捕集量的现值（与年度成本同一折现与年金权重）。"
                           "平均运程 = Σ(各边净流量的绝对值 x 管长) ÷ 捕集量。本年捕集量不超过 "
                           f"{FLOW_TOL:g} Mt（数值噪声）时，该年的每吨运行费与平均运程留空。EOR 抵扣冲减成本，记负。"],
-        ["objective", "目标函数值（现值），及各成本类别各年的现值（cost_breakdown.csv 的 cost_cny），各年各类相加即目标函数值。"
+        ["objective", "目标函数值（现值），及各成本类别各年的现值（system.csv 的 cost_discounted_cny），各年各类相加即目标函数值。"
                       "期末残值抵扣（salvage_credit）记在最后一个规划年。"],
         ["本模型另加的表", "Plant_Pathways：煤电 hub 各年各路径的份额；already_air 是原本就是空冷的份额，air_retrofit_operating、"
-                         "air_retrofit_installed 是湿冷改空冷的装机里当年在运行的与在役的（建成未满改造寿命），都按占全厂的份额（plant_detail.csv "
-                         "的 air_operating_share、air_installed_share 乘 1 − already_air_share）。Industry_Routes：工业 hub 各年"
-                         "各路线的份额（混合原料的甲醇 hub 是份额为正的点源那部分产量的份额，占全厂产量的比例见 industry_detail.csv 的 "
+                         "air_retrofit_installed 是湿冷改空冷的装机里当年在运行的与在役的（建成未满改造寿命），都按占全厂的份额（sources.csv "
+                         "煤电行的 air_operating_share、air_installed_share 乘 1 − already_air_share）。Industry_Routes：工业 hub 各年"
+                         "各路线的份额（混合原料的甲醇 hub 是份额为正的点源那部分产量的份额，占全厂产量的比例见 sources.csv 的 "
                          "abatable_production_share）。"],
         ["不出的表", "num_total_well_new：模型没有注入井（ChinaCCS 用注入量除以单井注入率算，模型没有单井注入率）。"
                    "Cost_Analysis 的静态投资回收期：CCS 链条除 EOR 抵扣外没有收入（售电收入计在煤电的基线净成本里），算不出"
@@ -117,14 +118,15 @@ def write_ccs_workbook(
     assumptions: OptimizationAssumptions,
     node_province: Mapping[str, str],
 ) -> None:
-    """按 15 张结果表（*tables*，键为文件名）与解写 ChinaCCS 版式的工作簿到 *path*。"""
+    """按九张结果表（*tables*，键为表名，`results_tables.TABLES`）与解写 ChinaCCS 版式的工作簿到 *path*。"""
     years = [int(y) for y in scenario.planning_years]
     end_year = years[-1] + scenario.interval_years(tuple(years), len(years) - 1, assumptions)
     tiers = tuple(float(t) for t in assumptions.pipe_capacity_tiers_mtpa)
     sources = sources_frame(tables, prepared)
     sinks = sinks_frame(tables, prepared, node_province)
     edges = edge_years(tables, tiers)
-    flows = tables["co2_flow_direction.csv"]
+    network = tables["network"]
+    flows = network[network["flow_from_node_id"].fillna("").astype(str) != ""]  # 有流量的边
 
     sheets: dict[str, list[Block]] = {"说明": [(1, 1, _notes(assumptions))]}
     for y in years:
@@ -140,16 +142,16 @@ def write_ccs_workbook(
     sheets.update(pipe_sheets(edges, years, tiers, prepared, node_province))
     captured = captured_by_year(sources, years)
     sheets.update(cost_sheets(cost_lines(tables, sinks, years), captured, edges, solution, years, end_year))
-    sheets["objective"] = _objective(tables["cost_breakdown.csv"], float(solution["objective_cny"]), years)
+    sheets["objective"] = _objective(tables["system"], float(solution["objective_cny"]), years)
     sheets["Plant_Pathways"] = [(1, 1, plant_pathways(tables, years))]
     sheets["Industry_Routes"] = [(1, 1, industry_routes(tables, years))]
     _save(Path(path), sheets)
 
 
 def _objective(breakdown: pd.DataFrame, objective_cny: float, years: Sequence[int]) -> list[Block]:
-    """objective：目标函数值，及各成本类别各年的现值（百万元）与合计。"""
+    """objective：目标函数值，及各成本类别各年的现值（百万元，`system.csv` 的 `cost_discounted_cny`）与合计。"""
     order = list(dict.fromkeys(breakdown["category"]))
-    discounted = breakdown.pivot(index="category", columns="year", values="cost_cny").reindex(
+    discounted = breakdown.pivot(index="category", columns="year", values="cost_discounted_cny").reindex(
         index=order, columns=list(years)).fillna(0.0) / MILLION
     kinds = breakdown.drop_duplicates("category").set_index("category")["kind"].to_dict()
     rows: list[list[Any]] = [["category", "kind", *years, "合计"]]

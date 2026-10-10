@@ -7,11 +7,11 @@
      "无余量"是余量 ≤ 0 而仍有取水的流域。本情景没启用流域上限时 a 只写一行说明。
   b  各规划年当年以空冷运行的改造容量（GW）= 装机 × 空冷运行份额（air_operating_share）× 仍湿冷的比例
      （1 − already_air_share），逐厂相加；已是空冷的部分不重复计（plant_matrices._air_cooling_matrices）。
-读图注意：a 是取水口径的制度约束，与节点耗水（resource_use.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
-  空冷容量，不是累计改造量；在役的空冷能力（plant_detail.csv 的 air_installed_share，不小于运行份额、可含闲置的，
+读图注意：a 是取水口径的制度约束，与节点耗水（resources.csv 的 water 行）不是一个量，不能相加。b 是当年在运行的
+  空冷容量，不是累计改造量；在役的空冷能力（sources.csv 的 air_installed_share，不小于运行份额、可含闲置的，
   建成 20 年后退出；已全空冷的 hub 两列不保证为零，乘 1 − already_air_share 后为零）这里不画。
-数据：results/solved/<情景>/resource_use.csv、slack_detail.csv、plant_detail.csv。
-自检：各流域超出余量的取水 = slack_detail.csv 记的该流域松弛（没超的流域没有松弛），两边各算各的；流域代码都在
+数据：results/solved/<情景>/resources.csv（流域取水指标行，含松弛列 slack）、sources.csv（煤电行，source_type 为 coal）。
+自检：各流域超出余量的取水 = resources.csv 记的该流域松弛 slack（没超的流域松弛为零），两边各算各的；流域代码都在
   BASIN_ORDER 里；空冷运行份额与已空冷比例都在 [0, 1]。
 输出：_indtree/results/figures/fig7_water{,_en}.{pdf,png}
 用法：python scripts/plot_fig7_water.py [--scenario 情景] [--lang zh|en|both]
@@ -45,11 +45,9 @@ TEXT = {
 
 
 def load(scenario: str) -> dict[str, pd.DataFrame]:
-    resource = read_result(scenario, "resource_use")
-    slack = read_result(scenario, "slack_detail")      # 没有松弛时也带列名（只有表头）
-    return {"basins": resource[resource["resource_type"] == "water_basin_quota"].astype({"region": str}),
-            "slack": slack[slack["constraint_type"] == "water_basin_quota"],
-            "plants": read_result(scenario, "plant_detail")}
+    resource, sources = read_result(scenario, "resources"), read_result(scenario, "sources")
+    return {"basins": resource[resource["resource_type"] == "water_basin_quota"].astype({"node_id": str}),
+            "plants": sources[sources["source_type"] == "coal"]}
 
 
 def utilization(basins: pd.DataFrame) -> pd.DataFrame:
@@ -57,7 +55,7 @@ def utilization(basins: pd.DataFrame) -> pd.DataFrame:
     used, available = basins["used"].to_numpy(float), basins["available"].to_numpy(float)
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(available > 0, used / available, np.where(used > 1e-6, np.inf, 0.0))
-    table = pd.DataFrame({"basin": basins["region"], "year": basins["year"], "ratio": ratio})
+    table = pd.DataFrame({"basin": basins["node_id"], "year": basins["year"], "ratio": ratio})
     table = table.pivot(index="basin", columns="year", values="ratio")
     return table.reindex([b for b in BASIN_ORDER if b in table.index])
 
@@ -80,23 +78,20 @@ def cell_label(value: float, text: dict) -> str:
 
 
 def check(data: dict[str, pd.DataFrame]) -> None:
-    basins, plants, slack = data["basins"], data["plants"], data["slack"]
+    basins, plants = data["basins"], data["plants"]
     if "air_operating_share" not in plants.columns:
-        raise ValueError("自检不通过：plant_detail.csv 没有 air_operating_share 列（2026-09-30 之前落盘，那时的"
+        raise ValueError("自检不通过：sources.csv 没有 air_operating_share 列（2026-09-30 之前落盘，那时的"
                          " air_cooled_share 含退役路径上可任取的份额），重解后再画")
-    unknown = set(basins["region"]) - set(BASIN_ORDER)
+    unknown = set(basins["node_id"]) - set(BASIN_ORDER)
     if unknown:
         raise ValueError(f"自检不通过：流域代码 {sorted(unknown)} 不在 BASIN_ORDER 里，不出图")
-    # 模型约束 取水 ≤ 余量 + 松弛，松弛带罚项取到最小：超出余量的取水就是该流域的松弛（slack_detail 只记正值）。
+    # 模型约束 取水 ≤ 余量 + 松弛，松弛带罚项取到最小：超出余量的取水就是该流域的松弛（resources.csv 的 slack 列）。
     # 容差 1 000 m³：求解按百万 m³ 计、开了数值缩放，可行性误差换回 m³ 不止 1。
-    booked = {(int(y), str(code)): float(v)
-              for y, code, v in zip(slack["year"], slack["node_id"], slack["slack_value"])}
-    check_close("超出流域余量的取水应等于 slack_detail.csv 的流域松弛",
-                (basins["used"] - basins["available"]).clip(lower=0.0),
-                [booked.get((int(y), code), 0.0) for y, code in zip(basins["year"], basins["region"])], atol=1e3)
+    check_close("超出流域余量的取水应等于 resources.csv 的流域松弛 slack",
+                (basins["used"] - basins["available"]).clip(lower=0.0), basins["slack"], atol=1e3)
     for col in ("air_operating_share", "already_air_share"):
         if not plants[col].between(-1e-6, 1 + 1e-6).all():
-            raise ValueError(f"自检不通过：plant_detail.{col} 超出 [0, 1]，不出图")
+            raise ValueError(f"自检不通过：sources.csv 的 {col} 超出 [0, 1]，不出图")
 
 
 def draw(data: dict[str, pd.DataFrame], lang: str):

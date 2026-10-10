@@ -531,6 +531,30 @@
 > `results/solved/`。`tests/test_cost_basis.py`、`tests/test_offshore_pipelines.py`、`tests/test_sector_targets.py`（含绿氢共享上限）、
 > `tests/test_transport_storage_costs.py`、`tests/test_discount_rate.py`、`tests/test_blend_ratios.py`、`tests/test_run_provenance.py`、
 > `tests/test_plot_figures.py` 覆盖。
+>
+> 2026-10-10 起结果表按源、汇统一：此前的 15 张 CSV 换成九张（作者批准 2026-10-10；`docs/方法论.md` §9.4），工作簿
+> `ccs_results.xlsx` 改为从九张表生成，内容不变。模型与目标值不变，只改输出：
+> - `sources.csv`（年 × 源，煤电 hub 与工业 hub 同一套列：源类型、部门、省、流域、活动量与单位、基线排放、减排、剩余排放、捕集量、
+>   各路线份额、生物质、氨、绿氢、耗水与取水，其后是只对一类源有意义的列）、`source_routes.csv`（年 × 源 × 路线）；
+> - `sinks.csv`（年 × 封存汇：咸水层 / EOR、陆上 / 海上、年注入上限、注入量、累计注入、剩余容量、扣抵前后的封存单价、EOR 抵扣、松弛）、
+>   `network.csv`（年 × 管段，含无流量的边：两向流量、净流向、新建与在役容量、各管径档根数、海上段长、松弛）；
+> - `resources.csv`（年 × 生物质 / 绿氢 / 水节点与流域取水指标：用量、可用量、松弛、利用率）、`resource_flows.csv`（年 × 资源链路：
+>   流量、到厂价、采购费；工业买氢的链路也在这里）；
+> - `costs.csv`（年 × 实体 × 成本类别 × 细项，实体是煤电 hub、工业 hub、管段、封存汇或系统项，不折现与折现各一列）、
+>   `system.csv`（年 × 成本类别：求解器合计与拆到实体的合计）、`checks.csv`（原 `sanity_checks`，每年另加一行成本对账）。
+>   `sources`、`network`、`sinks` 各带该实体在 `costs.csv` 里的合计；三张表的合计加上系统项（松弛惩罚、残值）等于目标函数值。
+>
+> 单位写在列名后缀（年量 `_mtpa` 即 Mt/yr，如排放、捕集、注入、管道流量与能力；存量 `_mt`，如封存容量、剩余与累计注入；
+> 另有 `_gj`、`_kg`、`_m3`、`_mw`、`_km`、`_cny`），一列混有几种单位的另有单位列；CSV 一律
+> utf-8-sig 编码。旧表的去处：`plant_detail`、`industry_detail` → `sources`；`pathway_shares` → `source_routes`；`storage_utilization`
+> → `sinks`；`network_edges`、`co2_flow_direction` → `network`；`resource_use` → `resources`；`biomass_flows`、`ammonia_flows`、
+> `water_flows` → `resource_flows`；`plant_cost` 与 `industry_detail` 的成本列 → `costs`；`cost_breakdown` → `system`（旧 `cost_cny`
+> 是折现值，现为 `cost_discounted_cny`，`cost_cny` 改指不折现值）；`sanity_checks` → `checks`。顺带修掉旧逐厂成本表的两处漏计：省煤抵扣漏了掺氨省下的煤，
+> 掺烧升级、空冷、重建 capex 与生物质、氨、水的采购费没有拆到厂（旧 `total_plant_cost_cny` 因此不等于目标函数里该厂的成本）。
+> `province_pathways.csv` 删去（由 `source_routes` 按 `sources` 的省汇总即得），`slack_detail.csv` 拆进各表的松弛列（碳目标缺口没有表内的列，在 `checks.csv` 的 `target_shortfall*` 行与
+> `system.csv` 的 `slack_penalty` 行）。
+> 求解器取值失败时（`_shared._var_value`、`_expr_value`）改为报错，不再静默记 0：此前取不到的值会让结果表里的成本悄悄少一块。
+> 已落盘的结果是旧的 15 张表，出图脚本只读新表，要按新代码重解（本来就要重解，见上一条）。`tests/test_cost_attribution.py` 覆盖对账。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

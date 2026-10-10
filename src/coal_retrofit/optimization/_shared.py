@@ -123,19 +123,20 @@ def _nearest_year(target_year: int, available_years: tuple[int, ...]) -> int:
     return min(available_years, key=lambda year: abs(year - target_year))
 
 
+# 下面三个只在有解时读解值（`solver_extract.extract_year_solutions`）：常数照原值，零长度的变量读作空数组；求解器报错
+# （没有解、变量不属于这个模型）照抛。2026-10-10 之前报错时静默读作 0，结果表因此可能整列为零而不报错。
 def _var_value(var, shape: tuple[int, ...] | int) -> np.ndarray:
-    try:
-        values = np.asarray(var.X, dtype=np.float64)
-    except (AttributeError, Exception) if gp is None else (AttributeError, gp.GurobiError):
+    if isinstance(var, (int, float, np.ndarray)):
+        return np.broadcast_to(np.asarray(var, dtype=np.float64), shape).copy()
+    if int(getattr(var, "size", 1)) == 0:
         return np.zeros(shape, dtype=np.float64)
-    return values.reshape(shape)
+    return np.asarray(var.X, dtype=np.float64).reshape(shape)
 
 
-def _expr_value(expr, default: float = 0.0) -> float:
-    try:
-        return float(expr.getValue())
-    except (AttributeError, Exception) if gp is None else (AttributeError, gp.GurobiError):
-        return default
+def _expr_value(expr) -> float:
+    if isinstance(expr, (int, float, np.integer, np.floating)):
+        return float(expr)
+    return float(expr.getValue())
 
 
 def _model_obj_value(model, default: float = 0.0) -> float:
@@ -145,11 +146,10 @@ def _model_obj_value(model, default: float = 0.0) -> float:
         return default
 
 
-def _var_scalar_value(var, default: float = 0.0) -> float:
-    try:
-        return float(var.X)
-    except (AttributeError, Exception) if gp is None else (AttributeError, gp.GurobiError):
-        return default
+def _var_scalar_value(var) -> float:
+    if isinstance(var, (int, float, np.integer, np.floating)):
+        return float(var)
+    return float(var.X)
 
 
 def _extract_solver_status(model) -> str:

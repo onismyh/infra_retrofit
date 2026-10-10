@@ -1,4 +1,4 @@
-"""`python -m coal_retrofit run` 在 toy 上走通：15 张结果表、result.json 与 `resolved` 段；
+"""`python -m coal_retrofit run` 在 toy 上走通：九张结果表、result.json 与 `resolved` 段；
 `--set` 配 `--as` 另起结果名、不动登记情景的结果；`--tree` 换求解树；已有结果时拒绝，`--force` 才覆盖；
 情景字段 `solver_seed`、`mip_focus` 设到模型上；情景 `warm_start = "lp_relax"` 的一次 run 与手工的两次 run
 逐字节相同。需要 Gurobi。"""
@@ -19,10 +19,8 @@ from toy_inputs import _write_targets, _write_toy_inputs
 pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
 TABLES = {
-    "pathway_shares.csv", "province_pathways.csv", "plant_detail.csv", "industry_detail.csv",
-    "network_edges.csv", "storage_utilization.csv", "resource_use.csv", "biomass_flows.csv",
-    "ammonia_flows.csv", "water_flows.csv", "co2_flow_direction.csv", "plant_cost.csv",
-    "slack_detail.csv", "cost_breakdown.csv", "sanity_checks.csv",
+    "sources.csv", "source_routes.csv", "sinks.csv", "network.csv", "resources.csv", "resource_flows.csv",
+    "costs.csv", "system.csv", "checks.csv",
 }
 
 REGISTRY = """
@@ -126,7 +124,7 @@ def test_seed_and_mip_focus_reach_the_model(tmp_path) -> None:
 @pytest.mark.usefixtures("ascii_tmp_path")
 def test_warm_start_matches_the_manual_two_steps(tmp_path, monkeypatch) -> None:
     """情景 `warm_start = "lp_relax"` 的一次 run 与此前手工的两次 run（第 1 步设 LP_RELAX 与 WRITE_SOL，第 2 步设
-    START_SOL）是同一对求解：第 1 步的 .sol、第 2 步的目标函数与 15 张表逐字节相同。两边走的是同一段代码，所以另核
+    START_SOL）是同一对求解：第 1 步的 .sol、第 2 步的目标函数与九张表逐字节相同。两边走的是同一段代码，所以另核
     第 1 步确实解的是 LP 松弛、第 2 步确实按这份 .sol 设了 MIP start。"""
     starts: list[Path] = []
     apply_start = solver._apply_rounded_start

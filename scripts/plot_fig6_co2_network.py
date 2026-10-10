@@ -6,7 +6,7 @@
   圆点、菱形、方块面积相同。两年用同一尺度，左上角是当年封存总量。
 读图注意：画的是年流量，不是建成的管道能力；管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）
   按两端直线画。
-数据：results/solved/<情景>/network_edges.csv、plant_detail.csv、industry_detail.csv、storage_utilization.csv，
+数据：results/solved/<情景>/network.csv、sources.csv（煤电、工业取 source_type 为 coal、industry 的行）、sinks.csv，
   _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
   封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）。
@@ -45,11 +45,12 @@ TEXT = {
 
 
 def load(scenario: str) -> dict[str, pd.DataFrame]:
+    sources = read_result(scenario, "sources").astype({"source_id": str})
     return {
-        "edges": read_result(scenario, "network_edges"),
-        "plants": read_result(scenario, "plant_detail").astype({"plant_id": str}),
-        "industry": read_result(scenario, "industry_detail").astype({"hub_id": str}),
-        "storage": read_result(scenario, "storage_utilization").astype({"storage_hub_id": str}),
+        "edges": read_result(scenario, "network"),
+        "plants": sources[sources["source_type"] == "coal"],
+        "industry": sources[sources["source_type"] == "industry"],
+        "storage": read_result(scenario, "sinks").astype({"sink_id": str}),
         "candidates": read_input("pipeline_candidate_edges"),
         "nodes": read_input("pipeline_nodes"),
         "sinks": read_input("storage_hubs").astype({"storage_hub_id": str}),
@@ -58,30 +59,28 @@ def load(scenario: str) -> dict[str, pd.DataFrame]:
 
 def node_table(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """管网节点坐标：输入的节点表，加上运行期补的节点（network.py：plant::、storage::、industry:: 前缀）。"""
-    plants = data["plants"].drop_duplicates("plant_id")
-    hubs = data["industry"].drop_duplicates("hub_id")
+    plants = data["plants"].drop_duplicates("source_id")
+    hubs = data["industry"].drop_duplicates("source_id")
     sinks = data["sinks"]
     return pd.concat([
         data["nodes"][["node_id", "lon", "lat"]],
-        pd.DataFrame({"node_id": "plant::" + plants["plant_id"], "lon": plants["centroid_longitude"],
-                      "lat": plants["centroid_latitude"]}),
+        pd.DataFrame({"node_id": "plant::" + plants["source_id"], "lon": plants["longitude"],
+                      "lat": plants["latitude"]}),
         pd.DataFrame({"node_id": "storage::" + sinks["storage_hub_id"], "lon": sinks["longitude"],
                       "lat": sinks["latitude"]}),
-        pd.DataFrame({"node_id": "industry::" + hubs["hub_id"], "lon": hubs["longitude"], "lat": hubs["latitude"]}),
+        pd.DataFrame({"node_id": "industry::" + hubs["source_id"], "lon": hubs["longitude"], "lat": hubs["latitude"]}),
     ], ignore_index=True)
 
 
 def year_layers(data: dict[str, pd.DataFrame], year: int) -> dict[str, pd.DataFrame]:
     """某年要画的管段、捕集源与封存汇（低于 FLOW_MIN 的不画）。"""
     edges = data["edges"]
-    edges = edges[(edges["year"] == year) & (edges["edge_flow_mtpa"] > FLOW_MIN)]
+    edges = edges[(edges["year"] == year) & (edges["flow_mtpa"] > FLOW_MIN)]
     if "geometry_wkt" in data["candidates"].columns:
         edges = edges.merge(data["candidates"][["edge_id", "geometry_wkt"]], on="edge_id", how="left")
-    plants = data["plants"][(data["plants"]["year"] == year) & (data["plants"]["captured_mt"] > FLOW_MIN)]
-    industry = data["industry"][(data["industry"]["year"] == year) & (data["industry"]["captured_mt"] > FLOW_MIN)]
-    storage = data["storage"][(data["storage"]["year"] == year) & (data["storage"]["storage_use_mtpa"] > FLOW_MIN)]
-    storage = storage.merge(data["sinks"][["storage_hub_id", "storage_type", "longitude", "latitude"]],
-                            on="storage_hub_id", how="left", validate="many_to_one")
+    plants = data["plants"][(data["plants"]["year"] == year) & (data["plants"]["captured_co2_mtpa"] > FLOW_MIN)]
+    industry = data["industry"][(data["industry"]["year"] == year) & (data["industry"]["captured_co2_mtpa"] > FLOW_MIN)]
+    storage = data["storage"][(data["storage"]["year"] == year) & (data["storage"]["injected_mtpa"] > FLOW_MIN)]
     return {"edges": edges, "plants": plants, "industry": industry, "storage": storage}
 
 
@@ -90,15 +89,15 @@ def check(data: dict[str, pd.DataFrame], years: tuple[int, ...]) -> None:
     missing = [y for y in years if y not in available]
     if missing:
         raise ValueError(f"结果里没有 {missing} 年（有 {available}），用 --years 指定")
-    if not data["sinks"]["storage_type"].isin(list(SINK_COLORS)).all():
+    if not data["storage"]["storage_type"].isin(list(SINK_COLORS)).all():
         raise ValueError("自检不通过：封存汇类型只应是 dsa / eor（CLAUDE.md §1.3），不出图")
     unknown = set(data["industry"]["sector"]) - set(SECTOR_ORDER[1:])
     if unknown:
         raise ValueError(f"自检不通过：部门 {sorted(unknown)} 不在 SECTOR_ORDER 里，图上会漏画，不出图")
     for year in years:
-        captured = (data["plants"].loc[data["plants"]["year"] == year, "captured_mt"].sum()
-                    + data["industry"].loc[data["industry"]["year"] == year, "captured_mt"].sum())
-        stored = data["storage"].loc[data["storage"]["year"] == year, "storage_use_mtpa"].sum()
+        captured = (data["plants"].loc[data["plants"]["year"] == year, "captured_co2_mtpa"].sum()
+                    + data["industry"].loc[data["industry"]["year"] == year, "captured_co2_mtpa"].sum())
+        stored = data["storage"].loc[data["storage"]["year"] == year, "injected_mtpa"].sum()
         check_close(f"{year} 年 煤电捕集 + 工业捕集 应等于 封存注入（管网节点守恒）", captured, stored, atol=1e-3)
 
 
@@ -114,9 +113,9 @@ def nice_levels(vmax: float) -> list[float]:
 def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lang: str):
     lab, text = labels(lang), TEXT[lang]
     by_year = {y: year_layers(data, y) for y in years}
-    fmax = max([float(v["edges"]["edge_flow_mtpa"].max()) for v in by_year.values() if len(v["edges"])] + [FLOW_MIN])
+    fmax = max([float(v["edges"]["flow_mtpa"].max()) for v in by_year.values() if len(v["edges"])] + [FLOW_MIN])
     smax = max([float(v[k][c].max()) for v in by_year.values()
-                for k, c in (("plants", "captured_mt"), ("industry", "captured_mt"), ("storage", "storage_use_mtpa"))
+                for k, c in (("plants", "captured_co2_mtpa"), ("industry", "captured_co2_mtpa"), ("storage", "injected_mtpa"))
                 if len(v[k])] + [FLOW_MIN])
 
     def width(flow):
@@ -125,21 +124,21 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
     def layers(ax, year: int, k: float = 1.0) -> None:
         layer = by_year[year]
         ax.add_collection(LineCollection(lines[year], colors=PIPE_COLOR,
-                                         linewidths=width(layer["edges"]["edge_flow_mtpa"]) * k,
+                                         linewidths=width(layer["edges"]["flow_mtpa"]) * k,
                                          capstyle="round", joinstyle="round", alpha=0.9, zorder=3))
-        px, py = to_map_xy(layer["plants"]["centroid_longitude"], layer["plants"]["centroid_latitude"])
-        ax.scatter(px, py, s=area_scale(layer["plants"]["captured_mt"], smax, smax=SMAX, marker=MARKERS["coal"]) * k,
+        px, py = to_map_xy(layer["plants"]["longitude"], layer["plants"]["latitude"])
+        ax.scatter(px, py, s=area_scale(layer["plants"]["captured_co2_mtpa"], smax, smax=SMAX, marker=MARKERS["coal"]) * k,
                    c=SECTOR_COLORS["coal"], marker=MARKERS["coal"], edgecolors="white", linewidths=0.3 * k, zorder=4)
         for sector in SECTOR_ORDER[1:]:
             part = layer["industry"][layer["industry"]["sector"] == sector]
             ix, iy = to_map_xy(part["longitude"], part["latitude"])
-            ax.scatter(ix, iy, s=area_scale(part["captured_mt"], smax, smax=SMAX, marker=MARKERS["industry"]) * k,
+            ax.scatter(ix, iy, s=area_scale(part["captured_co2_mtpa"], smax, smax=SMAX, marker=MARKERS["industry"]) * k,
                        c=SECTOR_COLORS[sector], marker=MARKERS["industry"], edgecolors="white", linewidths=0.3 * k,
                        zorder=4)
         for kind, colour in SINK_COLORS.items():
             part = layer["storage"][layer["storage"]["storage_type"] == kind]
             sx, sy = to_map_xy(part["longitude"], part["latitude"])
-            ax.scatter(sx, sy, s=area_scale(part["storage_use_mtpa"], smax, smax=SMAX, marker=MARKERS["sink"]) * k,
+            ax.scatter(sx, sy, s=area_scale(part["injected_mtpa"], smax, smax=SMAX, marker=MARKERS["sink"]) * k,
                        c=colour, marker=MARKERS["sink"], edgecolors="#08519C", linewidths=0.4 * k, zorder=5)
 
     fig = plt.figure(figsize=(183 * MM, 85 * MM))
@@ -149,7 +148,7 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
         layers(ax, year)
         mainland_extent(ax)
         add_scs_inset(ax, draw=lambda a, y=year: layers(a, y, 0.5))
-        stored = float(by_year[year]["storage"]["storage_use_mtpa"].sum())
+        stored = float(by_year[year]["storage"]["injected_mtpa"].sum())
         # 单位带 mathtext 的花括号，不能进 str.format，拼在格式化之后
         label = ax.text(0.02, 0.98, text["total"].format(year=year, v=fmt_number(stored)) + MT_CO2_YR,
                         transform=ax.transAxes, ha="left", va="top", fontsize=6.5, color=INK)

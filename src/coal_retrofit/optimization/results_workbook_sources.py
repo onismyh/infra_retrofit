@@ -43,6 +43,10 @@ SOURCE_HEADER = [
     "Power_Capture", "ISI_Capture", "Cement_Capture", "Chemical_Capture",
 ]
 OPEX_ORDER = ("power", "cement", "isi", "chemical")  # OPEX_Capture_p、_c、_i、_a 的顺序
+# Source_Results 的捕集投资与捕集运行费各取 `costs.csv` 的哪些（实体类型, 成本类别, 细项）。
+CAPTURE_CAPEX = (("coal", "ccs_retrofit_capex", "ccs_retrofit_capex"), ("industry", "industry_capex", "ccs"))
+CAPTURE_OPEX = (("coal", "ccs_om_cost", "ccs_om_cost"), ("coal", "energy_penalty_cost", "capture_fuel"),
+                ("industry", "industry_cost", "ccs_operating"), ("industry", "industry_cost", "ccs_fixed_om"))
 # Plant_Pathways 的份额列：各路径份额，及湿冷改空冷的装机里当年在运行的、在役的（建成未满改造寿命）各占全厂的份额（`plant_pathways`）。
 PLANT_SHARES = {**{pw: f"share_{pw}" for pw in PATHWAYS}, "air_retrofit_operating": "air_retrofit_operating",
                 "air_retrofit_installed": "air_retrofit_installed"}
@@ -50,33 +54,35 @@ PLANT_SHARES = {**{pw: f"share_{pw}" for pw in PATHWAYS}, "air_retrofit_operatin
 
 def sources_frame(tables: Mapping[str, pd.DataFrame], prepared: PreparedInputs) -> pd.DataFrame:
     """每年每个源一行：id、部门组、Source_Results 的部门、省、区、所在节点、本年基线排放（Mt/yr）、本年新建捕集能力的
-    投资（CNY）、本年捕集运行费（CNY/yr）、捕集量（Mt/yr）。煤电的捕集运行费 = 捕集岛固定运维 + CCS 额外燃料
-    （`plant_cost.csv` 的 `ccs_om_cny`、`energy_penalty_cny`），工业的 = 捕集路线的年度费（`cost_annual_ccs_cny`）。"""
-    plant = tables["plant_detail.csv"].merge(
-        tables["plant_cost.csv"][["year", "plant_id", "ccs_retrofit_capex_cny", "ccs_om_cny", "energy_penalty_cny"]],
-        on=["year", "plant_id"], how="left", validate="one_to_one",
-    )
-    hubs = tables["industry_detail.csv"]
+    投资（CNY）、本年捕集运行费（CNY/yr）、捕集量（Mt/yr）。投资与运行费取 `costs.csv` 的捕集各项（`CAPTURE_CAPEX`、
+    `CAPTURE_OPEX`）：煤电的运行费 = 捕集岛固定运维 + CCS 额外燃料，工业的 = 捕集运行费 + 捕集固定运维。"""
+    sources = tables["sources"]
+    costs = tables["costs"]
+    key = ["year", "entity_type", "entity_id"]
+
+    def summed(parts: tuple[tuple[str, str, str], ...]) -> pd.Series:
+        picked = pd.concat([costs[(costs["entity_type"] == entity) & (costs["category"] == category)
+                                  & (costs["item"] == item)] for entity, category, item in parts])
+        return picked.groupby(key)["cost_cny"].sum()
+
+    index = pd.MultiIndex.from_arrays(
+        [sources["year"].astype(int), sources["source_type"].astype(str), sources["source_id"].astype(str)])
+    coal = sources["source_type"] == "coal"
+    ids = sources["source_id"].astype(str)
     network = prepared.network
-    frame = pd.concat([
-        pd.DataFrame({
-            "year": plant["year"], "id": plant["plant_id"].astype(str), "group": "power",
-            "province": plant["province_name"], "emit_mt": plant["baseline_emissions_mt"],
-            "capex_cny": plant["ccs_retrofit_capex_cny"], "opex_cny": plant["ccs_om_cny"] + plant["energy_penalty_cny"],
-            "captured_mt": plant["captured_mt"], "node": plant["plant_id"].astype(str).map(network.plant_node_ids),
-        }),
-        pd.DataFrame({
-            "year": hubs["year"], "id": hubs["hub_id"].astype(str), "group": hubs["sector"].map(SECTOR_GROUP),
-            "province": hubs["province"], "emit_mt": hubs["baseline_co2_mt"],
-            "capex_cny": hubs["cost_capital_ccs_cny"], "opex_cny": hubs["cost_annual_ccs_cny"],
-            "captured_mt": hubs["captured_mt"], "node": hubs["hub_id"].astype(str).map(network.industry_node_ids),
-        }),
-    ], ignore_index=True)
+    frame = pd.DataFrame({
+        "year": sources["year"], "id": ids, "group": sources["sector"].map(SECTOR_GROUP).where(~coal, "power"),
+        "province": sources["province"], "emit_mt": sources["baseline_co2_mtpa"],
+        "capex_cny": summed(CAPTURE_CAPEX).reindex(index).fillna(0.0).to_numpy(),
+        "opex_cny": summed(CAPTURE_OPEX).reindex(index).fillna(0.0).to_numpy(),
+        "captured_mt": sources["captured_co2_mtpa"],
+        "node": ids.map(network.plant_node_ids).where(coal, ids.map(network.industry_node_ids)),
+    })
     if frame[["group", "node"]].isna().to_numpy().any():
         raise ValueError("结果表里有部门不在 SECTOR_GROUP 里、或不在管网上的源")
     frame["sector"] = frame["group"].map({group: s for s, groups in SOURCE_SECTORS.items() for group in groups})
     frame["region"] = frame["province"].map(province_region)
-    return frame
+    return frame.reset_index(drop=True)
 
 
 def captured_by_year(sources: pd.DataFrame, years: Sequence[int]) -> dict[int, float]:
@@ -88,16 +94,15 @@ def sinks_frame(
     tables: Mapping[str, pd.DataFrame], prepared: PreparedInputs, node_province: Mapping[str, str]
 ) -> pd.DataFrame:
     """每年每个封存汇一行：id、DSA/EOR、所在节点、省、区、封存量（Mt/yr）、扣 EOR 抵扣前与扣后的每吨封存成本（CNY/t；
-    扣后即目标函数用的 `storage_cost_cny_per_t`，`data_prep._prepare_storages`）。"""
-    use = tables["storage_utilization.csv"]
-    storages = prepared.storages.set_index(prepared.storages["storage_hub_id"].astype(str))
-    ids = use["storage_hub_id"].astype(str)
+    扣后即目标函数用的 `storage_cost_cny_per_t`，`data_prep._prepare_storages`）。取自 `sinks.csv`。"""
+    sinks = tables["sinks"]
+    ids = sinks["sink_id"].astype(str)
     node = ids.map(prepared.network.storage_node_ids)
     frame = pd.DataFrame({
-        "year": use["year"], "id": ids, "category": ids.map(storages["storage_type"]).astype(str).str.upper(),
-        "node": node, "province": node.map(node_province), "use_mt": use["storage_use_mtpa"],
-        "cost_before_credit_cny_per_t": ids.map(storages["storage_cost_before_credit_cny_per_t"]).astype(float),
-        "cost_cny_per_t": ids.map(storages["storage_cost_cny_per_t"]).astype(float),
+        "year": sinks["year"], "id": ids, "category": sinks["storage_type"].astype(str).str.upper(),
+        "node": node, "province": node.map(node_province), "use_mt": sinks["injected_mtpa"],
+        "cost_before_credit_cny_per_t": sinks["storage_cost_before_credit_cny_per_t"].astype(float),
+        "cost_cny_per_t": sinks["storage_cost_cny_per_t"].astype(float),
     })
     frame["region"] = frame["province"].map(province_region)
     return frame
@@ -155,12 +160,12 @@ def transmission_matrix(
 ) -> list[list[Any]]:
     """Transmission_Matrix_<年>：源省 x 汇省的输送量（Mt/yr），末行末列为合计，零格留空。
 
-    *flows* 是这一年的 `co2_flow_direction.csv`（逐边净流量与方向），*sources*、*sinks* 也只含这一年。按节点充分
-    混合把各汇的封存量分回各源（`results_tracing`），源与汇再按所在节点的省归并。
+    *flows* 是这一年 `network.csv` 里有流量的边（净流向 `flow_from_node_id` → `flow_to_node_id` 与净流量），*sources*、
+    *sinks* 也只含这一年。按节点充分混合把各汇的封存量分回各源（`results_tracing`），源与汇再按所在节点的省归并。
     """
     arcs: dict[tuple[str, str], float] = defaultdict(float)
     for row in flows.itertuples(index=False):
-        arcs[(str(row.source_node), str(row.sink_node))] += float(row.net_flow_mtpa)
+        arcs[(str(row.flow_from_node_id), str(row.flow_to_node_id))] += float(row.net_flow_mtpa)
     supply = {str(node): float(mt) for node, mt in sources.groupby("node")["captured_mt"].sum().items()}
     demand = {str(node): float(mt) for node, mt in sinks.groupby("node")["use_mt"].sum().items()}
     cells: dict[tuple[str, str], float] = defaultdict(float)
@@ -205,26 +210,28 @@ def share_table(
 
 
 def plant_pathways(tables: Mapping[str, pd.DataFrame], years: Sequence[int]) -> list[list[Any]]:
-    """Plant_Pathways：煤电 hub 各年各路径份额与空冷改造份额（`plant_detail.csv`）。
+    """Plant_Pathways：煤电 hub 各年各路径份额与空冷改造份额（`sources.csv` 的煤电行）。
 
-    `plant_detail.csv` 的 `air_operating_share`、`air_installed_share` 是仍湿冷那部分的改造进度，乘 1 − already_air_share
-    才是占全厂的份额（已全空冷的 hub 两列不保证为零，乘上后为零）；原本就是空冷的份额另列 `already_air`。
+    `air_operating_share`、`air_installed_share` 是仍湿冷那部分的改造进度，乘 1 − already_air_share 才是占全厂的份额
+    （已全空冷的 hub 两列不保证为零，乘上后为零）；原本就是空冷的份额另列 `already_air`。
     """
-    plants = tables["plant_detail.csv"]
+    sources = tables["sources"]
+    plants = sources[sources["source_type"] == "coal"]
     wet = 1.0 - plants["already_air_share"]
     frame = plants.assign(
-        id=plants["plant_id"].astype(str), region=plants["province_name"].map(province_region),
+        id=plants["source_id"].astype(str), region=plants["province"].map(province_region),
         air_retrofit_operating=plants["air_operating_share"] * wet,
         air_retrofit_installed=plants["air_installed_share"] * wet,
     )
-    info = {"Region": "region", "province": "province_name", "already_air": "already_air_share"}
+    info = {"Region": "region", "province": "province", "already_air": "already_air_share"}
     return share_table(frame, info, PLANT_SHARES, years)
 
 
 def industry_routes(tables: Mapping[str, pd.DataFrame], years: Sequence[int]) -> list[list[Any]]:
-    """Industry_Routes：工业 hub 各年路线份额（`industry_detail.csv`）。"""
-    hubs = tables["industry_detail.csv"]
-    frame = hubs.assign(id=hubs["hub_id"].astype(str), region=hubs["province"].map(province_region))
+    """Industry_Routes：工业 hub 各年路线份额（`sources.csv` 的工业行）。"""
+    sources = tables["sources"]
+    hubs = sources[sources["source_type"] == "industry"]
+    frame = hubs.assign(id=hubs["source_id"].astype(str), region=hubs["province"].map(province_region))
     shares = {route: f"share_{route}" for route in INDUSTRY_ROUTES}
     return share_table(frame, {"sector": "sector", "Region": "region", "province": "province"}, shares, years)
 

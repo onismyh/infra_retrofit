@@ -6,7 +6,7 @@
 (c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
 (d) 成本乘子两侧都只乘 capex 与随 capex 的固定运维，不乘能耗、耗材与 BECCS 的掺烧运维。
 
-不求解的几条（(b) 的 BECCS 固定运维、(c) 的在役存量、(d) 的两侧成本乘子、工业明细表的 capital 列）
+不求解的几条（(b) 的 BECCS 固定运维、(c) 的在役存量、(d) 的两侧成本乘子、工业逐 hub 成本的投资项）
 在 `test_capex_stock_no_solver.py`。
 """
 from __future__ import annotations
@@ -37,7 +37,11 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_capex_expr,
     industry_year_data,
 )
-from coal_retrofit.optimization.results_industry import _build_industry_detail_table  # noqa: E402
+from coal_retrofit.optimization.results_costs import (  # noqa: E402
+    build_costs_table,
+    build_system_table,
+    cost_closure,
+)
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
@@ -178,9 +182,9 @@ def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
 def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
     """全模型求解：钢铁组 2040、2050 年要比 2030 年减 70%。长流程钢的 CCS 最多减约 63%（捕集 90% x
     (1 - 再生蒸汽放空约 0.30)），氢路线减 95%，所以必须新建氢路线产能。目标函数里的 `industry_capex`
-    逐年等于折现后的明细表 `cost_capital_cny` 之和。目标函数漏掉氢路线 capex、残值台账里仍有时，新建能力
-    没有上界，期末残值抵扣使目标无下界，求解返回 unbounded，在 status 断言处失败；台账里也一起漏掉时，
-    2040 年两者差出氢路线那一份。"""
+    逐年等于折现后的逐 hub 投资（`costs.csv` 工业行的 `industry_capex`，CCS 与氢路线两项）之和。目标函数漏掉氢路线
+    capex、残值台账里仍有时，新建能力没有上界，期末残值抵扣使目标无下界，求解返回 unbounded，在 status 断言处失败；
+    台账里也一起漏掉时，2040 年两者差出氢路线那一份。"""
     years = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _add_steel_hub_near_h2_node(paths, {2030: 1.0, 2040: 0.3, 2050: 0.3})
@@ -202,18 +206,19 @@ def test_solver_books_h2_route_capex_in_the_objective(tmp_path) -> None:
     solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
     assert solution["status"] == "optimal"
     ys = solution["year_solutions"]
+    costs = build_costs_table(prepared, solution, scenario, assumptions)
     for year in years:
-        table = _build_industry_detail_table(
-            prepared, year, ys[year]["year_data"].industry, ys[year]["industry_share"],
-            capacity_mt=ys[year]["industry_capacity_mt"], new_capacity_mt=ys[year]["industry_new_capacity_mt"],
-            ccs_fixed_om_cny=ys[year]["industry_ccs_om_by_hub"],
-        )
+        industry_capex = costs[(costs["year"] == year) & (costs["entity_type"] == "industry")
+                               & (costs["category"] == "industry_capex")]
         df = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate)
         booked = float(ys[year]["cost_breakdown_cny"]["industry_capex"])
-        assert booked == pytest.approx(df * float(table["cost_capital_cny"].sum()), rel=1e-6, abs=1.0), year
+        assert booked == pytest.approx(df * float(industry_capex["cost_cny"].sum()), rel=1e-6, abs=1.0), year
         assert float(ys[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
     steel = list(prepared.industry.hubs["hub_id"]).index("ST1")
     assert float(ys[2040]["industry_new_capacity_mt"][steel, H2]) > 0.1
+    # 氢路线的年度费（含买氢）拆到 hub 后，与其余各类成本一起逐年对上求解器的合计（`results_costs.cost_closure`）。
+    assert ((costs["item"] == "h2_route") & (costs["cost_cny"] > 0.0)).any()
+    assert cost_closure(build_system_table(solution, costs)).max() < 1e-6
 
 
 # ------------------------------------------------- (b) BECCS 只收一次生物质改造费 ---

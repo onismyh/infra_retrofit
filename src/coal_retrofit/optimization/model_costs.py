@@ -96,7 +96,7 @@ def add_year_costs(
          int(ind_lives[_IND_CCS])),
         ("industry_h2_capex", _priced(ind_unit[:, _IND_H2], payload.industry_h2.end_in_use), int(ind_lives[_IND_H2])),
     ]
-    # 上面各项乘的折现权重，结果表除以它得本年不折现的值（`results._build_cost_breakdown`）。
+    # 上面各项乘的折现权重，结果表除以它得本年不折现的值（`results_costs.build_system_table`）。
     payload.cost_weights = {
         **{name: ("annual", df * interval_weight) for name in (*annual, "slack_penalty", "industry_cost")},
         **{name: ("one_off", df) for name in (*one_off, "industry_capex")},
@@ -256,7 +256,8 @@ def _one_off_capex(
     plant_count: int,
     edge_count: int,
 ) -> dict[str, GrbExpr]:
-    """一次性 capex（CNY，未折现未缩放），键与 `cost_exprs` 同名同序；逐厂搁浅资产另写入 `payload.stranded_by_plant`。
+    """一次性 capex（CNY，未折现未缩放），键与 `cost_exprs` 同名同序；逐厂搁浅资产与原址重建另写入
+    `payload.stranded_by_plant`、`payload.rebuild_capex_by_plant`。
 
     分代资产（捕集岛、掺烧升级、空冷改造）计在本年新建量上（`vintage`）；原址重建非首年按增量计，加辅助变量与约束；
     搁浅资产计在新增提前退役 `early_new` 上（`retirement.retirement_flows`）。这些加入模型的先后决定模型指纹。
@@ -289,12 +290,15 @@ def _one_off_capex(
 
     # 原址重建 capex：容量 x 新建成本比例 x 重建份额的增量（rebuild 锁存）；只有本年有到期装机的 hub 能重建
     # （`model_year._add_expiry_rules`），2026-10-02 前按整个 hub 到期计。
+    # 逐厂一项记进 `payload.rebuild_capex_by_plant`（不能重建的 hub 为 0.0），合计与此前同式同序。
     rebuild_cost_per_mw = assumptions.stranded_asset_base_cny_per_kw * scenario.rebuild_capex_fraction * 1000.0
+    payload.rebuild_capex_by_plant = [0.0] * plant_count
     if prev_payload is None:
+        for p in range(plant_count):
+            if float(expired_share[p]) > 0.0:
+                payload.rebuild_capex_by_plant[p] = float(capacity_mw[p]) * rebuild_cost_per_mw * payload.rebuild[p]
         rebuild_capex = gp.quicksum(
-            float(capacity_mw[p]) * rebuild_cost_per_mw * payload.rebuild[p]
-            for p in range(plant_count)
-            if float(expired_share[p]) > 0.0
+            payload.rebuild_capex_by_plant[p] for p in range(plant_count) if float(expired_share[p]) > 0.0
         )
     else:
         rebuild_capex_terms = []
@@ -306,7 +310,8 @@ def _one_off_capex(
                 delta_rebuild >= payload.rebuild[p] - prev_payload.rebuild[p],
                 name=f"rebuild_delta_lb_{p}_{yr_sfx}",
             )
-            rebuild_capex_terms.append(float(capacity_mw[p]) * rebuild_cost_per_mw * delta_rebuild)
+            payload.rebuild_capex_by_plant[p] = float(capacity_mw[p]) * rebuild_cost_per_mw * delta_rebuild
+            rebuild_capex_terms.append(payload.rebuild_capex_by_plant[p])
         rebuild_capex = gp.quicksum(rebuild_capex_terms) if rebuild_capex_terms else 0.0
 
     return {

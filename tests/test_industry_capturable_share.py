@@ -116,7 +116,7 @@ def test_detail_table_records_the_production_share_of_rebuilt_sources(
     zeros = np.zeros_like(data.capacity_mt_per_share)
     table = _build_industry_detail_table(
         SimpleNamespace(industry=industry), 2030, data, np.tile([1.0, 0.0, 0.0], (3, 1)),  # type: ignore[arg-type]
-        capacity_mt=zeros, new_capacity_mt=zeros, ccs_fixed_om_cny=np.zeros(3),
+        capacity_mt=zeros, new_capacity_mt=zeros,
     )
     assert table["abatable_production_share"].tolist() == pytest.approx(expected, rel=1e-12)
 

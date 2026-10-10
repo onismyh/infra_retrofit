@@ -32,9 +32,9 @@ def _load(monkeypatch: pytest.MonkeyPatch, name: str) -> ModuleType:
 def test_fig3_capacity_split_and_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     fig3 = _load(monkeypatch, "plot_fig3_power_pathways")
     shares = {"unabated": 0.5, "ccs": 0.3, "biomass": 0.0, "beccs": 0.0, "ammonia": 0.0, "retire": 0.2}
-    detail = pd.DataFrame([{"year": 2030, "plant_id": "P1", "capacity_mw": 2000.0, "reduction_mt": 1.5,
+    detail = pd.DataFrame([{"year": 2030, "source_id": "P1", "capacity_mw": 2000.0, "reduction_co2_mtpa": 1.5,
                             **{f"share_{k}": v for k, v in shares.items()}}])
-    pathways = pd.DataFrame([{"year": 2030, "plant_id": "P1", "pathway": k, "abatement_mt": a}
+    pathways = pd.DataFrame([{"year": 2030, "source_id": "P1", "route": k, "reduction_co2_mtpa": a}
                              for k, a in (("unabated", 0.0), ("ccs", 0.9), ("retire", 0.6))])
     sanity = pd.DataFrame({"check_name": ["pathway_split_closure"], "status": ["pass"]})
     data = {"detail": detail, "pathways": pathways, "sanity": sanity,
@@ -45,8 +45,8 @@ def test_fig3_capacity_split_and_checks(monkeypatch: pytest.MonkeyPatch) -> None
     assert capacity.loc[2030].sum() == pytest.approx(2.0)
     with pytest.raises(ValueError, match="份额之和"):
         fig3.check({**data, "detail": detail.assign(share_ccs=0.4)})
-    with pytest.raises(ValueError, match="reduction_mt"):
-        fig3.check({**data, "pathways": pathways.assign(abatement_mt=pathways["abatement_mt"] * 2)})
+    with pytest.raises(ValueError, match="reduction_co2_mtpa"):
+        fig3.check({**data, "pathways": pathways.assign(reduction_co2_mtpa=pathways["reduction_co2_mtpa"] * 2)})
     with pytest.raises(ValueError, match="重解"):          # 旧结果：拆分是旧口径，没有闭合行
         fig3.check({**data, "sanity": sanity.iloc[:0]})
     with pytest.raises(ValueError, match="对不上"):
@@ -58,7 +58,7 @@ def test_fig4_counts_sources_left_unrebuilt_as_unabated(monkeypatch: pytest.Monk
     （2026-10-02 前的结果）时按 1；比例缺失或不在 [0, 1] 内时自检不通过。"""
     fig4 = _load(monkeypatch, "plot_fig4_industry_routes")
     detail = pd.DataFrame({
-        "year": [2030, 2030], "sector": ["methanol", "methanol"], "production_kt_per_year": [1000.0, 500.0],
+        "year": [2030, 2030], "sector": ["methanol", "methanol"], "activity": [1000.0, 500.0],
         "abatable_production_share": [0.6, 1.0],
         "share_unabated": [0.0, 1.0], "share_ccs": [0.0, 0.0], "share_h2": [1.0, 0.0],
     })
@@ -76,9 +76,9 @@ def _fig5_data(residual_2060: float, cap_fraction: float, shortfall: float, year
     """电力一组：冻结技术排放 2030 年 10、2060 年 6（利用小时下降），残余 2030 年 9。"""
     residual = {2030: 9.0, 2060: residual_2060}
     baseline = {2030: 10.0, 2060: 6.0}
-    plants = pd.DataFrame([{"year": y, "baseline_emissions_mt": baseline[y], "reduction_mt": baseline[y] - residual[y]}
+    plants = pd.DataFrame([{"year": y, "baseline_co2_mtpa": baseline[y], "reduction_co2_mtpa": baseline[y] - residual[y]}
                            for y in years])
-    industry = pd.DataFrame(columns=["year", "target_group", "baseline_co2_mt", "residual_mt"])
+    industry = pd.DataFrame(columns=["year", "target_group", "baseline_co2_mtpa", "residual_co2_mtpa"])
     result = {"years": {str(y): {
         "coal_baseline_mt": baseline[y], "coal_residual_mt": residual[y],
         "sector_cap_fraction": {"power": 1.0 if y == 2030 else cap_fraction},
@@ -113,14 +113,15 @@ def test_fig5_cap_is_fraction_of_2030_baseline(monkeypatch: pytest.MonkeyPatch) 
 
 def test_fig6_mass_balance_and_legend_levels(monkeypatch: pytest.MonkeyPatch) -> None:
     fig6 = _load(monkeypatch, "plot_fig6_co2_network")
-    data = {"edges": pd.DataFrame({"year": [2040], "edge_id": ["E1"], "edge_flow_mtpa": [3.0]}),
-            "plants": pd.DataFrame({"year": [2040], "captured_mt": [2.0]}),
-            "industry": pd.DataFrame({"year": [2040], "sector": ["cement"], "captured_mt": [1.0]}),
-            "storage": pd.DataFrame({"year": [2040], "storage_use_mtpa": [3.0]}),
-            "sinks": pd.DataFrame({"storage_type": ["dsa"]})}
+    data = {"edges": pd.DataFrame({"year": [2040], "edge_id": ["E1"], "flow_mtpa": [3.0]}),
+            "plants": pd.DataFrame({"year": [2040], "captured_co2_mtpa": [2.0]}),
+            "industry": pd.DataFrame({"year": [2040], "sector": ["cement"], "captured_co2_mtpa": [1.0]}),
+            "storage": pd.DataFrame({"year": [2040], "storage_type": ["dsa"], "injected_mtpa": [3.0]})}
     fig6.check(data, (2040,))
     with pytest.raises(ValueError, match="守恒"):
-        fig6.check({**data, "storage": data["storage"].assign(storage_use_mtpa=2.5)}, (2040,))
+        fig6.check({**data, "storage": data["storage"].assign(injected_mtpa=2.5)}, (2040,))
+    with pytest.raises(ValueError, match="dsa / eor"):        # 封存汇类型来自 sinks.csv，不认识的画不出颜色
+        fig6.check({**data, "storage": data["storage"].assign(storage_type="ccs")}, (2040,))
     with pytest.raises(ValueError, match="2060"):
         fig6.check(data, (2040, 2060))
     with pytest.raises(ValueError, match="SECTOR_ORDER"):     # 不认识的部门画不出来，守恒照样对得上
@@ -130,11 +131,12 @@ def test_fig6_mass_balance_and_legend_levels(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_fig7_utilization_and_converted_capacity(monkeypatch: pytest.MonkeyPatch) -> None:
     """余量 ≤ 0 而仍有取水记为无余量（inf），按 used / available 重算、不读结果表的 utilization（旧结果表
-    在这里记 0，夹具即按旧表写）；超出余量的取水要与 slack_detail 的流域松弛对上；超了但四舍五入是 100% 的格子写 >100%；
+    在这里记 0，夹具即按旧表写）；超出余量的取水要与 resources 的 slack 列对上；超了但四舍五入是 100% 的格子写 >100%；
     空冷量只算当年在运行、仍湿冷的部分。"""
     fig7 = _load(monkeypatch, "plot_fig7_water")
-    basins = pd.DataFrame({"year": 2030, "region": ["D", "C", "E"], "used": [9.0, 5.0e6, 0.0],
-                           "available": [10.0, -1.0e6, 0.0], "utilization": [0.9, 0.0, 0.0]})
+    basins = pd.DataFrame({"year": 2030, "node_id": ["D", "C", "E"], "used": [9.0, 5.0e6, 0.0],
+                           "available": [10.0, -1.0e6, 0.0], "slack": [0.0, 6.0e6, 0.0],
+                           "utilization": [0.9, 0.0, 0.0]})
     table = fig7.utilization(basins)
     assert list(table.index) == ["C", "D", "E"]
     assert np.isinf(table.loc["C", 2030])
@@ -146,16 +148,14 @@ def test_fig7_utilization_and_converted_capacity(monkeypatch: pytest.MonkeyPatch
     plants = pd.DataFrame({"year": [2040], "capacity_mw": [1000.0], "air_operating_share": [0.5],
                            "already_air_share": [0.4]})
     assert fig7.converted_gw(plants).loc[2040] == pytest.approx(0.3)
-    slack = pd.DataFrame({"year": [2030], "constraint_type": ["water_basin_quota"], "node_id": ["C"],
-                          "slack_value": [6.0e6]})
-    fig7.check({"basins": basins, "plants": plants, "slack": slack})
+    fig7.check({"basins": basins, "plants": plants})
     with pytest.raises(ValueError, match="松弛"):
-        fig7.check({"basins": basins, "plants": plants, "slack": slack.iloc[:0]})
+        fig7.check({"basins": basins.assign(slack=0.0), "plants": plants})
     with pytest.raises(ValueError, match="BASIN_ORDER"):
-        fig7.check({"basins": basins.assign(region="B1"), "plants": plants, "slack": slack})
+        fig7.check({"basins": basins.assign(node_id="B1"), "plants": plants})
     old = plants.rename(columns={"air_operating_share": "air_cooled_share"})   # 2026-09-30 之前落盘的结果
     with pytest.raises(ValueError, match="重解"):
-        fig7.check({"basins": basins, "plants": old, "slack": slack})
+        fig7.check({"basins": basins, "plants": old})
 
 
 def test_same_value_gives_same_marker_area(monkeypatch: pytest.MonkeyPatch) -> None:

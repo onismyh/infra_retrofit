@@ -6,7 +6,7 @@
 读图注意：电力的残余排放 = 冻结技术排放 − 逐厂减排量之和；工业按 hub 的 baseline − reduction 汇总到目标组
   （constants_industry.SECTOR_TARGET_GROUP）。超过上限的部分由带罚项的目标缺口变量承担，即该组目标没达到。
   结果里只记了上限的比例，2030 年的基线要从 2030 年的结果里取，所以 2030 必须是规划年，否则脚本报错。
-数据：results/solved/<情景>/plant_detail.csv、industry_detail.csv，results/solved/<情景>.json。
+数据：results/solved/<情景>/sources.csv（煤电、工业分别取 source_type 为 coal、industry 的行），results/solved/<情景>.json。
 自检：各组逐年的残余与冻结技术排放 = result.json 记的值；目标缺口 = max(0, 残余 − 上限)（模型约束 残余 − 缺口 ≤ 上限，
   缺口带罚项取到最小），上限算高、算低都对不上。
 输出：_indtree/results/figures/fig5_sector_targets{,_en}.{pdf,png}
@@ -43,8 +43,9 @@ TEXT = {
 
 
 def load(scenario: str) -> dict:
-    return {"plants": read_result(scenario, "plant_detail"), "industry": read_result(scenario, "industry_detail"),
-            "result": read_result_json(scenario)}
+    sources = read_result(scenario, "sources")
+    return {"plants": sources[sources["source_type"] == "coal"],
+            "industry": sources[sources["source_type"] == "industry"], "result": read_result_json(scenario)}
 
 
 def sector_table(data: dict) -> pd.DataFrame:
@@ -52,14 +53,14 @@ def sector_table(data: dict) -> pd.DataFrame:
     plants, industry, years = data["plants"], data["industry"], data["result"]["years"]
     if any("total" in years[y]["target_shortfall_by_group_mt"] for y in years):
         raise ValueError("结果是合计总量上限（sector_target_mode = \"total\"），图 5 按组画上限与缺口，不适用")
-    power = plants.groupby("year")[["baseline_emissions_mt", "reduction_mt"]].sum()
+    power = plants.groupby("year")[["baseline_co2_mtpa", "reduction_co2_mtpa"]].sum()
     frames = [pd.DataFrame({"group": POWER_TARGET_GROUP, "year": power.index,
-                            "baseline": power["baseline_emissions_mt"],
-                            "residual": power["baseline_emissions_mt"] - power["reduction_mt"]})]
+                            "baseline": power["baseline_co2_mtpa"],
+                            "residual": power["baseline_co2_mtpa"] - power["reduction_co2_mtpa"]})]
     if len(industry):
-        ind = industry.groupby(["target_group", "year"])[["baseline_co2_mt", "residual_mt"]].sum().reset_index()
-        frames.append(ind.rename(columns={"target_group": "group", "baseline_co2_mt": "baseline",
-                                          "residual_mt": "residual"}))
+        ind = industry.groupby(["target_group", "year"])[["baseline_co2_mtpa", "residual_co2_mtpa"]].sum().reset_index()
+        frames.append(ind.rename(columns={"target_group": "group", "baseline_co2_mtpa": "baseline",
+                                          "residual_co2_mtpa": "residual"}))
     table = pd.concat(frames, ignore_index=True)
     if BASE_YEAR not in set(table["year"]):
         raise ValueError(f"结果里没有 {BASE_YEAR} 年：部门上限 = 比例 × {BASE_YEAR} 年冻结技术排放，"
