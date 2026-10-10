@@ -129,10 +129,26 @@ SECTOR_COLORS = {
 # 部门碳目标的四个组（constants_industry.SECTOR_TARGET_GROUP 与 POWER_TARGET_GROUP）。
 GROUP_ORDER = ("power", "steel", "cement", "chemicals")
 GROUP_COLORS = {"power": "#636363", "steel": "#E64B35", "cement": "#00A087", "chemicals": "#7E6148"}
+# CO2 管网与封存用 Blues（§3.3），由深到浅：图 2 的四类候选边按序取，图 6 在役而当年无流量的管道取浅端。
+BLUES = ("#08519C", "#3182BD", "#6BAED6", "#9ECAE1")
 SINK_COLORS = {"dsa": "#3182BD", "eor": "#9ECAE1"}   # 深部咸水层、驱油封存
+SINK_EDGE = "#08519C"                                # 封存汇方块的描边（§4.4）
 PIPE_COLOR = "#3182BD"                               # CO2 管网与 DSA 同色（§3.3 Blues 深端）
+IDLE_PIPE_COLOR = "#9ECAE1"                          # 在役而当年无流量的管道（图 6）
 AIR_COLOR = "#CC3311"                                # 空冷改造
 OVER_COLOR = "#A50F15"                               # 超上限、超指标（Reds 深端，与空冷的强调红分开）
+NEUTRAL = "#B0B0B0"                                  # 尺寸图例的点：只示大小，不指类别
+BASELINE_COLOR = "#D9D9D9"                           # 冻结技术排放（图 5）
+# 成本构成（图 10）：煤电 Greys、燃料与资源 Greens、工业红族、管网与封存 Blues，同族同色；松弛惩罚用超上限色。
+COST_ORDER = ("coal_operating", "coal_capex", "resources", "industry_operating", "industry_capex", "network",
+              "storage", "carbon", "slack", "salvage")
+COST_COLORS = {
+    "coal_operating": "#969696", "coal_capex": "#636363",
+    "resources": "#74C476",
+    "industry_operating": "#F39B7F", "industry_capex": "#E64B35",
+    "network": "#3182BD", "storage": "#9ECAE1",
+    "carbon": "#7E6148", "slack": OVER_COLOR, "salvage": "#D8DCE0",
+}
 # 标记：煤电圆、工业菱形、封存汇方块，各图一致。
 MARKERS = {"coal": "o", "industry": "D", "sink": "s"}
 # 散点的 s 对圆点是外接正方形的面积（圆面积 π/4·s），对方块、菱形就是图形面积：乘 π/4 才与同值的圆点等面积。
@@ -418,18 +434,22 @@ def figure_label(fig, letter: str, x: float, y: float) -> None:
     fig.text(x, y, letter, fontsize=8, va="top", ha="left", color="black", **_LABEL_FONT)
 
 
-def stacked_bars(ax, x, table: pd.DataFrame, colors: dict[str, str], *, width: float = 0.62) -> None:
+def stacked_bars(ax, x, table: pd.DataFrame, colors: dict[str, str], *, width: float = 0.62,
+                 hatches: dict[str, str] | None = None) -> None:
     """按列堆叠的柱：正值向上、负值向下各自累加，负值不会把上面的段拉下来。
 
-    *table* 的行对应 *x*，列按堆叠顺序（自下而上）。
+    *table* 的行对应 *x*，列按堆叠顺序（自下而上）；*hatches* 给某些列加深色斜线（如海上汇，图 9）：斜线另画一层
+    无填充、无描边的柱，线色取 INK（斜线色跟描边色走，白色斜线在浅色柱上看不清）。
     """
     pos = np.zeros(len(table))
     neg = np.zeros(len(table))
     for key in table.columns:
         values = table[key].to_numpy(dtype=float)
         bottom = np.where(values >= 0, pos, neg)
-        ax.bar(x, values, width=width, bottom=bottom, color=colors[key],
-               edgecolor="white", linewidth=0.4, zorder=3)
+        ax.bar(x, values, width=width, bottom=bottom, color=colors[key], edgecolor="white", linewidth=0.4, zorder=3)
+        if (hatches or {}).get(key):
+            ax.bar(x, values, width=width, bottom=bottom, facecolor="none", edgecolor=INK, linewidth=0.0,
+                   hatch=hatches[key], zorder=3.1)
         pos = pos + np.clip(values, 0, None)
         neg = neg + np.clip(values, None, 0)
     if (neg < 0).any():
@@ -447,8 +467,10 @@ MAP_LEGEND: dict[str, Any] = {"frameon": True, "facecolor": "white", "framealpha
                               "borderpad": 0.4}   # 地图上的图例：白底半透明，压在省界上的字才看得清
 
 
-def legend_patches(keys, colors: dict[str, str], names: dict[str, str]) -> list[Patch]:
-    return [Patch(facecolor=colors[k], edgecolor="none", label=names[k]) for k in keys]
+def legend_patches(keys, colors: dict[str, str], names: dict[str, str],
+                   hatches: dict[str, str] | None = None) -> list[Patch]:
+    return [Patch(facecolor=colors[k], edgecolor=INK if (hatches or {}).get(k) else "none", linewidth=0.0,
+                  hatch=(hatches or {}).get(k), label=names[k]) for k in keys]
 
 
 def area_scale(values, vmax: float, *, smin: float = 1.5, smax: float = 42.0, marker: str = "o") -> np.ndarray:

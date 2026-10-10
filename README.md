@@ -555,6 +555,19 @@
 > `system.csv` 的 `slack_penalty` 行）。
 > 求解器取值失败时（`_shared._var_value`、`_expr_value`）改为报错，不再静默记 0：此前取不到的值会让结果表里的成本悄悄少一块。
 > 已落盘的结果是旧的 15 张表，出图脚本只读新表，要按新代码重解（本来就要重解，见上一条）。`tests/test_cost_attribution.py` 覆盖对账。
+>
+> 2026-10-10 起出图按同日审计的绘图意见改（作者批准的计划 H），模型与结果表不变：
+> - 新增三张结果图：图 8 `plot_fig8_industry_abatement.py`（各工业部门按路线的减排量与捕集量）、图 9 `plot_fig9_storage.py`
+>   （年注入量与累计封存量按汇型 × 陆上 / 海上堆叠，画全国部署上限）、图 10 `plot_fig10_costs.py`（年度费用、一次性投资与
+>   规划期折现值按十类汇总，折现值合计核对 result.json 的目标函数值）。出图脚本由七个变成十个，`render_version.py` 照旧按
+>   `plot_fig*` 通配。
+> - 图 6 加画在役而当年无流量的管道（`network.csv` 的 `total_capacity_mtpa` > 0、`flow_mtpa` ≈ 0，图例在管段流量那一行），
+>   三个图例过 `check_off_land`。
+> - 图 2 的四类候选边改用 Blues 由深到浅（§3.3 管网色；此前干线与钢铁同色、三角化边与甲醇同色），工业 hub 按部门着色（同图 1）。
+> - 图 4、图 5 补面板标号；图 4 注明 CCS 份额是产量份额、不是捕集份额（合成氨、甲醇只捕集纯流股），捕集量看图 8。
+> - 散在各脚本的颜色收进 `plot_style`（`SINK_EDGE`、`NEUTRAL`、`BASELINE_COLOR`、`BLUES`、`IDLE_PIPE_COLOR`、`COST_COLORS`），
+>   图宽一律取 `FULL_WIDTH_MM`；`stacked_bars`、`legend_patches` 可加斜线（图 9 的海上汇）。
+> - `tests/test_plot_figures.py` 补图 1、图 2、图 6（空闲管道）、图 8–10 的自检测试。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

@@ -364,13 +364,15 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
 的面板 d 已改为用模型自己的函数算成本（`levelised_capture_cost_cny_per_t`：按 09-22 起的成本参数折成平准化值，只供出图
 比较，目标函数不用；扣再生蒸汽排放），`ST_` 系的新图（下一段）没有这一面板，要用时可从 `a184984` 取回。
 
-2026-09-29 起出图只有仓库根 `scripts/plot_fig1_sources_sinks.py` … `plot_fig7_water.py` 七个脚本（一图一个，图含义、读图注意、
-数据与自检写在各脚本开头），写到本树 `results/figures/`：图 1、图 2 画输入（源与汇、候选管网），图 3–7 画求解结果（煤电改造路径、
-工业路线、部门排放对碳目标、CO₂ 管网、流域取水与空冷），缺省读 `ST_WA_cwatm_126_dry_oq`，`--scenario` 可换；
+2026-09-29 起出图只有仓库根 `scripts/plot_fig1_sources_sinks.py` … `plot_fig7_water.py` 七个脚本，2026-10-10 起加图 8–10
+（`plot_fig8_industry_abatement.py`、`plot_fig9_storage.py`、`plot_fig10_costs.py`）共十个（一图一个，图含义、读图注意、
+数据与自检写在各脚本开头），写到本树 `results/figures/`：图 1、图 2 画输入（源与汇、候选管网），图 3–10 画求解结果（煤电改造路径、
+工业路线、部门排放对碳目标、CO₂ 管网、流域取水与空冷、工业减排与捕集、封存按汇型与陆海汇总、成本构成），缺省读
+`ST_WA_cwatm_126_dry_oq`，`--scenario` 可换；
 `--lang zh|en|both` 缺省两版都画，英文版文件名加 `_en`。
 
 本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图（子目录 `main/`、`extended/`）不会混进 `render_version.py` 的归档：
-它只运行上面七个脚本，只拷 `figures/` 根目录下本次画出的图。这是有意的：
+它只运行上面的出图脚本，只拷 `figures/` 根目录下本次画出的图。这是有意的：
 `IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。两处例外：给了
 `--skip-plots` 时不画图，根目录下的图全拷，2026-09-29 之前的脚本画在根目录的旧图（如 `fig1_water_footprint`）也会进去；
 本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。

@@ -1,6 +1,6 @@
 """图 5  部门排放与碳目标（求解结果）
 
-图含义：四个目标组（电力、钢铁、水泥、化工）各规划年的排放。灰柱是冻结技术排放（当年利用小时或产量下不做任何
+图含义：四个目标组（电力、钢铁、水泥、化工，面板 a–d）各规划年的排放。灰柱是冻结技术排放（当年利用小时或产量下不做任何
   减排时的排放），彩色柱是残余排放，黑色短横线是部门上限；残余排放高出上限的部分用红字标出。
   上限 = 碳目标轨迹给的比例 × 该组自身 2030 年的冻结技术排放（model_year._add_sector_targets）。
 读图注意：电力的残余排放 = 冻结技术排放 − 逐厂减排量之和；工业按 hub 的 baseline − reduction 汇总到目标组
@@ -27,13 +27,13 @@ from matplotlib.patches import Patch
 import _bootstrap  # noqa: F401
 from coal_retrofit.constants_industry import POWER_TARGET_GROUP
 from plot_style import (
-    GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR, OVER_COLOR,
-    apply_style, check_close, figure_cli, fmt_number, labels, langs, read_result, read_result_json, save_fig,
+    BASELINE_COLOR, FULL_WIDTH_MM, GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR, OVER_COLOR,
+    apply_style, check_close, figure_cli, fmt_number, labels, langs, panel_label, read_result, read_result_json,
+    save_fig,
 )
 
 NAME = "fig5_sector_targets"
 BASE_YEAR = 2030             # 部门上限按各组 2030 年冻结技术排放的比例给
-BASELINE_GREY = "#D9D9D9"
 TEXT = {
     "zh": {"baseline": "冻结技术排放", "residual": "残余排放", "cap": "部门上限", "over": "超 {v}",
            "y": f"排放（{MT_CO2_YR}）"},
@@ -100,13 +100,13 @@ def check(data: dict, table: pd.DataFrame) -> None:
 def draw(table: pd.DataFrame, lang: str):
     lab, text = labels(lang), TEXT[lang]
     groups = [g for g in GROUP_ORDER if g in set(table["group"])]
-    fig, axes = plt.subplots(1, len(groups), figsize=(183 * MM, 60 * MM), squeeze=False,
+    fig, axes = plt.subplots(1, len(groups), figsize=(FULL_WIDTH_MM * MM, 60 * MM), squeeze=False,
                              gridspec_kw={"wspace": 0.35})
     fig.subplots_adjust(left=0.07, right=0.99, bottom=0.12, top=0.8)
     for i, (ax, group) in enumerate(zip(axes[0], groups)):
         part = table[table["group"] == group].sort_values("year")
         x = np.arange(len(part))
-        ax.bar(x, part["baseline"], width=0.72, color=BASELINE_GREY, edgecolor="none", zorder=2)
+        ax.bar(x, part["baseline"], width=0.72, color=BASELINE_COLOR, edgecolor="none", zorder=2)
         ax.bar(x, part["residual"], width=0.42, color=GROUP_COLORS[group], edgecolor="none", zorder=3)
         ax.hlines(part["cap"], x - 0.36, x + 0.36, colors="black", linewidth=1.0, zorder=4)
         top = float(np.maximum(part["baseline"], part["cap"]).max())
@@ -118,11 +118,12 @@ def draw(table: pd.DataFrame, lang: str):
         ax.set_xticks(x, [str(y) for y in part["year"]])
         ax.tick_params(axis="x", length=0)
         ax.set_title(lab["group"][group], pad=4)
+        panel_label(ax, "abcd"[i])
         if i == 0:
             ax.set_ylabel(text["y"])
     residual_handle = tuple(Patch(facecolor=GROUP_COLORS[g], edgecolor="none") for g in groups)
     # 含元组句柄（HandlerTuple 画成多色色块）；Figure.legend 的类型存根只认单个 Artist，所以标成 Any
-    handles: list[Any] = [Patch(facecolor=BASELINE_GREY, edgecolor="none"), residual_handle,
+    handles: list[Any] = [Patch(facecolor=BASELINE_COLOR, edgecolor="none"), residual_handle,
                           Line2D([], [], color="black", linewidth=1.0)]
     fig.legend(handles, [text["baseline"], text["residual"], text["cap"]], loc="upper center",
                bbox_to_anchor=(0.5, 1.0), ncol=3, frameon=False, handlelength=2.4,

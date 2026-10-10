@@ -208,7 +208,7 @@ plt.rcParams.update({
 `plot_style.LABELS`，各图专有的文字在各脚本顶部的 `TEXT`（图 2 的边类名在 `EDGE_NAMES`）。面板标号 a b c 两版都用 Arial 加粗，是单字体规则唯一的例外：
 SimHei 只有一个字重，`fontweight="bold"` 落到它上面会被静默忽略。
 
-> 现状（2026-09-29 起）：出图脚本只剩 `scripts/plot_fig1_*.py` … `plot_fig7_*.py` 七个，都经 `apply_style(lang)` 取字体。
+> 现状（2026-09-29 起；2026-10-10 起另有图 8–10）：出图脚本只有 `scripts/plot_fig1_*.py` … `plot_fig10_*.py` 十个，都经 `apply_style(lang)` 取字体。
 > 新脚本若自写 `"font.family"`，就是破坏全局一致性。2026-09-30 起 `save_fig` 先查图里用到的字体：本机缺 SimHei 或 Arial
 > （中文版的面板标号也用 Arial）就报错，不像 matplotlib 那样静默换成 DejaVu Sans 照常出图。
 
@@ -289,7 +289,8 @@ NPG = ['#E64B35', '#4DBBD5', '#00A087', '#3C5488', '#F39B7F',
 
 > 现状（2026-09-30 起）：上表的煤电六行（未改造、CCS 改造、生物质、BECCS、掺氨、退役）在 `plot_style.PATHWAY_COLORS`；
 > 工业路线在 `ROUTE_COLORS`，沿用同一逻辑（灰 = 未改造、深灰 = CCS、紫 = 氢路线）；空冷在 `AIR_COLOR`；管网与两类封存在
-> `PIPE_COLOR`、`SINK_COLORS`；取水分档色写在图 7 脚本里。模型没有掺氨 + CCS、掺氢 + CCS 路径，表里这两行不用。
+> `PIPE_COLOR`、`SINK_COLORS`（汇的描边 `SINK_EDGE`，图 2 候选边与图 6 空闲管道取 Blues 由深到浅的 `BLUES`）；成本构成（图 10）在
+> `COST_COLORS`；取水分档色写在图 7 脚本里。模型没有掺氨 + CCS、掺氢 + CCS 路径，表里这两行不用。
 > 超上限、超指标另用 `OVER_COLOR`（`#A50F15`，Reds 深端），不与空冷的强调红混用。部门色 `SECTOR_COLORS` 取 NPG，
 > 同一大类同一族（钢铁红、水泥绿、化工棕，煤电灰），避开蓝色——蓝色留给水与封存。
 

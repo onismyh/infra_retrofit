@@ -25,7 +25,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 from plot_style import (
-    AIR_COLOR, BASIN_ORDER, INK, MM, MUTED, OVER_COLOR,
+    AIR_COLOR, BASIN_ORDER, FULL_WIDTH_MM, INK, MM, MUTED, OVER_COLOR,
     apply_style, check_close, figure_cli, figure_label, fmt_number, labels, langs, read_result, save_fig,
 )
 
@@ -96,7 +96,7 @@ def check(data: dict[str, pd.DataFrame]) -> None:
 
 def draw(data: dict[str, pd.DataFrame], lang: str):
     lab, text = labels(lang), TEXT[lang]
-    fig, (ax, bx) = plt.subplots(1, 2, figsize=(183 * MM, 72 * MM), gridspec_kw={"width_ratios": (1.45, 1.0),
+    fig, (ax, bx) = plt.subplots(1, 2, figsize=(FULL_WIDTH_MM * MM, 72 * MM), gridspec_kw={"width_ratios": (1.45, 1.0),
                                                                                 "wspace": 0.42})
     fig.subplots_adjust(left=0.1, right=0.99, bottom=0.2, top=0.9)
     table = utilization(data["basins"])
