@@ -250,8 +250,9 @@ class YearPayload:
     salvage_ledger: list[tuple[str, GrbExpr, int]] = field(default_factory=list)
     # `add_year_costs` 之前为 None。
     objective_expr: GrbExpr = None
-    # 逐厂搁浅资产（CNY，未折现未缩放），`add_year_costs` 写入；结果表的逐厂成本取它的解值。
+    # 逐厂搁浅资产与原址重建 capex（CNY，未折现未缩放），`add_year_costs` 写入；结果表的逐厂成本取它们的解值。
     stranded_by_plant: list[GrbExpr] = field(default_factory=list)
+    rebuild_capex_by_plant: list[GrbExpr] = field(default_factory=list)
     # 分代能力本年的在役能力、固定运维与期末在用量（`model_linking.add_capacity_vintages` 写入，此前为 None）：
     # 煤电捕集岛、空冷改造、生物质与氨掺烧能力（每厂一项；掺烧按档位分层，每层一个），工业捕集与氢路线能力（每 hub 一项）。
     ccs_island: StockYear | None = None
@@ -314,12 +315,20 @@ class YearSolution(TypedDict):
     ccs_om_by_plant: np.ndarray
     # 逐厂搁浅资产，CNY（未折现）：新增提前退役 x 每单位的剩余账面价值（`retirement.retirement_flows`）。
     stranded_by_plant: np.ndarray
+    # 逐厂原址重建 capex，CNY（未折现）；本年新建的空冷改造 (plant_count,) 与掺烧能力 (plant_count, 档位数)，单位同
+    # `YearPayload.air_new`、`blend_new_b`、`blend_new_a`（`results_costs` 按它们拆一次性 capex）。
+    rebuild_capex_by_plant: np.ndarray
+    air_new: np.ndarray
+    blend_new_b: np.ndarray
+    blend_new_a: np.ndarray
     pipe_count: np.ndarray
     industry_share: np.ndarray
     # 工业路线能力，Mt/yr (hub_count, len(INDUSTRY_ROUTES))：本年新建、在役；捕集的固定运维 (hub_count,)，CNY/yr。
     industry_new_capacity_mt: np.ndarray
     industry_capacity_mt: np.ndarray
     industry_ccs_om_by_hub: np.ndarray
+    # 氢路线带地板的年度成本 (hub_count,)，CNY/yr（`IndustryPayload.h2_route_cost` 的值）。
+    industry_h2_route_cost: np.ndarray
     industry_h2_flow_kg: np.ndarray
     plant_reduction_mt: np.ndarray
     # `YearPayload` 同名字段的值：逐厂 Σβ_l·z_l。

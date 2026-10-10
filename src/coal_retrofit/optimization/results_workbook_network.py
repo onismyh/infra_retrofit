@@ -25,23 +25,18 @@ STAGES = (("捕集环节", "Cost_Capture", 1.0), ("运输环节", "Cost_Transpor
 
 def edge_years(tables: Mapping[str, pd.DataFrame], tiers: Sequence[float]) -> pd.DataFrame:
     """每年每条边一行：起止节点、管长、各管径档的在役根数（`pipes_<档>` 列，取自 `pipes_in_service_by_tier`）与合计
-    （`pipes`）、净流量（`net`，Mt/yr，起点到终点为正，取自 `co2_flow_direction.csv`）。"""
+    （`pipes`）、净流量（`net`，Mt/yr，起点到终点为正，`network.csv` 的正向减反向流量）。"""
     labels = [f"{tier:g}" for tier in tiers]
-    edges = tables["network_edges.csv"][
-        ["year", "edge_id", "from_node_id", "to_node_id", "length_km", "pipes_in_service_by_tier"]
-    ].copy()
-    edges["edge_id"] = edges["edge_id"].astype(str)  # 与 `co2_flow_direction.csv`、`pipe_sheets` 的边号同为字符串
+    network = tables["network"]
+    edges = network[["year", "edge_id", "from_node_id", "to_node_id", "length_km", "pipes_in_service_by_tier"]].copy()
+    edges["edge_id"] = edges["edge_id"].astype(str)  # 与 `pipe_sheets` 的边号同为字符串
     counts = np.array(
         [_tier_counts(text, labels) for text in edges["pipes_in_service_by_tier"]], dtype=np.int64
     ).reshape(len(edges), len(labels))
     for k, label in enumerate(labels):
         edges[f"pipes_{label}"] = counts[:, k]
     edges["pipes"] = edges[[f"pipes_{label}" for label in labels]].sum(axis=1)
-    flows = tables["co2_flow_direction.csv"]
-    net = flows.assign(edge_id=flows["edge_id"].astype(str), net=flows["flow_fwd_mtpa"] - flows["flow_bwd_mtpa"])[
-        ["year", "edge_id", "net"]]
-    edges = edges.merge(net, on=["year", "edge_id"], how="left", validate="one_to_one")
-    edges["net"] = edges["net"].fillna(0.0)
+    edges["net"] = (network["flow_fwd_mtpa"] - network["flow_bwd_mtpa"]).to_numpy()
     return edges
 
 
@@ -141,30 +136,33 @@ def cost_lines(
 ) -> dict[str, list[CostLine]]:
     """Cost_Capture、Cost_Transport、Cost_Storage、Revenue_EOR 各项各年不折现的 CNY。
 
-    捕集取逐厂、逐 hub 的值（`plant_cost.csv`、`industry_detail.csv`），运输取 `cost_breakdown.csv`；封存费按封存量 x
-    汇的扣抵扣前单价（含海上倍率），EOR 抵扣 = 封存量 x（扣前单价 − 扣后单价），两者之差即目标函数的 `storage_cost`。
+    捕集取 `costs.csv` 里煤电与工业的捕集各项，运输取 `system.csv`；封存费按封存量 x 汇的扣抵扣前单价（含海上倍率），
+    EOR 抵扣 = 封存量 x（扣前单价 − 扣后单价），两者之差即目标函数的 `storage_cost`。
     2026-10-02 前扣前单价取全国一个 `storage_cost_cny_per_t`，海上汇加价后会被记出负的抵扣，改为逐汇取。
     """
+    costs, system = tables["costs"], tables["system"]
+
     def per_year(frame: pd.DataFrame, column: str) -> dict[int, float]:
         return {y: float(frame.loc[frame["year"] == y, column].sum()) for y in years}
 
-    plant, hubs, breakdown = tables["plant_cost.csv"], tables["industry_detail.csv"], tables["cost_breakdown.csv"]
+    def items(entity: str, category: str, *names: str) -> dict[int, float]:
+        rows = costs[(costs["entity_type"] == entity) & (costs["category"] == category)]
+        return per_year(rows[rows["item"].isin(names)] if names else rows, "cost_cny")
+
     before = sinks["cost_before_credit_cny_per_t"]
     stored = sinks.assign(before=sinks["use_mt"] * MILLION * before,
                           credit=sinks["use_mt"] * MILLION * (before - sinks["cost_cny_per_t"]))
     return {
         "Cost_Capture": [
-            ("煤电捕集岛投资", "one_off", "ccs_retrofit_capex", per_year(plant, "ccs_retrofit_capex_cny")),
-            ("工业捕集投资", "one_off", "industry_ccs_capex", per_year(hubs, "cost_capital_ccs_cny")),
-            ("煤电捕集岛固定运维", "annual", "", per_year(plant, "ccs_om_cny")),
-            ("煤电 CCS 额外燃料", "annual", "", per_year(plant, "energy_penalty_cny")),
-            ("工业捕集年度费", "annual", "", per_year(hubs, "cost_annual_ccs_cny")),
+            ("煤电捕集岛投资", "one_off", "ccs_retrofit_capex", items("coal", "ccs_retrofit_capex")),
+            ("工业捕集投资", "one_off", "industry_ccs_capex", items("industry", "industry_capex", "ccs")),
+            ("煤电捕集岛固定运维", "annual", "", items("coal", "ccs_om_cost")),
+            ("煤电 CCS 额外燃料", "annual", "", items("coal", "energy_penalty_cost", "capture_fuel")),
+            ("工业捕集年度费", "annual", "", items("industry", "industry_cost", "ccs_operating", "ccs_fixed_om")),
         ],
         "Cost_Transport": [
-            ("管道投资", "one_off", "pipe_capex", per_year(breakdown[breakdown["category"] == "pipe_capex"],
-                                                           "cost_undiscounted_cny")),
-            ("运输运维", "annual", "", per_year(breakdown[breakdown["category"] == "transport_opex"],
-                                               "cost_undiscounted_cny")),
+            ("管道投资", "one_off", "pipe_capex", per_year(system[system["category"] == "pipe_capex"], "cost_cny")),
+            ("运输运维", "annual", "", per_year(system[system["category"] == "transport_opex"], "cost_cny")),
         ],
         "Cost_Storage": [("封存费（扣 EOR 抵扣前）", "annual", "", per_year(stored, "before"))],
         "Revenue_EOR": [("EOR 抵扣", "annual", "", per_year(stored, "credit"))],

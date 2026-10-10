@@ -1,6 +1,7 @@
 """结果表的省与分区：管网节点归省，省归 ChinaCCS 的六大区。
 
-供 `network_edges.csv` 的起止省（`results_network._build_edge_table`）与结果工作簿（`results_workbook`）。
+供 `network.csv` 的起止省（`results_network._build_network_table`）、`sinks.csv` 的省（`_build_sinks_table`）与结果工作簿
+（`results_workbook`）。
 """
 from __future__ import annotations
 

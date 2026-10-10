@@ -37,7 +37,7 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
     industry_capex_expr,
     industry_year_data,
 )
-from coal_retrofit.optimization.results_industry import _build_industry_detail_table  # noqa: E402
+from coal_retrofit.optimization.results_costs import build_costs_table  # noqa: E402
 from coal_retrofit.optimization.salvage import remaining_fraction  # noqa: E402
 from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
@@ -137,9 +137,9 @@ def test_h2_route_capacity_retires_after_25_years() -> None:
 
 def test_solver_books_capture_fixed_om_and_reports_alive_capacity(tmp_path) -> None:
     """全模型求解：水泥组 2030、2040、2050 年要比 2030 年基线减 10%、30%、50%（toy 水泥只有 CCS），三年都要新建
-    捕集能力。目标函数里的 `industry_cost` 逐年等于折现、乘年金后的明细表 `cost_annual_cny` 之和，其中含在役且在用
-    的捕集能力按建设年单价的固定运维；结果里的在役能力是寿命内历年新建之和，2050 年 2030 年建的已满 20 年退出。
-    目标函数漏掉捕集固定运维、或结果把本年新建当作在役时，这里对不上。"""
+    捕集能力。目标函数里的 `industry_cost` 逐年等于折现、乘年金后的逐 hub 成本（`costs.csv` 工业行的 `industry_cost`，不折现）
+    之和，其中含在役且在用的捕集能力按建设年单价的固定运维；结果里的在役能力是寿命内历年新建之和，2050 年 2030 年建的已满
+    20 年退出。目标函数漏掉捕集固定运维、或结果把本年新建当作在役时，这里对不上。"""
     years = (2030, 2040, 2050)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {year: 1.0 for year in years}, {2030: 0.9, 2040: 0.7, 2050: 0.5})
@@ -158,16 +158,14 @@ def test_solver_books_capture_fixed_om_and_reports_alive_capacity(tmp_path) -> N
     solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
     assert solution["status"] == "optimal"
     ys = solution["year_solutions"]
+    costs = build_costs_table(prepared, solution, scenario, assumptions)
     weight = _year_objective_weight(10, scenario.discount_rate)
     for year in years:
-        table = _build_industry_detail_table(
-            prepared, year, ys[year]["year_data"].industry, ys[year]["industry_share"],
-            capacity_mt=ys[year]["industry_capacity_mt"], new_capacity_mt=ys[year]["industry_new_capacity_mt"],
-            ccs_fixed_om_cny=ys[year]["industry_ccs_om_by_hub"],
-        )
+        industry_cost = costs[(costs["year"] == year) & (costs["entity_type"] == "industry")
+                              & (costs["category"] == "industry_cost")]
         df = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate)
         booked = float(ys[year]["cost_breakdown_cny"]["industry_cost"])
-        assert booked == pytest.approx(df * weight * float(table["cost_annual_cny"].sum()), rel=1e-6), year
+        assert booked == pytest.approx(df * weight * float(industry_cost["cost_cny"].sum()), rel=1e-6), year
         assert float(ys[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
         assert float(ys[year]["industry_ccs_om_by_hub"].sum()) > 0.0, year
     cement = list(prepared.industry.hubs["hub_id"]).index("C1")

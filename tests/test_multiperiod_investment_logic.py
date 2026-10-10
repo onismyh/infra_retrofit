@@ -13,7 +13,7 @@ gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver int
 
 from coal_retrofit.optimization._shared import SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
-from coal_retrofit.optimization.results import _build_plant_cost_table  # noqa: E402
+from coal_retrofit.optimization.results_costs import build_costs_table  # noqa: E402
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.paths import ProjectPaths  # noqa: E402
@@ -236,26 +236,19 @@ def test_ccs_capture_island_charged_per_build_and_rebuilt_at_end_of_life(tmp_pat
         2040: capex_rate[2030] * assumptions.ccs_om_fraction,
         2050: capex_rate[2050] * assumptions.ccs_om_fraction,
     }
-    capex_indices = solution["capex_pathway_indices"]
+    cost_table = build_costs_table(prepared, solution, scenario, assumptions)
     for year, ys in ((2030, y1), (2040, y2), (2050, y3)):
         df = 1.0 / (1.0 + rate) ** (year - scenario.discount_base_year)
         costs = ys["cost_breakdown_cny"]
         assert costs["ccs_retrofit_capex"] == pytest.approx(1000.0 * capex_paid[year] * s1_y2030 * df, rel=1e-3, abs=1.0), year
         assert costs["ccs_om_cost"] == pytest.approx(1000.0 * om_rate[year] * s1_y2030 * df * annuity, rel=1e-3), year
-        # 逐厂成本表与模型一致（未折现）。
-        plant_cost = _build_plant_cost_table(
-            prepared, year, ys["year_data"], ys["share"], ys["biomass_use_gj"],
-            plant_reduction_mt=ys["plant_reduction_mt"],
-            retrofit_new=ys["retrofit_new"], ccs_om_by_plant=ys["ccs_om_by_plant"],
-            stranded_by_plant=ys["stranded_by_plant"],
-            capex_pathway_indices=capex_indices, rebuilt_share=ys["rebuilt_share"], air_share=ys["air_share"],
-            rebuilt_air_share=ys["rebuilt_air_share"], bio_penalty_by_plant=ys["bio_penalty_by_plant"],
-            blend_level_b=ys["blend_level_b"], blend_level_a=ys["blend_level_a"],
-        )
-        assert float(plant_cost["ccs_retrofit_capex_cny"].iloc[0]) == pytest.approx(
+        # 逐厂成本（`costs.csv` 的煤电行）与模型一致（未折现）；表只写非零行，缺行按 0。
+        coal = cost_table[(cost_table["year"] == year) & (cost_table["entity_type"] == "coal")]
+        by_category = coal.groupby("category")["cost_cny"].sum()
+        assert float(by_category.get("ccs_retrofit_capex", 0.0)) == pytest.approx(
             1000.0 * capex_paid[year] * s1_y2030, rel=1e-3, abs=1.0
         ), year
-        assert float(plant_cost["ccs_om_cny"].iloc[0]) == pytest.approx(1000.0 * om_rate[year] * s1_y2030, rel=1e-3), year
+        assert float(by_category.get("ccs_om_cost", 0.0)) == pytest.approx(1000.0 * om_rate[year] * s1_y2030, rel=1e-3), year
     assert float(y2["retrofit_alive"][0]) == pytest.approx(s1_y2030, rel=1e-3)
 
 

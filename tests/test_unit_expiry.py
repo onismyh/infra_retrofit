@@ -17,6 +17,7 @@ from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
 from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor, _year_objective_weight
 from coal_retrofit.optimization.data_prep import _with_expiry, prepare_inputs
+from coal_retrofit.optimization.results_costs import build_costs_table, build_system_table, cost_closure
 from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
@@ -273,11 +274,11 @@ def test_rebuilt_split_bounds() -> None:
 def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, retire_cost, retired, rebuilt) -> None:
     """2050 年 f = 0.6：600 MW 亚临界到期，400 MW 超临界未到期，只开放未改造与退役。运行有利可图时到期装机全部原址重建、
     不退：未改造份额 1 里重建部分 0.6 按重建热耗 8.0 燃烧，其余 0.4 按未到期那台的毛热耗；运行就亏（电价为零、退役不计
-    替代电量的成本）时退到 f + 0.15 = 0.75、不重建，在运行的 0.25 全是未到期那台。逐厂减排与成本表的基线净运行成本都按
-    这两部分算（排放按毛热耗 / hub 毛热耗缩放基线排放）。2026-10-02 前全国一个热耗 8.5714，整个 hub 自 2050 年起
-    按 8.0 燃烧，不论到期装机重建还是退役。"""
+    替代电量的成本）时退到 f + 0.15 = 0.75、不重建，在运行的 0.25 全是未到期那台。逐厂减排与逐厂成本（`costs.csv`）的
+    基线净运行成本都按这两部分算（排放按毛热耗 / hub 毛热耗缩放基线排放）。2026-10-02 前全国一个热耗 8.5714，整个 hub
+    自 2050 年起按 8.0 燃烧，不论到期装机重建还是退役。"""
     pytest.importorskip("gurobipy", reason=GUROBI)
-    from coal_retrofit.optimization.results_plant import _build_plant_cost_table
+    from coal_retrofit.optimization.results_costs import build_costs_table
 
     paths, unit_heat_rate, hub_heat_rate = _two_type_toy(tmp_path)
     scenario = OptimizationScenario(
@@ -304,22 +305,16 @@ def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, reti
     running_heat = rebuilt * 3.6 / scenario.rebuild_efficiency + (1.0 - retired - rebuilt) * unit_heat_rate[1]
     baseline = float(year_data.emissions_mt[0])
     assert ys["plant_reduction_mt"][0] == pytest.approx(baseline * (1.0 - running_heat / hub_heat_rate), rel=1e-6)
-    table = _build_plant_cost_table(
-        prepared, 2050, year_data, ys["share"], ys["biomass_use_gj"],
-        plant_reduction_mt=ys["plant_reduction_mt"], retrofit_new=ys["retrofit_new"],
-        ccs_om_by_plant=ys["ccs_om_by_plant"], stranded_by_plant=ys["stranded_by_plant"],
-        capex_pathway_indices=solution["capex_pathway_indices"], rebuilt_share=ys["rebuilt_share"],
-        air_share=ys["air_share"], rebuilt_air_share=ys["rebuilt_air_share"],
-        bio_penalty_by_plant=ys["bio_penalty_by_plant"], blend_level_b=ys["blend_level_b"],
-        blend_level_a=ys["blend_level_a"],
-    )
+    costs = build_costs_table(prepared, solution, scenario, assumptions)
+    delta_rows = costs[(costs["year"] == 2050) & (costs["entity_type"] == "coal")
+                       & (costs["category"] == "coal_operating_delta")]  # 表只写非零行，缺行按 0
     margin = assumptions.baseline_om_cost_cny_per_mwh - scenario.electricity_price_for_year(2050)
     expected = float(year_data.generation[0]) * (
         running_heat * assumptions.province_coal_cost("Shanxi") + (1.0 - retired) * margin
     )
     # 表与目标里都是相对参照（全部维持不改造运行）的差，加回参照即基线净运行成本（增量口径，2026-10-10 起）。
     reference = float(year_data.baseline_reference_cny[0])
-    assert table["coal_operating_delta_cny"].iloc[0] + reference == pytest.approx(expected, rel=1e-6)
+    assert float(delta_rows["cost_cny"].sum()) + reference == pytest.approx(expected, rel=1e-6)
     # 目标函数里的同一项（除去折现与年金系数）。
     weight = _discount_factor(2050, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
         scenario.interval_years(YEARS, 0, assumptions), scenario.discount_rate
@@ -623,6 +618,10 @@ def test_expired_capacity_retires_outside_the_rate_limit_and_without_stranded_co
     for ys, year, stranded in ((y1, 2050, new_build * 0.15 * 0.39), (y2, 2060, new_build * 0.14 * 0.1)):
         assert ys["stranded_by_plant"][0] == pytest.approx(stranded, rel=1e-6)
         assert ys["cost_breakdown_cny"]["stranded_capex"] == pytest.approx(stranded / 1.06 ** (year - 2025), rel=1e-6)
+    # 搁浅资产拆到 hub 后与其余各类成本一起逐年对上求解器的合计（`results_costs.cost_closure`）。
+    costs = build_costs_table(prepared, solution, scenario, assumptions)
+    assert (costs["category"] == "stranded_capex").any()
+    assert cost_closure(build_system_table(solution, costs)).max() < 1e-6
 
 
 @pytest.mark.parametrize(("retirement_year", "retired", "book"), [(2055, 0.15, 0.25), (2050, 1.0, 0.0)])

@@ -1,4 +1,5 @@
-"""资源结果表：生物质 / 绿氢 / 水（含流域指标）的节点用量与可用量，及逐链路流量。"""
+"""资源结果表：`resources.csv`（生物质、绿氢、水节点与流域取水指标的用量、可用量与松弛）与 `resource_flows.csv`
+（逐链路流量与采购费）。"""
 from __future__ import annotations
 
 import numpy as np
@@ -6,159 +7,130 @@ import pandas as pd
 
 from ..constants import AMMONIA_FLOW_SCALE, NH3_H2_RATIO, WATER_FLOW_SCALE
 from ._shared import PreparedInputs
-from .year_types import YearData
+from .year_types import YearSolution
+
+RESOURCE_COLUMNS = ["year", "resource_type", "node_id", "province", "longitude", "latitude", "competition_scope",
+                    "used", "available", "slack", "unit", "utilization"]
+FLOW_COLUMNS = ["year", "resource_type", "node_id", "source_type", "source_id", "distance_km", "flow", "unit",
+                "h2_kg", "price_cny_per_unit", "cost_cny"]
+_FLOW_TOL = 1e-3  # 只列流量大于它的链路
 
 
-def _build_supply_table(
-    prepared: PreparedInputs,
-    year: int,
-    year_data: YearData,
-    biomass_flow_gj: np.ndarray,
-    ammonia_flow_kg: np.ndarray,
-    water_flow_m3: np.ndarray,
-    basin_use_m3: np.ndarray,
-    industry_h2_flow_kg: np.ndarray | None = None,
-) -> pd.DataFrame:
-    """各节点一行。绿氢节点（2026-10-10 起按绿氢计，`resource_type` = green_h2）的用量 = 煤电氨流量 x NH3_H2_RATIO
-    + 工业氢流量（与节点约束 `model_resources.add_resource_balances` 同口径；此前只计了煤电氨）。"""
-    biomass_links = prepared.biomass_links[["biomass_node_id"]].copy()
-    biomass_links["used"] = np.asarray(biomass_flow_gj, dtype=np.float64)
-    biomass_grouped = biomass_links.groupby("biomass_node_id", as_index=False)["used"].sum()
-    biomass_table = prepared.biomass[["biomass_node_id", "province_name", "available_gj"]].copy()
-    biomass_table = biomass_table.merge(biomass_grouped, on="biomass_node_id", how="left").fillna({"used": 0.0})
-    biomass_table["year"] = year
-    biomass_table["resource_type"] = "biomass"
-    biomass_table["region"] = biomass_table["biomass_node_id"]
-    biomass_table["available"] = biomass_table["available_gj"].astype(float)
-    biomass_table["competition_scope"] = "shared_biomass_node"
-    biomass_table["unit"] = "GJ/yr"
+def _build_resource_table(prepared: PreparedInputs, year: int, ys: YearSolution) -> pd.DataFrame:
+    """各节点一行；`used`、`available`、`slack` 的单位见 `unit`，`slack` 是该节点（流域）约束的松弛（应为零）。
 
-    ammonia_links = year_data.ammonia_links[["ammonia_node_id"]].copy()
-    ammonia_links["used"] = np.asarray(ammonia_flow_kg, dtype=np.float64) * NH3_H2_RATIO
-    ammonia_grouped = ammonia_links.groupby("ammonia_node_id", as_index=False)["used"].sum()
-    ammonia_table = year_data.ammonia_nodes.copy()
-    # 求解器返回的 `used` 是物理单位，而可用量向量仍是求解器的缩放单位，
-    # 所以必须还原缩放，否则利用率会读成 1e6。
-    ammonia_table["available"] = np.asarray(year_data.h2_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE
-    ammonia_table = ammonia_table.merge(ammonia_grouped, on="ammonia_node_id", how="left").fillna({"used": 0.0})
-    membership = getattr(year_data, "industry_h2_node_membership", None)
-    if membership is not None and industry_h2_flow_kg is not None and len(industry_h2_flow_kg):
-        ammonia_table["used"] += np.asarray(membership @ np.asarray(industry_h2_flow_kg, dtype=np.float64)).ravel()
-    ammonia_table["year"] = year
-    ammonia_table["resource_type"] = "green_h2"
-    ammonia_table["region"] = ammonia_table["ammonia_node_id"]
-    ammonia_table["competition_scope"] = "shared_green_h2_node"
-    ammonia_table["unit"] = "kg H2/yr"
-
-    water_links = year_data.water_links[["water_node_id"]].copy()
-    water_links["used"] = np.asarray(water_flow_m3, dtype=np.float64)
-    water_grouped = water_links.groupby("water_node_id", as_index=False)["used"].sum()
-    water_table = year_data.water_nodes.copy()
-    water_table["available"] = np.asarray(year_data.water_available_m3, dtype=np.float64) * WATER_FLOW_SCALE
-    water_table = water_table.merge(water_grouped, on="water_node_id", how="left").fillna({"used": 0.0})
-    water_table["year"] = year
-    water_table["resource_type"] = "water"
-    water_table["region"] = water_table["water_node_id"]
-    water_table["competition_scope"] = "shared_water_node"
-    water_table["unit"] = "m3/yr"
-
-    # 官方指标流域上限：制度半边，口径是取水。无水约束或关掉流域上限时
-    # 为空。单列为一种 resource_type，免得有任何汇总把它与上面按耗水口径的
-    # `water` 行合到一起——两者是不同的计量，相加毫无意义。
+    绿氢节点（`resource_type` = green_h2，2026-10-10 起按绿氢计）的用量 = 煤电氨流量 x NH3_H2_RATIO + 工业氢流量，
+    与节点约束 `model_resources.add_resource_balances` 同口径。水节点（water）是耗水口径的生态流量上限；流域取水指标
+    （water_basin_quota）是取水口径，单列一种，两者不能相加。无水约束或关掉流域上限时没有流域行；无水约束时水节点
+    没有上限，可用量为空。利用率 = 用量 / 可用量；可用量 ≤ 0 而用量 > 1e-6（用了松弛）记 inf，与图 7 的"无余量"
+    同一规则（`scripts/plot_fig7_water.utilization`），可用量 ≤ 0 而没有用量记 0。经纬度：生物质节点取自节点表，绿氢与水
+    节点按节点号从输入表（`prepared.ammonia_supply`、`prepared.water_nodes`）补上，流域行为空。
+    """
+    yd = ys["year_data"]
+    slacks = ys["slacks"]
+    biomass = prepared.biomass
+    h2_used = _node_sum(yd.ammonia_links["ammonia_node_id"], np.asarray(ys["ammonia_flow_kg"]) * NH3_H2_RATIO,
+                        yd.ammonia_nodes["ammonia_node_id"])
+    membership = getattr(yd, "industry_h2_node_membership", None)
+    if membership is not None and len(ys["industry_h2_flow_kg"]):
+        h2_used = h2_used + np.asarray(membership @ np.asarray(ys["industry_h2_flow_kg"], dtype=np.float64)).ravel()
     frames = [
-        biomass_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
-        ammonia_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
-        water_table[["year", "resource_type", "region", "province_name", "competition_scope", "used", "available", "unit"]],
+        _nodes(year, "biomass", biomass, "biomass_node_id", "shared_biomass_node", "GJ/yr",
+               _node_sum(prepared.biomass_links["biomass_node_id"], ys["biomass_flow_gj"], biomass["biomass_node_id"]),
+               biomass["available_gj"].astype(float).to_numpy(), slacks["biomass_slack_gj"]),
+        # 求解器的可用量是缩放单位，乘回物理单位，否则利用率会差 1e6 倍。
+        _nodes(year, "green_h2", _with_coordinates(yd.ammonia_nodes, "ammonia_node_id", prepared.ammonia_supply),
+               "ammonia_node_id", "shared_green_h2_node", "kg H2/yr", h2_used,
+               np.asarray(yd.h2_available_kg, dtype=np.float64) * AMMONIA_FLOW_SCALE, slacks["h2_slack_kg"]),
+        _nodes(year, "water", _with_coordinates(yd.water_nodes, "water_node_id", prepared.water_nodes),
+               "water_node_id", "shared_water_node", "m3/yr",
+               _node_sum(yd.water_links["water_node_id"], ys["water_flow_m3"], yd.water_nodes["water_node_id"]),
+               np.asarray(yd.water_available_m3, dtype=np.float64) * WATER_FLOW_SCALE, slacks["water_slack_m3"]),
     ]
-    basin_codes = list(year_data.water_basin_codes or [])
-    if len(basin_codes):
-        used = np.asarray(basin_use_m3, dtype=np.float64)
-        available = np.asarray(year_data.water_basin_available_m3, dtype=np.float64)
+    codes = list(yd.water_basin_codes or [])
+    if codes:
+        used = np.asarray(slacks["water_basin_use_m3"], dtype=np.float64)
         frames.append(pd.DataFrame({
-            "year": year,
-            "resource_type": "water_basin_quota",
-            "region": basin_codes[:len(used)],
-            "province_name": "",
-            "competition_scope": "basin_withdrawal_cap",
-            "used": used,
-            "available": available[:len(used)],
-            "unit": "m3/yr",
+            "year": year, "resource_type": "water_basin_quota", "node_id": codes[:len(used)], "province": "",
+            "competition_scope": "basin_withdrawal_cap", "used": used,
+            "available": np.asarray(yd.water_basin_available_m3, dtype=np.float64)[:len(used)],
+            "slack": np.asarray(slacks["water_basin_slack_m3"], dtype=np.float64)[:len(used)], "unit": "m3/yr",
         }))
-    output = pd.concat(
-        frames,
-        ignore_index=True,
-        sort=False,
-    )
-    # 可用量 ≤ 0 而用量 > 1e-6（用了松弛）记 inf，与图 7 的"无余量"同一规则（`scripts/plot_fig7_water.utilization`），
-    # 免得把超用读成"没用"；可用量 ≤ 0 而没有用量记 0。无水约束时节点没有上限、可用量为空，仍记 0。
-    used, available = output["used"].to_numpy(float), output["available"].to_numpy(float)
+    table = pd.concat(frames, ignore_index=True, sort=False)
+    used, available = table["used"].to_numpy(float), table["available"].to_numpy(float)
     with np.errstate(divide="ignore", invalid="ignore"):
-        output["utilization"] = np.where(
+        table["utilization"] = np.where(
             available > 0, used / available, np.where((available <= 0) & (used > 1e-6), np.inf, 0.0)
         )
-    return output
+    return table.reindex(columns=RESOURCE_COLUMNS)
 
 
-def _build_biomass_flow_table(
-    prepared: PreparedInputs,
-    year: int,
-    biomass_flow_gj: np.ndarray,
-) -> pd.DataFrame:
-    """逐链路生物质流量：哪个节点给哪个厂供应多少。"""
-    links = prepared.biomass_links.copy()
-    links["year"] = year
-    links["flow_gj"] = np.asarray(biomass_flow_gj, dtype=np.float64)
-    # 只保留活跃链路
-    active = links[links["flow_gj"] > 1e-3].copy()
-    # 附上电厂位置，供绘制地图
-    plant_loc = prepared.plants[["plant_id", "centroid_longitude", "centroid_latitude", "province_name"]].copy()
-    plant_loc["plant_id"] = plant_loc["plant_id"].astype(str)
-    active["plant_id"] = active["plant_id"].astype(str)
-    active = active.merge(plant_loc, on="plant_id", how="left", suffixes=("", "_plant"))
-    # 附上节点位置
-    node_loc = prepared.biomass[["biomass_node_id", "longitude", "latitude", "province_name"]].copy()
-    node_loc.columns = ["biomass_node_id", "node_longitude", "node_latitude", "node_province"]
-    node_loc["biomass_node_id"] = node_loc["biomass_node_id"].astype(str)
-    active["biomass_node_id"] = active["biomass_node_id"].astype(str)
-    active = active.merge(node_loc, on="biomass_node_id", how="left")
-    return active
+def _with_coordinates(nodes: pd.DataFrame, id_column: str, source: pd.DataFrame) -> pd.DataFrame:
+    """年度节点表只带节点号与省，经纬度按节点号从输入表 *source*（逐年重复的取第一行）补上。"""
+    xy = source.assign(node=source[id_column].astype(str)).drop_duplicates("node").set_index("node")
+    ids = nodes[id_column].astype(str)
+    return nodes.assign(longitude=ids.map(xy["longitude"]).to_numpy(), latitude=ids.map(xy["latitude"]).to_numpy())
 
 
-def _build_ammonia_flow_table(
-    year_data: YearData,
-    year: int,
-    ammonia_flow_kg: np.ndarray,
-    plants: pd.DataFrame,
-) -> pd.DataFrame:
-    """逐链路氨流量：哪个节点给哪个厂供应多少。"""
-    links = year_data.ammonia_links.copy()
-    links["year"] = year
-    links["flow_kg"] = np.asarray(ammonia_flow_kg, dtype=np.float64)
-    active = links[links["flow_kg"] > 1e-3].copy()
-    if active.empty:
-        return active
-    plant_loc = plants[["plant_id", "centroid_longitude", "centroid_latitude", "province_name"]].copy()
-    plant_loc["plant_id"] = plant_loc["plant_id"].astype(str)
-    active["plant_id"] = active["plant_id"].astype(str)
-    active = active.merge(plant_loc, on="plant_id", how="left", suffixes=("", "_plant"))
-    return active
+def _node_sum(link_nodes: pd.Series, flows: np.ndarray, nodes: pd.Series) -> np.ndarray:
+    """逐链路的量按链路的节点号加到各节点上，顺序同 `nodes`。"""
+    grouped = pd.Series(np.asarray(flows, dtype=np.float64), index=link_nodes.astype(str).to_numpy()).groupby(level=0).sum()
+    return nodes.astype(str).map(grouped).fillna(0.0).to_numpy(dtype=np.float64)
 
 
-def _build_water_flow_table(
-    year_data: YearData,
-    year: int,
-    water_flow_m3: np.ndarray,
-    plants: pd.DataFrame,
-) -> pd.DataFrame:
-    """逐链路水流量：哪个水节点给哪个厂供应多少。"""
-    links = year_data.water_links.copy()
-    links["year"] = year
-    links["flow_m3"] = np.asarray(water_flow_m3, dtype=np.float64)
-    active = links[links["flow_m3"] > 1e-3].copy()
-    if active.empty:
-        return active
-    plant_loc = plants[["plant_id", "centroid_longitude", "centroid_latitude", "province_name"]].copy()
-    plant_loc["plant_id"] = plant_loc["plant_id"].astype(str)
-    active["plant_id"] = active["plant_id"].astype(str)
-    active = active.merge(plant_loc, on="plant_id", how="left", suffixes=("", "_plant"))
-    return active
+def _nodes(year: int, resource: str, nodes: pd.DataFrame, id_column: str, scope: str, unit: str,
+           used: np.ndarray, available: np.ndarray, slack: np.ndarray) -> pd.DataFrame:
+    return pd.DataFrame({
+        "year": year, "resource_type": resource, "node_id": nodes[id_column].astype(str).to_numpy(),
+        "province": nodes.get("province_name", pd.Series("", index=nodes.index)).to_numpy(),
+        "longitude": nodes.get("longitude", pd.Series(np.nan, index=nodes.index)).to_numpy(),
+        "latitude": nodes.get("latitude", pd.Series(np.nan, index=nodes.index)).to_numpy(),
+        "competition_scope": scope, "used": used, "available": available,
+        "slack": np.asarray(slack, dtype=np.float64), "unit": unit,
+    })
+
+
+def _build_resource_flow_table(prepared: PreparedInputs, year: int, ys: YearSolution) -> pd.DataFrame:
+    """逐链路一行，只列流量大于 1e-3 的。`price_cny_per_unit` 是目标函数所用的到厂价（每 `unit` 的一个单位），
+    `cost_cny` = 到厂价 x 流量，CNY/yr。
+
+    - biomass：煤电从生物质节点买的生物质，GJ/yr；采购费即 `costs.csv` 的 biomass_cost。
+    - ammonia：煤电从绿氢节点买的氨，kg NH3/yr，`h2_kg` 是它折成的氢（x NH3_H2_RATIO）；采购费即 ammonia_cost。
+    - green_h2：工业 hub 从同一批节点买的氢，kg H2/yr；采购费计在 `costs.csv` 工业的 h2_route 里（氢路线年度费
+      = 非氢运行差额 + 买氢，下限 0，`model_industry.add_industry_year`）。
+    - water：煤电从水节点取的水，m3/yr；取水费即 water_cost。
+    """
+    yd = ys["year_data"]
+    frames = [
+        _links(year, "biomass", prepared.biomass_links, "biomass_node_id", "coal", "plant_id", ys["biomass_flow_gj"],
+               "GJ/yr", np.asarray(yd.biomass_link_cost_cny_per_gj) / float(yd.biomass_flow_scale)),
+        _links(year, "ammonia", yd.ammonia_links, "ammonia_node_id", "coal", "plant_id", ys["ammonia_flow_kg"],
+               "kg NH3/yr", np.asarray(yd.ammonia_link_cost_cny_per_kg) / float(yd.ammonia_flow_scale), NH3_H2_RATIO),
+        _links(year, "green_h2", yd.industry_h2_links, "ammonia_node_id", "industry", "hub_id",
+               ys["industry_h2_flow_kg"], "kg H2/yr",
+               np.asarray(yd.industry_h2_link_cost_cny_per_kg) / AMMONIA_FLOW_SCALE, 1.0),
+        _links(year, "water", yd.water_links, "water_node_id", "coal", "plant_id", ys["water_flow_m3"], "m3/yr",
+               np.asarray(yd.water_link_cost_cny_per_m3) / float(yd.water_flow_scale)),
+    ]
+    kept = [frame for frame in frames if len(frame)]
+    if not kept:
+        return pd.DataFrame(columns=FLOW_COLUMNS)
+    return pd.concat(kept, ignore_index=True, sort=False).reindex(columns=FLOW_COLUMNS)
+
+
+def _links(year: int, resource: str, links: pd.DataFrame, node_column: str, source_type: str, source_column: str,
+           flows: np.ndarray, unit: str, price: np.ndarray, h2_per_unit: float | None = None) -> pd.DataFrame:
+    flow = np.asarray(flows, dtype=np.float64)
+    if not len(flow):
+        return pd.DataFrame(columns=FLOW_COLUMNS)
+    # 没有单价的链路（水价向量为空时目标函数不计水费，`model_costs._resource_costs`）记 0。
+    price = np.asarray(price, dtype=np.float64) if np.size(price) else np.zeros_like(flow)
+    keep = flow > _FLOW_TOL
+    links = links.reset_index(drop=True).loc[keep]
+    return pd.DataFrame({
+        "year": year, "resource_type": resource, "node_id": links[node_column].astype(str).to_numpy(),
+        "source_type": source_type, "source_id": links[source_column].astype(str).to_numpy(),
+        "distance_km": links["distance_km"].astype(float).to_numpy(), "flow": flow[keep], "unit": unit,
+        "h2_kg": flow[keep] * h2_per_unit if h2_per_unit is not None else np.nan,
+        "price_cny_per_unit": price[keep], "cost_cny": price[keep] * flow[keep],
+    })

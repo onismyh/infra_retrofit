@@ -9,7 +9,7 @@
 
 情景登记在仓库根 `scenarios/*.toml`（格式见 `coal_retrofit.scenarios`），`--registry` 可换目录。
 
-- `run` 写 `<tree>/results/<结果名>.json` 与同名目录下的 15 张表；结果名缺省是情景名。已有 `<结果名>.json` 时
+- `run` 写 `<tree>/results/<结果名>.json` 与同名目录下的九张表；结果名缺省是情景名。已有 `<结果名>.json` 时
   求解之前就拒绝，`--force` 才覆盖。
 - 情景 `warm_start = "lp_relax"`（`ST_` 系）时自动做热启动两步（实现说明 §9.7）：第 1 步的 .sol 缺省写在
   `<tree>/results/<结果名>.lp.sol`，`--sol-dir` 换目录（须是 ASCII 路径），见 `run_controls.sol_path`。

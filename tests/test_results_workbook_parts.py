@@ -1,6 +1,6 @@
 """结果工作簿的几个部件，不求解：源到汇的充分混合追踪（`results_tracing`）与输送矩阵的行列、管网节点归省与分区
 （`results_regions`，落点定省要仓库里的 data/ChinaMap/provinces.shp）、在役根数串的拆分（`results_workbook_network._tier_counts`）、
-工业明细按路线分的四列、源表与成本各表只取捕集的列、全期每吨成本、Plant_Pathways 的空冷份额。"""
+工业逐 hub 成本按路线分的四项、`sources.csv` 与 `costs.csv` 只取捕集的项、全期每吨成本、Plant_Pathways 的空冷份额。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,12 +9,11 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import sparse
 
 from coal_retrofit.constants import AMMONIA_FLOW_SCALE
 from coal_retrofit.constants_industry import SECTOR_STEEL_BF
 from coal_retrofit.optimization.industry import CCS, H2, industry_year_data
-from coal_retrofit.optimization.results_industry import _build_industry_detail_table
+from coal_retrofit.optimization.results_costs import _industry_costs
 from coal_retrofit.optimization.results_network import _tier_strings
 from coal_retrofit.optimization.results_regions import (
     CROSS_REGION,
@@ -27,6 +26,7 @@ from coal_retrofit.optimization.results_regions import (
     node_provinces,
     province_region,
 )
+from coal_retrofit.optimization.results_resources import _build_resource_flow_table
 from coal_retrofit.optimization.results_tracing import trace_sources_to_sinks
 from coal_retrofit.optimization.results_workbook_network import _tier_counts, cost_lines, cost_sheets
 from coal_retrofit.optimization.results_workbook_sources import (
@@ -75,7 +75,7 @@ def test_tracing_nets_opposite_arcs_and_cancels_cycles() -> None:
 def test_transmission_matrix_rows_are_source_provinces() -> None:
     """山西 2、河北 1 在 J 汇流，海上汇与山东汇各封存 1.5：行是源所在的省、列是汇所在的省，各格按 J 的来源构成
     （山西 2/3、河北 1/3）分；山东只有汇，那一行全空。"""
-    flows = pd.DataFrame({"source_node": ["a", "b", "j", "j"], "sink_node": ["j", "j", "s1", "s2"],
+    flows = pd.DataFrame({"flow_from_node_id": ["a", "b", "j", "j"], "flow_to_node_id": ["j", "j", "s1", "s2"],
                           "net_flow_mtpa": [2.0, 1.0, 1.5, 1.5]})
     sources = pd.DataFrame({"node": ["a", "b"], "captured_mt": [2.0, 1.0]})
     sinks = pd.DataFrame({"node": ["s1", "s2"], "use_mt": [1.5, 1.5]})
@@ -190,51 +190,86 @@ def test_tier_counts_round_trip() -> None:
 
 
 def test_industry_cost_columns_split_by_route() -> None:
-    """工业明细的四列各归各的路线：捕集列是 CCS 路线的投资与年度费（能耗耗材 + 在用能力的固定运维），氢列是氢路线的
-    投资与年度费（运行差额 + 本年买的氢）；两两相加即 cost_capital_cny、cost_annual_cny。"""
+    """工业逐 hub 成本（`results_costs._industry_costs`）的四项各归各的路线：捕集的是 CCS 路线的投资与年度费（能耗耗材 + 在用
+    能力的固定运维），氢的是氢路线的投资与年度费（运行差额 + 本年买的氢，求解器的 `h2_route_cost`；买的氢取
+    `resource_flows.csv` 的 green_h2 行）；两两相加即投资、年度费的合计。"""
     industry = _steel_hub()
     data = industry_year_data(industry, OptimizationScenario(experiment_id="T", description="toy"),
                               OptimizationAssumptions(), 2030)
     share, new = np.array([[0.2, 0.3, 0.5]]), np.array([[0.0, 0.4, 0.6]])
     link_cost, flow = 30.0, 4.0e7  # CNY/kg、kg
-    year_data = SimpleNamespace(industry_h2_hub_membership=sparse.csr_matrix(np.ones((1, 1))),
-                                industry_h2_link_cost_cny_per_kg=np.array([link_cost * AMMONIA_FLOW_SCALE]))
-    row = _build_industry_detail_table(
-        SimpleNamespace(industry=industry), 2030, data, share, np.array([flow]), year_data,  # type: ignore[arg-type]
-        capacity_mt=new, new_capacity_mt=new, ccs_fixed_om_cny=np.array([7.0e6]),
-    ).iloc[0]
-    annual_h2 = data.opex_cny[0, H2] * 0.5 + flow * link_cost
+    no_links = pd.DataFrame({"plant_id": []})
+    year_data = SimpleNamespace(
+        industry_h2_links=pd.DataFrame({"ammonia_node_id": ["N1"], "hub_id": ["S1"], "distance_km": [10.0]}),
+        industry_h2_link_cost_cny_per_kg=np.array([link_cost * AMMONIA_FLOW_SCALE]),
+        biomass_flow_scale=1.0, ammonia_flow_scale=1.0, water_flow_scale=1.0,
+        biomass_link_cost_cny_per_gj=np.zeros(0), ammonia_links=no_links, ammonia_link_cost_cny_per_kg=np.zeros(0),
+        water_links=no_links, water_link_cost_cny_per_m3=np.zeros(0),
+    )
+    flows = _build_resource_flow_table(
+        SimpleNamespace(biomass_links=no_links), 2030,  # type: ignore[arg-type]
+        {"year_data": year_data, "biomass_flow_gj": np.zeros(0), "ammonia_flow_kg": np.zeros(0),
+         "water_flow_m3": np.zeros(0), "industry_h2_flow_kg": np.array([flow])},  # type: ignore[arg-type]
+    )
+    purchase = float(flows.loc[flows["resource_type"] == "green_h2", "cost_cny"].sum())
+    assert purchase == pytest.approx(flow * link_cost)
+    annual_h2 = data.opex_cny[0, H2] * 0.5 + purchase
     assert annual_h2 > 0.0 and data.opex_cny[0, CCS] > 0.0  # 前提：两条路线的年度费都不为零
-    assert row["cost_capital_ccs_cny"] == pytest.approx(data.capex_cny_per_mt[0, CCS] * 0.4)
-    assert row["cost_capital_h2_cny"] == pytest.approx(data.capex_cny_per_mt[0, H2] * 0.6)
-    assert row["cost_annual_ccs_cny"] == pytest.approx(data.opex_cny[0, CCS] * 0.3 + 7.0e6)
-    assert row["cost_annual_h2_cny"] == pytest.approx(annual_h2)
-    assert row["cost_capital_cny"] == pytest.approx(row["cost_capital_ccs_cny"] + row["cost_capital_h2_cny"])
-    assert row["cost_annual_cny"] == pytest.approx(row["cost_annual_ccs_cny"] + row["cost_annual_h2_cny"])
+    costs = _industry_costs({  # type: ignore[arg-type]
+        "year_data": SimpleNamespace(industry=data, carbon_price=0.0), "industry_share": share,
+        "industry_new_capacity_mt": new, "industry_ccs_om_by_hub": np.array([7.0e6]),
+        "industry_h2_route_cost": np.array([annual_h2]),
+    })
+    capital_ccs, capital_h2 = costs[("industry_capex", "ccs")][0], costs[("industry_capex", "h2")][0]
+    annual_ccs = costs[("industry_cost", "ccs_operating")][0] + costs[("industry_cost", "ccs_fixed_om")][0]
+    assert capital_ccs == pytest.approx(data.capex_cny_per_mt[0, CCS] * 0.4)
+    assert capital_h2 == pytest.approx(data.capex_cny_per_mt[0, H2] * 0.6)
+    assert annual_ccs == pytest.approx(data.opex_cny[0, CCS] * 0.3 + 7.0e6)
+    assert costs[("industry_cost", "h2_route")][0] == pytest.approx(annual_h2)
+    capex = data.capex_cny_per_mt
+    assert capital_ccs + capital_h2 == pytest.approx(capex[0, CCS] * 0.4 + capex[0, H2] * 0.6)
+    assert annual_ccs + costs[("industry_cost", "h2_route")][0] == pytest.approx(
+        data.opex_cny[0, CCS] * 0.3 + 7.0e6 + annual_h2
+    )
 
 
 def test_capture_costs_take_the_ccs_columns_and_the_industry_salvage() -> None:
-    """Source_Results 与 Cost_Capture 的工业部分只取捕集路线的列，不含氢路线；各年捕集量是煤电与工业之和；全期每吨
-    成本按定义复算：投资乘一次性权重、运行费乘年度权重，扣煤电捕集岛与工业捕集两项的期末残值（不扣氢路线的），除以
-    捕集量乘年度权重之和。平均运程取净流量的绝对值。"""
+    """Source_Results 与 Cost_Capture 的工业部分只取捕集路线的项（`costs.csv` 的 ccs_*），不含氢路线；煤电只取捕集岛 capex、
+    捕集岛固定运维与 CCS 额外燃料，不含空冷背压；各年捕集量是煤电与工业之和；全期每吨成本按定义复算：投资乘一次性权重、
+    运行费乘年度权重，扣煤电捕集岛与工业捕集两项的期末残值（不扣氢路线的），除以捕集量乘年度权重之和。平均运程取净流量的
+    绝对值。"""
     years, end_year = [2050, 2060], 2070
-    plant_detail = pd.DataFrame({"year": years, "plant_id": "P", "province_name": "Shanxi",
-                                 "baseline_emissions_mt": 10.0, "captured_mt": [4.0, 5.0]})
-    plant_cost = pd.DataFrame({"year": years, "plant_id": "P", "ccs_retrofit_capex_cny": [3e9, 1e9],
-                               "ccs_om_cny": 2e8, "energy_penalty_cny": 1e8})
-    hubs = pd.DataFrame({"year": years, "hub_id": "C", "sector": SECTOR_STEEL_BF, "province": "Hebei",
-                         "baseline_co2_mt": 2.0, "captured_mt": [1.0, 1.5],
-                         "cost_capital_ccs_cny": [0.0, 8e8], "cost_capital_h2_cny": [5e8, 3e8],
-                         "cost_annual_ccs_cny": [6e7, 9e7], "cost_annual_h2_cny": 4e7})
-    hubs = hubs.assign(cost_capital_cny=hubs["cost_capital_ccs_cny"] + hubs["cost_capital_h2_cny"],
-                       cost_annual_cny=hubs["cost_annual_ccs_cny"] + hubs["cost_annual_h2_cny"])
-    breakdown = pd.DataFrame({"year": years * 2, "category": ["pipe_capex"] * 2 + ["transport_opex"] * 2,
-                              "cost_undiscounted_cny": [7e8, 0.0, 5e7, 6e7]})
-    tables = {"plant_detail.csv": plant_detail, "plant_cost.csv": plant_cost, "industry_detail.csv": hubs,
-              "cost_breakdown.csv": breakdown}
+    plant_capex, hub_capex_ccs, hub_capex_h2 = [3e9, 1e9], [0.0, 8e8], [5e8, 3e8]
+    hub_ccs_operating, hub_ccs_fixed_om = [4e7, 6e7], [2e7, 3e7]
+    hub_annual_ccs = [a + b for a, b in zip(hub_ccs_operating, hub_ccs_fixed_om)]  # 6e7、9e7
+    sources = pd.DataFrame({"year": years * 2, "source_type": ["coal"] * 2 + ["industry"] * 2,
+                            "source_id": ["P"] * 2 + ["C"] * 2, "sector": ["coal"] * 2 + [SECTOR_STEEL_BF] * 2,
+                            "province": ["Shanxi"] * 2 + ["Hebei"] * 2, "baseline_co2_mtpa": [10.0] * 2 + [2.0] * 2,
+                            "captured_co2_mtpa": [4.0, 5.0, 1.0, 1.5]})
+    # (实体类型, 实体号, 类别, 细项, 2050 年, 2060 年)：捕集的各项之外，混入空冷背压与氢路线的项，它们不进捕集；
+    # 工业捕集年度费分运行费与固定运维两项。表只写非零行。
+    spec = [
+        ("coal", "P", "ccs_retrofit_capex", "ccs_retrofit_capex", *plant_capex),
+        ("coal", "P", "ccs_om_cost", "ccs_om_cost", 2e8, 2e8),
+        ("coal", "P", "energy_penalty_cost", "capture_fuel", 1e8, 1e8),
+        ("coal", "P", "energy_penalty_cost", "air_cooling_backpressure", 9e7, 9e7),
+        ("industry", "C", "industry_capex", "ccs", *hub_capex_ccs),
+        ("industry", "C", "industry_capex", "h2", *hub_capex_h2),
+        ("industry", "C", "industry_cost", "ccs_operating", *hub_ccs_operating),
+        ("industry", "C", "industry_cost", "ccs_fixed_om", *hub_ccs_fixed_om),
+        ("industry", "C", "industry_cost", "h2_route", 4e7, 4e7),
+    ]
+    costs = pd.DataFrame([
+        {"year": year, "entity_type": entity, "entity_id": entity_id, "category": category, "item": item,
+         "kind": "annual", "cost_cny": value, "cost_discounted_cny": 0.0}
+        for entity, entity_id, category, item, *values in spec for year, value in zip(years, values) if value != 0.0
+    ])
+    system = pd.DataFrame({"year": years * 2, "category": ["pipe_capex"] * 2 + ["transport_opex"] * 2,
+                           "cost_cny": [7e8, 0.0, 5e7, 6e7]})
+    tables = {"sources": sources, "costs": costs, "system": system}
     prepared = SimpleNamespace(network=SimpleNamespace(plant_node_ids={"P": "n_P"}, industry_node_ids={"C": "n_C"}))
-    sources = sources_frame(tables, prepared)  # type: ignore[arg-type]
-    left = source_results(sources[sources["year"] == 2060])[0][2]
+    frame = sources_frame(tables, prepared)  # type: ignore[arg-type]
+    left = source_results(frame[frame["year"] == 2060])[0][2]
     by_id = {row[0]: dict(zip(SOURCE_HEADER[1:], row[1:])) for row in left[1:]}
     assert by_id["C"]["CAPEX_Capture"] == pytest.approx(800.0) and by_id["C"]["OPEX_Capture_i"] == pytest.approx(90.0)
     assert by_id["P"]["CAPEX_Capture"] == pytest.approx(1000.0) and by_id["P"]["OPEX_Capture_p"] == pytest.approx(300.0)
@@ -246,20 +281,20 @@ def test_capture_costs_take_the_ccs_columns_and_the_industry_salvage() -> None:
     df_end = 0.2
     solution = {"year_solutions": {
         y: {"cost_weights": {"opex": ("annual", a), "capex": ("one_off", o), "salvage_credit": ("horizon_end", df_end)},
-            "salvage_ledger": [("ccs_retrofit_capex", plant_cost.loc[k, "ccs_retrofit_capex_cny"], 20),
-                               ("industry_ccs_capex", hubs.loc[k, "cost_capital_ccs_cny"], 20),
-                               ("industry_h2_capex", hubs.loc[k, "cost_capital_h2_cny"], 25)]}
+            "salvage_ledger": [("ccs_retrofit_capex", plant_capex[k], 20),
+                               ("industry_ccs_capex", hub_capex_ccs[k], 20),
+                               ("industry_h2_capex", hub_capex_h2[k], 25)]}
         for k, (y, (a, o)) in enumerate(weights.items())
     }}
     edges = pd.DataFrame({"year": years, "net": [5.0, -6.5], "length_km": 100.0})
-    captured = captured_by_year(sources, years)
+    captured = captured_by_year(frame, years)
     assert captured == pytest.approx({2050: 5.0, 2060: 6.5})  # 煤电 4.0、5.0 加工业 1.0、1.5
     sheets = cost_sheets(lines, captured, edges, solution, years, end_year)
     capture = {row[0]: row[1:] for row in sheets["Cost_Capture"][0][2][1:]}
     assert capture["工业捕集投资"] == pytest.approx([0.0, 800.0]) and capture["工业捕集年度费"] == pytest.approx([60.0, 90.0])
 
-    present = sum(o * (plant_cost.loc[k, "ccs_retrofit_capex_cny"] + hubs.loc[k, "cost_capital_ccs_cny"])
-                  + a * (3e8 + hubs.loc[k, "cost_annual_ccs_cny"]) for k, (a, o) in enumerate(weights.values()))
+    present = sum(o * (plant_capex[k] + hub_capex_ccs[k]) + a * (3e8 + hub_annual_ccs[k])
+                  for k, (a, o) in enumerate(weights.values()))
     present -= df_end * remaining_fraction(2060, 20, end_year) * (1e9 + 8e8)  # 2050 年建的到 2070 年已折完
     tonnes = sum(a * captured[y] * 1e6 for y, (a, _) in weights.items())
     analysis = sheets["Cost_Analysis"][0][2]
@@ -275,12 +310,13 @@ def test_capture_costs_take_the_ccs_columns_and_the_industry_salvage() -> None:
 
 
 def test_plant_pathways_air_shares_are_whole_plant() -> None:
-    """Plant_Pathways 的空冷两列是占全厂的份额：`plant_detail.csv` 的改造进度乘 1 − already_air_share；已全空冷的 hub
-    为零（明细表的这两列在那里是求解器任取的数）。"""
-    plants = pd.DataFrame({"year": 2050, "plant_id": ["P1", "P2"], "province_name": ["Shanxi", "Hebei"],
+    """Plant_Pathways 的空冷两列是占全厂的份额：`sources.csv` 煤电行的改造进度乘 1 − already_air_share；已全空冷的 hub
+    为零（源表的这两列在那里是求解器任取的数）。"""
+    plants = pd.DataFrame({"year": 2050, "source_type": "coal", "source_id": ["P1", "P2"],
+                           "province": ["Shanxi", "Hebei"],
                            "already_air_share": [0.25, 1.0], "air_operating_share": [0.4, 0.7],
                            "air_installed_share": [0.6, 0.9], **{f"share_{pw}": 0.0 for pw in PATHWAYS}})
-    rows = plant_pathways({"plant_detail.csv": plants}, [2050])
+    rows = plant_pathways({"sources": plants}, [2050])
     table = {row[0]: dict(zip(rows[0][1:], row[1:])) for row in rows[1:]}
     assert table["P1"]["already_air"] == 0.25
     assert table["P1"]["air_retrofit_operating_2050"] == pytest.approx(0.3)

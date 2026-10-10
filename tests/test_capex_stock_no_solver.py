@@ -1,4 +1,4 @@
-"""2026-09-23 模型改动 (a)–(d) 里不求解的测试，外加工业明细表的 capital 列，以及 2026-09-30 的分代在役判定与
+"""2026-09-23 模型改动 (a)–(d) 里不求解的测试，外加工业逐 hub 成本的投资项与年度项，以及 2026-09-30 的分代在役判定与
 铭牌定规模（求解的分代测试在 `test_capacity_vintages.py`）。
 
 (a)–(d) 那几条从 `test_capex_stock_and_lifetimes.py` 挪来：那个文件在模块级 `importorskip("gurobipy")`，
@@ -22,6 +22,7 @@ from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industry_year_data
 from coal_retrofit.optimization.industry_inputs import prepare_industry
+from coal_retrofit.optimization.results_costs import _industry_costs
 from coal_retrofit.optimization.results_industry import _build_industry_detail_table
 from coal_retrofit.optimization.results_network import _alive_edge_added_stock
 from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
@@ -167,11 +168,12 @@ def test_prepare_industry_refuses_hubs_without_nameplate_or_output(tmp_path, col
         prepare_industry(paths, OptimizationAssumptions())
 
 
-# ------------------------------------------------ (a) 明细表的 capital 按新建能力计 ---
+# ------------------------------------------------ (a) 逐 hub 成本的投资项按新建能力计 ---
 def test_industry_detail_table_charges_capital_on_new_capacity() -> None:
-    """明细表的 capital 列与目标函数同法：单位 capex x 本年新建能力，CCS 与氢路线各算各的；年度列含求解器给的
-    捕集固定运维（在役且在用的能力 x 建设年单价）。2026-09-23 前 `run_context_model` 不传存量，每年都按整个存量计，跨年
-    重复计入；2026-09-30 前按单调存量的增量计。"""
+    """逐 hub 成本（`results_costs._industry_costs`）的投资项与目标函数同法：单位 capex x 本年新建能力，CCS 与氢路线各算各的；
+    年度项含求解器给的捕集固定运维（在役且在用的能力 x 建设年单价）和氢路线年度费（求解器的 `h2_route_cost`）。明细表
+    （2026-10-10 起不再带成本列）只核对路线能力。2026-09-23 前 `run_context_model` 不传存量，每年都按整个存量计，
+    跨年重复计入；2026-09-30 前按单调存量的增量计。"""
     industry = _steel_hub()
     data = industry_year_data(industry, OptimizationScenario(experiment_id="T", description="toy"), OptimizationAssumptions(), 2030)
     unit, opex = data.capex_cny_per_mt, data.opex_cny
@@ -181,11 +183,15 @@ def test_industry_detail_table_charges_capital_on_new_capacity() -> None:
     alive = np.array([[0.0, 0.6, 0.3]])
     new = np.array([[0.0, 0.2, 0.3]])
     ccs_om = np.array([7.0e6])
+    h2_route = np.array([max(0.0, float(opex[0, H2]) * 0.3)])  # 没有氢链路，买氢为 0
 
-    table = _build_industry_detail_table(
-        prepared, 2040, data, share, capacity_mt=alive, new_capacity_mt=new, ccs_fixed_om_cny=ccs_om,
-    )
-    assert table.loc[0, "cost_capital_cny"] == pytest.approx(unit[0, CCS] * 0.2 + unit[0, H2] * 0.3, rel=1e-12)
+    table = _build_industry_detail_table(prepared, 2040, data, share, capacity_mt=alive, new_capacity_mt=new)
     assert table.loc[0, "capacity_ccs_mt"] == pytest.approx(0.6) and table.loc[0, "capacity_h2_mt"] == pytest.approx(0.3)
-    annual_h2 = max(0.0, float(opex[0, H2]) * 0.3)  # 没有氢链路，买氢为 0
-    assert table.loc[0, "cost_annual_cny"] == pytest.approx(float(opex[0, CCS]) * 0.5 + 7.0e6 + annual_h2, rel=1e-12)
+    costs = _industry_costs({
+        "year_data": SimpleNamespace(industry=data, carbon_price=0.0), "industry_share": share,
+        "industry_new_capacity_mt": new, "industry_ccs_om_by_hub": ccs_om, "industry_h2_route_cost": h2_route,
+    })
+    capital = costs[("industry_capex", "ccs")] + costs[("industry_capex", "h2")]
+    assert capital[0] == pytest.approx(unit[0, CCS] * 0.2 + unit[0, H2] * 0.3, rel=1e-12)
+    annual = sum(costs[("industry_cost", item)] for item in ("ccs_operating", "ccs_fixed_om", "h2_route"))
+    assert annual[0] == pytest.approx(float(opex[0, CCS]) * 0.5 + 7.0e6 + h2_route[0], rel=1e-12)
