@@ -139,7 +139,7 @@ class OptimizationAssumptions:
     # 3 636 000 CNY/MW（取值比原文低 3.7%）；电规总院 2020 年水平 660-1 000 MW 超超临界 3 309-3 636 元/kW
     # （经《中国能源报》2023-04-24 转述，该文即按 3 500 元/kW 计；未核原文）。
     stranded_asset_base_cny_per_kw: float = 3500.0
-    stranded_asset_accounting_life: int = 20           # 折旧年限；⚠ 假设（无出处）
+    stranded_asset_accounting_life: int = 20           # 折旧年限：Wang et al. 2025 SI Table 3 折旧率 5%（3-8%），按每年直线折旧推得 20 a
     # 陆上封存成本，取 An et al. 2025 SI Table 7：5.0 (3.0-8.5) $/t = 35 (21-60) CNY/t（2026-10-02 前为 32）。每个汇的单价
     # = 本值 x 海上倍率 − EOR 容量份额 x EOR 抵扣（`data_prep._prepare_storages`）。
     storage_cost_cny_per_t: float = 35.0
