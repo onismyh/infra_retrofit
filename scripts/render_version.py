@@ -1,24 +1,25 @@
 # -*- coding: utf-8 -*-
-"""在求解树上重绘全部图，并把图与关键结果 CSV 归档到图幅版本目录。
+"""重绘全部图，并把图、画图用的结果与输入指纹归档到图幅版本目录。
 
     python scripts/render_version.py --version <版本>
 
-求解树 <tree> 固定是 `_bootstrap.ROOT`（`_indtree`）：出图脚本只读这棵树，所以没有 `--tree`，另指一棵树，
-归档的数据就不是画图用的那套。`--version` 必填（原缺省 `v9`，会把 `_indtree` 的图拷进 v9 的归档）。
+出图脚本读求解树 <tree>（固定是 `_bootstrap.ROOT`，即 `_indtree`）的 inputs/，结果图读入库的 results/solved/
+（`plot_style.SOLVED_DIR`），图写到 <tree>/results/figures/。所以没有 `--tree`：另指一棵树，归档的就不是画图用的那套。
+`--version` 必填（原缺省 `v9`，会把 `_indtree` 的图拷进 v9 的归档）。
 v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维护复现步骤（README §0）。
 
 做四件事：
 1. 给了 `--freeze-tag` 时，把版本目录里**已有的** PDF/PNG 挪到 <version>/frozen_<tag>/ ——它们画自另一套输入
    （v9 原图来自已丢失的 103 汇求解树），不能与新求解的图并排放在同一目录里
    （CLAUDE.md §二.6 / §五：不同输入版本不得混用）。只在树里真有新图时才挪。
-2. 逐个运行 scripts/plot_fig*.py（缺省参数：中英两版、主情景；脚本经 `_bootstrap.ROOT` 读求解树的
-   inputs/results，工作目录也设为求解树），输出与退出码记入 <version>/render.log，
+2. 逐个运行 scripts/plot_fig*.py（缺省参数：中英两版、主情景；工作目录设为求解树），输出与退出码记入 <version>/render.log，
    失败的照样记下来——README 里"哪些图不能画"直接从这里抄。
 3. 把 <tree>/results/figures/ 根目录下第 2 步画出的 PDF/PNG（按修改时间判断；上一轮留下的旧图不拷，
    子目录 main/、extended/ 里旧脚本画的图与 save_fig 没删掉的临时文件 .*.tmp.* 也不拷）拷到 <version>/figures/；
    `--skip-plots` 时不画图，根目录下的图全拷（子目录照旧不拷）。
-4. 把 <tree>/results/<scen>/*.csv、<scen>.json、求解日志与输入指纹拷到 <version>/data/，
-   图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
+4. 把 results/solved/ 下每个结果的 <结果名>.json、<结果名>/ 里的文件（九张表与结果工作簿）和拷进来的求解日志（若有），
+   连同 <tree>/inputs/ 的输入指纹拷到 <version>/data/，图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
+   2026-10-11 之前拷的是 <tree>/results/ 下的结果与表（不含工作簿），与出图读的 results/solved/ 不是同一份。
 
 不写 README——版本 README 的数字必须由人读过图之后填。
 """
@@ -32,6 +33,9 @@ import time
 from pathlib import Path
 
 from _bootstrap import REPO_ROOT, ROOT
+
+# 结果图读的结果目录，与 `plot_style.SOLVED_DIR` 相同（不导入 plot_style：归档用不着 matplotlib）。
+SOLVED_DIR = REPO_ROOT / "results" / "solved"
 
 
 def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, float]]:
@@ -92,25 +96,27 @@ def copy_figures(figs: list[Path], dest: Path) -> int:
     return len(figs)
 
 
-def copy_results(tree: Path, dest: Path) -> list[str]:
-    res = tree / "results"
+def copy_results(tree: Path, solved: Path, dest: Path) -> list[str]:
+    """把 *solved* 下有同名目录的 `<结果名>.json` 连同目录里的文件、求解日志，和 *tree* 的输入指纹拷到 `<dest>/data/`；
+    返回拷了的结果名。"""
     data = dest / "data"
     data.mkdir(parents=True, exist_ok=True)
     scen = []
-    for js in sorted(res.glob("*.json")):
+    for js in sorted(solved.glob("*.json")):
         name = js.stem
-        folder = res / name
+        folder = solved / name
         if not folder.is_dir():
             continue
         out = data / name
         out.mkdir(parents=True, exist_ok=True)
         shutil.copy2(js, data / js.name)
-        for f in folder.glob("*.csv"):
-            shutil.copy2(f, out / f.name)
+        for f in folder.iterdir():
+            if f.is_file():
+                shutil.copy2(f, out / f.name)
         scen.append(name)
-    if (res / "campaign.log").exists():
-        shutil.copy2(res / "campaign.log", data / "campaign.log")
-    for f in res.glob("*.solve.log"):
+    if (solved / "campaign.log").exists():
+        shutil.copy2(solved / "campaign.log", data / "campaign.log")
+    for f in solved.glob("*.solve.log"):
         shutil.copy2(f, data / f.name)
     # 输入版本的指纹：汇与候选边的行数是 README 第一行要写的数字。
     for name in ("storage_hubs.csv", "pipeline_candidate_edges.csv", "pipeline_nodes.csv"):
@@ -139,7 +145,7 @@ def main() -> None:
     if figs and args.freeze_tag and not (dest / f"frozen_{args.freeze_tag}").exists():
         n_frozen = freeze_old(dest, args.freeze_tag)
     n_fig = copy_figures(figs, dest)
-    scen = copy_results(tree, dest)
+    scen = copy_results(tree, SOLVED_DIR, dest)
     print(f"old figures frozen: {n_frozen}; new figures copied: {n_fig}; scenarios archived: {scen}")
     failed = [r for r in rows if r[1] != 0]
     print(f"plot scripts: {len(rows)} run, {len(failed)} failed")

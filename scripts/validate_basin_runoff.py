@@ -1,10 +1,11 @@
 """Validate modelled runoff against official statistics at the water-resource-region scale.
 
-The provincial check (see plan/nature_water_storyline_and_figures.md v3) found ratios from
-0.34x (Tianjin) to 4.00x (Ningxia). Part of that spread is a genuine model bias in arid
-regions, part is an artefact of cutting a 0.5 deg grid with provincial boundaries: a small
-province spans only a handful of cells, and Ningxia's water is a Yellow River allocation
-rather than local runoff, which `qtot` cannot represent by construction.
+The provincial check (research note plan/nature_water_storyline_and_figures.md v3, not in
+the repository) found ratios from 0.34x (Tianjin) to 4.00x (Ningxia). Part of that spread is
+a genuine model bias in arid regions, part is an artefact of cutting a 0.5 deg grid with
+provincial boundaries: a small province spans only a handful of cells, and Ningxia's water
+is a Yellow River allocation rather than local runoff, which `qtot` cannot represent by
+construction.
 
 Global hydrological models are calibrated and evaluated against BASIN discharge, so the
 water-resource region (codes A-K) is the scale where the comparison is meaningful and where

@@ -18,7 +18,7 @@
 > 与合成岛年金寿命改了值，各一个提交加不求解测试（`tests/test_h2_route_abatement.py`、`tests/test_discount_rate.py`）；
 > 见 §0.2 末）。
 > 标"未改"的地方要不要统一，由作者决定。
-> 下面的 §1–§11 于 2026-10-11 按 `2c706db` 的代码重写（此前停在 2026-09-06 的 v9 基线），说明当前版本；`ST_` 系求解树的
+> 下面的 §1–§11 于 2026-10-11 按当时的代码重写（此前停在 2026-09-06 的 v9 基线），说明当前版本；`ST_` 系求解树的
 > 现状见 [`_indtree/README.md`](_indtree/README.md)。
 > 2026-09-26 起 `src/` 删去了旧实验链（`experiments/`、`optimization/model.py`、`optimization/bundle.py`、`reporting/`）
 > 与 runoff 水口径：§0.3、§0.4 里指向这些模块的命令和链接都已失效，v9 / v9.1 结果按 CLAUDE.md §1.5
@@ -857,7 +857,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-11（代码 `2c706db`，模型分段 9）：
+截至 2026-10-11（代码基准 `60691a6`，与方法论文首相同；模型分段 9）：
 
 | 部分 | 现状 |
 |---|---|
@@ -906,7 +906,7 @@ infra_retrofit/
 | 项 | 要求 |
 |---|---|
 | Python | ≥ 3.11（登记表用标准库 `tomllib` 读） |
-| 依赖 | `pyproject.toml` 列的 geopandas、gurobipy、netCDF4、networkx、numpy、openpyxl、pandas、pyproj、rasterio、scikit-learn、scipy、shapely；出图另需 matplotlib，ISIMIP 下载脚本另需 requests（`pyproject.toml` 都没有列） |
+| 依赖 | `pyproject.toml` 列的 geopandas、gurobipy、matplotlib（出图）、netCDF4、networkx、numpy、openpyxl、pandas、pyproj、rasterio、requests（ISIMIP 下载脚本）、scikit-learn、scipy、shapely |
 | Gurobi | toy 测试用 pip 版 gurobipy 自带的受限许可即可；`ST_` 情景超出受限许可的规模上限，要完整许可 |
 | `_indtree/data` | 求解经它读 `data/ChinaMap/provinces.shp`（管网节点归省）与 `data/ChinaBasins/basin_l1.gpkg`（有水约束时）。新克隆在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`，Linux / macOS `ln -s ../data _indtree/data` |
 | 出图字体 | 中文 SimHei、英文 Arial（CLAUDE.md §3.1）；本机缺字体时 `save_fig` 报错，不静默换字体 |
@@ -1187,8 +1187,8 @@ python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq --r
 - 图 1、图 2 只读输入，不用先求解；图 3–10 读求解结果，缺省读 `results/solved/ST_WA_cwatm_126_dry_oq/`，`--scenario` 给结果名或路径。
   各脚本开头写了图含义、读图注意、数据与自检。
 - `--lang zh|en|both` 缺省两版都出，英文版文件名加 `_en`。出图前先与模型的账对一遍，对不上就报错、不出图。
-- `python scripts/render_version.py --version <版本>` 重画全部图，把图与 `_indtree/results/` 下的结果拷到 `results/figures/<版本>/`；
-  版本目录的 README 由人读过图之后写（CLAUDE.md §五）。
+- `python scripts/render_version.py --version <版本>` 重画全部图，把图、入库的 `results/solved/` 下的结果（出图读的那一份，
+  含结果工作簿）与输入指纹拷到 `results/figures/<版本>/`；版本目录的 README 由人读过图之后写（CLAUDE.md §五）。
 
 ## 11. 相关文档
 
