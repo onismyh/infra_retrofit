@@ -129,10 +129,12 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 不变），另多一张 `plants_unit_hub.csv`（3 623 台机组到 hub 的映射，连续 hub 按机组到期要用；两种 hub 都按它的 `combustion`
 > 算 CFB 装机份额，供掺生物质的炉型上限用）。两者由 `scripts/build_plant_inputs.py --hubs` 一起写出，`plants_unit.csv` 不变
 > （`docs/方法论.md` §4.1、§4.2、§4.3）。
+> 2026-10-11 起 `biomass_supply_curve.csv` 改由 Wang et al. 2023 情景 4 的栅格 `bioenergy_s4_AF_max.tif`（农林残余物）重建：
+> 13 949 → 13 883 个节点，合计 30.05 → 18.12 EJ/a（此前是情景 3 栅格，另含能源作物；`docs/方法论.md` §2.2，根 README §0）。
 
 其余一律不动：`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
-生物质与氨的供给曲线。
+氨的供给曲线。
 
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
@@ -281,6 +283,10 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > 掺氨运维改为掺烧 capex × 3%/年，基线燃煤运维 80 → 110 元/MWh；`ST_` 系 MIPGap 3% → 2%（`docs/方法论.md` §3.6、§6.2、§6.3、§7.1、
 > §7.4、§8.1）。求解改在作者本机做，结果拷进仓库根 `results/solved/`（见那里的 README）；result.json 记 `resolved.model_segment`，
 > 分段号与当前代码不同的结果，出图与 `check_run_provenance.py --pair` 都拒绝。下表的结果都在此之前落盘（第八段及更早），
+> **不得与改后的求解相减**，要用须重解。详见根 README §0。
+>
+> ⚠ **模型改动（2026-10-11，模型分段 10）**：生物质供给表改读 Wang 2023 情景 4 栅格（农林残余物，不含能源作物），节点合计
+> 30.05 → 18.12 EJ/a，全国上限 16 EJ/a 未改（`docs/方法论.md` §2.2、附录 B.1、B.4）。下表的结果都在此之前落盘，
 > **不得与改后的求解相减**，要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、

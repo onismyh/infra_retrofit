@@ -160,7 +160,9 @@ def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFram
 
 def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp")
-    biomass_tif = paths.find_data_file("bioenergy_s3_AFE_abandon.tif")
+    # Wang et al. 2023（Sci Data 10:384）的情景 4：农林残余物，不含能源作物，与采购成本（残余物）同口径。
+    # 2026-10-11 之前读情景 3（`bioenergy_s3_AFE_abandon.tif`，另含废弃耕地上的能源作物）。
+    biomass_tif = paths.find_data_file("bioenergy_s4_AF_max.tif")
     lookup = province_lookup(provinces)
 
     with rasterio.open(biomass_tif) as src:
