@@ -3,9 +3,10 @@
 The runoff-derived node budget (`water_availability.csv`) is the PHYSICAL half: how much water
 the environmental-flow rule leaves in the channel. This file is the INSTITUTIONAL half: how much
 the 用水总量控制指标 lets anyone withdraw in each basin, net of the users the model does not
-decide. Splitting them is the point of the switch -- `WATER_EXTRACTABLE_FRACTION` and
-`existing_withdrawal_share` used to be aliased into one product, and no experiment could say
-which of the two was binding.
+decide. Splitting them was the point of the 2026-09 switch -- before it, `WATER_EXTRACTABLE_FRACTION`
+(still in `constants.py`) and `existing_withdrawal_share` were multiplied into one product, and no
+experiment could say which of the two was binding; that product and `existing_withdrawal_share` left
+`src/` on 2026-09-26.
 """
 from __future__ import annotations
 

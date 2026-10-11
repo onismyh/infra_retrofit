@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the 16 ISIMIP3b qtot files reliably on Windows.
+"""Download the 24 ISIMIP3b qtot files (16 future + 8 historical) reliably on Windows.
 
 Why Python+requests instead of curl: this box's curl is a mingw build using the
 Schannel TLS backend, which fails the handshake against files.isimip.org
@@ -28,8 +28,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+from _bootstrap import REPO_ROOT
 
-DEST = "data/water"
+# 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。
+DEST = str(REPO_ROOT / "data" / "water")
 GCMS = ["ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
 SSPS = ["ssp126", "ssp370"]
 HYD = {"cwatm": "CWatM", "watergap2-2e": "WaterGAP2-2e"}
@@ -37,7 +39,7 @@ HYD = {"cwatm": "CWatM", "watergap2-2e": "WaterGAP2-2e"}
 # run got every file to ~170 MB and the second to ~252 MB, then hit a fixed 5-attempt cap and
 # threw the remaining 9 MB away. So the retry budget is spent on *stalls*, not on attempts:
 # an attempt that moved the byte counter forward is progress and costs nothing, and only
-# MAX_STALLS consecutive zero-progress attempts end the file. STALL_CAP bounds the pathological
+# MAX_STALLS consecutive zero-progress attempts end the file. ATTEMPT_CAP bounds the pathological
 # case where the server hands back a few bytes at a time forever.
 MAX_STALLS = 6
 ATTEMPT_CAP = 200
@@ -76,7 +78,7 @@ FUTURE_URLS = [
 # ensemble where gfdl-esm4 is bias-corrected and the other four GCMs are raw would be worse than
 # no correction at all -- WaterGAP2-2e runs 2.43x too wet in Hai, so the uncorrected members
 # would separate from gfdl mostly through the correction rather than through their hydrology,
-# and Fig 3(c) would report that artefact as GCM variance.
+# and any GCM-spread panel would report that artefact as GCM variance.
 HISTORICAL_URLS = [
     (
         _historical_basename(h, g),

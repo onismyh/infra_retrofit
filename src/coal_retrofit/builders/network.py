@@ -9,7 +9,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from pyproj import Transformer
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, QhullError
 from shapely.geometry import LineString
 from shapely.strtree import STRtree
 
@@ -194,7 +194,8 @@ def _triangulation_candidate_pairs(points_xy: np.ndarray) -> set[tuple[int, int]
         return {(0, 1)}
     try:
         simplices = Delaunay(points_xy, qhull_options="QJ").simplices
-    except Exception:
+    except (QhullError, ValueError) as exc:
+        logger.warning("Delaunay 三角化失败（%s），候选边改用 k=3 近邻", exc)
         return _knn_candidate_pairs(points_xy, k=3)
 
     candidate_pairs: set[tuple[int, int]] = set()

@@ -124,6 +124,6 @@ def _incumbent_logger(year_payloads: list[YearPayload]):
             short_txt = " ".join(f"{g}={v:.1f}" for g, v in groups.items() if v > 1e-6) or "none"
             slack_txt = " ".join(f"{k.split('_')[0]}={v:.2f}" for k, v in slacks.items() if v > 1e-6) or "none"
             parts.append(f"{payload.year}: shortfall[{short_txt}] slack[{slack_txt}]")
-        print(f"INCUMBENT obj={obj:.1f} bound={bound:.1f} | " + " ; ".join(parts), flush=True)
+        logger.info("INCUMBENT obj=%.1f bound=%.1f | %s", obj, bound, " ; ".join(parts))
 
     return _callback

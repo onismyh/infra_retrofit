@@ -504,7 +504,7 @@ def prepare_inputs(
         industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
     )
     network = build_runtime_network(
-        paths, plants, storages, scenario, industry_hubs=industry.hubs,
+        paths, plants, storages, industry_hubs=industry.hubs,
     )
     return PreparedInputs(
         plants=plants,

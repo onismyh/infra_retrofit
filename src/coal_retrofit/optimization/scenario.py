@@ -528,7 +528,7 @@ class OptimizationScenario:
     ccs_water_multiplier_adjustment: float = 1.0
     beccs_water_multiplier_adjustment: float = 1.0
     pathway_disable: tuple[str, ...] = ()
-    corridor_prior_strength: float = 0.70
+    corridor_prior_strength: float = 0.70  # 无作用：候选图从未按边权选边（自首次入库起如此）；删除待作者定，删会改 result.json 的 resolved.scenario 键集
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）

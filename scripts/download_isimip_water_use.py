@@ -50,8 +50,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+from _bootstrap import REPO_ROOT
 
-DEST = "data/water"
+# 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。
+DEST = str(REPO_ROOT / "data" / "water")
 BASE = "https://files.isimip.org/ISIMIP3b/OutputData/water_global"
 # Every GCM in `inputs/water_scenarios.csv`: each member's deduction comes from its own run.
 GCMS = ("gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll")

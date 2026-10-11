@@ -15,9 +15,7 @@ import pandas as pd
 from _bootstrap import ROOT
 
 from coal_retrofit.constants import WATER_EXTRACTABLE_FRACTION
-
-NAMES = {"A": "东北诸河", "C": "海河", "D": "黄河", "E": "淮河", "F": "长江",
-         "G": "东南诸河", "H": "珠江", "J": "西南诸河", "K": "西北诸河"}
+from coal_retrofit.constants_water_quota import BASIN_NAMES_ZH
 
 
 def basin_budget(member: str, year: int, season: str) -> pd.DataFrame:
@@ -38,7 +36,7 @@ def basin_budget(member: str, year: int, season: str) -> pd.DataFrame:
     frame["x0.20"] = frame["径流"] * WATER_EXTRACTABLE_FRACTION
     frame["余量"] = frame["x0.20"] - frame["生活"] - frame["灌溉"]
     frame["占可提取"] = (frame["生活"] + frame["灌溉"]) / frame["x0.20"]
-    frame.index = [f"{code} {NAMES.get(code, '')}" for code in frame.index]
+    frame.index = [f"{code} {BASIN_NAMES_ZH.get(code, '')}" for code in frame.index]
     return frame[["径流", "x0.20", "生活", "灌溉", "余量", "占可提取"]]
 
 

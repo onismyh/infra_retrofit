@@ -124,7 +124,6 @@ def _withdrawal_matrices(
     scenario: OptimizationScenario,
     assumptions: OptimizationAssumptions,
     water_intensity: np.ndarray,
-    air_water_intensity: np.ndarray,
     year: int,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """逐路径取水强度（m3/MWh）及其空冷对应矩阵，供流域指标用；无水约束或关掉流域上限时 (None, None)。

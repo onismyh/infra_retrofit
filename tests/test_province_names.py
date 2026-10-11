@@ -135,6 +135,6 @@ def test_withdrawal_calibration_reads_hours_by_the_canonical_province_name(monke
     scenario = OptimizationScenario(experiment_id="T", description="toy", water_mode="grid_supply")
     assumptions = OptimizationAssumptions()
     intensity = np.ones((1, len(PATHWAYS)))
-    _withdrawal_matrices(SimpleNamespace(plants=plants), scenario, assumptions, intensity, intensity, 2030)
+    _withdrawal_matrices(SimpleNamespace(plants=plants), scenario, assumptions, intensity, 2030)
     hours = assumptions.province_operating_hours["Inner Mongolia"]
     assert captured["generation"][0] == pytest.approx(1000.0 * hours, rel=1e-12)

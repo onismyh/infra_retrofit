@@ -96,7 +96,7 @@ def _new_gurobi_model(name: str, threads: int = 0, time_limit: int = 36000, *, s
     except gp.GurobiError as exc:  # pragma: no cover
         raise RuntimeError("Could not initialize Gurobi. Please verify the local license environment.") from exc
     model.Params.OutputFlag = 1
-    model.Params.MIPGap = 0.01    # 1% gap，达到发表质量
+    model.Params.MIPGap = 0.01    # 占位；调用方（`solver.py`）随后按情景的 `mip_gap` 覆盖（`ST_` 系 2%）
     model.Params.MIPFocus = mip_focus  # 缺省 1：侧重于尽快找到好的可行解
     model.Params.Presolve = 2     # 激进预求解
     model.Params.TimeLimit = time_limit
@@ -142,7 +142,7 @@ def _expr_value(expr) -> float:
 def _model_obj_value(model, default: float = 0.0) -> float:
     try:
         return float(model.ObjVal)
-    except (AttributeError, Exception) if gp is None else (AttributeError, gp.GurobiError):
+    except (AttributeError, gp.GurobiError):
         return default
 
 

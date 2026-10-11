@@ -1,8 +1,9 @@
-"""Per-basin water budget on the official 用水总量控制指标 basis, against the runoff basis.
+"""Per-basin water budget on the official 用水总量控制指标 basis.
 
-Diagnostic only -- writes nothing to `inputs/`. Answers the one question that decides whether
-the switch is viable: after reserving what the 水资源公报 says other users already withdraw,
-does the official cap leave the coal fleet more or less room than `qtot x 0.20 x 0.15` did?
+Diagnostic only -- writes nothing to `inputs/`. Written for the 2026-09 switch away from the runoff
+basis (`qtot x 0.20 x 0.15`, deleted from `src/` on 2026-09-26, CLAUDE.md §1.4); the runoff columns
+it still prints are for that comparison. The question it answers: after reserving what the 水资源公报
+says other users already withdraw, how much room does the official cap leave the coal fleet?
 
 BASIS. The caps are enforced against 用水量 (公报 编写说明 2.(7)), which counts 直流火(核)电
 cooling inside 工业用水. So the fleet is priced on WITHDRAWAL -- recalibrated onto the bulletin
@@ -114,8 +115,8 @@ def main() -> None:
               < carve_out.get(c, 0.0)]
     for c in _tight:
         print(f"  ⚠ {c} {BASIN_NAMES_ZH[c]}：已建模工业的扣回量 {carve_out.get(c, 0.0):.1f} 大于"
-              f"模型余量本身，也就是说煤电被约束到的那点空间，几乎全部是尚未进入求解器的"
-              f"工业点源当前占用的取水。工业成为决策变量后，两者要在同一个额度里竞争。")
+              f"模型余量本身，也就是说煤电被约束到的那点空间，几乎全部是已建模工业点源"
+              f"当前占用的取水；工业取水也是决策变量，两者在同一个额度里竞争。")
 
     print("\n煤电四口径对照（亿 m3/yr），说明为何只有标定取水可与上表相比:")
     print(f"{'流域':<11}{'标定取水':>10}{'原始取水':>10}{'定额':>8}{'耗水':>8}")

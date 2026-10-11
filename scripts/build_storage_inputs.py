@@ -13,7 +13,8 @@ def main() -> None:
         "--offshore-basin-dilation-px", type=int, default=None,
         help="Merge offshore bodies per basin and storage type; basins are the connected "
              "components of the aquifer raster dilated by this many 5 km pixels. 6 (30 km) "
-             "reproduces the source assessment's 7 offshore basins. Default: no merge.",
+             "reproduces the source assessment's 7 offshore basins. Default: no merge. "
+             "The checked-in storage_hubs.csv (89 hubs) was built with 6.",
     )
     args = parser.parse_args()
     paths = ProjectPaths(ROOT)

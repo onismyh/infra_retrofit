@@ -10,7 +10,6 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.optimization.network import build_runtime_network
-from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.paths import ProjectPaths
 
 
@@ -48,8 +47,7 @@ def _build(paths: ProjectPaths, hub_lon: float, hub_lat: float):
     plants = pd.DataFrame({"plant_id": ["P1"], "centroid_longitude": [112.0], "centroid_latitude": [37.0]})
     storages = pd.DataFrame({"storage_hub_id": ["S1"], "longitude": [112.5], "latitude": [37.0]})
     hubs = pd.DataFrame({"hub_id": ["H1"], "longitude": [hub_lon], "latitude": [hub_lat]})
-    scenario = OptimizationScenario(experiment_id="T-NET", description="toy")
-    return build_runtime_network(paths, plants, storages, scenario, industry_hubs=hubs)
+    return build_runtime_network(paths, plants, storages, industry_hubs=hubs)
 
 
 def test_runtime_hub_next_to_a_connected_node_is_accepted(tmp_path) -> None:
@@ -79,8 +77,7 @@ def test_runtime_branch_to_an_offshore_sink_is_offshore_end_to_end(tmp_path) -> 
         "storage_hub_id": ["S1", "S2"], "longitude": [112.5, 112.6], "latitude": [37.0, 37.0], "offshore": [False, True],
     })
     hubs = pd.DataFrame({"hub_id": ["H1"], "longitude": [112.1], "latitude": [37.0]})
-    scenario = OptimizationScenario(experiment_id="T-NET", description="toy")
-    edges = build_runtime_network(paths, plants, storages, scenario, industry_hubs=hubs).edges.set_index("edge_id")
+    edges = build_runtime_network(paths, plants, storages, industry_hubs=hubs).edges.set_index("edge_id")
     sea = edges.loc["edge_runtime_storage_S2"]
     assert sea["offshore_length_km"] == pytest.approx(sea["length_km"]) and sea["length_km"] > 0
     assert edges.loc["edge_runtime_industry_H1", "offshore_length_km"] == 0.0

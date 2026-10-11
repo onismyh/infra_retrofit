@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "Abatement technology choice and CO2 source-sink matching for China's coal power and energy-intensive industry under basin water constraints: input builders, scenario solves and result export."
 requires-python = ">=3.11"
 dependencies = [
-  "geopandas",
+  "geopandas>=1.0",  # builders 无条件调用 GeoSeries.union_all()
   "gurobipy",
-  "matplotlib",
+  "matplotlib>=3.8",  # scripts/plot_fig2 运行时导入 matplotlib.typing
   "netCDF4",
   "networkx",
   "numpy",
@@ -19,10 +19,13 @@ dependencies = [
   "pyproj",
   "rasterio",
   "requests",
-  "scikit-learn",
+  "scikit-learn>=1.2",  # AgglomerativeClustering(metric="precomputed")，1.2 起才有 metric 参数
   "scipy",
   "shapely",
 ]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

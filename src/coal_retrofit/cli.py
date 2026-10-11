@@ -10,6 +10,8 @@
     python -m coal_retrofit water-members [--tree _indtree]
 
 情景登记在仓库根 `scenarios/*.toml`（格式见 `coal_retrofit.scenarios`），`--registry` 可换目录。
+包内 INFO 日志（求解参数、水预算、热启动进度，以及 `COAL_RETROFIT_LOG_INCUMBENTS=1` 的 INCUMBENT 行）写 stderr，
+存日志要 `2>&1`；`run` 自己的结果信息仍写 stdout。
 
 - `run` 写 `<tree>/results/<结果名>.json` 与同名目录下的九张表；结果名缺省是情景名。已有 `<结果名>.json` 时
   求解之前就拒绝，`--force` 才覆盖。
@@ -37,6 +39,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 import os
 import sys
@@ -71,6 +74,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """解析命令行并执行；返回退出码（见模块说明）。登记表写错或求解之前就拒绝时打印原因、返回 1。"""
     parser = _parser()
     args = parser.parse_args(argv)
+    # 包内 logger 的 INFO（求解参数、水预算、热启动进度等）要配了 handler 才看得见；第三方库维持 WARNING。
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    logging.getLogger("coal_retrofit").setLevel(logging.INFO)
     try:
         registry = load_registry(args.registry)
         return int(args.handler(registry, args, parser))

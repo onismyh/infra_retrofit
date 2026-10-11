@@ -1,5 +1,6 @@
 {
   "review_date": "2026-09-30",
+  "snapshot_note": "各项为 2026-09-30 当日值（代码清单 191 行、生物质供给表 13 949 行、ST_ MIPGap 0.03 等），此后已变；现状见 参数审查与更新建议_20260930.md 文首的现状注。",
   "scope": "documentation_and_evidence_only",
   "code_baseline": "8312c8bc4c86d5a8f19dc3cc10d6b4e8f2b42b19",
   "checks": {

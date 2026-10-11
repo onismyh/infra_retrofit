@@ -6,7 +6,8 @@
 
 - API keys, tokens, passwords must NEVER appear in committed files
 - Use environment variables or `.env` files (which are gitignored)
-- `settings.json` contains sensitive tokens and is excluded from Git via `.gitignore`
+- `.claude/settings.json` / `.claude/settings.local.json` contain sensitive tokens and are excluded from Git via `.gitignore`
+  (`.vscode/settings.json` holds only editor settings and is tracked)
 
 ### Environment Variables
 
@@ -41,12 +42,13 @@ The following files must NEVER be committed to Git:
 
 | File Pattern | Reason |
 |-------------|--------|
-| `settings.json` | Contains API tokens |
+| `.claude/settings.json`, `.claude/settings.local.json` | Contain API tokens |
 | `.env`, `.env.*` | Environment secrets |
 | `*.pem`, `*.key` | Private keys |
 | `credentials.json` | Service account credentials |
 | `*_secret*`, `*_token*` | Named secret files |
 | `*.sqlite`, `*.db` | May contain user data |
+| `gurobi.lic` | Gurobi licence file (see AGENTS.md) |
 
 ## Code Security
 

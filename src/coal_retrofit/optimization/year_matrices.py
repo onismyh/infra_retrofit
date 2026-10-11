@@ -90,7 +90,7 @@ def _build_year_matrices(
     water_data = _water_access_data(prepared, scenario, assumptions, year, baseline_use_m3)
     # 取水孪生矩阵与流域指标：只在有水约束且开流域上限时建（流域指标是唯一按取水计的约束）。
     withdrawal_intensity, air_withdrawal_intensity = _withdrawal_matrices(
-        prepared, scenario, assumptions, water_intensity, air_water_intensity, year
+        prepared, scenario, assumptions, water_intensity, year
     )
     basin_membership, basin_residual, basin_codes = _basin_cap_data(
         prepared, assumptions, scenario, year
