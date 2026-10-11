@@ -19,9 +19,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.offshore_basin_dilation_px < 0:
         parser.error("--offshore-basin-dilation-px must be >= 0")
-    paths = ProjectPaths(ROOT)
-    dilation = args.offshore_basin_dilation_px or None
-    storage = write_storage_hubs(paths, offshore_basin_dilation_px=dilation)
+    storage = write_storage_hubs(ProjectPaths(ROOT), offshore_basin_dilation_px=args.offshore_basin_dilation_px)
     offshore = int(storage["offshore"].sum())
     print(f"Wrote {len(storage)} storage hub rows ({offshore} offshore).")
 

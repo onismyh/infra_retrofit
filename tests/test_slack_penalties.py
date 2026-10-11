@@ -7,7 +7,6 @@ import numpy as np
 import pytest
 
 from coal_retrofit.constants import (
-    NH3_H2_RATIO,
     SLACK_PENALTY_CNY_PER_GJ_BIOMASS,
     SLACK_PENALTY_CNY_PER_KG_H2,
     SLACK_PENALTY_CNY_PER_M3_WATER,
@@ -28,7 +27,7 @@ UNIT_SLACKS = {
 
 
 def test_h2_penalty_is_the_ammonia_penalty_converted_to_hydrogen() -> None:
-    assert SLACK_PENALTY_CNY_PER_KG_H2 == pytest.approx(1_000.0 / NH3_H2_RATIO)
+    # 1000 元/kg NH3 ÷ 0.18 kg H2/kg NH3：钉死数值，常量定义里的除式改了就会被抓到
     assert SLACK_PENALTY_CNY_PER_KG_H2 == pytest.approx(5_555.56, abs=0.01)
 
 
@@ -70,7 +69,7 @@ def _results_side(unit_slacks: dict, basin_slack: np.ndarray, scales: tuple[floa
 
 
 def test_model_side_total_equals_results_side_total() -> None:
-    pytest.importorskip("gurobipy")
+    # `_slack_penalty` 只做算术，没装 gurobipy 也能跑（`_shared.gp` 为 None 时照常导入），不跳过
     # 三种资源的缩放系数各不相同，混用缩放（如氢用了水的系数）会让两侧对不上
     scales = (2.0, 3.0, 5.0)
     basin = np.ones(2)

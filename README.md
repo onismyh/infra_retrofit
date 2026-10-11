@@ -596,6 +596,12 @@
 >   模块级缓存（改为求解开始时算一次传给各年）。`build_storage_inputs.py --offshore-basin-dilation-px` 缺省改 6（库里 89 个汇的取值）。
 > - 出图：图 8 / 图 10 的标签文字修正；带上下标（mathtext）的文字须 ≥ 7 pt（上下标按 0.7 缩放后约 4.9 pt，再小就不可读），`save_fig` 检查；图 6 标注与图例标题改 7 pt。
 > - 文档补注：`_indtree/README.md` 的 16 EJ 口径、工业 CCS 捕集水耗 1.65 m³/t 的出处待核（Rosa et al. 2021 的范围 0.74–575 m³/t）。
+> - 复核修正（`d519525` 之后，不改模型）：`scripts/validate_basin_runoff.py` 的成员键只取水文模型与 SSP，20 个 qtot 成员塌成
+>   4 列（同键后者覆盖前者），改为 `<水文模型>|<GCM>|<SSP>`，两个文件落到同一列即报错；流域栅格化、年与枯水期水量、厂址归流域
+>   改调 `builders.water` 的函数，基线表与窗口改读 `constants`，不再另写一份；没有煤电 hub 的流域装机记 0（此前为 NaN）。
+>   汇表库函数 `build_storage_hub_dataframe` / `write_storage_hubs` 的膨胀像素缺省改 6（与脚本及库内 89 个汇一致；0 为不合并，
+>   负数在读栅格前报错）。`spatial` 的点坐标校验补一维与经纬度范围（标量算一个点），图层校验补空几何。
+>   `download_isimip_water_use.py` 有下载失败时以 1 退出、HTTP 416 按已完整处理。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -873,9 +879,9 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 4. **ruff**：`src/` 0 条；`tests/` 19 条 E402（先 `importorskip` 再导入的固定写法）；两棵 `scripts/` 合计 329 条，未动。
 
 > 现状（2026-10-11，`19671b7` 加本次改动）：上表与这四条是 PR #2 合入时的快照，此后只改过局部，没有再做整体重构。现在 `src/coal_retrofit/`
-> 66 个文件、437 个函数：超 400 行的文件 8 个（`builders/water.py` 730、`constants_industry.py` 643、`optimization/scenario.py` 624、
+> 66 个文件、438 个函数：超 400 行的文件 8 个（`builders/water.py` 730、`constants_industry.py` 643、`optimization/scenario.py` 624、
 > `builders/network.py` 559、`optimization/constraints.py` 555、`optimization/data_prep.py` 528、`builders/supply.py` 472、
-> `builders/plants.py` 456；`builders/storage.py` 330 与 `builders/industry.py` 本次删掉死代码后降到 400 行以下；`reporting/core.py` 已于
+> `builders/plants.py` 457；`builders/storage.py` 333 与 `builders/industry.py` 本次删掉死代码后降到 400 行以下；`reporting/core.py` 已于
 > 2026-09-26 随 `reporting/` 删除）；≥ 80 行的函数 30 个，最长的是 `_add_blend_level_constraints` 245 行、`build_ammonia_supply_dataframe` 202 行、
 > `_plant_operating_matrices` 199 行、`build_runtime_network` 190 行；mypy（`--ignore-missing-imports`，整包一次检查）135 个错误（21 个文件；本次少 2 个：`builders/storage.py` 1 → 0、
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、

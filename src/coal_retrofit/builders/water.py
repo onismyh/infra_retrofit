@@ -274,8 +274,8 @@ def _province_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -
 def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
     """按所在（或最近的）多边形，给每个点（`longitude` / `latitude` 列）分配一级流域代码。
 
-    用最近邻而不是严格包含：否则海岸上以及多边形之间缝隙里的网格会被所有流域预算
-    漏掉，其水量被悄悄删除。距离按球面算（`spatial.nearest_polygon_index`），2026-10-11 前在 EPSG:2380 下算。
+    先按包含关系配对；落在所有多边形之外的点（海岸、多边形之间的缝隙）取边界最近的流域，否则这些网格会被
+    所有流域预算漏掉，其水量被悄悄删除。距离按球面算（`spatial.nearest_polygon_index`），2026-10-11 前在 EPSG:2380 下算。
     """
     basins = load_basins(paths)
     index = nearest_polygon_index(nodes["longitude"].to_numpy(float), nodes["latitude"].to_numpy(float), basins.geometry)
@@ -287,8 +287,8 @@ def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
     path = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found. Build it from data/basins_raw with scripts/validate_basin_runoff.py's "
-            "layer conventions: columns `code` (A-K) and `name`, EPSG:4326."
+            f"{path} 不存在。该文件入库在仓库根 data/ChinaBasins/，求解树经 <tree>/data 链接读它"
+            "（README 的 `_indtree/data` 一行）；列为 `code`（A-K）、`name`、`name_en`，EPSG:4326。"
         )
     return gpd.read_file(path).to_crs(TARGET_GEO_CRS)
 
@@ -391,7 +391,7 @@ def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
 
 
 def _annual_and_seasonal(window: np.ndarray, area_m2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """十年窗口逐月序列（kg m-2 s-1，从 1 月起）的逐网格年均水量与 12 个候选三个月窗口的年化水量，m3/yr。
+    """整年的逐月序列（kg m-2 s-1，从 1 月起）的逐网格年均水量与 12 个候选三个月窗口的年化水量，m3/yr。
 
     第 m 个窗口是从第 m 个日历月（0 = 1 月）起的连续三个月，取多年月均的年循环。径流与耗水共用，
     所以两者的枯水期是同一组月份。

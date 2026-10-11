@@ -216,9 +216,14 @@ def test_year_matrices_take_prebuilt_biomass_access(tmp_path) -> None:
     assert same.biomass_link_hub_membership is biomass.hub_membership
     np.testing.assert_array_equal(own.biomass_available, same.biomass_available)
     assert own.biomass_flow_scale == same.biomass_flow_scale
-    # toy 里生物质链路为空、节点只有一个，矩阵比较不出差别；用哨兵值证明传入的可用量与缩放确实进了系数
-    sentinel = replace(biomass, available_scaled=np.array([42.0]), flow_scale=7.0)
+    # toy 里生物质链路为空、节点只有一个，矩阵比较不出差别；用哨兵值证明传入的五个字段都原样进了 YearData、缩放进了系数
+    node_sentinel, cost_sentinel = object(), np.array([1.5, 2.5])
+    sentinel = replace(biomass, node_membership=node_sentinel, available_scaled=np.array([42.0]),
+                       link_costs=cost_sentinel, flow_scale=7.0)
     given = _build_year_matrices(prepared, scenario, assumptions, 2050, state, biomass=sentinel)
+    assert given.biomass_link_hub_membership is biomass.hub_membership
+    assert given.biomass_link_node_membership is node_sentinel
+    assert given.biomass_link_cost_cny_per_gj is cost_sentinel
     assert given.biomass_available.tolist() == [42.0]
     assert given.biomass_flow_scale == 7.0
     np.testing.assert_allclose(given.coal_savings_per_gj, own.coal_savings_per_gj * 7.0 / own.biomass_flow_scale)

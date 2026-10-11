@@ -39,22 +39,27 @@ def _densified_vertices(geometries: Iterable, max_segment_deg: float) -> np.ndar
 
 
 def _require_geographic(layer: gpd.GeoSeries, what: str) -> None:
-    """*layer* 须为非空的地理坐标图层，且不含空几何。"""
+    """*layer* 须为非空的地理坐标图层，且不含 None 或空几何（`isna` 只认 None，空多边形要另查 `is_empty`）。"""
     crs = layer.crs
     if crs is None or not crs.is_geographic:
         raise ValueError(f"{what} 须为地理坐标（经纬度），不在投影坐标下量距离（CLAUDE.md §4.1）；得到 {crs}")
-    if len(layer) == 0 or layer.isna().any():
+    if len(layer) == 0 or layer.isna().any() or layer.is_empty.any():
         raise ValueError(f"{what} 为空或含空几何，无法量距离")
 
 
 def _finite_points(lons: ArrayLike, lats: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
-    """点坐标转成等长的 float64 数组；含 NaN / inf 或长度不一致就报错，不让坏坐标静默落到错误的归属上。"""
-    lons = np.asarray(lons, dtype=np.float64)
-    lats = np.asarray(lats, dtype=np.float64)
+    """点坐标转成等长的一维 float64 数组（标量算一个点）；含 NaN / inf、个数不一致或超出经纬度范围就报错，
+    不让投影坐标或写反后越界的经纬度静默落到错误的归属上（写反后仍在范围内的，如 80°E 40°N 写成 (40, 80)，抓不到）。"""
+    lons = np.atleast_1d(np.asarray(lons, dtype=np.float64))
+    lats = np.atleast_1d(np.asarray(lats, dtype=np.float64))
+    if lons.ndim != 1 or lats.ndim != 1:
+        raise ValueError(f"点坐标须为标量或一维数组，得到形状 {lons.shape} 与 {lats.shape}")
     if lons.shape != lats.shape:
         raise ValueError(f"经度与纬度个数不一致：{lons.shape} 对 {lats.shape}")
     if not (np.isfinite(lons).all() and np.isfinite(lats).all()):
         raise ValueError("点坐标含 NaN 或 inf，无法量距离")
+    if (np.abs(lons) > 180.0).any() or (np.abs(lats) > 90.0).any():
+        raise ValueError("点坐标超出经纬度范围（|经度| <= 180、|纬度| <= 90）：是不是传了投影坐标，或经纬度写反了")
     return lons, lats
 
 
@@ -64,7 +69,7 @@ def distance_to_lines_km(
     """每个点到一组线要素的最小球面距离（km）。
 
     线按 *max_segment_deg*（缺省 0.01°，约 1 km）加密顶点后取到顶点的最小 haversine 距离，
-    比到线段的真实距离最多偏大半个加密步长。*lines* 须为非空的地理坐标图层；点坐标含 NaN / inf 报错。
+    比到线段的真实距离最多偏大半个加密步长。*lines* 须为非空的地理坐标图层；点坐标含 NaN / inf 或超出经纬度范围报错。
     """
     _require_geographic(lines, "lines")
     vertices = _densified_vertices(lines.geometry, max_segment_deg)
@@ -79,7 +84,7 @@ def nearest_polygon_index(
 
     先按包含关系配对，同时落在多个多边形里的点取序号最小的；落在所有多边形之外的点（海岸、多边形之间的
     缝隙）取边界球面距离最近的多边形，边界按 *max_segment_deg* 加密后量到顶点。*polygons* 须为非空的地理坐标
-    图层；点坐标含 NaN / inf 报错。
+    图层；点坐标含 NaN / inf 或超出经纬度范围报错。
     """
     _require_geographic(polygons, "polygons")
     lons, lats = _finite_points(lons, lats)
