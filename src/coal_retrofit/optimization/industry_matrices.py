@@ -48,8 +48,6 @@ class IndustryYearData:
     氢路线买氢不在 `opex_cny` 里，由求解器按链路采购。
     """
 
-    hub_ids: list[str]
-    sectors: np.ndarray                  # (hub_count,)
     target_groups: np.ndarray            # (hub_count,)，部门目标组
     output_scale: np.ndarray             # (hub_count,)，产量指数，2030 = 1
     baseline_emissions_mt: np.ndarray    # (hub_count,)，已乘产量指数
@@ -63,7 +61,6 @@ class IndustryYearData:
     h2_demand_kg_per_share: np.ndarray   # (hub_count,)，氢路线份额为 1 时的年需氢量，kg
     water_m3: np.ndarray
     h2_price_cny_per_kg: float           # 全国供给加权均价，只作报告
-    capture_learning_factor: float
     capex_lifetime_years: dict[int, int]  # 路线下标 -> 经济寿命（年），供期末残值
 
 
@@ -307,8 +304,6 @@ def industry_year_data(
     # 注意：`scenario.water_multiplier` 缩放的是可用水量而不是需水量，所以这里故意不乘——
     # 它只在 `_basin_cap_data` 里对流域余量乘一次。
     return IndustryYearData(
-        hub_ids=hubs["hub_id"].astype(str).tolist(),
-        sectors=sectors,
         target_groups=hubs["target_group"].astype(str).to_numpy(),
         output_scale=output_scale,
         baseline_emissions_mt=co2_mt,
@@ -322,7 +317,6 @@ def industry_year_data(
         h2_demand_kg_per_share=h2_demand_kg,
         water_m3=water_m3,
         h2_price_cny_per_kg=h2_price_mean,
-        capture_learning_factor=learning,
         # 各路线的经济寿命：到寿命退出（`vintage`），期末残值抵扣也按它折旧。
         capex_lifetime_years={CCS: INDUSTRY_CAPTURE_LIFETIME_YEARS, H2: INDUSTRY_H2_LIFETIME_YEARS},
     )

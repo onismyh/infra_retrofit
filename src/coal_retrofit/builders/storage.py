@@ -209,7 +209,7 @@ def _flag_offshore(paths: ProjectPaths, hubs: pd.DataFrame) -> pd.Series:
     from shapely.geometry import Point
 
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp").to_crs("EPSG:4326")
-    land = provinces.union_all() if hasattr(provinces, "union_all") else provinces.unary_union
+    land = provinces.union_all()
     return pd.Series(
         [not land.contains(Point(float(lon), float(lat))) for lon, lat in zip(hubs["longitude"], hubs["latitude"])],
         index=hubs.index,

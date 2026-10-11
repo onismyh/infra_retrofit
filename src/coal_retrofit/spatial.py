@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import Iterable
 
 import geopandas as gpd
 import numpy as np
 import rasterio
+from pyproj import Geod
 from rasterio.features import rasterize
-
-try:
-    from pyproj import Geod
-except ImportError:  # pragma: no cover
-    Geod = None
 
 
 def load_provinces(provinces_path: Path) -> gpd.GeoDataFrame:
@@ -71,18 +66,7 @@ def geodesic_length_km(coords: Iterable[tuple[float, float]]) -> float:
     points = list(coords)
     if len(points) < 2:
         return 0.0
-    if Geod is not None:
-        geod = Geod(ellps="WGS84")
-        lons = [pt[0] for pt in points]
-        lats = [pt[1] for pt in points]
-        return float(geod.line_length(lons, lats) / 1000.0)
-
-    total_km = 0.0
-    for start, end in zip(points[:-1], points[1:]):
-        lon1, lat1 = start
-        lon2, lat2 = end
-        dlon = radians(lon2 - lon1)
-        dlat = radians(lat2 - lat1)
-        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-        total_km += 6371.0088 * (2 * asin(sqrt(a)))
-    return total_km
+    geod = Geod(ellps="WGS84")
+    lons = [pt[0] for pt in points]
+    lats = [pt[1] for pt in points]
+    return float(geod.line_length(lons, lats) / 1000.0)

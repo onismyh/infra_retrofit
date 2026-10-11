@@ -136,6 +136,11 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
 氨的供给曲线。
 
+> 上面"只替换了三个网络文件""`plants_unit.csv` 不变""其余一律不动"是 2026-09-12 重建时的快照；上文各条之外另有两处改动：
+> 2026-10-07 起 `plants.csv`、`plants_unit.csv`、`plants_unit_hub.csv` 按 CFB 改标重写（厂名写明 CFB 的 5 台加 `/CFB`，提交 `4f74e78`）；
+> 2026-10-10 起 `pipeline_candidate_edges.csv` 多一列 `offshore_length_km`（海上段长度，现 15 列；提交 `5e6bf49`，
+> 补算用 `scripts/build_network_inputs.py --offshore-only`）。
+
 ### 为什么这不算跨版本混用（CLAUDE.md §二.6）
 
 逐列实测过，不是推断（下面说的仓库根文件与 `_v9tree/` 都在 `a303f05` 里）：
@@ -175,7 +180,7 @@ python scripts/run_single.py IND_WA_cwatm_126_dry_oq      --threads 8
 python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t95
 ```
 
-线程固定 8，MIPGap 1%，最多 2 路并发（CLAUDE.md §二.1/2/5）。
+线程固定 8，MIPGap 1%（`IND_` 当年的口径；`ST_` 系为 2%，CLAUDE.md §二.2），最多 2 路并发（CLAUDE.md §二.1/2/5）。
 
 ### 求解状态（2026-09-12 在重建 + 合并后的管网上重解，旧结果作废）
 
@@ -409,8 +414,9 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
    其**捕集量、注入分布、工业通路份额一律不可引用**。
 2. **同样不得与 `_v91tree/` 或任何非 `IND_` 运行相减。** 目标函数分母（5 392 → 8 661 Mt）、
    约束与源群三者同时变了。
-3. 本树的两对情景之间（`IND_BASE_t95` ↔ `IND_WA_..._oq_t95`）**可以相减**：同一模型、
-   同一目标，只差 `apply_basin_cap` 一个旋钮。
+3. 本树的两对情景之间（`IND_BASE_t95` ↔ `IND_WA_..._oq_t95`）**当年可以相减**：同一模型、
+   同一目标，只差 `apply_basin_cap` 一个旋钮。（历史：`IND_` 系已于 `ba967c1` 从登记表删除，旧求解代码在 `cf073be`，结果文件没入库；
+   本树现在只求解 `ST_` 系，`ST_` 的差值按 CLAUDE.md §二.3 的可证区间报告，不直接相减。）
 4. 引用任何成本差之前先看 `slack_detail.csv`（2026-10-10 起的结果看 `system.csv` 的 `slack_penalty` 行与 `resources`、`sinks`、
    `network` 各表的松弛列）：只要有 big-M 松弛，差值里就混着罚参数而不是价格。
 

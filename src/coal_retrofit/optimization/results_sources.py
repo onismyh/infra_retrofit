@@ -10,7 +10,7 @@
   链路上买的氢。
 - `water_consumption_m3`：耗水，节点生态流量约束的口径；只有煤电有，工业记空（模型只按取水计工业用水）。
 - `water_withdrawal_m3`：取水，流域取水指标的口径。工业是路线取水量；煤电按取水强度与解出的份额、空冷份额重算
-  （与 `model_resources.add_water_balances` 的流域约束同式），只在建了流域取水约束时有，否则记空。
+  （与 `model_resources.add_basin_withdrawal_cap` 的流域约束同式），只在建了流域取水约束时有，否则记空。
 
 `source_routes.csv` 每年每个源每条路线一行：份额、活动量、基线排放、减排、捕集量。煤电按 `results_plant._pathway_split`
 逐项拆到路径上。工业的减排与捕集量 = 该路线的系数 x 份额；活动量：改造路线 = 产量 x 可改造产量比例
@@ -104,7 +104,7 @@ def _build_sources_table(
 
 def _coal_withdrawal_m3(ys: YearSolution) -> np.ndarray:
     """逐厂取水，m3/yr：Σ_路径 发电量 x (取水强度 x 份额 − (取水强度 − 空冷取水强度) x 空冷份额)，与流域约束同式
-    （`model_resources.add_water_balances`）。没建流域取水约束时（无水约束、关掉流域上限）取水强度矩阵不生成，记空。"""
+    （`model_resources.add_basin_withdrawal_cap`）。没建流域取水约束时（无水约束、关掉流域上限）取水强度矩阵不生成，记空。"""
     yd = ys["year_data"]
     share = np.asarray(ys["share"], dtype=np.float64)
     if yd.withdrawal_intensity is None:

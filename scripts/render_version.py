@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
 """重绘全部图，并把图、画图用的结果与输入指纹归档到图幅版本目录。
 
-    python scripts/render_version.py --version <版本>
+    python scripts/render_version.py --version <版本> [--freeze-tag <标签>] [--timeout 秒] [--skip-plots]
 
 出图脚本读求解树 <tree>（固定是 `_bootstrap.ROOT`，即 `_indtree`）的 inputs/，结果图读入库的 results/solved/
 （`plot_style.SOLVED_DIR`），图写到 <tree>/results/figures/。所以没有 `--tree`：另指一棵树，归档的就不是画图用的那套。
@@ -129,11 +128,11 @@ def copy_results(tree: Path, solved: Path, dest: Path) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--version", required=True, help="图幅版本目录名，写到 results/figures/<version>/")
     parser.add_argument("--freeze-tag", default="",
                         help="已有旧图挪到 <version>/frozen_<tag>/；缺省不挪（v9 当年用 103sink_lost_tree）")
-    parser.add_argument("--timeout", type=int, default=1800)
-    parser.add_argument("--skip-plots", action="store_true")
+    parser.add_argument("--timeout", type=int, default=1800, help="每个出图脚本的时限（秒），超时记为失败")
+    parser.add_argument("--skip-plots", action="store_true", help="不画图，只归档根目录下已有的图")
     args = parser.parse_args()
     tree = ROOT
     dest = REPO_ROOT / "results" / "figures" / args.version

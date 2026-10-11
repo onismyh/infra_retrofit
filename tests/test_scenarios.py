@@ -316,7 +316,7 @@ def test_cli_run_stops_before_solving_when_tree_has_no_inputs(tmp_path, capsys) 
 
 
 def test_run_single_wrapper(monkeypatch, capsys) -> None:
-    """薄壳：出图脚本 `from run_single import EXPERIMENTS` 的形状，原命令行的改写，`--list` 的原格式。"""
+    """薄壳：`EXPERIMENTS` 的形状（出图脚本已不读它，只剩本测试），原命令行的改写，`--list` 的原格式。"""
     directory = REPO / "scripts"
     monkeypatch.syspath_prepend(str(directory))
     alias = "run_single_under_test"

@@ -3,6 +3,7 @@
   "review_date": "2026-09-30",
   "status": "awaiting_required_plan_approval",
   "applied": false,
+  "status_note": "status / applied 保留 2026-09-30 的原值；现状：first_batch 的 ccs_energy_penalty_ratio_by_year 已于 2026-10-02 按 proposed 实施（README §0、docs/方法论.md §4.1）；conditional_candidates 里 storage_cost（32 → 35 元/t）已于 2026-10-02 随封存按汇型定价采纳（f39e921，docs/方法论.md 附录 B.3），其余 high_purity_ccs_electricity、coal_ccs_fom、green_h2_2030_cap 仍未实施；其他节的候选未动。",
   "code_baseline": "8312c8bc4c86d5a8f19dc3cc10d6b4e8f2b42b19",
   "first_batch": [
     {

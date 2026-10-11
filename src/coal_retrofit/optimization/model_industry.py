@@ -32,7 +32,6 @@ class IndustryPayload:
     share: GrbMVar                            # (hub_count, len(INDUSTRY_ROUTES))
     year_suffix: str
     captured_by_hub: list[GrbExpr]            # Mt/yr
-    reduction_by_hub: list[GrbExpr]           # Mt/yr
     total_reduction_mt: GrbExpr
     residual_by_group: dict[str, GrbExpr]     # 部门目标组 -> 残余排放，Mt/yr
     withdrawal_by_hub_scaled: list[GrbExpr]   # 取水，与煤电流域表达式同一缩放单位（WATER_FLOW_SCALE）
@@ -162,7 +161,6 @@ def add_industry_year(
         share=share,
         year_suffix=year_suffix,
         captured_by_hub=captured_by_hub,
-        reduction_by_hub=reduction_by_hub,
         total_reduction_mt=total_reduction,
         residual_by_group=residual_by_group,
         withdrawal_by_hub_scaled=withdrawal_by_hub,

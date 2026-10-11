@@ -168,7 +168,7 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
 
     flow_handles = [Line2D([], [], color=PIPE_COLOR, linewidth=float(width(v)), label=f"{v:g}")
                     for v in nice_levels(fmax)]
-    flow_handles.append(Line2D([], [], color=IDLE_PIPE_COLOR, linewidth=0.6, label=text["idle"]))
+    flow_handles.append(Line2D([], [], color=IDLE_PIPE_COLOR, linewidth=0.35, label=text["idle"]))
     size_handles = size_legend(nice_levels(smax), smax, "o", NEUTRAL, fmt="{:g}", smax=SMAX)
     industry = tuple(Line2D([], [], marker=MARKERS["industry"], linestyle="none", markersize=3,
                             markerfacecolor=SECTOR_COLORS[s], markeredgecolor="white", markeredgewidth=0.3)

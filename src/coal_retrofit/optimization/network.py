@@ -10,7 +10,6 @@ import pandas as pd
 from ..constants import NETWORK_DETOUR_FACTOR
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
-from .scenario import OptimizationScenario
 
 # 模型计价的最短支线。有三个工业 hub 正压在走廊节点上（大地线距离 0.000 km），
 # 它们的零长度支线在 2030 年被"免费"按 20 Mtpa 建成。
@@ -52,11 +51,7 @@ class RuntimeNetwork:
     # 映射工业 hub_id -> node_id，覆盖每个将参与求解的工业 hub
 
 
-def _build_base_graph(
-    nodes: pd.DataFrame,
-    edges: pd.DataFrame,
-    scenario: OptimizationScenario,
-) -> nx.Graph:
+def _build_base_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
     graph = nx.Graph()
     for row in nodes.itertuples(index=False):
         graph.add_node(str(row.node_id), lon=float(row.lon), lat=float(row.lat), node_type=str(row.node_type))
@@ -65,15 +60,11 @@ def _build_base_graph(
         length_km = float(row.length_km)
         existing_flag = int(row.existing_corridor_flag)
         edge_class = str(row.edge_class)
-        weight = length_km
-        if existing_flag and edge_class == "existing_main_corridor":
-            weight = length_km * scenario.corridor_prior_strength
         graph.add_edge(
             str(row.from_node_id),
             str(row.to_node_id),
             edge_id=edge_id,
             length_km=length_km,
-            weight=weight,
             corridor_type=str(row.corridor_type),
             existing_corridor_flag=existing_flag,
             edge_class=edge_class,
@@ -127,7 +118,6 @@ def _append_runtime_edge(
         to_node_id,
         edge_id=edge_id,
         length_km=length_km,
-        weight=length_km,
         corridor_type="runtime",
         existing_corridor_flag=0,
         edge_class=edge_class,
@@ -168,7 +158,6 @@ def build_runtime_network(
     paths: ProjectPaths,
     plants: pd.DataFrame,
     storages: pd.DataFrame,
-    scenario: OptimizationScenario,
     industry_hubs: pd.DataFrame | None = None,
 ) -> RuntimeNetwork:
     base_nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
@@ -184,7 +173,7 @@ def build_runtime_network(
             "pipeline_candidate_edges.csv 的 offshore_length_km 须无缺失、在 0 与 length_km 之间："
             "重新运行 scripts/build_network_inputs.py --offshore-only"
         )
-    graph = _build_base_graph(base_nodes, base_edges, scenario)
+    graph = _build_base_graph(base_nodes, base_edges)
     nodes = base_nodes.copy()
     runtime_edge_rows: list[dict[str, object]] = []
     existing_plant_nodes = {}

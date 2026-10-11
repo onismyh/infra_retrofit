@@ -9,7 +9,7 @@ This is a Python 3.11+ `src`-layout project. Reusable code lives in `src/coal_re
 Run commands from the repository root in PowerShell:
 
 ```powershell
-python -m pip install -e . pytest
+python -m pip install -e ".[test]"
 python -m pytest
 python -m coal_retrofit list
 ```

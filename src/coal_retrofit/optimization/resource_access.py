@@ -157,7 +157,6 @@ def _ammonia_access_data(
         "h2_available_kg": available_scaled,
         "link_cost_cny_per_kg": link_costs,
         "ammonia_flow_scale": AMMONIA_FLOW_SCALE,
-        "deployment_fraction": ramp,
     }
 
 
