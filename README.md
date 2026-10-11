@@ -325,7 +325,7 @@
 >   经 BECCS 起作用。掺烧 capex 与运维都比此前低得多，生物质与 BECCS 变便宜。发电净收益也随发电量多 15%：掺烧成本降下来后，
 >   电价高、碳约束松的年份里 0.10 档纯掺烧可能比不改造还划算而被选上（排放至少多 3.5%），要求解后才知道；`retrofit_cf_boost`
 >   本身不在本 PR 范围内。
-> - 不改：生物质供给仍用 S3 栅格（`biomass_supply_curve.csv`）；S4 的下载被网络策略挡住，另做。
+> - 不改：生物质供给仍用 S3 栅格（`biomass_supply_curve.csv`）；S4 的下载被网络策略挡住，另做（2026-10-11 已改读 S4，见下文）。
 >
 > `ST_BASE`、`ST_WA_cwatm_126_dry_oq` 只建模不求解：两者都是变量 −14 716、约束 −26 688、非零元 −145 060，整数变量不变。
 > 生物质按档位计的变量与约束随档位数 5 → 3 同比减少（档位选择含"不掺"一档，每个 hub 每期 6 → 4 个；两类份额与其重建拆分、
@@ -564,6 +564,24 @@
 >   水节点的可用水量、每个流域的生活与灌溉耗水（现有 20 个都齐全）。有水约束且指定了成员的 run 在求解之前也核这个成员（只核它读的
 >   季节）：模型遇到缺行或径流为空的节点会静默补零（`water_access._water_available_by_node`）。
 > - `scenario.sector_target_mode` 写错（如 `totl`）读登记表或 `--set` 时就报错，此前要到建模型时才报。
+>
+> 2026-10-11 起生物质供给表改读 Wang et al. 2023（Sci Data 10:384）情景 4 的栅格 `bioenergy_s4_AF_max.tif`（农林残余物，不含能源作物；
+> **模型改动**：输入表重建，模型分段 10；`docs/方法论.md` §2.2、§3.1、附录 A、B.1、B.4）：
+> - 此前读情景 3（`bioenergy_s3_AFE_abandon.tif`，另含废弃耕地上的能源作物），而采购单价 20 元/GJ 取自只覆盖残余物的 Wang 2025，
+>   供给与价格不同口径（`docs/参数调研_20261001.md`）。
+> - 栅格取自 figshare（数据集 doi:10.6084/m9.figshare.c.6468319.v1 的文件 39594598，MD5 `30e484a16f2c194c1846aaeb3a312556`），
+>   放在 `data/中国生物质潜力/`（不入库，构建按文件名查找）。构建函数只换了文件名：同一函数读情景 3 栅格重建的表与改前库里的表节点、
+>   省份与来源列逐行相同，可用量最大相对差 3e-12（浮点求和次序）。
+> - `biomass_supply_curve.csv`：13 949 → 13 883 个节点（编号按省与网格重排，B00001–B13883，新旧编号不对应），合计 30.05 → 18.12 EJ/a
+>   （论文情景 4 全国 17.9 EJ，与把每个 0.01° 像元当 1 km² 求和的 17.88 相同；构建按真实像元面积算，高 1.3%，情景 3 同样是 29.33 对 30.05）；
+>   `ST_BASE` 读入时建的 200 km 内链路 71 148 → 70 999 条，煤电 hub 够得着的节点合计 17.37 EJ/a。
+>   各省降到改前的 22%（上海）至 96%（新疆），香港 7%；台湾在情景 4 栅格里全为 0，由 47 个节点变为没有（模型里没有台湾的煤电 hub）。
+> - 全国上限 16 EJ/a（`biomass_national_cap_gj_per_year`，作者 2026-09-10 定）没有改：改前约为节点合计的 53%，现为 88%、
+>   煤电 hub 可达量的 92%，要不要调整由作者定。
+> - 绿氨表 `ammonia_supply_curve.csv` 没有重建：`scripts/build_supply_inputs.py`（`write_supply_inputs`）两张表一起建，本机没有
+>   `data/H2/` 绿氢栅格，会在氨表处报错、一张都不写；这次直接调 `build_biomass_supply_dataframe` 与 `write_csv` 只写了生物质表。
+>
+> 这一改动没有求解。供给表变了，此前落盘的 `ST_` 结果都在第九段及更早，不得与新解相减，要在本机按新代码重解。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -858,7 +876,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-11（代码基准 `60691a6`，与方法论文首相同；模型分段 9）：
+截至 2026-10-11（代码基准 `44932f6`，与方法论文首相同；模型分段 10）：
 
 | 部分 | 现状 |
 |---|---|
@@ -938,7 +956,7 @@ python -m ruff check src tests scripts
 | 工业点源库（六个工作簿） | 环境变量 `COAL_RETROFIT_POINT_SOURCE_DIR`，缺省为作者本机路径 | 否 | 工业点源与 hub |
 | 油气管道矢量 `gas_pipelines.shp`、`oil_pipeline.shp` | `data/` 下，按文件名查找 | 否 | 既有管廊 |
 | Fan et al. 2025 封存潜力与注入能力栅格 | `data/封存汇图层-Fan/`（出处与许可见该目录 README） | 是 | 封存汇 |
-| 生物质栅格 `bioenergy_s3_AFE_abandon.tif` | `data/` 下，按文件名查找 | 否 | 生物质供给 |
+| Wang et al. 2023 生物质栅格 `bioenergy_s4_AF_max.tif`（情景 4，figshare 文件 39594598） | `data/` 下，按文件名查找（本次下载放在 `data/中国生物质潜力/`） | 否 | 生物质供给 |
 | 绿氢产量与 LCOH 栅格 | `data/H2/<年份>/` | 否 | 绿氢节点 |
 | ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`、`download_isimip_extra_gcms.py` | 否 | 水节点、偏差校正、生活与灌溉耗水 |
 | 水资源一级区 | `data/ChinaBasins/basin_l1.gpkg` | 是 | 厂址归流域、流域指标 |
@@ -956,7 +974,7 @@ python -m ruff check src tests scripts
 | `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
-| `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 949、61 408 |
+| `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
 | `build_water_inputs.py` | `water.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 569 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
