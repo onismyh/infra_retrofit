@@ -312,7 +312,7 @@ def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assum
     # 年注入上限 = 汇内（建汇时的聚类范围，`builders.storage`）Fan 2025 逐格注入能力之和，DSA 与 EOR 两列相加，再乘
     # injectivity_multiplier，不随年份变；全国合计另受逐年的部署上限约束（`model_year._add_injectivity_limit`）。
     # 2026-10-10 前按每 100 格一个 2 Mt/a 项目推算、单汇封顶 200 Mt/a（`storage_site_block_pixels` 等三个参数，已删），
-    # 逐格之和只作地质上限，各年再乘逐汇的部署进度。
+    # 当时逐格之和只作地质上限，各年再乘逐汇的部署进度。
     storages["injectivity_mtpa"] = (
         storages["injectivity_dsa_avg_mtpa"].astype(float) + storages["injectivity_eor_avg_mtpa"].astype(float)
     ).clip(lower=0.0) * scenario.injectivity_multiplier

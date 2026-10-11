@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coal-retrofit"
 version = "0.1.0"
-description = "Preprocessing and experiment scaffolding for coal power retrofit analysis."
+description = "Abatement technology choice and CO2 source-sink matching for China's coal power and energy-intensive industry under basin water constraints: input builders, scenario solves and result export."
 requires-python = ">=3.11"
 dependencies = [
   "geopandas",

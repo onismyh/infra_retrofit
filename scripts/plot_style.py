@@ -447,9 +447,10 @@ def stacked_bars(ax, x, table: pd.DataFrame, colors: dict[str, str], *, width: f
         values = table[key].to_numpy(dtype=float)
         bottom = np.where(values >= 0, pos, neg)
         ax.bar(x, values, width=width, bottom=bottom, color=colors[key], edgecolor="white", linewidth=0.4, zorder=3)
-        if (hatches or {}).get(key):
+        hatch = (hatches or {}).get(key)
+        if hatch:
             ax.bar(x, values, width=width, bottom=bottom, facecolor="none", edgecolor=INK, linewidth=0.0,
-                   hatch=hatches[key], zorder=3.1)
+                   hatch=hatch, zorder=3.1)
         pos = pos + np.clip(values, 0, None)
         neg = neg + np.clip(values, None, 0)
     if (neg < 0).any():
