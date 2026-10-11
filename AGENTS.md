@@ -30,7 +30,7 @@ Use Conventional Commits consistently, for example `fix(optimization): correct B
 
 ## Security & Data Hygiene
 
-Never commit Gurobi licenses, API keys, credentials, or local environment files. Avoid silently replacing raw datasets; document provenance and regeneration steps. Inspect staged files carefully: `.gitignore` covers source data under `data/` (apart from the whitelisted map, basin, storage and land layers) and any other directory named `data` (such as `results/figures/<version>/data/`), loose solve outputs outside `results/solved/` and `results/figures/`, solve-tree results and caches, but not credential files such as `.env`, `*.pem` or Gurobi licenses.
+Never commit Gurobi licenses, API keys, credentials, or local environment files. Avoid silently replacing raw datasets; document provenance and regeneration steps. Inspect staged files carefully: `.gitignore` covers source data under `data/` (apart from the whitelisted map, basin, storage and land layers) and any other directory named `data` (such as `results/figures/<version>/data/`), loose solve outputs outside `results/solved/` and `results/figures/`, solve-tree results and caches, and the credential patterns listed in `.claude/rules/security.md` (`settings.json` only under `.claude/`) plus `gurobi.lic`; anything under another name is not covered.
 
 ## Agent Workflow and Approval
 

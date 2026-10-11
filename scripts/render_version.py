@@ -19,6 +19,7 @@ v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维�
    `--skip-plots` 时不画图，根目录下的图全拷（子目录照旧不拷）。
 4. 把 results/solved/ 下每个结果的 <结果名>.json、<结果名>/ 里的文件（九张表与结果工作簿）和拷进来的求解日志（若有），
    连同 <tree>/inputs/ 的输入指纹拷到 <version>/data/，图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
+   <version>/data/ 被 .gitignore 的 `data/` 一行忽略，只留在本机；入库的是 results/solved/ 本身。
    2026-10-11 之前拷的是 <tree>/results/ 下的结果与表（不含工作簿），与出图读的 results/solved/ 不是同一份。
 
 不写 README——版本 README 的数字必须由人读过图之后填。

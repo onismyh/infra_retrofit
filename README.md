@@ -113,7 +113,8 @@
 > （README 与 `docs/官方指标口径水预算.md` 的一份旧快照）也移出当前版本，原先写在上文两段里的 v9 / v9.1 重画做法随之删去。
 > **旧版本（v7 / v9 / v9.1 / `IND_`）的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，当前版本不再维护复现步骤。**
 >
-> 2026-09-28 起 `.gitignore` 放开仓库根 `data/` 下求解与出图要读的三样：`ChinaMapTHT/`、`ChinaMap/`、`ChinaBasins/basin_l1.gpkg`。
+> 2026-09-28 起 `.gitignore` 放开仓库根 `data/` 下求解与出图要读的三样：`ChinaMapTHT/`、`ChinaMap/`、`ChinaBasins/basin_l1.gpkg`
+> （2026-10-10 又放开 `封存汇图层-Fan/`、`NaturalEarth/`，现为五样，见 `.gitignore` 文首）。
 > 其余源数据照旧不入库，其他层级名为 `data` 的目录（如 `results/figures/<版本>/data/` 的结果拷贝）照旧忽略。
 > `scripts/render_version.py` 去掉 SKIP（里面的两个脚本已删），通配（`plot_fig*` / `plot_ed*`）只匹配留下的出图脚本里的 5 个：
 > `plot_fig1_water_footprint` 与 4 个 `plot_ed_*`。
@@ -1188,7 +1189,8 @@ python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq --r
   各脚本开头写了图含义、读图注意、数据与自检。
 - `--lang zh|en|both` 缺省两版都出，英文版文件名加 `_en`。出图前先与模型的账对一遍，对不上就报错、不出图。
 - `python scripts/render_version.py --version <版本>` 重画全部图，把图、入库的 `results/solved/` 下的结果（出图读的那一份，
-  含结果工作簿）与输入指纹拷到 `results/figures/<版本>/`；版本目录的 README 由人读过图之后写（CLAUDE.md §五）。
+  含结果工作簿）与输入指纹拷到 `results/figures/<版本>/`（其中 `data/` 被 `.gitignore` 忽略、只留在本机，入库的结果就是
+  `results/solved/`）；版本目录的 README 由人读过图之后写（CLAUDE.md §五）。
 
 ## 11. 相关文档
 
