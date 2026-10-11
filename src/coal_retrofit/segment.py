@@ -12,7 +12,8 @@ from typing import Any
 # 第 9 段：绿氢共享上限、碳目标两入口、海上管道按海上段计、封存注入上限按 Fan 2025 逐格累加与全国部署上限、
 # 煤电成本增量口径与运维取值（掺氨按 capex 比例、基线 110 元/MWh）。
 # 第 10 段（2026-10-11）：生物质供给表改用 Wang 2023 情景 4（农林残余物，不含能源作物）。
-MODEL_SEGMENT = 10
+# 第 11 段（2026-10-11）：绿氢节点松弛罚额按 NH3_H2_RATIO 折到氢（1000 / 0.18 元/kg H2，此前 1000 元/kg H2）。
+MODEL_SEGMENT = 11
 
 
 class StaleResultError(RuntimeError):

@@ -1,6 +1,7 @@
-"""资源侧（生物质、氨、工业氢）的链路关联矩阵与到厂成本；空间距离工具。"""
+"""资源侧（生物质、氨、工业氢）的链路关联矩阵与到厂成本。"""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -8,17 +9,6 @@ import pandas as pd
 
 from ._shared import PreparedInputs, _nearest_year
 from .scenario import OptimizationAssumptions
-
-
-def _haversine_distances_km(origin_lon: float, origin_lat: float, target_lons: np.ndarray, target_lats: np.ndarray) -> np.ndarray:
-    origin_lon_rad = np.radians(origin_lon)
-    origin_lat_rad = np.radians(origin_lat)
-    target_lons_rad = np.radians(target_lons.astype(np.float64))
-    target_lats_rad = np.radians(target_lats.astype(np.float64))
-    delta_lon = target_lons_rad - origin_lon_rad
-    delta_lat = target_lats_rad - origin_lat_rad
-    a = np.sin(delta_lat / 2.0) ** 2 + np.cos(origin_lat_rad) * np.cos(target_lats_rad) * np.sin(delta_lon / 2.0) ** 2
-    return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
 
 
 def _sparse_membership(rows: list[int], link_count: int, row_count: int):
@@ -31,31 +21,24 @@ def _sparse_membership(rows: list[int], link_count: int, row_count: int):
     )
 
 
-# `_biomass_access_matrices` 与年份无关，但每个规划年都会调一次且结果留在 year_payloads 里；
-# 只缓存最近一次结果。键含三个表的 id 与长度及本函数读的三个假设字段；owner 保住表的引用，防 id 复用。
-_BIOMASS_ACCESS_CACHE: dict[str, object] = {}
+@dataclass(frozen=True, eq=False)   # eq=False：字段里有稀疏矩阵，自动生成的 __eq__ 会逐元素比较，按对象同一性即可
+class BiomassAccess:
+    """生物质链路关联矩阵（稀疏 CSR）与到厂成本。与年份无关：`solver` 每次求解建一次，各规划年共用。
 
-
-def _biomass_access_matrices(prepared: PreparedInputs, assumptions: OptimizationAssumptions):
-    """生物质链路关联矩阵（稀疏 CSR）与到厂成本。
-
-    返回 `(hub_membership, node_membership, available_scaled, link_costs, scale)`。
-    每条链路只碰一个厂和一个节点，CSR 约 1.7 MB，稠密曾是 7.58 GiB。
+    每条链路只碰一个厂和一个节点，CSR 约 1.7 MB（稠密曾是 7.58 GiB）。成本与可用量都已按 `flow_scale` 缩放。
     """
+
+    hub_membership: Any            # CSR (plant_count, link_count)
+    node_membership: Any           # CSR (biomass_node_count, link_count)
+    available_scaled: np.ndarray   # 节点可用量 / flow_scale
+    link_costs: np.ndarray         # 到厂成本（采购 + 预处理 + 运输）x flow_scale
+    flow_scale: float
+
+
+def _biomass_access_matrices(prepared: PreparedInputs, assumptions: OptimizationAssumptions) -> BiomassAccess:
     from scipy import sparse
 
     from ..constants import BIOMASS_FLOW_SCALE
-
-    key = (
-        id(prepared.biomass_links), len(prepared.biomass_links),
-        id(prepared.plants), len(prepared.plants),
-        id(prepared.biomass), len(prepared.biomass),
-        float(assumptions.biomass_pretreatment_cost_cny_per_gj),
-        float(assumptions.biomass_transport_fixed_cost_cny_per_gj),
-        float(assumptions.biomass_transport_variable_cost_cny_per_gj_km),
-    )
-    if _BIOMASS_ACCESS_CACHE.get("key") == key:
-        return _BIOMASS_ACCESS_CACHE["value"]
 
     plant_index = {str(plant_id): idx for idx, plant_id in enumerate(prepared.plants["plant_id"].astype(str))}
     node_index = {str(node_id): idx for idx, node_id in enumerate(prepared.biomass["biomass_node_id"].astype(str))}
@@ -90,17 +73,7 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
         shape=(len(prepared.biomass), link_count),
     )
     available_scaled = prepared.biomass["available_gj"].astype(float).to_numpy() / BIOMASS_FLOW_SCALE
-    out = (
-        hub_membership,
-        node_membership,
-        available_scaled,
-        link_costs,
-        BIOMASS_FLOW_SCALE,
-    )
-    _BIOMASS_ACCESS_CACHE["key"] = key
-    _BIOMASS_ACCESS_CACHE["value"] = out
-    _BIOMASS_ACCESS_CACHE["owner"] = (prepared.biomass_links, prepared.plants, prepared.biomass)
-    return out
+    return BiomassAccess(hub_membership, node_membership, available_scaled, link_costs, BIOMASS_FLOW_SCALE)
 
 
 def _ammonia_access_data(

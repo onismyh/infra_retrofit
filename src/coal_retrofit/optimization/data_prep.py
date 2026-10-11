@@ -12,9 +12,9 @@ import pandas as pd
 
 from ..constants import COAL_DESIGN_LIFE_YEARS
 from ..paths import ProjectPaths
+from ..spatial import haversine_km
 from ._shared import PreparedInputs
 from .network import build_runtime_network
-from .resource_access import _haversine_distances_km
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .solver_provenance import _input_digest
 
@@ -345,7 +345,7 @@ def _prepare_biomass(paths: ProjectPaths, scenario: OptimizationScenario, assump
     node_lats = biomass["latitude"].astype(float).to_numpy()
     link_rows = []
     for plant in plants.itertuples(index=False):
-        distances_km = _haversine_distances_km(
+        distances_km = haversine_km(
             float(plant.centroid_longitude), float(plant.centroid_latitude),
             node_lons, node_lats,
         )
@@ -391,7 +391,7 @@ def _prepare_ammonia_supply(
         node_lons = year_nodes["longitude"].astype(float).to_numpy()
         node_lats = year_nodes["latitude"].astype(float).to_numpy()
         for plant in plants.itertuples(index=False):
-            distances_km = _haversine_distances_km(
+            distances_km = haversine_km(
                 float(plant.centroid_longitude), float(plant.centroid_latitude),
                 node_lons, node_lats,
             )
@@ -420,7 +420,7 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     node_lats = water_nodes["latitude"].astype(float).to_numpy()
     link_rows = []
     for plant in plants.itertuples(index=False):
-        distances_km = _haversine_distances_km(
+        distances_km = haversine_km(
             float(plant.centroid_longitude), float(plant.centroid_latitude),
             node_lons, node_lats,
         )

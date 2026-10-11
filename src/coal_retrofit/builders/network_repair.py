@@ -20,7 +20,7 @@ from ..constants import (
     STATIC_LAYER_YEAR_BASIS,
 )
 from ..paths import ProjectPaths
-from ..spatial import geodesic_length_km
+from ..spatial import geodesic_length_km, haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +95,6 @@ def _repair_connectivity(
             graph.add_edge(str(row.from_node_id), str(row.to_node_id))
         return {n: i for i, part in enumerate(nx.connected_components(graph)) for n in part}
 
-    def _haversine_km(lon0: float, lat0: float, lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-        lo, la = np.radians(lon0), np.radians(lat0)
-        hav = np.sin((lats - la) / 2.0) ** 2 + np.cos(la) * np.cos(lats) * np.sin((lons - lo) / 2.0) ** 2
-        return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
-
     stitched, forced = 0, 0
     while True:
         component = _components(kept)
@@ -111,11 +106,11 @@ def _repair_connectivity(
         target_ids = [n for n, c in component.items() if c in with_sink]
         if not group_ids or not target_ids:
             break
-        target_lon = np.radians(np.array([coords[n][0] for n in target_ids], dtype=np.float64))
-        target_lat = np.radians(np.array([coords[n][1] for n in target_ids], dtype=np.float64))
+        target_lon = np.array([coords[n][0] for n in target_ids], dtype=np.float64)
+        target_lat = np.array([coords[n][1] for n in target_ids], dtype=np.float64)
         pairs: list[tuple[float, str, str]] = []
         for node_a in group_ids:
-            distances = _haversine_km(coords[node_a][0], coords[node_a][1], target_lon, target_lat)
+            distances = haversine_km(coords[node_a][0], coords[node_a][1], target_lon, target_lat)
             for position in np.argsort(distances)[:12]:
                 pairs.append((float(distances[position]), node_a, target_ids[int(position)]))
         pairs.sort()
@@ -264,8 +259,8 @@ def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFr
     geometries = [g for g in (_build_edge_geometry(row, coords) for _, row in edges.iterrows())
                   if g is not None and not g.is_empty]
     ids = list(coords)
-    lon = np.radians(np.array([coords[n][0] for n in ids], dtype=np.float64))
-    lat = np.radians(np.array([coords[n][1] for n in ids], dtype=np.float64))
+    lon = np.array([coords[n][0] for n in ids], dtype=np.float64)
+    lat = np.array([coords[n][1] for n in ids], dtype=np.float64)
     graph = nx.Graph()
     graph.add_nodes_from(ids)
     for row in edges.itertuples(index=False):
@@ -283,10 +278,7 @@ def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFr
             inside = np.flatnonzero(label == group)
             outside = np.flatnonzero(label != group)
             for index in inside:
-                hav = (np.sin((lat[outside] - lat[index]) / 2.0) ** 2
-                       + np.cos(lat[index]) * np.cos(lat[outside])
-                       * np.sin((lon[outside] - lon[index]) / 2.0) ** 2)
-                dist = 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
+                dist = haversine_km(lon[index], lat[index], lon[outside], lat[outside])
                 pick = int(np.argmin(dist))
                 candidates.append((float(dist[pick]), int(index), int(outside[pick])))
         candidates.sort()

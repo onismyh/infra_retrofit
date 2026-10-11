@@ -7,7 +7,6 @@ import pandas as pd
 import rasterio
 from pyproj import Transformer
 from scipy import ndimage
-from sklearn.cluster import AgglomerativeClustering
 
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
@@ -117,63 +116,6 @@ def _extract_storage_nodes(
         )
 
     return pd.DataFrame(result_rows)
-
-
-def _haversine_distance_matrix(lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-    """计算各点两两之间的 Haversine 距离（km）。"""
-    lon_r = np.radians(lons)
-    lat_r = np.radians(lats)
-    dlon = lon_r[:, None] - lon_r[None, :]
-    dlat = lat_r[:, None] - lat_r[None, :]
-    h = np.sin(dlat / 2) ** 2 + np.cos(lat_r[:, None]) * np.cos(lat_r[None, :]) * np.sin(dlon / 2) ** 2
-    return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
-
-
-_CLUSTER_DISTANCE_KM = 200.0
-
-
-def _cluster_storage_nodes(df: pd.DataFrame, max_distance_km: float = _CLUSTER_DISTANCE_KM) -> pd.DataFrame:
-    """合并相近的封存节点，使任意两个中心的距离都不在 *max_distance_km* 以内。
-
-    DSA 与 EOR **联合**聚类——同一盆地内的 hub 不论封存类型都合并为
-    单个节点。每个簇内的注入中心取按封存量加权的质心；容量和
-    注入能力相加（DSA 与 EOR 分量分别记录）。
-
-    合并后再做一轮迭代，把仍然近于 *max_distance_km* 的质心继续合并，
-    从而保证最终 hub 间的最小距离。
-    """
-    if len(df) <= 1:
-        return df
-
-    dist = _haversine_distance_matrix(df["longitude"].to_numpy(), df["latitude"].to_numpy())
-    clustering = AgglomerativeClustering(
-        n_clusters=None,
-        distance_threshold=max_distance_km,
-        metric="precomputed",
-        linkage="complete",
-    )
-    labels = clustering.fit_predict(dist)
-
-    rows: list[dict] = []
-    for cid in np.unique(labels):
-        mask = labels == cid
-        group = df[mask].reset_index(drop=True)
-        rows.append(_merge_group(group))
-
-    result = pd.DataFrame(rows)
-
-    # 合并后处理：迭代合并最近的两个质心，直到最小距离 >= 阈值
-    while len(result) > 1:
-        d = _haversine_distance_matrix(result["longitude"].to_numpy(), result["latitude"].to_numpy())
-        np.fill_diagonal(d, np.inf)
-        i, j = np.unravel_index(d.argmin(), d.shape)
-        if d[i, j] >= max_distance_km:
-            break
-        merged = _merge_group(result.iloc[[i, j]])
-        keep = [k for k in range(len(result)) if k not in (i, j)]
-        result = pd.concat([result.iloc[keep], pd.DataFrame([merged])], ignore_index=True)
-
-    return result
 
 
 def _merge_group(group: pd.DataFrame) -> dict:
@@ -315,7 +257,6 @@ def _validate_against_source_dataset(frame: pd.DataFrame) -> None:
 
 def build_storage_hub_dataframe(
     paths: ProjectPaths,
-    merge_distance_km: float | None = None,
     offshore_basin_dilation_px: int | None = None,
 ) -> pd.DataFrame:
     """构建汇表。
@@ -328,9 +269,8 @@ def build_storage_hub_dataframe(
     地质封存体。DSA 与 EOR 封存体即使上下叠置也保持分开，因为二者成本不同：
     EOR 可按 `eor_credit_cny_per_t` 抵减基础封存成本，深部咸水层封存则不能。
 
-    *merge_distance_km* 恢复旧行为：把中心相距在该距离以内的封存体合并。默认为
-    None（不合并）。过去无条件执行的 200 km 合并没有地质依据：它把 103 个封存体
-    压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把
+    封存体不按距离合并（2026-10-11 删掉了从未被调用的 `merge_distance_km` 分支）。v7 输入无条件执行的 200 km
+    合并没有地质依据：它把 103 个封存体压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把
     按容量加权的电厂到最近汇的运距从 200 km 拉长到 234 km。
     """
     base = paths.data_dir / "封存汇图层-Fan"
@@ -349,12 +289,11 @@ def build_storage_hub_dataframe(
 
     combined = pd.concat([dsa, eor], ignore_index=True)
     _validate_against_source_dataset(combined)
-    if merge_distance_km is not None:
-        combined = _cluster_storage_nodes(combined, max_distance_km=merge_distance_km)
-        logger.info("merged storage bodies within %.0f km: %d hubs", merge_distance_km, len(combined))
-    else:
-        logger.info("no distance merge: %d geological storage bodies retained", len(combined))
+    logger.info("%d geological storage bodies retained (no distance merge)", len(combined))
     if offshore_basin_dilation_px is not None:
+        if offshore_basin_dilation_px < 1:
+            # scipy 的 binary_dilation 对 iterations <= 0 是"膨胀到不再变化"，会把整张栅格并成一个盆地。
+            raise ValueError(f"offshore_basin_dilation_px 须 >= 1（None 为不合并），得到 {offshore_basin_dilation_px}")
         combined = _merge_offshore_by_basin(
             paths, combined, base / "DSA-storage potential.tif", offshore_basin_dilation_px
         )
@@ -388,15 +327,7 @@ def build_storage_hub_dataframe(
     return combined[columns].sort_values("storage_hub_index").reset_index(drop=True)
 
 
-def write_storage_hubs(
-    paths: ProjectPaths,
-    merge_distance_km: float | None = None,
-    offshore_basin_dilation_px: int | None = None,
-) -> pd.DataFrame:
-    storage = build_storage_hub_dataframe(
-        paths,
-        merge_distance_km=merge_distance_km,
-        offshore_basin_dilation_px=offshore_basin_dilation_px,
-    )
+def write_storage_hubs(paths: ProjectPaths, offshore_basin_dilation_px: int | None = None) -> pd.DataFrame:
+    storage = build_storage_hub_dataframe(paths, offshore_basin_dilation_px=offshore_basin_dilation_px)
     write_csv(storage, paths.inputs_dir / "storage_hubs.csv")
     return storage

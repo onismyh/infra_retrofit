@@ -18,6 +18,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..constants import (
+    SLACK_PENALTY_CNY_PER_GJ_BIOMASS,
+    SLACK_PENALTY_CNY_PER_KG_H2,
+    SLACK_PENALTY_CNY_PER_M3_WATER,
+)
 from ._shared import PreparedInputs
 from .industry import CCS, H2
 from .model_costs import _air_unit_capex, _blend_unit_capex, _island_unit_capex
@@ -221,10 +226,10 @@ def _slack_costs(ys: YearSolution, assumptions: OptimizationAssumptions) -> dict
     penalty = float(assumptions.slack_penalty_cny_per_unit)
     parts = {
         "target_shortfall": float(slacks["target_shortfall_mt"]) * penalty,
-        "biomass_supply": float(np.sum(slacks["biomass_slack_gj"])) * 2_000.0,
-        "green_h2_supply": float(np.sum(slacks["h2_slack_kg"])) * 1_000.0,
-        "water_node": float(np.sum(slacks["water_slack_m3"])) * 1_000.0,
-        "water_basin_quota": float(np.sum(slacks["water_basin_slack_m3"])) * 1_000.0,
+        "biomass_supply": float(np.sum(slacks["biomass_slack_gj"])) * SLACK_PENALTY_CNY_PER_GJ_BIOMASS,
+        "green_h2_supply": float(np.sum(slacks["h2_slack_kg"])) * SLACK_PENALTY_CNY_PER_KG_H2,
+        "water_node": float(np.sum(slacks["water_slack_m3"])) * SLACK_PENALTY_CNY_PER_M3_WATER,
+        "water_basin_quota": float(np.sum(slacks["water_basin_slack_m3"])) * SLACK_PENALTY_CNY_PER_M3_WATER,
         "storage_injectivity": float(np.sum(slacks["injectivity_slack_mtpa"])) * penalty,
         "storage_capacity": float(np.sum(slacks["storage_slack_mt"])) * penalty,
         "edge_capacity": float(np.sum(slacks["edge_slack_mtpa"])) * penalty,

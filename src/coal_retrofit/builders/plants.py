@@ -20,10 +20,12 @@ from ..constants import (
     STANDARD_COAL_GJ_PER_KG,
     SUPPLY_COAL_RATE_CLASS_MIN_MW,
     SUPPLY_COAL_RATE_G_PER_KWH,
+    TARGET_GEO_CRS,
     WATER_INTENSITY_BY_TECH_M3_PER_MWH,
     quota_capacity_band,
 )
 from ..paths import ProjectPaths
+from ..spatial import distance_to_lines_km, haversine_matrix_km
 
 # 空间 hub 的默认个数
 DEFAULT_N_HUBS = 350
@@ -370,27 +372,26 @@ SEAWATER_COAST_DISTANCE_KM = 30.0
 
 
 def add_seawater_classification(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFrame:
-    """按到海岸的距离，把直流冷却装机拆分为海水与淡水两部分。"""
-    import geopandas as gpd
-    from shapely.geometry import Point
-    from shapely.ops import unary_union
+    """按到海岸的距离，把直流冷却装机拆分为海水与淡水两部分。
 
-    boundary = gpd.read_file(paths.find_data_file("boundary.shp")).to_crs("EPSG:2380")
+    海岸线取 `boundary.shp` 的 GBCODE 26* 要素，距离按球面算（`spatial.distance_to_lines_km`；
+    2026-10-11 前在 EPSG:2380 下算，该投影的长度比例在岸线顶点处最大 1.045–1.049、离岸 100 km 内的 hub 处最大 1.034，
+    不改变任何 hub 的海水标志）。
+    """
+    import geopandas as gpd
+
+    boundary = gpd.read_file(paths.find_data_file("boundary.shp")).to_crs(TARGET_GEO_CRS)
     coast_lines = boundary[boundary["GBCODE"].astype(str).str.startswith("26")]
     if coast_lines.empty:
         raise ValueError("boundary.shp has no GBCODE 26* coastline features")
-    coastline = unary_union(coast_lines.geometry.tolist())
-
-    points = gpd.GeoSeries(
-        [Point(lon, lat) for lon, lat in zip(plants["centroid_longitude"], plants["centroid_latitude"])],
-        crs="EPSG:4326",
-    ).to_crs("EPSG:2380")
-    distance_km = points.distance(coastline) / 1000.0
+    distance_km = distance_to_lines_km(
+        plants["centroid_longitude"].to_numpy(float), plants["centroid_latitude"].to_numpy(float), coast_lines.geometry
+    )
 
     once_through = plants.get("capacity_mw_once_through", pd.Series(0.0, index=plants.index)).astype(float)
     plants = plants.copy()
-    plants["coast_distance_km"] = distance_km.round(2).to_numpy()
-    plants["seawater_cooled"] = (once_through > 0) & (distance_km.to_numpy() <= SEAWATER_COAST_DISTANCE_KM)
+    plants["coast_distance_km"] = distance_km.round(2)
+    plants["seawater_cooled"] = (once_through > 0) & (distance_km <= SEAWATER_COAST_DISTANCE_KM)
 
     total = plants["total_capacity_mw"].astype(float).replace(0.0, np.nan)
     freshwater = pd.Series(0.0, index=plants.index)
@@ -413,16 +414,6 @@ def write_plants_unit(paths: ProjectPaths) -> pd.DataFrame:
     return plants
 
 
-def _haversine_distance_matrix(lons: np.ndarray, lats: np.ndarray) -> np.ndarray:
-    """两两之间的 Haversine 距离（km）。"""
-    lon_r = np.radians(lons)
-    lat_r = np.radians(lats)
-    dlon = lon_r[:, None] - lon_r[None, :]
-    dlat = lat_r[:, None] - lat_r[None, :]
-    h = np.sin(dlat / 2) ** 2 + np.cos(lat_r[:, None]) * np.cos(lat_r[None, :]) * np.sin(dlon / 2) ** 2
-    return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
-
-
 def _cluster_plants_to_hubs(units: pd.DataFrame, n_hubs: int = DEFAULT_N_HUBS) -> pd.DataFrame:
     """把逐机组数据按空间聚类为 *n_hubs* 个 hub。
 
@@ -434,9 +425,7 @@ def _cluster_plants_to_hubs(units: pd.DataFrame, n_hubs: int = DEFAULT_N_HUBS) -
     if len(valid) <= n_hubs:
         return valid
 
-    dist = _haversine_distance_matrix(
-        valid["longitude"].to_numpy(), valid["latitude"].to_numpy()
-    )
+    dist = haversine_matrix_km(valid["longitude"].to_numpy(), valid["latitude"].to_numpy())
     clustering = AgglomerativeClustering(
         n_clusters=n_hubs,
         metric="precomputed",

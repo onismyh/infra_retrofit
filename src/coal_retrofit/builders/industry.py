@@ -45,9 +45,8 @@ from ..constants_industry import (
     water_quota,
 )
 from ..paths import ProjectPaths
-# 复用煤电机组那套距离矩阵，而不是再写一套：两类 hub 必须在完全相同的几何上聚类，
-# 否则它们的 hub 规模不可比。
-from .plants import _haversine_distance_matrix
+# 与煤电机组共用同一套球面距离矩阵：两类 hub 必须在完全相同的几何上聚类，否则它们的 hub 规模不可比。
+from ..spatial import haversine_matrix_km
 
 logger = logging.getLogger(__name__)
 
@@ -342,9 +341,7 @@ def cluster_sector_hubs(
         if len(group) <= n_hubs:
             group["hub_id"] = [f"{sector}_{i:03d}" for i in range(len(group))]
         else:
-            distances = _haversine_distance_matrix(
-                group["longitude"].to_numpy(), group["latitude"].to_numpy()
-            )
+            distances = haversine_matrix_km(group["longitude"].to_numpy(), group["latitude"].to_numpy())
             labels = AgglomerativeClustering(
                 n_clusters=n_hubs, metric="precomputed", linkage="average"
             ).fit_predict(distances)

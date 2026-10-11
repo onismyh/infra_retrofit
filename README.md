@@ -275,7 +275,7 @@
 >   一代）；管道仍按建成量计，原址重建仍按建成量计、扣回期末已关停的。现行寿命与 10 年网格下，煤电改造能力（20 年）只有 2060 年
 >   建的有残值，而它们都是当年要用才建的，数值不变；工业氢路线（25 年）2050 年建的能力到 2060 年因减产闲置的部分不再计残值。
 >   此前按建成量计，期末不在用的也抵扣。
-> - 重建部分按重建毛热耗分类（`optimization/data_prep._with_expiry`、`optimization/model_year.py:51-56`、
+> - 重建部分按重建毛热耗分类（`optimization/data_prep._with_expiry`、`optimization/model_year.py:54-59`、
 >   `optimization/constraints.py:49-101`、`optimization/model_linking.py:103-118`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
 >   重建份额是各类之和，每类不超过该类已到期的装机份额、各自不减，先重建哪一类由求解器定；运行路径份额、空冷份额与掺烧各档的重建
 >   部分按类拆，系数取该类与未重建部分之差。ST 输入到 2060 年有到期机组的 324 个 hub 里，231 个只有一类（与此前相同），87 个两类、
@@ -582,6 +582,20 @@
 >   `data/H2/` 绿氢栅格，会在氨表处报错、一张都不写；这次直接调 `build_biomass_supply_dataframe` 与 `write_csv` 只写了生物质表。
 >
 > 这一改动没有求解。供给表变了，此前落盘的 `ST_` 结果都在第九段及更早，不得与新解相减，要在本机按新代码重解。
+>
+> 2026-10-11 另一批修正（**模型改动**：绿氢节点松弛罚额按 `NH3_H2_RATIO` 折到氢，1000/0.18 ≈ 5 556 元/kg H₂，此前 1000 元/kg H₂；
+> 模型分段 11；`docs/方法论.md` §3.5、附录 B.7、C.4）：
+> - 罚额：2026-10-10 节点上限从氨改按氢计时直接沿用了 1000 元/kg，罚力度只有此前的 18%。三项资源松弛罚额收进 `constants.py`
+>   （`SLACK_PENALTY_*`），`model_costs._slack_penalty` 与 `results_costs._slack_costs` 共用。只影响松弛被触发的解，但分段号已加一，
+>   此前落盘的结果不得与新解相减。
+> - 距离一律在地理坐标下算（CLAUDE.md §4.1）：海岸距离（`plants.csv` 的 `coast_distance_km`，348 行刷新；海水冷却判定无一变化）与
+>   hub / 水节点到流域的归属（`builders/water.py`、`scripts/validate_basin_runoff.py`）此前在 EPSG:2380 下量，改为球面 haversine；
+>   散落各模块的 haversine 实现并成 `spatial.haversine_km`（R = 6371.0088 km；此前有的模块用 6371.0，整体缩放不改变平均链接聚类的
+>   归并顺序，工业 hub 重聚类 390 个与库内逐 hub 一致）。流域归属逐点核对：373 个水节点、350 个煤电 hub、390 个工业 hub 与 2 552 个工业点源无一变化。
+> - 删死代码：封存体 200 km 距离合并分支（`merge_distance_km`，从未被调用）、`corridor_prior_strength`（无读者）、生物质链路矩阵的
+>   模块级缓存（改为求解开始时算一次传给各年）。`build_storage_inputs.py --offshore-basin-dilation-px` 缺省改 6（库里 89 个汇的取值）。
+> - 出图：图 8 / 图 10 的标签文字修正；带上下标（mathtext）的文字须 ≥ 7 pt（上下标按 0.7 缩放后约 4.9 pt，再小就不可读），`save_fig` 检查；图 6 标注与图例标题改 7 pt。
+> - 文档补注：`_indtree/README.md` 的 16 EJ 口径、工业 CCS 捕集水耗 1.65 m³/t 的出处待核（Rosa et al. 2021 的范围 0.74–575 m³/t）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -591,14 +605,14 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:249`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:254`（`_one_off_capex`）、`optimization/model_year.py:203`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:57-78`、`optimization/model_industry.py:175` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:45-46`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:124`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:158-168`、`optimization/model_costs.py:142-151`、`optimization/industry_matrices.py:245`、`:295-298` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:50-51`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:126`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:158-168`、`optimization/model_costs.py:147-156`、`optimization/industry_matrices.py:245`、`:295-298` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:81-84, 125-127`、`optimization/industry_matrices.py:200-205`、`:235-242` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/scenario.py`）、`optimization/industry_matrices.py:195` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:146`、`optimization/year_matrices.py:124`、`optimization/industry_matrices.py:234`、`:291` |
-| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:61-98`、`optimization/vintage.py`（`_end_in_use`） |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:146`、`optimization/year_matrices.py:126`、`optimization/industry_matrices.py:234`、`:291` |
+| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:64`、`optimization/model_costs.py:66-103`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
 **本轮已统一的差异**（批 2）：
@@ -641,7 +655,7 @@
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:116` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
-   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:203-207`）。
+   `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:208-212`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
    煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:139-149`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
@@ -751,7 +765,7 @@
 表外参数表里有两项改了值（作者 2026-09-23 拍板）。两项都改了约束或目标函数的系数，所以与 §0.1 的改动一样，本 PR 合入之前
 落盘的 `ST_` 结果需重解（CLAUDE.md §二.7、`_indtree/README.md` 已同步）：
 
-- 长流程钢的氢路线减排比例 0.85 → 0.95（`constants_industry.py:407-409`）。原仓库根 `inputs/industry_hubs.csv` 的 80 个长流程
+- 长流程钢的氢路线减排比例 0.85 → 0.95（`constants_industry.py:409-411`）。原仓库根 `inputs/industry_hubs.csv` 的 80 个长流程
   hub 共排放 1 690.7 Mt CO₂/yr（2030 年产量指数 1.0），全部转氢时的减排量从 1 437 升到 1 606 Mt/yr，每吨减排分摊的路线成本
   降 10.5%（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。当时 `scripts/` 与 `_indtree/scripts/` 下的
   `plot_ind_fig1_joint_allocation.py` 也读这个常量，但它画的 `IND_` 情景已不在登记表，脚本在 `_require_registered` 处停下；
@@ -858,14 +872,14 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
    `optimization/model.py`（14）、`builders/network.py`（13），多为 pandas / gurobipy 存根的标注问题。
 4. **ruff**：`src/` 0 条；`tests/` 19 条 E402（先 `importorskip` 再导入的固定写法）；两棵 `scripts/` 合计 329 条，未动。
 
-> 现状（2026-10-11，`d918426` 加本次改动）：上表与这四条是 PR #2 合入时的快照，此后只改过局部，没有再做整体重构。现在 `src/coal_retrofit/`
-> 66 个文件、437 个函数：超 400 行的文件 10 个（`builders/water.py` 756、`constants_industry.py` 641、`optimization/scenario.py` 629、
-> `builders/network.py` 562、`optimization/constraints.py` 555、`optimization/data_prep.py` 528、`builders/supply.py` 472、
-> `builders/plants.py` 468、`builders/storage.py` 402、`builders/industry.py` 401；`reporting/core.py` 已于 2026-09-26 随 `reporting/` 删除）；
-> ≥ 80 行的函数 31 个，最长的是 `_add_blend_level_constraints` 245 行、`build_ammonia_supply_dataframe` 202 行、
-> `_plant_operating_matrices` 199 行、`build_runtime_network` 190 行；mypy（`--ignore-missing-imports`）137 个错误（22 个文件；本次 `spatial.py` 去掉 pyproj 回退后少 2 个），集中在
-> `builders/network_repair.py`（32）、`optimization/network.py`（19）、`builders/network.py`（13）、
-> `optimization/results_workbook_sources.py`（13）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
+> 现状（2026-10-11，`19671b7` 加本次改动）：上表与这四条是 PR #2 合入时的快照，此后只改过局部，没有再做整体重构。现在 `src/coal_retrofit/`
+> 66 个文件、437 个函数：超 400 行的文件 8 个（`builders/water.py` 730、`constants_industry.py` 643、`optimization/scenario.py` 624、
+> `builders/network.py` 559、`optimization/constraints.py` 555、`optimization/data_prep.py` 528、`builders/supply.py` 472、
+> `builders/plants.py` 456；`builders/storage.py` 330 与 `builders/industry.py` 本次删掉死代码后降到 400 行以下；`reporting/core.py` 已于
+> 2026-09-26 随 `reporting/` 删除）；≥ 80 行的函数 30 个，最长的是 `_add_blend_level_constraints` 245 行、`build_ammonia_supply_dataframe` 202 行、
+> `_plant_operating_matrices` 199 行、`build_runtime_network` 190 行；mypy（`--ignore-missing-imports`，整包一次检查）135 个错误（21 个文件；本次少 2 个：`builders/storage.py` 1 → 0、
+> `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
+> `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
 
 ## 1. 这个项目回答什么问题
@@ -887,7 +901,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-11（代码基准 `d918426`，与方法论文首相同；模型分段 10）：
+截至 2026-10-11（代码基准 `19671b7`，与方法论文首相同；模型分段 11）：
 
 | 部分 | 现状 |
 |---|---|
@@ -995,7 +1009,7 @@ python -m ruff check src tests scripts
   （扣出已建模的工业取水）；耗水表读 `water_scenarios.csv`。
 - `build_plant_inputs.py` 缺省只写 `plants_unit.csv`；`--hubs` 才重新聚类、重写每个情景都读的 `plants.csv` 与 `plants_unit_hub.csv`，
   只在加列或改正数值时用，之后下游全部重解（见该脚本的说明）。
-  `build_storage_inputs.py` 不给 `--offshore-basin-dilation-px` 时不合并海上封存体，得到的不是库里这 89 个汇。
+  `build_storage_inputs.py` 的 `--offshore-basin-dilation-px` 缺省 6（2026-10-11 前缺省不合并），给 0 才不合并海上封存体，得到的不是库里这 89 个汇。
 - `sector_targets_none.csv`（`ST_CP_BASE` 用，各组上限都是自身 2030 年水平）没有构建脚本，随 v7 输入沿用至今。
 - 求解读哪些表以 `optimization/data_prep._input_files` 为准；`plants_unit.csv`、`water_base.csv`、`water_supply_links.csv` 求解不读，
   `water_scenarios.csv` 不进模型，`--water` 与 `water-members` 用它查成员。各表的列与行数见方法论附录 B.1。

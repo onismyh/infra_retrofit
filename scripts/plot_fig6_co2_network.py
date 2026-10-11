@@ -162,7 +162,7 @@ def draw(data: dict[str, pd.DataFrame], years: tuple[int, ...], lines: dict, lan
         stored = float(by_year[year]["storage"]["injected_mtpa"].sum())
         # 单位带 mathtext 的花括号，不能进 str.format，拼在格式化之后
         label = ax.text(0.02, 0.98, text["total"].format(year=year, v=fmt_number(stored)) + MT_CO2_YR,
-                        transform=ax.transAxes, ha="left", va="top", fontsize=6.5, color=INK)
+                        transform=ax.transAxes, ha="left", va="top", fontsize=7, color=INK)
         check_off_land(ax, label)
         figure_label(fig, "ab"[i], 0.505 * i + 0.003, 0.995)
 

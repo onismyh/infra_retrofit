@@ -55,7 +55,7 @@ TEXT = {
     "en": {"a": "Annual cost (10$^9$ CNY yr$^{-1}$)", "b": "Investment (10$^9$ CNY)",
            "c": "Present value (10$^9$ CNY)", "total": "Total {v}",
            "groups": {"coal_operating": "Coal operation (vs. no retrofit)", "coal_capex": "Coal retrofit, rebuild, stranded",
-                      "resources": "Coal biomass, ammonia, water", "industry_operating": "Industry operation (incl. H$_2$)",
+                      "resources": "Coal biomass, ammonia, water", "industry_operating": "Industry operation (incl. hydrogen)",
                       "industry_capex": "Industry retrofit capex", "network": "Pipelines (O&M, capex)",
                       "storage": "Storage", "carbon": "Carbon cost", "slack": "Slack penalties",
                       "salvage": "Salvage credit"}},

@@ -9,6 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..constants import (
+    SLACK_PENALTY_CNY_PER_GJ_BIOMASS,
+    SLACK_PENALTY_CNY_PER_KG_H2,
+    SLACK_PENALTY_CNY_PER_M3_WATER,
+)
 from ._shared import (
     _COST_SCALE,
     PreparedInputs,
@@ -367,16 +372,15 @@ def _blend_unit_capex(year_data: YearData, assumptions: OptimizationAssumptions)
 def _slack_penalty(payload: YearPayload, assumptions: OptimizationAssumptions) -> GrbExpr:
     """松弛惩罚（CNY/yr，资源松弛按缩放单位乘回）。流域指标松弛与节点松弛同价，两个制度不因数值原因分高下。"""
     year_data = payload.year_data
-    _amm_scale = float(year_data.ammonia_flow_scale)
-    _wat_scale = float(year_data.water_flow_scale)
-    _bio_scale = float(year_data.biomass_flow_scale)
+    biomass = SLACK_PENALTY_CNY_PER_GJ_BIOMASS * float(year_data.biomass_flow_scale)
+    h2 = SLACK_PENALTY_CNY_PER_KG_H2 * float(year_data.ammonia_flow_scale)
+    water = SLACK_PENALTY_CNY_PER_M3_WATER * float(year_data.water_flow_scale)
     return (
         payload.target_shortfall_mt * assumptions.slack_penalty_cny_per_unit
-        + payload.biomass_slack_gj.sum() * 2_000.0 * _bio_scale
-        + payload.h2_slack_kg.sum() * 1_000.0 * _amm_scale
-        + payload.water_slack_m3.sum() * 1_000.0 * _wat_scale
-        + (payload.water_basin_slack_m3.sum() * 1_000.0 * _wat_scale
-           if payload.water_basin_slack_m3 is not None else 0.0)
+        + payload.biomass_slack_gj.sum() * biomass
+        + payload.h2_slack_kg.sum() * h2
+        + payload.water_slack_m3.sum() * water
+        + (payload.water_basin_slack_m3.sum() * water if payload.water_basin_slack_m3 is not None else 0.0)
         + payload.injectivity_slack_mtpa.sum() * assumptions.slack_penalty_cny_per_unit
         + payload.storage_slack_mt.sum() * assumptions.slack_penalty_cny_per_unit
         + payload.edge_slack_mtpa.sum() * assumptions.slack_penalty_cny_per_unit
