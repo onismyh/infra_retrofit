@@ -28,10 +28,22 @@ __pycache__/
 # 机器本地 / 按 .claude/rules/security.md 不入库
 .claude/settings.json
 .claude/settings.local.json
+# 密钥、凭据与本地数据库（.claude/rules/security.md 的清单），以及 Gurobi 许可证（AGENTS.md）
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+*_secret*
+*_token*
+*.sqlite
+*.db
+gurobi.lic
 
-# Loose solve outputs. Real results are deposited into results/figures/<version>/data/
-# by scripts/render_version.py; anything else here is a scratch or validation run and must
-# never be mistaken for a published one (CLAUDE.md 二.6).
+# Loose solve outputs. Real results are the ones copied into results/solved/ (tracked, below);
+# scripts/render_version.py also copies them into results/figures/<version>/data/, which the `data/`
+# rule at the top keeps out of git (a local archive). Anything else here is a scratch or validation
+# run and must never be mistaken for a published one (CLAUDE.md 二.6).
 /results/*
 !/results/figures/
 # 作者本机求解后拷进来的结果（2026-10-10 起，出图与对账读这里；见 results/solved/README.md）。
@@ -44,6 +56,6 @@ _v91tree/data
 
 # Industry + coal solve tree (ST_ family): code lives in the root src/, the tree holds inputs and
 # results only. Its inputs -- including the 2026-09-12 rebuilt network -- belong in git; results
-# are archived under results/figures/<version>/, and data is a junction to the main data/.
+# that count are copied into results/solved/ (tracked, see above), and data is a junction to the main data/.
 _indtree/results/
 _indtree/data
