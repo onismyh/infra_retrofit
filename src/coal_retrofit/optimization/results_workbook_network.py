@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..spatial import haversine_km
 from ._shared import PreparedInputs
-from .resource_access import _haversine_distances_km
 from .results_regions import CROSS_REGION, REGIONS, edge_region, province_region
 from .results_tracing import FLOW_TOL
 from .results_workbook_sources import MILLION, Block, blank
@@ -69,7 +69,7 @@ def pipe_sheets(
         if edge in used:
             lon0, lat0 = float(nodes.at[start, "lon"]), float(nodes.at[start, "lat"])
             lon1, lat1 = float(nodes.at[end, "lon"]), float(nodes.at[end, "lat"])
-            distance = float(_haversine_distances_km(lon0, lat0, np.array([lon1]), np.array([lat1]))[0])
+            distance = float(haversine_km(lon0, lat0, lon1, lat1))
             info[edge] = [start, end, distance, float(row.length_km), node_province[start], node_province[end],
                           *regions, region[edge], lon0, lat0, lon1, lat1]
     order = [edge for edge in static["edge_id"] if edge in used]

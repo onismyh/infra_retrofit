@@ -37,6 +37,12 @@ BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 # 化学计量 1.5 x 2.016 / 17.031 = 0.1776，DECHEMA 2017 为 0.178（经 PyPSA technology-data）。2026-10-10 之前为 0.176，
 # 低于化学计量。节点上限按绿氢计，煤电用氨按此折成氢扣减；到厂氨价里的氢成本同按此折算（`builders.supply.reprice_h2_component`）。
 NH3_H2_RATIO = 0.18
+# 资源与水松弛的罚额（`optimization/model_costs._slack_penalty`，结果侧 `results_costs._slack_costs` 同价）：远高于任何真实
+# 供给成本，只为保住可行性。绿氢节点上限 2026-10-10 起按 kg H2 计，此前按 kg NH3 计、罚 1000 元/kg NH3；折到氢
+# （÷ NH3_H2_RATIO ≈ 5 556 元/kg H2）保持罚力度不变，2026-10-11 前曾直接沿用 1000 元/kg H2（第 9–10 段）。
+SLACK_PENALTY_CNY_PER_GJ_BIOMASS = 2_000.0
+SLACK_PENALTY_CNY_PER_KG_H2 = 1_000.0 / NH3_H2_RATIO
+SLACK_PENALTY_CNY_PER_M3_WATER = 1_000.0
 # 合成岛用电（合成回路 + 空分 + 辅助），kWh/kg NH3，按同址风光 LCOE 计价：⚠ 假设（无单一出处）。"合成回路 + 空分"
 # 口径的开源数据在 0.55-1.17 之间：下端 0.55 = DEA 103 合成回路 0.34 + DEA 空分 0.25 MWh/t N2 x 0.839 t N2/t NH3
 # （后一项 0.21；`dea_renewable_fuels`，经 `pypsa_techdata`）；上端是 Joule 2018

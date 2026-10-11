@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -46,6 +47,9 @@ MAIN_SCENARIO = "ST_WA_cwatm_126_dry_oq"
 MM = 1 / 25.4                # mm -> inch
 FULL_WIDTH_MM = 183.0        # 双栏宽，save_fig 的图宽上限
 MIN_FONT_PT = 5.0            # 排版社缩放后仍可读的下限，save_fig 检查
+# mathtext 的上下标按 0.7 缩放（matplotlib `_mathtext.SHRINK_FACTOR`，没有 rcParam）：6 pt 图例条目里 CO$_2$ 的下标只有
+# 4.2 pt。带上下标的文字（单位、幂次）只放正文字号及以上的位置——坐标轴标签、图例标题、注记；图例条目与刻度不行。
+MIN_SCRIPT_HOST_PT = 7.0
 
 # ── 字体：中文 SimHei、英文 Arial，各自单字体、不配 fallback（CLAUDE.md §3.1）──────────
 LANGS = ("zh", "en")
@@ -87,7 +91,7 @@ def apply_style(lang: str = "zh") -> None:
         "xtick.direction": "out",
         "ytick.direction": "out",
         "legend.fontsize": 6,
-        "legend.title_fontsize": 6,
+        "legend.title_fontsize": 7,     # 图例标题写单位（含 mathtext 上下标），不低于 MIN_SCRIPT_HOST_PT
         "legend.frameon": False,
         "legend.handlelength": 1.2,
         "legend.handletextpad": 0.5,
@@ -515,12 +519,26 @@ def _check_fonts(fig, stem: str) -> None:
                            "（中文 SimHei、英文与面板标号 Arial）")
 
 
+def _has_script(text: str) -> bool:
+    """mathtext 段（成对的未转义 `$...$` 之间）里有上下标；`$` 不成对时 matplotlib 不按 mathtext 处理。"""
+    parts = re.split(r"(?<!\\)\$", text)
+    if len(parts) < 3 or len(parts) % 2 == 0:
+        return False
+    return any("_" in part or "^" in part for part in parts[1::2])
+
+
 def _check_font_sizes(fig, stem: str) -> None:
-    small = sorted({(round(float(t.get_fontsize()), 2), t.get_text()[:30])
-                    for t in fig.findobj(Text)
-                    if t.get_visible() and t.get_text().strip() and t.get_fontsize() < MIN_FONT_PT})
+    """字号检查：所有文字不小于 MIN_FONT_PT；带上下标的文字不小于 MIN_SCRIPT_HOST_PT（上下标按 0.7 缩放）。"""
+    texts = [t for t in fig.findobj(Text) if t.get_visible() and t.get_text().strip()]
+    small = sorted({(round(float(t.get_fontsize()), 2), t.get_text()[:30]) for t in texts if t.get_fontsize() < MIN_FONT_PT})
     if small:
         raise RuntimeError(f"{stem}：有文字小于 {MIN_FONT_PT:g} pt，排版社缩放后不可读：{small[:5]}")
+    scripted = sorted({(round(float(t.get_fontsize()), 2), t.get_text()[:30])
+                       for t in texts if t.get_fontsize() < MIN_SCRIPT_HOST_PT and _has_script(t.get_text())})
+    if scripted:
+        raise RuntimeError(f"{stem}：带上下标的文字小于 {MIN_SCRIPT_HOST_PT:g} pt（上下标按 0.7 缩放后不到 "
+                           f"{MIN_SCRIPT_HOST_PT * 0.7:.1f} pt，不可读）："
+                           f"{scripted[:5]}")
 
 
 def _check_width(fig, stem: str) -> float:

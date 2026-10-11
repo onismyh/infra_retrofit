@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _bootstrap import ROOT
 
 from coal_retrofit.builders.water import SECONDS_PER_YEAR, _cell_area_m2, _clean_series
+from coal_retrofit.spatial import nearest_polygon_index
 
 BASIN_L1 = ROOT / "data" / "ChinaBasins" / "basin_l1.gpkg"
 WATER_DIR = ROOT / "data" / "water"
@@ -139,16 +140,12 @@ def _member_tag(path: Path) -> str:
 
 
 def coal_capacity_by_basin() -> pd.Series:
+    """各一级流域的煤电装机（GW），hub 按所在或最近的流域多边形归属（球面距离，同 `builders.water._assign_basin_codes`）。"""
     plants = pd.read_csv(ROOT / "inputs" / "plants.csv")
-    points = gpd.GeoDataFrame(
-        plants,
-        geometry=gpd.points_from_xy(plants["centroid_longitude"], plants["centroid_latitude"]),
-        crs="EPSG:4326",
-    ).to_crs("EPSG:2380")
-    basins = gpd.read_file(BASIN_L1).to_crs("EPSG:2380")
-    joined = gpd.sjoin_nearest(points, basins[["code", "geometry"]], how="left")
-    joined = joined[~joined.index.duplicated()]
-    return joined.groupby("code")["total_capacity_mw"].sum() / 1000.0
+    basins = gpd.read_file(BASIN_L1).to_crs("EPSG:4326")
+    index = nearest_polygon_index(plants["centroid_longitude"], plants["centroid_latitude"], basins.geometry)
+    plants["code"] = basins["code"].astype(str).to_numpy()[index]
+    return plants.groupby("code")["total_capacity_mw"].sum() / 1000.0
 
 
 def _report(title: str, frames: dict[str, pd.DataFrame], official: pd.Series) -> pd.DataFrame:

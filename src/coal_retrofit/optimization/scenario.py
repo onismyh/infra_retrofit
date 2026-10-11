@@ -405,16 +405,12 @@ class OptimizationAssumptions:
         数值按 `constants.PLANNING_YEARS` 列表给出；不在网格上的年份取最近的列表点，
         与碳价、电价的查表方式一致。
         """
-        ratios = self.ccs_energy_penalty_ratio_by_year
-        if not ratios:
+        if not self.ccs_energy_penalty_ratio_by_year:
             return 0.0
-        mapping = dict(zip(PLANNING_YEARS, ratios, strict=False))
-        if year in mapping:
-            return float(mapping[year])
-        nearest = min(mapping, key=lambda candidate: abs(candidate - year))
-        return float(mapping[nearest])
+        return self._fraction_for_year(self.ccs_energy_penalty_ratio_by_year, year)
 
     def _fraction_for_year(self, values: tuple[float, ...], year: int) -> float:
+        """按 `PLANNING_YEARS` 列表查 `year` 的值；不在网格上的年份取最近的列表点，空元组为 1.0。"""
         if not values:
             return 1.0
         mapping = dict(zip(PLANNING_YEARS, values, strict=False))
@@ -528,7 +524,6 @@ class OptimizationScenario:
     ccs_water_multiplier_adjustment: float = 1.0
     beccs_water_multiplier_adjustment: float = 1.0
     pathway_disable: tuple[str, ...] = ()
-    corridor_prior_strength: float = 0.70  # 无作用：候选图从未按边权选边（自首次入库起如此）；删除待作者定，删会改 result.json 的 resolved.scenario 键集
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）

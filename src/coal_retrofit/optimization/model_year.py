@@ -8,6 +8,7 @@ from ._shared import GRB, PATHWAY_INDEX, PreparedInputs, SolveState, gp
 from .constraints import _add_plant_path_constraints
 from .model_index import ModelIndex
 from .model_resources import add_basin_withdrawal_cap, add_resource_balances
+from .resource_access import BiomassAccess
 from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
 from .year_matrices import _build_year_matrices
 from .year_types import GrbExpr, GrbMVar, YearData, YearPayload
@@ -22,17 +23,19 @@ def add_year_block(
     years: tuple[int, ...],
     year_index: int,
     state: SolveState,
+    biomass: BiomassAccess | None = None,
 ) -> YearPayload:
     """建立 `years[year_index]` 这一年的全部变量与年内约束，返回 payload 供跨期约束与成本使用。
 
     各子系统按下面的先后加入模型；变量与约束的加入顺序决定模型指纹，调换会让新旧求解无法逐字节对照。
+    *biomass* 是与年份无关的生物质链路矩阵，`solver` 建一次传入各年（不传就在 `_build_year_matrices` 里建）。
     """
     from .industry import add_industry_year
 
     year = years[year_index]
     plant_count, storage_count, edge_count = idx.plant_count, idx.storage_count, idx.edge_count
     interval_years = scenario.interval_years(years, year_index, assumptions)
-    year_data = _build_year_matrices(prepared, scenario, assumptions, year, state)
+    year_data = _build_year_matrices(prepared, scenario, assumptions, year, state, biomass)
     ammonia_node_count = len(year_data.ammonia_nodes)
     water_node_count = len(year_data.water_nodes)
     biomass_link_count = len(prepared.biomass_links)

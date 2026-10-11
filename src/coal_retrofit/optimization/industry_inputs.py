@@ -15,6 +15,7 @@ from ..constants_industry import (
     capturable_share,
 )
 from ..paths import ProjectPaths
+from ..spatial import haversine_km
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +211,6 @@ def prepare_industry_h2_links(
     Returns:
         列为 `year, hub_id, ammonia_node_id, distance_km, lcoh_usd_per_kg` 的表。
     """
-    from .resource_access import _haversine_distances_km
-
     columns = ["year", "hub_id", "ammonia_node_id", "distance_km", "lcoh_usd_per_kg"]
     eligible = hubs[hubs["sector"].astype(str).map(lambda s: bool(SECTOR_HAS_H2_ROUTE.get(s, False)))]
     if eligible.empty or ammonia_supply.empty:
@@ -224,7 +223,7 @@ def prepare_industry_h2_links(
         node_ids = nodes["ammonia_node_id"].astype(str).to_numpy()
         lcoh = nodes["weighted_lcoh_usd_per_kg_h2"].astype(float).to_numpy()
         for hub in eligible.itertuples(index=False):
-            distances = _haversine_distances_km(float(hub.longitude), float(hub.latitude), lons, lats)
+            distances = haversine_km(float(hub.longitude), float(hub.latitude), lons, lats)
             for node_idx in np.flatnonzero(distances <= radius_km):
                 rows.append({
                     "year": int(year),

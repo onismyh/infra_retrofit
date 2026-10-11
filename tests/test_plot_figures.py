@@ -378,6 +378,30 @@ def test_save_fig_refuses_a_missing_font(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert plot_style.figure_cli(None).parse_args([]).lang == "both"
 
 
+def test_save_fig_refuses_small_text_with_scripts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """带 mathtext 上下标的文字小于 7 pt 时 save_fig 报错（上下标按 0.7 缩放会低于 5 pt）；7 pt 的照常出图。"""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import matplotlib.pyplot as plt
+    import plot_style
+
+    def figure(size: float):
+        with plt.rc_context({"font.family": "DejaVu Sans"}):
+            fig, ax = plt.subplots(figsize=(80 * plot_style.MM, 50 * plot_style.MM))
+            ax.set_xlabel(plot_style.MT_CO2_YR, fontsize=size)
+        return fig
+
+    assert plot_style._has_script(plot_style.MT_CO2_YR) and not plot_style._has_script("$\\leq$ 50%")
+    # `$` 不成对或被转义时 matplotlib 不按 mathtext 处理，`_` / `^` 只是普通字符
+    assert not plot_style._has_script("价格 $5, x_y")
+    assert not plot_style._has_script(r"\$a_b\$")
+    assert plot_style._has_script(r"价格 \$5 CO$_2$")
+    assert not plot_style._has_script("$x$ $y_z")
+    with pytest.raises(RuntimeError, match="上下标"):
+        plot_style.save_fig(figure(6), "s", "en", out_dir=tmp_path)
+    assert list(tmp_path.iterdir()) == []
+    assert len(plot_style.save_fig(figure(7), "s", "en", out_dir=tmp_path)) == 2
+
+
 def test_scs_inset_leaves_taiwan_uncovered_and_legends_off_land(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("geopandas", reason="底图需要 geopandas")
     from shapely.geometry import box

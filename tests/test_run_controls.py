@@ -248,7 +248,9 @@ def test_warm_start_runs_both_steps_and_records_step_one(cli_run, monkeypatch, t
     monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", str(tmp_path / "w.sol"))  # 兼容开关照旧作用于第 2 步
     monkeypatch.setenv("COAL_RETROFIT_LOG_INCUMBENTS", "1")
     monkeypatch.setattr(runner, "code_state", lambda: {"commit": "f" * 40, "dirty": True})
-    assert run("WARM") == (0, "")
+    code, err = run("WARM")
+    assert code == 0
+    assert [line for line in err.splitlines() if not line.startswith("INFO ")] == []   # stderr 只许有 INFO 日志
     sol = results / "WARM.lp.sol"
     assert calls == [("step1", sol), ("solve", SolveControls(start_sol=sol, write_sol=tmp_path / "w.sol",
                                                                 log_incumbents=True))]

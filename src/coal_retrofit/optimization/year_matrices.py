@@ -8,7 +8,7 @@ import pandas as pd
 
 from ._shared import PATHWAY_INDEX, PreparedInputs, SolveState
 from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _water_intensity_matrices
-from .resource_access import _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
+from .resource_access import BiomassAccess, _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
 from .scenario import OptimizationAssumptions, OptimizationScenario
 from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matrices
 from .year_types import RebuiltDelta, YearData
@@ -72,8 +72,10 @@ def _build_year_matrices(
     assumptions: OptimizationAssumptions,
     year: int,
     state: SolveState,
+    biomass: BiomassAccess | None = None,
 ) -> YearData:
-    biomass_hub_membership, biomass_node_membership, biomass_available, biomass_link_costs, biomass_flow_scale = _biomass_access_matrices(prepared, assumptions)
+    """`year` 这一年的全部系数。*biomass* 与年份无关，求解时由 `solver` 建一次传入；不传就在此建。"""
+    biomass = biomass if biomass is not None else _biomass_access_matrices(prepared, assumptions)
     from .industry import basin_membership as _industry_basin_membership
     from .industry import industry_year_data
 
@@ -101,7 +103,7 @@ def _build_year_matrices(
     edges = _edge_matrices(prepared, assumptions, state)
 
     coal_price_per_plant = plant["coal_price_per_plant"]
-    coal_savings_per_gj = coal_price_per_plant * biomass_flow_scale  # 缩放后 CNY/PJ
+    coal_savings_per_gj = coal_price_per_plant * biomass.flow_scale  # 缩放后 CNY/PJ
     # 掺氨替代的煤，CNY / 缩放 kg NH3：LHV x 煤价。氨列的 baseline_net 按全煤热耗计费，没有此项会为没烧的煤付钱。
     coal_savings_per_kg_nh3 = (
         coal_price_per_plant * float(assumptions.nh3_lhv_gj_per_kg) * float(ammonia_data.get("ammonia_flow_scale", 1.0))
@@ -146,11 +148,11 @@ def _build_year_matrices(
         industry_h2_hub_membership=industry_h2_data["hub_membership"],
         industry_h2_node_membership=industry_h2_data["node_membership"],
         industry_h2_link_cost_cny_per_kg=industry_h2_data["link_cost_cny_per_kg"],
-        biomass_link_hub_membership=biomass_hub_membership,
-        biomass_link_node_membership=biomass_node_membership,
-        biomass_available=biomass_available,
-        biomass_link_cost_cny_per_gj=biomass_link_costs,
-        biomass_flow_scale=biomass_flow_scale,
+        biomass_link_hub_membership=biomass.hub_membership,
+        biomass_link_node_membership=biomass.node_membership,
+        biomass_available=biomass.available_scaled,
+        biomass_link_cost_cny_per_gj=biomass.link_costs,
+        biomass_flow_scale=biomass.flow_scale,
         ammonia_nodes=ammonia_data["nodes"][["ammonia_node_id", "province_name"]].copy() if not ammonia_data["nodes"].empty else pd.DataFrame(columns=["ammonia_node_id", "province_name"]),
         ammonia_links=ammonia_data["links"],
         ammonia_link_hub_membership=ammonia_data["hub_membership"],

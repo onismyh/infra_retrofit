@@ -10,15 +10,18 @@ from coal_retrofit.paths import ProjectPaths
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build inputs/storage_hubs.csv")
     parser.add_argument(
-        "--offshore-basin-dilation-px", type=int, default=None,
+        "--offshore-basin-dilation-px", type=int, default=6,
         help="Merge offshore bodies per basin and storage type; basins are the connected "
-             "components of the aquifer raster dilated by this many 5 km pixels. 6 (30 km) "
-             "reproduces the source assessment's 7 offshore basins. Default: no merge. "
-             "The checked-in storage_hubs.csv (89 hubs) was built with 6.",
+             "components of the aquifer raster dilated by this many 5 km pixels. The default 6 "
+             "(30 km) reproduces the source assessment's 7 offshore basins and the checked-in "
+             "storage_hubs.csv (89 hubs); 0 keeps every offshore body separate.",
     )
     args = parser.parse_args()
+    if args.offshore_basin_dilation_px < 0:
+        parser.error("--offshore-basin-dilation-px must be >= 0")
     paths = ProjectPaths(ROOT)
-    storage = write_storage_hubs(paths, offshore_basin_dilation_px=args.offshore_basin_dilation_px)
+    dilation = args.offshore_basin_dilation_px or None
+    storage = write_storage_hubs(paths, offshore_basin_dilation_px=dilation)
     offshore = int(storage["offshore"].sum())
     print(f"Wrote {len(storage)} storage hub rows ({offshore} offshore).")
 

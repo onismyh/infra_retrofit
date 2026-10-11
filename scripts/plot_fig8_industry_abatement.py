@@ -31,8 +31,8 @@ from plot_style import (
 NAME = "fig8_industry_abatement"
 ABATING = tuple(r for r in ROUTE_ORDER if r != "unabated")   # 有减排的路线：CCS、氢路线
 TEXT = {
-    "zh": {"y": f"减排量与捕集量（{MT_CO2_YR}）", "captured": "CO$_2$ 捕集量"},
-    "en": {"y": f"Abatement and capture ({MT_CO2_YR})", "captured": "CO$_2$ captured"},
+    "zh": {"y": f"减排量与捕集量（{MT_CO2_YR}）", "captured": "捕集量"},
+    "en": {"y": f"Abatement and capture ({MT_CO2_YR})", "captured": "Captured"},
 }
 
 

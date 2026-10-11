@@ -385,8 +385,10 @@ INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T: Final[dict[str, tuple[float, float]]]
 }
 
 # --- 工业捕集的用水惩罚，单位为每吨捕集 CO2 的 m3 ------------------------------------------
-# 胺法捕集需要冷却与水洗。中国工业改造为 1.60-1.69 m3/t CO2
-# （Wang, Wen & Xu, Nat Commun 16:4251, 2025）；取 1.65。
+# 胺法捕集需要冷却与水洗。⚠ 出处待核：此前标注的"1.60-1.69 m3/t（Wang, Wen & Xu, Nat Commun 16:4251, 2025）"
+# 经 2026-09-30 审查不成立（该文 SI Table 9 是 2.25-3.47 m3/t 的生命周期耗水）。量级佐证：Rosa 等 2021 的 CCS 用水综述
+# （Renew. Sustain. Energy Rev. 138:110511）给 CCS 附加用水 0.74-575 m3/t（含各类捕集与冷却方式；范围取自摘要与检索摘录，
+# 全文 2026-10-11 未能打开），胺法燃烧后捕集约 1.71 m3/t 只见二手转引。1.65 落在该量级内，维持（`docs/工业联合减排实现说明.md` 的补注）。
 # 这一项叠加在该部门 GB/T 18916 单位产品取水量之上，正是它让工业 CCS 与煤电冷却
 # 争夺同一份流域定额。
 INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2: Final[float] = 1.65

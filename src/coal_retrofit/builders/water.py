@@ -18,6 +18,7 @@ from ..constants import (
     WATER_MATCH_BUFFER_KM,
 )
 from ..paths import ProjectPaths
+from ..spatial import haversine_km, nearest_polygon_index
 from ..spatial import load_provinces as load_provinces_layer
 
 
@@ -160,22 +161,6 @@ def _nc_path(path: Path) -> str:
         return os.path.relpath(path, Path.cwd())
 
 
-def _haversine_distances_km(
-    origin_lon: float,
-    origin_lat: float,
-    target_lons: np.ndarray,
-    target_lats: np.ndarray,
-) -> np.ndarray:
-    origin_lon_rad = np.radians(origin_lon)
-    origin_lat_rad = np.radians(origin_lat)
-    target_lons_rad = np.radians(target_lons.astype(np.float64))
-    target_lats_rad = np.radians(target_lats.astype(np.float64))
-    delta_lon = target_lons_rad - origin_lon_rad
-    delta_lat = target_lats_rad - origin_lat_rad
-    a = np.sin(delta_lat / 2.0) ** 2 + np.cos(origin_lat_rad) * np.cos(target_lats_rad) * np.sin(delta_lon / 2.0) ** 2
-    return 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
-
-
 def _candidate_grid_points(
     provinces: gpd.GeoDataFrame,
     lon_values: np.ndarray,
@@ -287,20 +272,14 @@ def _province_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -
 
 
 def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
-    """按最近的多边形，给每个网格节点分配一级流域代码。
+    """按所在（或最近的）多边形，给每个点（`longitude` / `latitude` 列）分配一级流域代码。
 
     用最近邻而不是严格包含：否则海岸上以及多边形之间缝隙里的网格会被所有流域预算
-    漏掉，其水量被悄悄删除。距离在 EPSG:2380 下计算，因此以米为单位。
+    漏掉，其水量被悄悄删除。距离按球面算（`spatial.nearest_polygon_index`），2026-10-11 前在 EPSG:2380 下算。
     """
-    basins = load_basins(paths).to_crs("EPSG:2380")
-    points = gpd.GeoDataFrame(
-        nodes[["longitude", "latitude"]],
-        geometry=gpd.points_from_xy(nodes["longitude"], nodes["latitude"]),
-        crs=TARGET_GEO_CRS,
-    ).to_crs("EPSG:2380")
-    joined = gpd.sjoin_nearest(points, basins[["code", "geometry"]], how="left")
-    joined = joined[~joined.index.duplicated()]
-    return joined["code"].astype(str).to_numpy()
+    basins = load_basins(paths)
+    index = nearest_polygon_index(nodes["longitude"].to_numpy(float), nodes["latitude"].to_numpy(float), basins.geometry)
+    return basins["code"].astype(str).to_numpy()[index]
 
 
 def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
@@ -670,12 +649,7 @@ def build_water_link_dataframe(
     rows: list[dict[str, object]] = []
 
     for plant in plants.itertuples(index=False):
-        distances_km = _haversine_distances_km(
-            float(plant.centroid_longitude),
-            float(plant.centroid_latitude),
-            node_lons,
-            node_lats,
-        )
+        distances_km = haversine_km(float(plant.centroid_longitude), float(plant.centroid_latitude), node_lons, node_lats)
         matched_indices = np.flatnonzero(distances_km <= WATER_MATCH_BUFFER_KM)
         if matched_indices.size == 0:
             continue

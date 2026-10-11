@@ -26,6 +26,7 @@ from .model_costs import add_year_costs
 from .model_index import build_model_index
 from .model_linking import add_capacity_constraints, add_capacity_vintages, add_inter_period_constraints
 from .model_year import add_year_block
+from .resource_access import _biomass_access_matrices
 from .retirement import add_retired_rebuild_offset
 from .salvage import _add_salvage_credit
 from .scenario import OptimizationAssumptions, OptimizationScenario
@@ -78,8 +79,9 @@ def _solve_joint_multi_period(
     logger.info("MIPGap %.4f, MIPFocus %d, Seed %d", scenario.mip_gap, scenario.mip_focus, scenario.solver_seed)
 
     idx = build_model_index(prepared, scenario, assumptions)
+    biomass = _biomass_access_matrices(prepared, assumptions)   # 与年份无关，各年共用
     year_payloads: list[YearPayload] = [
-        add_year_block(model, prepared, scenario, assumptions, idx, years, year_index, state)
+        add_year_block(model, prepared, scenario, assumptions, idx, years, year_index, state, biomass)
         for year_index in range(len(years))
     ]
     add_inter_period_constraints(

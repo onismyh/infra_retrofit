@@ -28,7 +28,7 @@ from ..constants import (
     TARGET_GEO_CRS,
 )
 from ..paths import ProjectPaths
-from ..spatial import geodesic_length_km, geometry_parts
+from ..spatial import geodesic_length_km, geometry_parts, haversine_km
 from .network_branches import build_attachment_tables
 from .network_offshore import offshore_length_km
 from .network_repair import (
@@ -396,18 +396,15 @@ def build_direct_sink_edges(
         frozenset((str(r.from_node_id), str(r.to_node_id)))
         for r in edges.itertuples(index=False)
     }
-    sink_lon = np.radians(sinks["lon"].to_numpy(dtype=np.float64))
-    sink_lat = np.radians(sinks["lat"].to_numpy(dtype=np.float64))
+    sink_lon = sinks["lon"].to_numpy(dtype=np.float64)
+    sink_lat = sinks["lat"].to_numpy(dtype=np.float64)
     sink_ids = sinks["node_id"].astype(str).to_numpy()
 
     next_index = 1
     rows: list[dict[str, object]] = []
     order = []
     for row in sources.itertuples(index=False):
-        lon0, lat0 = np.radians(float(row.lon)), np.radians(float(row.lat))
-        hav = (np.sin((sink_lat - lat0) / 2.0) ** 2
-               + np.cos(lat0) * np.cos(sink_lat) * np.sin((sink_lon - lon0) / 2.0) ** 2)
-        dist = 6371.0088 * 2.0 * np.arcsin(np.sqrt(np.clip(hav, 0.0, 1.0)))
+        dist = haversine_km(float(row.lon), float(row.lat), sink_lon, sink_lat)
         for position in np.argsort(dist)[:top_k]:
             order.append((float(dist[position]), str(row.node_id), str(sink_ids[position])))
     order.sort()                                    # 短的先试，长的更可能被挡掉

@@ -18,7 +18,7 @@ from coal_retrofit.constants_industry import (
     INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION,
     h2_route_capex_cny_per_t_yr,
 )
-from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState
+from coal_retrofit.optimization._shared import PATHWAY_INDEX, PreparedInputs, SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industry_year_data
 from coal_retrofit.optimization.industry_inputs import prepare_industry
@@ -86,8 +86,8 @@ def test_industry_cost_multiplier_leaves_energy_and_consumables_alone() -> None:
     assert doubled.opex_cny[0, CCS] == pytest.approx(base.opex_cny[0, CCS], rel=1e-12)
 
 
-def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
-    """toy 输入上 `year` 年的煤电系数矩阵。"""
+def _toy_prepared(root, **scenario_overrides) -> tuple[PreparedInputs, OptimizationScenario, OptimizationAssumptions, SolveState]:
+    """toy 输入上 `prepare_inputs` 的结果与建矩阵所需的情景、假设和初始状态。"""
     paths = _write_toy_inputs(root, retirement_year=9999)
     _write_targets(paths, {2030: 1.0, 2040: 1.0, 2050: 1.0, 2060: 1.0})
     scenario = OptimizationScenario(
@@ -100,6 +100,12 @@ def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
     )
+    return prepared, scenario, assumptions, state
+
+
+def _toy_year_matrices(root, year: int, **scenario_overrides) -> YearData:
+    """toy 输入上 `year` 年的煤电系数矩阵。"""
+    prepared, scenario, assumptions, state = _toy_prepared(root, **scenario_overrides)
     return _build_year_matrices(prepared, scenario, assumptions, year, state)
 
 
@@ -195,3 +201,24 @@ def test_industry_detail_table_charges_capital_on_new_capacity() -> None:
     assert capital[0] == pytest.approx(unit[0, CCS] * 0.2 + unit[0, H2] * 0.3, rel=1e-12)
     annual = sum(costs[("industry_cost", item)] for item in ("ccs_operating", "ccs_fixed_om", "h2_route"))
     assert annual[0] == pytest.approx(float(opex[0, CCS]) * 0.5 + 7.0e6 + h2_route[0], rel=1e-12)
+
+
+def test_year_matrices_take_prebuilt_biomass_access(tmp_path) -> None:
+    """求解器建一次 `BiomassAccess` 传给各年（2026-10-11 起）：传入的就是用上的，不传则各年自建、结果相同。"""
+    from dataclasses import replace
+
+    from coal_retrofit.optimization.resource_access import _biomass_access_matrices
+
+    prepared, scenario, assumptions, state = _toy_prepared(tmp_path)
+    biomass = _biomass_access_matrices(prepared, assumptions)
+    own = _build_year_matrices(prepared, scenario, assumptions, 2050, state)
+    same = _build_year_matrices(prepared, scenario, assumptions, 2050, state, biomass=biomass)
+    assert same.biomass_link_hub_membership is biomass.hub_membership
+    np.testing.assert_array_equal(own.biomass_available, same.biomass_available)
+    assert own.biomass_flow_scale == same.biomass_flow_scale
+    # toy 里生物质链路为空、节点只有一个，矩阵比较不出差别；用哨兵值证明传入的可用量与缩放确实进了系数
+    sentinel = replace(biomass, available_scaled=np.array([42.0]), flow_scale=7.0)
+    given = _build_year_matrices(prepared, scenario, assumptions, 2050, state, biomass=sentinel)
+    assert given.biomass_available.tolist() == [42.0]
+    assert given.biomass_flow_scale == 7.0
+    np.testing.assert_allclose(given.coal_savings_per_gj, own.coal_savings_per_gj * 7.0 / own.biomass_flow_scale)
