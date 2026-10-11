@@ -284,7 +284,7 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > **不得与改后的求解相减**，要用须重解。详见根 README §0。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
-capex 与走廊参数改出处值）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
+capex 与走廊参数改出处值；其中封存爬坡与全国氨上限已于 2026-10-10 删除）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**
 
 求解流程固定为三步（§9.7）：LP 松弛写 `.sol` → 由 `.sol` 给整数变量设 MIP start → 正常 MIP。2026-09-28 起由运行器
 自动做（`scenarios/st.toml` 的 `ST_COMMON` 设了 `warm_start = "lp_relax"`），一条命令：
