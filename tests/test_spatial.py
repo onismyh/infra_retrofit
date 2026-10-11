@@ -4,7 +4,7 @@ from __future__ import annotations
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import LineString, box
+from shapely.geometry import LineString, Polygon, box
 
 from coal_retrofit.spatial import (
     EARTH_RADIUS_KM,
@@ -32,7 +32,7 @@ def test_haversine_matches_reference_and_is_symmetric() -> None:
     assert 1_050.0 < d < 1_080.0
     assert float(haversine_km(*SHANGHAI, *BEIJING)) == pytest.approx(d, rel=1e-12)
     assert float(haversine_km(*BEIJING, *BEIJING)) == 0.0
-    # 对跖点走到 np.clip 的上端：半个大圆
+    # 对跖点：半个大圆（h 恰为 1，clip 不触发；随机对跖点 h 最多超 1 一个 ulp，开方后仍为 1）
     assert float(haversine_km(0.0, 0.0, 180.0, 0.0)) == pytest.approx(np.pi * EARTH_RADIUS_KM, rel=1e-9)
 
 
@@ -84,11 +84,34 @@ def test_nearest_polygon_index_rejects_projected_crs_and_nan() -> None:
 
 def test_distance_to_lines_km_on_and_off_the_line() -> None:
     lines = gpd.GeoSeries([LineString([(100.0, 30.0), (101.0, 30.0)])], crs="EPSG:4326")
-    on_vertex, between, north = distance_to_lines_km([100.5, 100.505, 100.5], [30.0, 30.0, 31.0], lines)
-    assert on_vertex < 1e-6
-    # 两个加密顶点（步长 0.01°）正中间的点：到最近顶点半步，30°N 上约 0.48 km，这就是加密带来的最大偏差
-    assert between == pytest.approx(float(haversine_km(100.505, 30.0, 100.5, 30.0)), rel=1e-6)
-    assert 0.4 < between < 0.6
-    assert north == pytest.approx(float(haversine_km(100.5, 31.0, 100.5, 30.0)), rel=1e-6)
+    endpoint, north = distance_to_lines_km([100.0, 100.5], [30.0, 31.0], lines)
+    assert endpoint < 1e-6   # 端点一定是加密后的顶点；不假定 segmentize 把 1° 恰好分成 100 段
+    # 线上任一点到最近顶点不超过半个加密步长（0.005°，30°N 上约 0.48 km），这就是加密带来的最大偏差；
+    # 沿线扫 193 个点（步距 0.98/192°，相对顶点间距有 96 个相位，其中两个恰在两顶点正中、取到半步），
+    # 只测一个点抓不到加密步长变粗
+    half_step = float(haversine_km(100.5, 30.0, 100.505, 30.0))
+    along = distance_to_lines_km(np.linspace(100.01, 100.99, 193), np.full(193, 30.0), lines)
+    assert 0.9 * half_step < along.max() <= half_step * (1.0 + 1e-9)
+    # 线以北 1° 的点：最近顶点离 (100.5, 30) 不超过半步，距离与到该点的球面距离只差万分之一以内
+    assert north == pytest.approx(float(haversine_km(100.5, 31.0, 100.5, 30.0)), rel=1e-4)
     with pytest.raises(ValueError, match="地理坐标"):
         distance_to_lines_km([100.5], [30.0], lines.to_crs("EPSG:2380"))
+
+
+def test_point_coordinates_must_be_lon_lat_in_range() -> None:
+    lines = gpd.GeoSeries([LineString([(100.0, 30.0), (101.0, 30.0)])], crs="EPSG:4326")
+    with pytest.raises(ValueError, match="经纬度范围"):
+        nearest_polygon_index([500_000.0], [3_300_000.0], _squares())   # 投影坐标
+    with pytest.raises(ValueError, match="经纬度范围"):
+        distance_to_lines_km([30.0], [100.5], lines)                    # 经纬度写反
+    with pytest.raises(ValueError, match="一维"):
+        nearest_polygon_index([[0.25]], [[0.5]], _squares())                # 列向量
+    # 标量算一个点
+    assert nearest_polygon_index(0.25, 0.5, _squares()).tolist() == [0]
+    assert distance_to_lines_km(100.0, 30.0, lines).shape == (1,)
+
+
+def test_layers_with_empty_geometries_are_rejected() -> None:
+    polygons = gpd.GeoSeries([Polygon(), box(2, 0, 3, 1)], crs="EPSG:4326")
+    with pytest.raises(ValueError, match="空几何"):
+        nearest_polygon_index([0.5], [0.5], polygons)

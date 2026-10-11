@@ -100,6 +100,11 @@ def fetch(url: str, fname: str) -> tuple[str, int]:
         try:
             with requests.get(url, stream=True, headers=headers,
                               timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)) as response:
+                if response.status_code == 416 and offset:
+                    # Range starts at the server's file length: the .part already holds every byte
+                    # (same handling as download_isimip_extra_gcms.py).
+                    os.replace(partial, final)
+                    return fname, _local_size(final)
                 if response.status_code not in (200, 206):
                     raise OSError(f"HTTP {response.status_code}")
                 mode = "ab" if offset and response.status_code == 206 else "wb"
@@ -133,6 +138,7 @@ def main() -> None:
     todo = [(f, u) for f, u in URLS if not os.path.exists(os.path.join(DEST, f))]
     print(f"{len(URLS)} files needed, {len(todo)} missing")
     started = time.time()
+    failures: list[str] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {pool.submit(fetch, url, fname): fname for fname, url in todo}
         for future in as_completed(futures):
@@ -141,8 +147,12 @@ def main() -> None:
                 _, size = future.result()
                 print(f"  done {name} ({size/1e6:.1f} MB)")
             except Exception as exc:  # noqa: BLE001 - report and continue with the rest
+                failures.append(name)
                 print(f"  FAIL {name}: {exc}", file=sys.stderr)
-    print(f"finished in {(time.time()-started)/60:.1f} min")
+    print(f"finished in {(time.time()-started)/60:.1f} min, ok={len(todo) - len(failures)} failed={len(failures)}")
+    if failures:
+        print("failed:", *failures, sep="\n  ", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

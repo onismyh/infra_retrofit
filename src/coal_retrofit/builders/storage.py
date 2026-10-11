@@ -257,13 +257,13 @@ def _validate_against_source_dataset(frame: pd.DataFrame) -> None:
 
 def build_storage_hub_dataframe(
     paths: ProjectPaths,
-    offshore_basin_dilation_px: int | None = None,
+    offshore_basin_dilation_px: int = 6,
 ) -> pd.DataFrame:
     """构建汇表。
 
-    *offshore_basin_dilation_px* 逐盆地（并逐类型）合并海上封存体；为什么 6 px（30 km）
-    是站得住的取值，见 `_offshore_basin_labels`。陆上封存体从不因它而合并。默认 None
-    保留每个封存体，即 103 个汇的表。
+    *offshore_basin_dilation_px* 逐盆地（并逐类型）合并海上封存体，盆地取含水层栅格膨胀这么多个 5 km 像素后的连通域。
+    缺省 6（30 km）复现来源评估的 7 个海上盆地与库里 89 个汇的表（理由见 `_offshore_basin_labels`；`d519525` 之前库函数与
+    脚本缺省都不合并，脚本在 `d519525` 改 6，库函数随后跟进）；0 不合并，保留每个封存体，即 103 个汇的表。陆上封存体从不因它而合并。
 
     封存栅格中每个保留下来的连通域就是一个汇——即来源评估所划定的一个连续的
     地质封存体。DSA 与 EOR 封存体即使上下叠置也保持分开，因为二者成本不同：
@@ -273,6 +273,8 @@ def build_storage_hub_dataframe(
     合并没有地质依据：它把 103 个封存体压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把
     按容量加权的电厂到最近汇的运距从 200 km 拉长到 234 km。
     """
+    if offshore_basin_dilation_px < 0:
+        raise ValueError(f"offshore_basin_dilation_px 须 >= 0（0 为不合并），得到 {offshore_basin_dilation_px}")
     base = paths.data_dir / "封存汇图层-Fan"
 
     dsa = _extract_storage_nodes(
@@ -290,10 +292,8 @@ def build_storage_hub_dataframe(
     combined = pd.concat([dsa, eor], ignore_index=True)
     _validate_against_source_dataset(combined)
     logger.info("%d geological storage bodies retained (no distance merge)", len(combined))
-    if offshore_basin_dilation_px is not None:
-        if offshore_basin_dilation_px < 1:
-            # scipy 的 binary_dilation 对 iterations <= 0 是"膨胀到不再变化"，会把整张栅格并成一个盆地。
-            raise ValueError(f"offshore_basin_dilation_px 须 >= 1（None 为不合并），得到 {offshore_basin_dilation_px}")
+    if offshore_basin_dilation_px > 0:
+        # 0 不进这里：scipy 的 binary_dilation 对 iterations <= 0 是"膨胀到不再变化"，会把整张栅格并成一个盆地。
         combined = _merge_offshore_by_basin(
             paths, combined, base / "DSA-storage potential.tif", offshore_basin_dilation_px
         )
@@ -327,7 +327,7 @@ def build_storage_hub_dataframe(
     return combined[columns].sort_values("storage_hub_index").reset_index(drop=True)
 
 
-def write_storage_hubs(paths: ProjectPaths, offshore_basin_dilation_px: int | None = None) -> pd.DataFrame:
+def write_storage_hubs(paths: ProjectPaths, offshore_basin_dilation_px: int = 6) -> pd.DataFrame:
     storage = build_storage_hub_dataframe(paths, offshore_basin_dilation_px=offshore_basin_dilation_px)
     write_csv(storage, paths.inputs_dir / "storage_hubs.csv")
     return storage
