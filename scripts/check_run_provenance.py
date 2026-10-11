@@ -301,7 +301,7 @@ def main():
     parser.add_argument("--strict", action="store_true",
                         help="also fail when a compared run left Threads at 0 (auto)")
     parser.add_argument("--pair", nargs=2, metavar=("A", "B"), required=True,
-                        help="核这两次求解（结果名）；缺一边、没有 resolved 段或"
+                        help="核这两次求解（结果名）；缺一边、模型分段号不是当前代码的、没有 resolved 段或"
                              " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价、贴现率或煤电容量电价不同、"
                              "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、记不了提交号、有未提交的改动只告警；"
                              "两边同名直接报错退出")

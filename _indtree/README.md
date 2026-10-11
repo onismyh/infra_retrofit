@@ -96,8 +96,9 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 ## 二、这棵树是怎么拼的
 
 代码只有仓库根 `src/` 一份（2026-09-22 起），脚本只有仓库根 `scripts/` 一份（2026-09-28 起，此前本树有自己的 `scripts/`）。
-`scripts/_bootstrap.py` 里 `ROOT` 是本树根（输入构建、诊断与出图脚本用它读写本树 `inputs/`、`results/`），
-`REPO_ROOT` 是仓库根（图幅归档写仓库根 `results/figures/`，出图的底图读仓库根 `data/ChinaMapTHT/`），`SRC` 指向仓库根 `src/`。
+`scripts/_bootstrap.py` 里 `ROOT` 是本树根（输入构建与诊断脚本用它读写本树 `inputs/`、`results/`，出图脚本读本树 `inputs/`、
+把图写到本树 `results/figures/`），`REPO_ROOT` 是仓库根（结果图读仓库根 `results/solved/`，图幅归档写仓库根 `results/figures/`，
+出图的底图读仓库根 `data/ChinaMapTHT/`），`SRC` 指向仓库根 `src/`。
 **`ROOT` 不能改成仓库根**：那样脚本读写的是仓库根的 `inputs/`、`results/`，不是求解用的这一套；
 `tests/test_scenarios.py` 核对它就是登记情景的 `tree`。
 2026-09-27 起求解不经 `ROOT`：仓库根 `scenarios/st.toml` 给 `ST_` 系登记了 `tree = "_indtree"`，
@@ -142,7 +143,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
   （`once_through_withdrawal_*`、`air_withdrawal_*`）。
 * v9 的 `pipeline_nodes.csv` 引用的 350 个 `plant_id` **全部存在**于 `plants.csv`。
 * `water_availability.csv` 与 `water_nodes.csv` 与 `_v9tree` 逐字节相同（v9.1 已核对）。
-* `water_basin_caps.csv` 由指标、预留、`plants.csv` 与 `industry_sources.csv` 生成，
+* `water_basin_caps.csv` 由指标、预留与 `industry_sources.csv`（扣出已建模的工业取水）生成，
   **不含任何管网信息**，所以直接沿用是正确的。
 
 换句话说：被换掉的是**管网与汇**，被保留的是**源与水**，两者在输入侧没有交叉依赖。
@@ -306,10 +307,11 @@ python -m coal_retrofit run ST_BASE --threads 8
 两次求解相减之前，在仓库根跑 `python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq`：
 列出两边的参数差与环境变量差（热启动看情景 `warm_start` 与 `START_SOL` 两处，只看有没有；`WRITE_SOL` 不比）。缺一边、
 有一边没有 `resolved` 段（2026-09-27 之前落盘，本树现有的 `ST_` 结果都是）、一边 LP 松弛或热启动而另一边不是、两边都是
-LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、碳价、贴现率或煤电容量电价不同、读的同一个输入文件摘要不同、线程数或
+LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标函数为 NaN）、任一边的模型分段号不是当前代码的（2026-10-10 起）、碳价、贴现率或煤电容量电价不同、读的同一个输入文件摘要不同、线程数或
 MIPFocus 不同、有一边没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同、
 记不了提交号或求解时有未提交的改动只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
-这份脚本和出图脚本一样读本树 `results/`（`scripts/_bootstrap.py` 的 `ROOT`）。
+这份脚本缺省读本树 `results/`（`scripts/_bootstrap.py` 的 `ROOT`），`--results results/solved` 读入库的结果；结果图读的是入库的
+`results/solved/`（`plot_style.SOLVED_DIR`）。
 
 敏感性不进登记表，缺省值都不改模型（2026-10-02 起，见仓库根 README §0）：用 `--set 节.字段=值` 覆盖、`--as` 另起结果名，
 水约束情景用同一组 `--set`、另起结果名（如 `ST_WA_cwatm_126_dry_oq_dr5`）。贴现率、煤价乘子、煤电容量电价、部分负荷修正（机组全年在线小时）各两档：
@@ -382,14 +384,15 @@ LP 松弛能用水泥 CCS 满足全部上限，所以热启动是必需的，不
 （`plot_fig8_industry_abatement.py`、`plot_fig9_storage.py`、`plot_fig10_costs.py`）共十个（一图一个，图含义、读图注意、
 数据与自检写在各脚本开头），写到本树 `results/figures/`：图 1、图 2 画输入（源与汇、候选管网），图 3–10 画求解结果（煤电改造路径、
 工业路线、部门排放对碳目标、CO₂ 管网、流域取水与空冷、工业减排与捕集、封存按汇型与陆海汇总、成本构成），缺省读
-`ST_WA_cwatm_126_dry_oq`，`--scenario` 可换；
+入库的 `results/solved/ST_WA_cwatm_126_dry_oq/`，`--scenario` 可换；
 `--lang zh|en|both` 缺省两版都画，英文版文件名加 `_en`。
 
 本机 `_indtree/results/figures/` 下留着的 `IND_` 旧图（子目录 `main/`、`extended/`）不会混进 `render_version.py` 的归档：
 它只运行上面的出图脚本，只拷 `figures/` 根目录下本次画出的图。这是有意的：
-`IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。两处例外：给了
-`--skip-plots` 时不画图，根目录下的图全拷，2026-09-29 之前的脚本画在根目录的旧图（如 `fig1_water_footprint`）也会进去；
-本树 `results/` 下的全部结果（含 `IND_`）总会被它拷进 `<版本>/data/`。
+`IND_` 与 `ST_` 管网同为 v9.2，但 `IND_` 用的联合总目标模式已在 `ba967c1` 删除，两条线的模型不同。一处例外：给了
+`--skip-plots` 时不画图，根目录下的图全拷，2026-09-29 之前的脚本画在根目录的旧图（如 `fig1_water_footprint`）也会进去。
+拷进 `<版本>/data/` 的结果取自入库的 `results/solved/`（结果图读的那一份），本树 `results/` 下的结果（含 `IND_`）不拷
+（2026-10-11 起；此前拷的是本树 `results/` 下的全部结果）。
 
 ---
 

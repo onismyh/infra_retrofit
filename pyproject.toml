@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
   "geopandas",
   "gurobipy",
+  "matplotlib",
   "netCDF4",
   "networkx",
   "numpy",
@@ -17,6 +18,7 @@ dependencies = [
   "pandas",
   "pyproj",
   "rasterio",
+  "requests",
   "scikit-learn",
   "scipy",
   "shapely",
