@@ -1,26 +1,11 @@
 # Coal Retrofit Experiment System
 
-一个面向煤电多路径改造研究的可复现实验系统。这个仓库的目标不是只保存 proposal 或零散脚本，而是把煤电减排改造问题拆成可验证的四层：
+中国煤电机组与高耗能工业排放源的减排技术选择与 CO₂ 源汇匹配优化，气候变化影响下的水资源约束作为一等约束进入模型。
 
-1. 原始数据
-2. 标准化输入
-3. 可重复优化实验
-4. 标准化结果与 review 产物
-
-当前研究边界覆盖：
-
-- `retire`
-- `CCS`
-- `biomass`
-- `BECCS`
-- `ammonia`
-- 可选 `water` 约束
-- 基于油气管道走廊先验的 CO2 候选管网
-
-运行前提很简单，但必须满足：
-
-- `data/` 下原始图层与表格已经就位
-- 本机有可用的 Gurobi license
+- 当前版本的说明在 §1–§11；公式、参数与逐条代码位置在 [`docs/方法论.md`](docs/方法论.md)；
+  `ST_` 系求解树、求解状态与敏感性命令在 [`_indtree/README.md`](_indtree/README.md)。
+- §0 是按日期记的改动史与审查问答，旧条目里的文件名、表名与命令以写入当时为准。
+- 项目规范在 [`.claude/CLAUDE.md`](.claude/CLAUDE.md)：求解与结果比较的硬约定在其 §二，绘图在 §三、§四。
 
 ## 0. 代码现状核查与本轮改动（2026-09-23）
 
@@ -33,10 +18,10 @@
 > 与合成岛年金寿命改了值，各一个提交加不求解测试（`tests/test_h2_route_abatement.py`、`tests/test_discount_rate.py`）；
 > 见 §0.2 末）。
 > 标"未改"的地方要不要统一，由作者决定。
-> 下面的 §1–§11 停在 2026-09-06（v9 基线入库），其中的 `EXP-*` 实验族、`sequential` 模式、成本键名与
-> 规划年份都已过时；`ST_` 系求解树的现状见 [`_indtree/README.md`](_indtree/README.md)。
+> 下面的 §1–§11 于 2026-10-11 按 `2c706db` 的代码重写（此前停在 2026-09-06 的 v9 基线），说明当前版本；`ST_` 系求解树的
+> 现状见 [`_indtree/README.md`](_indtree/README.md)。
 > 2026-09-26 起 `src/` 删去了旧实验链（`experiments/`、`optimization/model.py`、`optimization/bundle.py`、`reporting/`）
-> 与 runoff 水口径：§1–§11 与 §0.3、§0.4 里指向这些模块的命令和链接都已失效，v9 / v9.1 结果按 CLAUDE.md §1.5
+> 与 runoff 水口径：§0.3、§0.4 里指向这些模块的命令和链接都已失效，v9 / v9.1 结果按 CLAUDE.md §1.5
 > 在 `892c877^` 里复现。
 > 同日起结果表的掺烧比例按约束里的 Σβ·z ÷ 路径份额换算（`plant_detail.csv` 新增 `biomass_blend_ratio`、`beccs_blend_ratio`、
 > `ammonia_blend_ratio`），`plant_cost.csv` 的碳成本改与目标函数同式。此前连续 hub 下的档位下标（`*_blend_level`，档位下标的加权和）
@@ -855,814 +840,369 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 1. 这个项目回答什么问题
 
-项目围绕一个统一问题展开：
+在给定的部门碳目标、煤电利用小时与工业产量轨迹下，2030–2060 年中国煤电与高耗能工业的各个排放源选哪种减排技术、什么时候改，
+捕集的 CO₂ 经哪些管道送进哪些封存汇，生物质、绿氢与水在厂址之间怎么分；流域取水指标与气候变化下的可用水量又怎样改变这些选择。
+四个规划期放在一个模型里联合优化，目标是规划期的系统贴现净成本最小（[方法论](docs/方法论.md) §1）。
 
-在既定减排目标下，煤电机组在 `retire / CCS / biomass / BECCS / ammonia` 五条路径之间如何配置，空间上如何与生物质、绿氨、水资源和封存汇耦合，以及这些结论对管网、封存口径、水情景和关键参数是否稳健。
+| 部分 | 范围 |
+|---|---|
+| 煤电 | 3 623 台机组聚成 350 个 hub。路径：维持不改造、提前退役、CCS、掺生物质、BECCS、掺氨；另可湿冷改空冷、到期机组原址重建。没有掺氢 |
+| 工业 | 长流程钢、电炉钢、水泥、合成氨、甲醇的 2 552 个点源按部门聚成 390 个 hub（80 / 40 / 150 / 60 / 60），读入时剔除西藏的 4 个水泥 hub。路线：不改造、CCS（只捕集可捕集的份额）、氢路线（长流程钢、合成氨、甲醇）。乙二醇、烯烃、炼化不在模型内 |
+| 封存与管网 | 89 个封存汇（DSA 31 个、EOR 58 个，其中海上 11 个）；候选管网 1 052 个节点、1 559 条边（v9.2） |
+| 资源 | 生物质节点；绿氢节点（煤电用的氨按氢耗折成氢，与工业用氢共用节点上限） |
+| 水 | 节点层：生态可用量约束煤电耗水；流域层：官方用水总量指标约束煤电与工业取水。水文取 ISIMIP3b 的 CWatM 与 WaterGAP2-2e，各 5 个 GCM × SSP1-2.6 / SSP3-7.0，共 20 个成员 |
+| 碳目标 | China TIMES V2.0 CN60 的电力、钢铁、水泥、化工四组轨迹（各组自身 2030 年水平的比例）；分部门上限，或四组合计一条总量上限 |
 
-它不是一个通用能源系统模型，而是一个为这篇研究专门收束过边界的实验系统。
+模型的边界与已知限制见 §9。
 
 ## 2. 当前实现到了哪一步
 
-目前仓库已经具备以下能力：
+截至 2026-10-11（代码 `2c706db`，模型分段 9）：
 
-- `Phase A` 预处理流水线
-- 全部实验 ID 注册与统一运行
-- 基于 `gurobipy` 的全局多期多路径优化器
-- 基于油气走廊先验的运行时 CO2 网络装配
-- 标准化结果落盘
-- markdown 摘要与出图故事线
+| 部分 | 现状 |
+|---|---|
+| 输入 | v9.2 管网的整套输入在 `_indtree/inputs/`，已入库；`scripts/build_*.py` 从原始数据重建（§5） |
+| 模型 | 2030、2040、2050、2060 四个规划年联立的一个 MILP，用 Gurobi 求解；`ST_` 系的 hub 决策是连续的，整数变量只有管道的根数与建设标志（§6） |
+| 情景 | 登记 4 个（`scenarios/st.toml`）；20 个水文成员用 `run --water` 并到登记情景上，敏感性用 `--set` / `--as`（§7） |
+| 求解 | 在作者本机：8 线程，`ST_` 系 MIPGap 2%，LP 松弛热启动由 `run` 自动做（§6.5） |
+| 结果 | 每次求解写一个 `<结果名>.json`、九张 CSV 与结果工作簿 `ccs_results.xlsx`（§8） |
+| 出图 | `scripts/plot_fig1_*.py` … `plot_fig10_*.py` 十个脚本（§10） |
+| 测试 | `tests/` 在 toy 输入上测模型、结果表、出图与命令行 |
 
-当前 `plan.md` 中定义的实验族已经在代码中注册：
-
-- `EXP-B1` 到 `EXP-B5`
-- `EXP-W1` 到 `EXP-W4`
-- `EXP-R1` 到 `EXP-R6`
-
-需要注意，较早期归档结果里既有“单年滚动”口径；当前代码默认的 `joint` 已经升级为“2040-2050-2060 一次性联立”的全局多期求解。
-
-如果只想先理解“系统怎么工作”，一次实验可以压缩成这 5 步：
-
-1. `run_phase_a.py`
-   把原始数据物化成 `inputs/`
-2. `catalog.py`
-   选择实验家族和 scenario
-3. `scenario mapping`
-   把实验参数映射成统一优化参数
-4. `optimization/model.py`
-   求一个全局多期 `joint` 或逐年 `sequential` 模型
-5. `artifacts/`
-   把结果写成按年长表和摘要
+**库里还没有能用的求解结果。** `results/solved/` 只有说明文件；`_indtree/README.md` 表里的 `ST_` 结果都早于第 9 段，出图脚本与
+`check_run_provenance.py --pair` 都会拒绝，要用须在作者本机用当前代码重解（CLAUDE.md §二.7）。
 
 ## 3. 目录结构
 
 ```text
-coal-retrofit/
-├─ data/                       # 原始外部数据
-├─ inputs/                     # Phase A 生成的标准化输入
-├─ intermediate/               # 预留中间产物
-├─ reference/                  # 外部参考资料与 GMS 参考模型
-├─ results/                    # 实验结果、reviews、figure plans
-├─ scripts/                    # 薄 CLI 入口
-├─ src/
-│  └─ coal_retrofit/
-│     ├─ artifacts.py          # 统一 artifact 写入
-│     ├─ constants.py          # 稳定常量
-│     ├─ paths.py              # 路径发现与文件定位
-│     ├─ spatial.py            # GIS / raster 通用工具
-│     ├─ builders/             # 输入构建模块
-│     ├─ experiments/          # 实验注册、运行、结果契约
-│     ├─ optimization/         # 优化模型、运行时网络、scenario 映射
-│     ├─ pipelines/            # Phase A 等编排层
-│     └─ reporting/            # 结果摘要与 markdown 输出
-├─ plan.md
-├─ research-proposal.md
-├─ project-architecture.md
-├─ notes.md
-└─ pyproject.toml
+infra_retrofit/
+├─ src/coal_retrofit/       包（pip install -e .）
+│  ├─ cli.py                命令行 python -m coal_retrofit
+│  ├─ scenarios.py          读情景登记表 scenarios/*.toml
+│  ├─ runner.py             求解一个情景并落盘
+│  ├─ run_controls.py       热启动第 1 步、兼容的 COAL_RETROFIT_* 环境变量、求解时的提交号
+│  ├─ hydrology.py          水文成员（--water）与逐成员数据核对
+│  ├─ segment.py            模型分段号 MODEL_SEGMENT
+│  ├─ constants*.py         常量及其出处注释
+│  ├─ builders/             原始数据 → 标准化输入表（§5）
+│  └─ optimization/         参数 dataclass（scenario.py）、模型、求解、结果表与工作簿（§6、§8）
+├─ scenarios/st.toml        ST_ 系情景登记表
+├─ _indtree/                ST_ 系求解树
+│  ├─ inputs/               v9.2 输入（入库）
+│  ├─ data                  指向仓库根 data/ 的链接（不入库，新克隆要建，§4）
+│  └─ results/              求解结果与图（不入库）
+├─ scripts/                 构建输入、诊断、出图与归档脚本，经 _bootstrap.py 读写 _indtree/
+├─ results/solved/          作者本机求解后拷入的结果，出图与对账读这里
+├─ data/                    原始数据；只有底图、省界、流域、Fan 封存栅格与 Natural Earth 陆地入库（§5.1）
+├─ docs/                    方法论、参数出处与审查记录（§11）
+├─ reference/               参考文献、GAMS 参考模型、绘图风格所本的两个 notebook
+├─ tests/                   pytest；toy 输入在 toy_inputs.py
+├─ .claude/                 项目规范 CLAUDE.md 与 rules/
+└─ AGENTS.md、references.bib、pyproject.toml
 ```
 
 ## 4. 安装与环境
 
-### 4.1 Requirements
+| 项 | 要求 |
+|---|---|
+| Python | ≥ 3.11（登记表用标准库 `tomllib` 读） |
+| 依赖 | `pyproject.toml` 列的 geopandas、gurobipy、netCDF4、networkx、numpy、openpyxl、pandas、pyproj、rasterio、scikit-learn、scipy、shapely；出图另需 matplotlib，ISIMIP 下载脚本另需 requests（`pyproject.toml` 都没有列） |
+| Gurobi | toy 测试用 pip 版 gurobipy 自带的受限许可即可；`ST_` 情景超出受限许可的规模上限，要完整许可 |
+| `_indtree/data` | 求解经它读 `data/ChinaMap/provinces.shp`（管网节点归省）与 `data/ChinaBasins/basin_l1.gpkg`（有水约束时）。新克隆在仓库根建一次：Windows `cmd /c mklink /J _indtree\data data`，Linux / macOS `ln -s ../data _indtree/data` |
+| 出图字体 | 中文 SimHei、英文 Arial（CLAUDE.md §3.1）；本机缺字体时 `save_fig` 报错，不静默换字体 |
 
-- Python `>= 3.11`
-- 推荐 Windows PowerShell
-
-### 4.2 主要依赖
-
-当前 [pyproject.toml](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/pyproject.toml) 中的核心依赖包括：
-
-- `gurobipy`
-- `geopandas`
-- `networkx`
-- `numpy`
-- `openpyxl`
-- `pandas`
-- `pyproj`
-- `rasterio`
-- `scikit-learn`
-- `scipy`
-
-运行优化实验还需要本机可用的 Gurobi license。
-
-### 4.3 安装
+在仓库根安装并检查：
 
 ```powershell
-python -m pip install -U pip
-python -m pip install -e .
+python -m pip install -e . pytest
+python -m pytest
+python -m ruff check src tests scripts
 ```
 
-如果不做 editable install，也至少要把依赖装齐。
+`python -m coal_retrofit` 读安装所在 checkout 的 `scenarios/`，所以要先 `pip install -e .`；没装时求解可用
+`python scripts/run_single.py <情景>` 代替，参数相同。ruff 不在依赖里，规则写在 `pyproject.toml`；本项目没有指定类型检查命令与覆盖率门槛。
 
-## 5. 数据利用流程
+## 5. 数据与输入表
 
-这一部分是项目最重要的说明。核心原则是：
+求解读求解树 `inputs/` 里的标准化表，原始图层只读两个（§4）：有水约束时的一级流域矢量（厂址归流域），与结果表给管网节点
+定省用的省界。构建脚本经 `scripts/_bootstrap.py` 的 `ROOT` 写 `_indtree/inputs/`，
+经 `_indtree/data` 链接读仓库根 `data/`。求解要读的表一旦重建，输入摘要（`solver_quality` 的 `digest_*`）可能随之改变，
+摘要不同的两次求解 `check_run_provenance.py --pair` 判不过，读它的情景都要重解。
 
-- 原始数据只放在 `data/`
-- 一切模型输入都必须先显式物化到 `inputs/`
-- 优化器不直接吃原始图层，只吃标准化输入表
+### 5.1 原始数据
 
-### 5.1 数据流总览
+| 数据 | 位置 | 入库 | 用于 |
+|---|---|---|---|
+| GEM 煤电机组表（含冷却方式，2025 年 7 月版） | `data/GEM_with_Cooling_Technology_July2025.xlsx` | 否 | 机组与煤电 hub |
+| 工业点源库（六个工作簿） | 环境变量 `COAL_RETROFIT_POINT_SOURCE_DIR`，缺省为作者本机路径 | 否 | 工业点源与 hub |
+| 油气管道矢量 `gas_pipelines.shp`、`oil_pipeline.shp` | `data/` 下，按文件名查找 | 否 | 既有管廊 |
+| Fan et al. 2025 封存潜力与注入能力栅格 | `data/封存汇图层-Fan/`（出处与许可见该目录 README） | 是 | 封存汇 |
+| 生物质栅格 `bioenergy_s3_AFE_abandon.tif` | `data/` 下，按文件名查找 | 否 | 生物质供给 |
+| 绿氢产量与 LCOH 栅格 | `data/H2/<年份>/` | 否 | 绿氢节点 |
+| ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`、`download_isimip_extra_gcms.py` | 否 | 水节点、偏差校正、生活与灌溉耗水 |
+| 水资源一级区 | `data/ChinaBasins/basin_l1.gpkg` | 是 | 厂址归流域、流域指标 |
+| 省界与海岸线 | `data/ChinaMap/` | 是 | 定省、剔除西藏、海岸线距离 |
+| Natural Earth 1:10m 陆地 | `data/NaturalEarth/` | 是 | 管道海上段长度 |
+| 出图底图（含九段线） | `data/ChinaMapTHT/` | 是 | 出图 |
+| China TIMES V2.0 CN60 导出表 | 环境变量 `COAL_RETROFIT_TIMES_XLSX`，缺省为作者本机路径 | 否 | 部门目标与工业产量指数 |
+| 用水总量控制指标与水资源公报 | 数值写在 `src/coal_retrofit/constants_water_quota.py` | 是 | 流域取水指标 |
 
-```mermaid
-flowchart TD
-    A["Raw data in data/"] --> B["builders/plants.py"]
-    A --> C["builders/storage.py"]
-    A --> D["builders/network.py"]
-    A --> E["builders/supply.py"]
-    A --> F["builders/water.py"]
-    B --> G["inputs/plants_unit.csv"]
-    B --> H["inputs/plants_hub_100/200/300.csv"]
-    C --> I["inputs/storage_hubs.csv"]
-    D --> J["inputs/pipeline_nodes.csv"]
-    D --> K["inputs/pipeline_candidate_edges.csv"]
-    E --> L["inputs/biomass_supply_curve.csv"]
-    E --> M["inputs/biomass_supply_links_<hub>.csv"]
-    E --> N["inputs/ammonia_supply_curve.csv"]
-    E --> O["inputs/ammonia_supply_links_<hub>.csv"]
-    F --> P["inputs/water_scenarios.csv"]
-    F --> Q["inputs/water_base.csv"]
-    F --> R["inputs/water_nodes.csv"]
-    F --> U["inputs/water_availability.csv"]
-    F --> V["inputs/water_supply_links_<hub>.csv"]
-    G --> S["optimization/model.py"]
-    H --> S
-    I --> S
-    J --> S
-    K --> S
-    L --> S
-    M --> S
-    N --> S
-    O --> S
-    P --> S
-    Q --> S
-    R --> S
-    S --> T["results/<family>/<experiment>/<run_id>/"]
-```
+### 5.2 构建脚本与输入表
 
-### 5.2 原始数据到输入表的具体流程
+| 脚本（`scripts/`） | 构建模块（`builders/`） | 输出（`_indtree/inputs/`） | 现有行数 |
+|---|---|---|---|
+| `build_plant_inputs.py [--hubs]` | `plants.py` | `plants_unit.csv`；加 `--hubs` 另写 `plants.csv`、`plants_unit_hub.csv` | 3 623；350、3 623 |
+| `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
+| `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
+| `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
+| `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 949、61 408 |
+| `build_water_inputs.py` | `water.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 569 |
+| `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
+| `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
+| `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |
 
-#### A. 煤电机组数据
+- 先后：管网读 `plants.csv`、`storage_hubs.csv`、`industry_hubs.csv`；水输入读 `plants.csv`；流域指标读 `industry_sources.csv`
+  （扣出已建模的工业取水）；耗水表读 `water_scenarios.csv`。
+- `build_plant_inputs.py` 缺省只写 `plants_unit.csv`；`--hubs` 才重新聚类、重写每个情景都读的 `plants.csv` 与 `plants_unit_hub.csv`，
+  只在加列或改正数值时用，之后下游全部重解（见该脚本的说明）。
+  `build_storage_inputs.py` 不给 `--offshore-basin-dilation-px` 时不合并海上封存体，得到的不是库里这 89 个汇。
+- `sector_targets_none.csv`（`ST_CP_BASE` 用，各组上限都是自身 2030 年水平）没有构建脚本，随 v7 输入沿用至今。
+- 求解读哪些表以 `optimization/data_prep._input_files` 为准；`plants_unit.csv`、`water_base.csv`、`water_supply_links.csv` 求解不读，
+  `water_scenarios.csv` 不进模型，`--water` 与 `water-members` 用它查成员。各表的列与行数见方法论附录 B.1。
 
-实现位置：
-[plants.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/plants.py)
+### 5.3 输入在模型里的角色
 
-原始来源：
+`optimization/data_prep.prepare_inputs` 把这些表按情景加工成四类对象：
 
-- `data/GEM_with_Cooling_Technology_July2025.xlsx`
+- **决策主体**：煤电 hub（`plants.csv`；机组级到期与毛热耗来自 `plants_unit_hub.csv`）与工业 hub（`industry_hubs.csv`；可捕集份额由
+  `industry_sources.csv` 按点源 CO₂ 加权）。
+- **资源节点**：生物质、绿氢与水节点。hub 到节点的链路在读入时按 200 km 半径现建（生物质与绿氢是 `resource_match_radius_km`，
+  水是 `constants.WATER_MATCH_BUFFER_KM`），多个 hub 竞争同一节点。
+- **封存汇**：`storage_hubs.csv` 给类型、陆海、累计容量与年注入能力。
+- **管网**：`optimization/network.build_runtime_network` 把候选图装成运行时图；源或汇不在图上时补支线（当前输入没有触发），
+  有源到不了任何汇就报错（拦的是读到旧输入）。
 
-处理逻辑：
+## 6. 模型
 
-1. 读取原始机组表
-2. 统一列名口径
-3. 仅保留 `operating` 机组
-4. 提取标准字段：
-   `unit_id / plant_site / capacity_mw / commission_year / combustion / cooling_technology / province / latitude / longitude`
-5. 输出 [plants_unit.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/plants_unit.csv)
+公式、变量定义域与代码位置以 [`docs/方法论.md`](docs/方法论.md) 为准（§3–§9；附录 A 对照代码，附录 B 列参数与出处，附录 C 列变量）。
+这里只给结构与入口。
 
-随后对机组坐标做 `KMeans` 聚类，生成 `100 / 200 / 300` 三档 hub：
+### 6.1 一次求解的流程
 
-- [plants_hub_100.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/plants_hub_100.csv)
-- [plants_hub_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/plants_hub_200.csv)
-- [plants_hub_300.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/plants_hub_300.csv)
+`runner.run` → `optimization/data_prep.prepare_inputs`（读输入、按情景加工）→ `optimization/solver._solve_joint_multi_period`
+（建模、求解、提取）→ `optimization/results_tables`（九张表）与 `optimization/results_workbook`（工作簿）。`solver.py` 的建模顺序：
 
-每个 hub 保留：
-
-- 容量总和
-- 机组数
-- 平均投运年份
-- 主导燃烧方式
-- 主导冷却方式
-- 重心坐标
-
-#### B. 封存汇与注入能力
-
-实现位置：
-[storage.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/storage.py)
-
-目标：
-
-- 把 DSA / EOR 储量与注入能力整理成统一的 storage hub 表
-
-输出：
-
-- [storage_hubs.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/storage_hubs.csv)
-
-关键字段包括：
-
-- `storage_dsa_mt`
-- `storage_eor_mt`
-- `storage_all_mt`
-- `injectivity_dsa_avg_mtpa`
-- `injectivity_eor_avg_mtpa`
-
-这些字段后续直接进入优化器的 `capacity` 与 `injectivity` 约束。
-
-#### C. CO2 候选管网
-
-实现位置：
-[network.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/network.py)
-[network.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/network.py)
-
-原始来源：
-
-- `gas_pipelines.shp`
-- `oil_pipeline.shp`
-
-预处理逻辑分两层：
-
-1. `builders/network.py`
-   把油气管道矢量化为主走廊图，生成：
-   - corridor nodes
-   - corridor edges
-   - hub-to-corridor branches
-   - corridor-to-storage branches
-   - source/sink triangulation candidate edges
-
-2. `optimization/network.py`
-   在求解前把预处理候选图装配成运行时图；
-   如果某些 hub 或 storage 没有接上，会追加 `runtime` fallback edge 保证可达。
-
-标准化输出：
-
-- [pipeline_nodes.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/pipeline_nodes.csv)
-- [pipeline_candidate_edges.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/pipeline_candidate_edges.csv)
-
-关键字段包括：
-
-- `length_km`
-- `corridor_type`
-- `existing_corridor_flag`
-- `edge_class`
-- `source`
-- `year_basis`
-
-#### D. 生物质供给曲线
-
-实现位置：
-[supply.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/supply.py)
-
-原始口径：
-
-- 生物质图层单位：`GJ/m^2`
-
-处理逻辑：
-
-1. 读入生物质栅格
-2. 计算每一行真实面积
-3. 对每个像元做：
-   `biomass_GJ_pixel = biomass_GJ_per_m2 * pixel_area_m2`
-4. 将有资源的像元按较粗空间网格聚合成 `biomass node`
-5. 对每个 plant hub，按缓冲半径匹配可达的 biomass node
-6. 为每个 `hub-node` 生成一条候选供给 link，后续在优化中由多个 hub 竞争共享 node 资源
-
-输出：
-
-- [biomass_supply_curve.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_curve.csv)
-- [biomass_supply_links_100.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_100.csv)
-- [biomass_supply_links_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_200.csv)
-- [biomass_supply_links_300.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/biomass_supply_links_300.csv)
-
-当前 README 应特别说明的研究边界：
-
-- 不考虑土地竞争
-- 质量换算使用 `15 GJ/t biomass`
-- 成本口径以 `CNY/GJ` 表示
-- 供给约束发生在共享 `biomass node`，不是省级总量
-- 竞争关系通过 `hub -> biomass node` link flow 显式表示
-
-#### E. 绿氢 / 绿氨供给曲线
-
-实现位置：
-[supply.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/builders/supply.py)
-
-原始口径：
-
-- `h2_production = kg H2/yr/m^2`
-- `lcoh = USD/kg H2`
-
-处理逻辑：
-
-1. 按像元面积把氢产量转为像元年产氢量：
-   `h2_kg_pixel = h2_kg_per_yr_per_m2 * pixel_area_m2`
-2. 将资源像元按年份、资源类型、电解技术和粗空间网格聚合成 `ammonia node`
-3. 在每个节点内用产量加权 `lcoh` 计算氢成本
-4. 折算为氨：
-   `nh3_supply_kg = h2_supply_kg / NH3_H2_RATIO`（0.18；模型的节点上限按氢计，煤电用氨按这一比例折成氢扣减）
-5. 每个 plant hub 只连接距离最近的若干个 ammonia node
-6. 当前 builder 里写入氨成本下界：
-   `nh3_cost_lb = h2_cost_component + storage_adder + transport_adder`
-7. 同时保留 `HB` 电耗字段，供后续进一步货币化
-
-输出：
-
-- [ammonia_supply_curve.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_curve.csv)
-- [ammonia_supply_links_100.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_100.csv)
-- [ammonia_supply_links_200.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_200.csv)
-- [ammonia_supply_links_300.csv](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/inputs/ammonia_supply_links_300.csv)
-
-关键点：
-
-- 年份来自 `data/H2/<year>/`
-- 成本年份直接等于文件夹年份
-- 绿氨运输在当前模型中只作为低阶加项，而不是独立网络
-- 供给约束发生在共享 `ammonia node`，不是全国市场
-- 多个 hub 会竞争同一个 ammonia node 的当年可供量
-
-#### F. 水约束输入
-
-> 本小节 2026-10-01 按当前代码重写；当前求解树的输入在 `_indtree/inputs/`。
-
-实现位置：[builders/water.py](src/coal_retrofit/builders/water.py)（节点与径流）、
-[builders/water_quota.py](src/coal_retrofit/builders/water_quota.py)（流域取水指标）、
-[builders/water_use.py](src/coal_retrofit/builders/water_use.py)（流域生活与灌溉耗水）
-
-原始来源：
-
-- `data/water/*.nc`：ISIMIP3b 中 CWatM 与 WaterGAP2-2e 的逐月 qtot 与潜在耗水，耗水文件由
-  [download_isimip_water_use.py](scripts/download_isimip_water_use.py) 下载
-- `data/water/*historical*qtot*.nc`：偏差校正的依据，每个水文模型 × GCM 组合一个，用其 1956–2014 年的流域径流对照
-  `constants.OFFICIAL_BASIN_WATER_1E8_M3`（1956–2016 年均值）；须与同组合的 qtot 文件同一网格，缺文件时该成员的校正因子
-  取 1.0、不报错。4 个新增 GCM 的 qtot 与 historical 由 [download_isimip_extra_gcms.py](scripts/download_isimip_extra_gcms.py)
-  下载，gfdl-esm4 的没有下载脚本
-- `data/ChinaBasins/basin_l1.gpkg`：水资源一级区（模型用 9 个，代码 A、C–H、J、K）
-- 用水总量控制指标（国办发〔2013〕2号 附件1）与 2025 年水资源公报，数值在
-  [constants_water_quota.py](src/coal_retrofit/constants_water_quota.py)
-
-| 入口脚本 | 输出 | 内容 |
+| 步 | 函数（模块，`optimization/`） | 内容 |
 |---|---|---|
-| [build_water_inputs.py](scripts/build_water_inputs.py) | `water_scenarios.csv` | 20 个气候成员（水文模型 × GCM × SSP）及各自的 qtot 文件 |
-| | `water_base.csv` | SSP1-2.6 的 10 个成员 × 4 个规划年；求解不读 |
-| | `water_nodes.csv` | 0.5° 格网粗化到 2°（`constants.WATER_COARSE_GRID_DEGREES`），只留全年径流（`available_water_m3_per_year`）在某个成员、某个规划年 > 0 的节点（现 373 个），带省份与一级流域 |
-| | `water_availability.csv` | 节点 × 成员 × 规划年的全年与枯水期径流（m³/yr），已作流域偏差校正，`bias_factor` 列供关掉校正时除回 |
-| | `water_supply_links.csv` | hub 到 200 km 内各节点的链路（现 1 569 条）；求解不读，`optimization/data_prep._prepare_water` 按同一规则现算 |
-| [build_water_basin_caps.py](scripts/build_water_basin_caps.py) | `water_basin_caps.csv` | 流域 × 规划年的用水总量指标余量（取水口径） |
-| [build_water_use.py](scripts/build_water_use.py) | `water_basin_use.csv` | 成员 × 规划年 × 流域的生活与灌溉耗水（720 行） |
+| 1 | `build_model_index`（`model_index`） | 节点编号、源 / 汇 / 管网节点集合、关联矩阵、各部门 2030 年基线 |
+| 2 | 逐年 `add_year_block`（`model_year`；煤电约束在 `constraints`，资源在 `model_resources`，工业在 `model_industry`） | 每个规划年的变量与年内约束 |
+| 3 | `add_inter_period_constraints`、`add_capacity_vintages`（`model_linking`，分代在 `vintage`） | 跨期不可逆与单调性；分代能力的在役与到寿命退出 |
+| 4 | 逐年先 `add_capacity_constraints`（`model_linking`）后 `add_year_costs`（`model_costs`） | 当年的管道与封存容量；年度运行成本、资源采购、运输与封存、一次性 capex、松弛罚项，以及退役流量与自愿退役速率上限（`retirement`） |
+| 5 | `add_retired_rebuild_offset`（`retirement`）、`_add_salvage_credit`（`salvage`） | 期末已关停的重建装机从残值台账扣回；期末残值抵扣 |
+| 6 | `solver_extract` | 求解后提取逐年解；求解失败时给同结构的零填充结果 |
 
-这里需要注意（详见 [方法论](docs/方法论.md) §7.1–7.3）：
+逐年系数在 `plant_matrices`（煤电）、`industry_matrices`（工业）、`water_access`、`resource_access`，由 `year_matrices` 汇成一年的
+全部系数。变量与约束的创建顺序决定 Gurobi 的模型指纹，改了顺序，新旧结果就不可比。
 
-- 节点层（生态流量，耗水口径）：节点可用量 = max(径流 × 0.20 − 生活与灌溉耗水按节点径流份额摊到的量,
-  归到该节点的煤电不改造同年耗水) × `water_multiplier`；hub 可从 200 km 内的各个节点取水，多个 hub 竞争同一节点。
-- 流域层（官方指标，取水口径）：煤电与工业取水按厂址所在流域汇总，不超过指标余量 × `water_multiplier`；
-  `apply_basin_cap=False` 时关掉。两层都带计罚的松弛（方法论式 (29)、(33)）；`water_mode="no_water"` 时两层都不加。
-- 煤电水强度由 `builders/plants.py` 逐机组按蒸汽参数与冷却方式查表（Wang 2023）、按装机加权到 hub；耗水进节点层，
-  取水进流域层，定额只用于水价。这仍是厂址局地的代理，不是完整的流域调度模型。
+### 6.2 决策变量
 
-### 5.3 Phase A 总调度
+- **煤电 hub**：六条路径的份额；掺烧档位（生物质与 BECCS 0.10 / 0.15 / 0.20，0.20 档只对 CFB 装机开放，煤粉炉上限 0.15；掺氨 0.10–0.50 五档）；
+  空冷改造；到期机组的原址重建。`ST_` 系份额是连续变量，且恰好分摊到各掺烧档位上。
+- **工业 hub**：不改造、CCS、氢路线三条路线的份额。
+- **管网**：各期各边新建管道的根数（规格 2、5、20 Mt/yr，每期每边最多 2 根）与建设标志，各边的双向流量。
+- **封存**：各汇各期的注入量。
+- **资源**：各链路的生物质、煤电用氨与工业用氢（氨与氢共用绿氢节点）流量，煤电各水链路的用水量。
+- **缺口与松弛**：部门目标缺口，注入、管道、资源与水的松弛；都按高罚价进目标，正常应为零，非零就是那条约束被放宽了，
+  读结果前逐项核查（方法论 §3.5）。
 
-统一入口在：
-[phase_a.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/pipelines/phase_a.py)
+### 6.3 目标函数
 
-执行顺序是：
+规划期的系统贴现净成本最小（方法论 §3.2 式 2）：年度项乘年金权重与折现因子，一次性支出只乘折现因子，期末未折旧的 capex 按直线
+残值在 2070 年折现抵扣；贴现率缺省 6%，基年 2025，每期 10 年。
 
-1. plants unit
-2. plant hubs
-3. storage hubs
-4. network inputs
-5. supply inputs
-6. water inputs
+- **年度项**：煤电燃料与基线运维减售电收入、技术增量运维、额外能耗、捕集固定运维、资源采购与运输（替代燃料省下的煤费作抵扣）、
+  水费、CO₂ 运输与封存（含在役管道的固定运维）、工业路线运行费用；碳价为正时，煤电与工业的残余排放都计碳成本；目标缺口与松弛的罚项。
+- **一次性项**：改造 capex（捕集岛、掺烧、空冷与工业路线，计在新增能力上）、到期机组原址重建 capex、提前退役的搁浅资产、
+  管道 capex。
+- **口径**：不用平准化每吨捕集成本（CLAUDE.md §二.7）。煤电按增量口径，减去"全部维持不改造运行"的参照净运行成本；参照与决策无关，
+  只平移目标值，最优解不变，但相对间隙随之变（方法论 §3.2、§9.1）。
 
-运行命令：
+### 6.4 主要约束
+
+| 约束 | 方法论 |
+|---|---|
+| 煤电份额守恒、机组到期与原址重建 | §4.2 |
+| 掺烧档位与线性化 | §4.3 |
+| 空冷改造与耗水 | §4.5 |
+| 跨期不可逆、自愿退役速率上限 | §4.6 |
+| 工业路线份额、路线不可逆与能力到期 | §5.1、§5.4 |
+| 改造能力按建设年分代、到寿命退出 | §3.3 |
+| CO₂ 流量守恒；管道在役容量（30 年寿命内的新建管，每边缺省上限 40 Mt/yr） | §6.1、§6.2 |
+| 汇的年注入上限与累计容量；全国注入部署上限 210 / 750 / 1 020 / 1 410 Mt/yr | §6.3 |
+| 生物质与绿氢的节点上限、全国上限 | §7.1 |
+| 节点生态可用水量（煤电耗水） | §7.2 |
+| 流域取水总量指标（煤电与工业取水） | §7.3 |
+| 部门碳目标：分部门上限或合计上限（`sector_target_mode`） | §7.4 |
+
+### 6.5 求解设置
+
+- 线程固定 8：Gurobi 只在模型、参数与线程数都不变时可复现，要相减的两次求解必须同线程数（CLAUDE.md §二.1）。
+- `ST_` 系 MIPGap 2%（`OptimizationScenario` 缺省 1%），MIPFocus 1；时限缺省 36 000 s。
+- 热启动（`warm_start = "lp_relax"`，`ST_` 系都设了）：先解 LP 松弛、写 `.sol`（时限 1 800 s），再按它给整数变量设 MIP start 解 MIP；
+  第 1 步没有解就不跑第 2 步、不写结果（方法论 §9.2；`runner.run`）。
+- 可用解包括最优、次优、解数上限终止与有可行解的时限终止；没有可用解时目标记为 NaN，`run` 的退出码为 3。
+
+## 7. 情景与运行
+
+### 7.1 登记表
+
+情景登记在仓库根 `scenarios/*.toml`，格式见 `src/coal_retrofit/scenarios.py` 的模块说明：`extends` 继承，`abstract` 只作基底，
+`tree` 是求解树，`[名.scenario]`、`[名.assumptions]` 覆盖 `OptimizationScenario`、`OptimizationAssumptions` 的字段。公共基底
+`ST_COMMON`：求解树 `_indtree`、MIPGap 2%、部门目标 `times_cn60`、利用小时 3 600 / 3 100 / 2 000 / 1 500 h、LP 松弛热启动。
+
+| 情景 | 内容 |
+|---|---|
+| `ST_BASE` | 分部门碳目标，零碳价，无水约束 |
+| `ST_TOT_BASE` | 与 `ST_BASE` 只差碳目标入口：四组合计一条总量上限 |
+| `ST_WA_cwatm_126_dry_oq` | 与 `ST_BASE` 只差水：节点与流域两层水约束，CWatM / GFDL-ESM4 / SSP1-2.6 枯水期 |
+| `ST_CP_BASE` | 碳价对照：120 / 500 / 880 / 1 260 元/t，煤电与工业同价；部门上限不收紧 |
+
+### 7.2 命令
 
 ```powershell
-python scripts/run_phase_a.py
+python -m coal_retrofit list                                          # 能求解的情景
+python -m coal_retrofit show ST_WA_cwatm_126_dry_oq                   # 解析后的全部参数，标出与缺省不同的项
+python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq           # 两个情景的参数差
+python -m coal_retrofit run ST_BASE --threads 8                       # 求解并落盘
+python -m coal_retrofit run ST_BASE --water cwatm/gfdl-esm4/ssp370 --season dry
+python -m coal_retrofit run ST_BASE --set scenario.discount_rate=0.05 --as ST_BASE_dr5
+python -m coal_retrofit water-members                                 # 20 个水文成员，逐个核数据
 ```
 
-### 5.4 输入在模型里的抽象角色
-
-从优化器视角看，Section 5 的所有输入最终会被抽象成四类对象：
-
-- `decision hubs`
-  煤电 plant hubs，是路径选择发生的位置
-- `resource nodes`
-  biomass / ammonia / water 的共享供给节点，是资源竞争发生的位置
-- `storage hubs`
-  CO2 最终注入的位置
-- `candidate edges / pairs`
-  CO2 可走的候选边，以及 hub-storage 配对
-
-所以这些输入最终都在回答三个问题：
-
-- 哪些 hub 可以改造成哪条路径
-- 这些 hub 可以从哪些共享资源节点取量
-- 捕集后的 CO2 可以沿哪些候选边送到哪些 storage hub
-
-## 6. 算法实现细节
-
-这一部分对应优化核心：
-[model.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/model.py)
-
-### 6.1 模型类型
-
-当前实现不是单一一种模型，而是两条求解路径：
-
-- `joint`
-  全局多期 `MILP`
-- `sequential`
-  逐年滚动的 `LP + MILP` 对照解
-
-其中：
-
-- `joint` 会把全部规划年份放进同一个 Gurobi 模型里一次性联立求解
-- `sequential` 仍保留为对照模式，先定路径，再在每个年份单独配网络
-
-这意味着当前已经有显式的管网离散选边，但还不是完整工程级网络设计模型；例如还没有离散管径库、机组启停、施工停机与时序运行约束。
-
-### 6.2 Scenario 映射
-
-实验层先注册 scenario，再由优化层做参数映射。
-
-实现位置：
-[catalog.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/experiments/catalog.py)
-[model.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/model.py#L258)
-
-例如：
-
-- `EXP-B2` 通过 `pathway_disable` 做路由删除
-- `EXP-B3` 切换 `solve_mode = joint / sequential`
-- `EXP-B4` 改 `hub_count`
-- `EXP-B5` 改 `storage_scope / injectivity_multiplier`
-- `EXP-W*` 改 `water_mode / water_multiplier / forced_cooling_technology`
-- `EXP-R1` 改成本乘子
-- `EXP-R2` 改 `capture_rate / biomass_blend_ratio / ammonia_blend_ratio`
-- `EXP-R4` 改时间离散方式
-
-### 6.3 决策变量
-
-全局多期联合模型 `_solve_joint_multi_period(...)` 中，每个规划年份都会生成一组变量。核心变量包括：
-
-- `share[h, p]`
-  每个煤电 hub 在五条路径上的分配份额
-
-- `ship_mt[y, pair]`
-  年份 `y` 下，hub 到 storage pair 的 CO2 运输量
-
-- `build_edge[y, edge] ∈ {0,1}`
-  年份 `y` 下，该候选边是否被选中扩容
-
-- `new_cap_mtpa[y, edge]`
-  年份 `y` 下，该候选边新增容量
-
-- `biomass_flow_gj[y, link]`
-- `ammonia_flow_kg[y, link]`
-- `water_flow_m3[y, link]`
-  三类共享资源在 `hub -> resource node` 连接边上的流量
-
-- `target_shortfall_mt[y]`
-  年份 `y` 的减排目标缺口 slack
-
-- `biomass_slack_gj`
-- `h2_slack_kg`
-- `water_slack_m3`
-- `injectivity_slack_mtpa`
-- `storage_slack_mt`
-- `edge_slack_mtpa`
-
-这些 slack 都被高惩罚系数压制，用来诊断不可行性。
-
-### 6.4 目标函数
-
-目标函数最小化以下成本之和：
-
-- 路径固定成本
-- 捕集成本
-- 生物质成本
-- 氨成本
-- 运输与封存成本
-- 管道扩容 CAPEX
-- 各类 slack penalty
-
-在代码里分别写成：
-
-- `fixed_cost`
-- `capture_cost`
-- `biomass_cost`
-- `ammonia_cost`
-- `ship_cost`
-- `pipe_capex`
-- `slack_cost`
-
-在 `joint` 多期模型里：
-
-- 运行类成本按对应规划区间长度加权
-- 管网扩容 CAPEX 保持为投资项，不再额外按区间重复计费
-- 总目标是所有规划年的加权成本之和
-
-### 6.5 主要约束
-
-联合模型里已经实现的关键约束包括：
-
-1. hub 路径份额守恒
-   `sum_p share[h,p] = 1`
-
-2. 减排目标
-   总减排量加目标 slack 不得低于该年目标
-
-3. CO2 运输配对守恒
-   每个 hub 捕集量必须经 hub-storage pair 发出
-
-4. 注入能力约束
-   每个 storage hub 的年注入量不能超过 `injectivity_mtpa`
-
-5. 累计封存容量约束
-   跨期累计注入量不能超过 `available_capacity_mt`
-
-6. 边容量约束
-   每条 edge 的流量不能超过：
-   `existing stock + new capacity + edge slack`
-
-7. 管网选边二进制约束
-   `build_edge[y,e] ∈ {0,1}`
-   且：
-   `new_cap[y,e] <= max_new[e] * build_edge[y,e]`
-   `new_cap[y,e] >= min_build[e] * build_edge[y,e]`
-
-   这保证一条边如果被选中扩容，就至少形成一条标准管道量级的有效新增能力，而不是任意小的连续增量。
-
-8. 生物质供给约束
-   每个 hub 的 biomass demand 必须由 `hub -> biomass node` flow 满足；
-   每个 biomass node 的总流出不得超过该 node 的 `available_gj`
-
-9. 绿氨供给约束
-   每个 hub 的 ammonia demand 必须由 `hub -> ammonia node` flow 满足；
-   每个 ammonia node 的总流出不得超过该 node 当年的 `nh3_supply_kg_per_year`
-
-10. 水约束
-   每个 hub 的 cooling-water demand 必须由 `hub -> water node` flow 满足；
-   每个 water node 的总耗水不得超过该 node 当年的 `available_water_m3`
-
-11. 跨期累计管网容量约束
-   后续年份可用边容量等于：
-   `initial stock + 截至 year y 仍在寿命内的新增容量`（`y − 建成年 < pipeline_lifetime_years`）；
-   累计新增上限同样只数在役的管，到寿命的管可在原址重铺（2026-09-23 起）
-
-12. 跨期累计封存容量约束
-   截至年份 `y` 的累计注入量不能超过初始可用封存容量
-
-### 6.6 两种求解模式
-
-#### Joint mode
-
-实现位置：
-[model.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/model.py#L859)
-
-特点：
-
-- 一次性联立全部规划年份
-- 同时决定路径份额、CO2 去向和边扩容
-- 通过累计扩容和累计封存约束，把年份之间真正耦合起来
-- 是当前默认模式
-
-#### Sequential mode
-
-实现位置：
-[model.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/model.py#L1171)
-
-逻辑：
-
-1. 先在简化 transport cost 下做 path-stage
-2. 再固定捕集量做 network-stage
-
-这个模式主要用于 `EXP-B3` 对照，用来回答“全局联合优化值不值”。
-
-### 6.7 时间维度处理
-
-默认是稀疏规划点：
-
-- `2040`
-- `2050`
-- `2060`
-
-但 `EXP-R4` 已支持更细时间表达：
-
-- `three_stage`
-- `annual_static`
-- `annual_rolling`
-
-当前时间维度有两种解释：
-
-- 在 `joint` 中，`2040/2050/2060` 会被一次性联立进同一个模型
-- 在 `sequential` 中，仍通过 `SolveState` 做逐年滚动传递
-
-`SolveState` 有两个作用：
-
-- 作为模型初始条件，提供既有边容量增量 stock 和初始剩余储量
-- 在 `sequential` 中，继续承担逐年滚动传递
-
-### 6.8 网络实现细节
-
-运行时网络在：
-[optimization/network.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/optimization/network.py)
-
-它做了三件事：
-
-1. 读取预处理好的 `pipeline_nodes.csv` 和 `pipeline_candidate_edges.csv`
-2. 构造 `networkx` 图并计算最短路径 pair
-3. 为每个 hub 保留 top-k storage pair
-
-当前还有一个重要保底机制：
-
-- 如果某个 hub 或 storage 在预处理图中不可达，会创建 `runtime_direct_fallback` 边
-
-这保证实验不会因为局部图断裂而直接不可行，但也意味着：
-
-- 当前网络结果适合做研究分析
-- 不应直接等同于最终工程选线
-
-### 6.9 结果表怎么来的
-
-优化器对大多数 scenario 固定输出以下 artifact：
-
-- `overview.csv`
-- `parameters_snapshot.csv`
-- `pathway_shares.csv`
-- `province_pathways.csv`
-- `network_edges.csv`
-- `storage_utilization.csv`
-- `resource_use.csv`
-- `cost_breakdown.csv`
-- `sanity_checks.csv`
-- `summary.md`
-
-例外是 `EXP-R6`，它只输出 `assumption_matrix.csv` 和 `summary.md`。
-
-这些表分别回答：
-
-- 总体求解状态与总成本
-- 参数快照
-- hub 级路径配置
-- 省级路径聚合
-- 边流量、是否被选中扩容、扩容量
-- storage 使用与剩余容量
-- 共享供给节点层面的资源使用与竞争
-- 成本分解
-- 异常诊断
-- 人读摘要
-
-其中 `network_edges.csv` 里最值得关注的新列是：
-
-- `build_selected`
-  该边在本年是否被二进制选中扩容
-- `edge_active`
-  该边在本年是否承流或新增了容量
-
-## 7. 实验系统
-
-### 7.1 实验注册
-
-实现位置：
-[experiments](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/src/coal_retrofit/experiments)
-
-实验不是写死在单独脚本里，而是由 registry 管理。这样新增实验时通常只需要：
-
-1. 在 catalog 中增加 scenario
-2. 在 scenario 映射层添加参数解释
-3. 复用同一个求解器和结果契约
-
-### 7.2 统一运行
-
-运行入口：
-[run_experiment.py](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/scripts/run_experiment.py)
-
-示例：
-
-```powershell
-python scripts/run_experiment.py --experiment-id EXP-B1 --output-dir results/baseline
-python scripts/run_experiment.py --experiment-id EXP-W4 --output-dir results/water
-python scripts/run_experiment.py --experiment-id EXP-R1 --output-dir results/robustness
-```
-
-当前实验族如下：
-
-- `EXP-B1`
-  五路径全局多期基准解
-
-- `EXP-B2`
-  删路径 / 单路径对照
-
-- `EXP-B3`
-  `joint` 与 `sequential` 对照
-
-- `EXP-B4`
-  `100 / 200 / 300` hub 聚类敏感性
-
-- `EXP-B5`
-  `DSA only / DSA+EOR / injectivity discount`
-
-- `EXP-W1`
-  冷却方式下的基准水约束
-
-- `EXP-W2`
-  极端水情景扫描
-
-- `EXP-W3`
-  BECCS 水压力
-
-- `EXP-W4`
-  `no_water / base_water / high_water_stress`
-
-- `EXP-R1`
-  成本敏感性矩阵
-
-- `EXP-R2`
-  路径参数敏感性矩阵
-
-- `EXP-R3`
-  结构性假设检查
-
-- `EXP-R4`
-  时间离散方式对照
-
-- `EXP-R5`
-  sanity checks
-
-- `EXP-R6`
-  假设敏感性矩阵
-
-按问题类型看，这些实验族大致可以理解成：
-
-- `EXP-B*`
-  基准解、路径消融、联合与顺序对照、聚类敏感性、封存口径敏感性
-- `EXP-W*`
-  冷却方式、水情景和水强度边界
-- `EXP-R*`
-  成本、路径参数、结构性假设和时间离散方式稳健性
-
-### 7.3 结果落盘结构
-
-每次实验会落到：
+- 已有同名结果时，`run` 在求解之前就拒绝，`--force` 才覆盖。
+- `--set 节.字段=值` 必须配 `--as 结果名`；结果名不许与登记情景同名（不分大小写）。
+- `--water 水文模型/GCM/SSP [--season annual|dry] [--targets sector|total]` 把水文成员、季节与碳目标入口并到登记情景上；不给 `--as`
+  时结果名拼成 `<情景>_<水文模型>_<GCM>_<SSP>_<季节>[_<目标>]`。`ST_BASE --water cwatm/gfdl-esm4/ssp126 --season dry` 与
+  `ST_WA_cwatm_126_dry_oq` 参数相同。有水约束且指定了成员的 `run` 在求解之前核这个成员的数据，不全就拒绝。
+- `--mip-gap` 只放宽这一次求解的 gap，结果名不变；seed 复现不要用。`--tree` 换求解树，`--sol-dir` 换 `.sol` 的目录。
+- 退出码：0 有可用的解；1 登记表、`--set`、`--water` 或环境变量写错、求解之前就拒绝，或未接住的异常；2 命令行写错；3 没有可用的解。
+- 敏感性（贴现率、煤价乘子、煤电容量电价、部分负荷修正、水泥余热份额）不进登记表，命令见 `_indtree/README.md`。
+
+### 7.3 两次求解相减之前
+
+1. `python -m coal_retrofit diff A B`：两个情景只差该差的字段。
+2. `python scripts/check_run_provenance.py --pair A B`：核两次已保存的求解。任一边缺结果、缺溯源（`resolved` 或其中的 `code`）、
+   模型分段号不是当前代码的、没有可用的解，两边都是 LP 松弛或只有一边是，或两边的碳价、贴现率、容量电价、同一输入文件的摘要、
+   线程数、MIPFocus、是否热启动不一致，都判不过（退出码 1）；提交号不同只告警。脚本缺省读 `_indtree/results/`，读库里的结果加 `--results results/solved`。
+3. 差值只按可证区间报告：`lo = (LB_t − INC_c)/INC_c`，`hi = (INC_t − LB_c)/LB_c`，LB 用结果里记的目标下界（CLAUDE.md §二.3）。
+
+## 8. 结果落盘与读取
+
+`run` 写到求解树的 `results/` 下（`ST_` 系即 `_indtree/results/`）：
 
 ```text
-results/<family>/<experiment_id>/<run_id>/
-├─ experiment.json
-├─ scenarios.csv
-└─ scenarios/
-   └─ <scenario_id>/
-      ├─ context.json
-      ├─ result.json
-      └─ artifacts/
-         ├─ overview.csv
-         ├─ pathway_shares.csv
-         ├─ ...
-         └─ summary.md
+<结果名>.json        目标函数、求解质量、逐年摘要与 resolved（溯源）
+<结果名>.lp.sol      热启动第 1 步的 LP 松弛解（路径含非 ASCII 字符时改写到系统临时目录）
+<结果名>/
+├─ sources.csv  source_routes.csv  sinks.csv  network.csv  resources.csv
+├─ resource_flows.csv  costs.csv  system.csv  checks.csv
+└─ ccs_results.xlsx   参照 ChinaCCS.xlsm 版式的结果工作簿，数字取自同一次求解
 ```
 
-## 8. 当前结果能支持什么，不该支持什么
+| 表 | 一行是 | 主要内容 |
+|---|---|---|
+| `sources.csv` | 年 × 源（煤电 hub、工业 hub） | 活动量、基线排放、减排、剩余排放、捕集、各路线份额、资源与用水 |
+| `source_routes.csv` | 年 × 源 × 路线 | 份额、活动量、减排与捕集拆到各路线 |
+| `sinks.csv` | 年 × 封存汇 | 汇型、陆海、注入上限、注入量、累计注入与剩余容量、封存单价与 EOR 抵扣 |
+| `network.csv` | 年 × 管段 | 双向流量与净流向、新建与在役容量、各管径档在役根数、海上段长度 |
+| `resources.csv` | 年 × 资源节点（含流域取水指标） | 用量、可用量、松弛 |
+| `resource_flows.csv` | 年 × 资源链路 | 流量、到厂价、采购费 |
+| `costs.csv` | 年 × 实体 × 成本类别 × 细项 | 不折现的当年值 `cost_cny` 与进目标函数的折现值 `cost_discounted_cny` |
+| `system.csv` | 年 × 成本类别 | 全系统成本，含松弛罚项（`slack_penalty`） |
+| `checks.csv` | 年 × 检查项 | 合理性检查与成本对账 |
 
-当前系统已经足够支持：
+- 数量的单位写在列名后缀（`_mtpa` Mt/yr、`_mt` Mt、`_gj`、`_kg`、`_m3`、`_mw`、`_km`、`_cny`），混单位的列另有单位列；CSV 一律 utf-8-sig。
+  各列的口径见 `optimization/results_tables.py` 的模块说明与方法论 §9.4。
+- `<结果名>.json`：`global_objective_cny`、`solver_quality`（状态、目标值与目标下界、gap、模型指纹与规模、线程、种子、输入摘要
+  `digest_*`）、`years`（逐年路径份额、减排、缺口与成本分项）与 `resolved`（解析后的全部参数、登记文件、求解树、`--set` 覆盖项、
+  运行选项、`COAL_RETROFIT_*` 环境变量、热启动、读了哪些输入文件、求解时的提交号 `code` 与模型分段号 `model_segment`）。
+  代码注释与文档里说的 result.json 都指这个文件。
+- 库里出图与对账：把 `<结果名>.json` 与 `<结果名>/` 原样拷进 `results/solved/`（见该目录的 README）。读结果时核分段号，
+  与当前代码不同的结果，出图脚本与 `check_run_provenance.py --pair` 都拒绝。
 
-- 研究流程复现
-- 多实验族机制比较
-- 敏感性与稳健性分析
-- 图表与论文故事线构建
+## 9. 结果能支持什么、不能支持什么
 
-但还不应过度解释为：
+能支持：同一模型分段、同一输入版本下，比较情景之间的路径结构与成本差的可证区间；查看各源、汇、管段与资源节点逐年的配置，以及
+与目标函数对得上账的成本拆分。
 
-- 最终工程部署模型
-- 最终推荐 CO2 管道路由
-- 已经充分竞争后的“五路径平衡结果”
+使用规则：
 
-目前最需要诚实说明的限制是：
+1. 不同模型分段、不同输入版本的结果不得相减（CLAUDE.md §二.6、§二.7）。
+2. `ST_` 系 MIPGap 2%，差值只能按可证区间报告（§7.3），不得直接相减（CLAUDE.md §二.2）。
+3. 差值要显著高于简并度地板才写进结论（CLAUDE.md §二.4）。
+4. 引用成本差之前先看松弛：`system.csv` 的 `slack_penalty` 行与 `sinks`、`network`、`resources` 各表的松弛列；有 big-M 松弛，
+   差值里就混着罚参数，而不是价格。
+5. `ST_CP_BASE` 的目标函数含碳价支出，又改了部门目标：不能与 `ST_BASE` 直接相减，也识别不出碳价的单因素效应。贴现率、容量电价
+   不同的两次运行目标口径不同，只能比路径结构。
+6. 目标值是当前系统边界下的净成本（煤电增量口径，工业只计减排路线的成本），不是全社会总成本，也不是完整的工业生产成本。
 
-1. `joint` 虽然已经包含管网二进制选边，但整体仍不是完整工程级基础设施设计模型
-2. 运行时网络仍可能出现 `runtime_direct_fallback`
-3. `single_route_lock_in` 在多组实验中持续告警
-4. 当前参数空间下，`biomass / BECCS / ammonia` 尚未真正进入主解竞争
+已知限制：
 
-## 9. 快速上手
+- 确定性优化；产量与利用小时外生，没有需求价格弹性与逐小时调度；水文是边界条件，不进入优化。
+- 工业用水只进流域取水约束，不受水节点上限约束。
+- 候选管网是研究用的备选集，管网结果不等于工程选线。
+- 代码里标 `⚠ 假设` 的参数还没有同口径出处；文献值与现值的对照见方法论附录 B 与 `docs/参数来源索引_20260930.md`。
 
-### 9.1 生成输入
+## 10. 快速上手
 
 ```powershell
-python scripts/run_phase_a.py
+python -m pip install -e . pytest
+python -m pytest
+python -m coal_retrofit list
+python -m coal_retrofit show ST_BASE
+
+# 作者本机（完整 Gurobi 许可）：求解，再把结果拷进 results/solved/
+python -m coal_retrofit run ST_BASE --threads 8
+python -m coal_retrofit run ST_WA_cwatm_126_dry_oq --threads 8
+
+# 出图（中英两版，写到 _indtree/results/figures/）与比较前的核对
+python scripts/plot_fig2_candidate_network.py
+python scripts/plot_fig3_power_pathways.py --scenario ST_BASE
+python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq --results results/solved
 ```
 
-### 9.2 跑一个基准实验
+| 图 | 脚本（`scripts/`） | 画什么 |
+|---|---|---|
+| 1 | `plot_fig1_sources_sinks.py` | 排放源与封存汇（输入） |
+| 2 | `plot_fig2_candidate_network.py` | 候选 CO₂ 管网（输入） |
+| 3 | `plot_fig3_power_pathways.py` | 煤电改造路径 |
+| 4 | `plot_fig4_industry_routes.py` | 工业减排路线 |
+| 5 | `plot_fig5_sector_targets.py` | 部门排放与碳目标 |
+| 6 | `plot_fig6_co2_network.py` | CO₂ 管网与封存 |
+| 7 | `plot_fig7_water.py` | 流域取水指标与空冷改造 |
+| 8 | `plot_fig8_industry_abatement.py` | 工业减排量与捕集量 |
+| 9 | `plot_fig9_storage.py` | CO₂ 封存按汇型与陆海汇总 |
+| 10 | `plot_fig10_costs.py` | 成本构成 |
 
-```powershell
-python scripts/run_experiment.py --experiment-id EXP-B1 --output-dir results/baseline
-```
+- 图 1、图 2 只读输入，不用先求解；图 3–10 读求解结果，缺省读 `results/solved/ST_WA_cwatm_126_dry_oq/`，`--scenario` 给结果名或路径。
+  各脚本开头写了图含义、读图注意、数据与自检。
+- `--lang zh|en|both` 缺省两版都出，英文版文件名加 `_en`。出图前先与模型的账对一遍，对不上就报错、不出图。
+- `python scripts/render_version.py --version <版本>` 重画全部图，把图与 `_indtree/results/` 下的结果拷到 `results/figures/<版本>/`；
+  版本目录的 README 由人读过图之后写（CLAUDE.md §五）。
 
-当前 `EXP-B1` 会生成一个多期 baseline scenario，并在 artifact 中输出按 `year` 展开的长表。
+## 11. 相关文档
 
-### 9.3 生成结果摘要
-
-```powershell
-python scripts/summarize_results.py results/baseline/EXP-B1/<run_id> -o results/reviews/exp_b1_summary.md
-```
-
-## 10. 相关文档
-
-- [research-proposal.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/research-proposal.md)
-- [plan.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/plan.md)
-- [project-architecture.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/project-architecture.md)
-- [notes.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/notes.md)
-- [task_plan.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/task_plan.md)
-- [figure_storyline_plan.md](/C:/Users/admin/OneDrive/文档/000.%20Paper%20work/煤电改造claude/results/reviews/figure_storyline_plan.md)
-
-## 11. 下一步建议
-
-- 继续净化网络结果中的 fallback edge 表达
-- 为替代燃料路径补充更强的竞争性参数化
-- 按 `figure_storyline_plan.md` 正式生成 7 张主图
-- 在现有连续型原型之上，进一步推进到更强的网络设计模型
+| 文档 | 内容 |
+|---|---|
+| [`docs/方法论.md`](docs/方法论.md) | 模型的方法论：数理表述、各部门方法、情景与求解；附录对照代码、列全部参数与出处。与代码同步维护（CLAUDE.md §二.8） |
+| [`_indtree/README.md`](_indtree/README.md) | `ST_` 系求解树：为什么另起一棵树、输入怎么拼的、求解命令与敏感性命令、历次求解状态 |
+| [`results/solved/README.md`](results/solved/README.md) | 求解结果怎么拷进库 |
+| [`docs/参数来源索引_20260930.md`](docs/参数来源索引_20260930.md) | 参数的来源、页码与口径限制（方法论附录 B 的编号） |
+| [`docs/工业联合减排实现说明.md`](docs/工业联合减排实现说明.md) | 工业侧的实现与历次口径变更（§9 各小节） |
+| [`docs/工业部门参数溯源.md`](docs/工业部门参数溯源.md) | 工业参数的溯源 |
+| [`docs/官方指标口径水预算.md`](docs/官方指标口径水预算.md) | 流域取水指标口径的水预算 |
+| `docs/参数审查_*_20260930.md`、`docs/参数审查与更新建议_20260930.md`、`docs/参数调研_20261001.md` | 参数证据审查与调研记录（带日期，是当时的快照） |
+| `docs/算法实现审查_20260910.md`、`docs/架构与清理审查_20260920.md` | 早期审查记录（文件与行号是当日的快照） |
+| `data/封存汇图层-Fan/README.md`、`data/NaturalEarth/README.md` | 入库原始数据的出处、许可与用法 |
+| [`.claude/CLAUDE.md`](.claude/CLAUDE.md)、[`AGENTS.md`](AGENTS.md) | 项目规范与协作约定 |
+| [`references.bib`](references.bib) | 参考文献 |
