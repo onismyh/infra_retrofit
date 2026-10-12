@@ -169,7 +169,7 @@ def prepare_industry(
     # 按 hub 自身所在位置归流域，与 `_prepare_plants` 对煤电 hub 的归属方式一致：
     # 取水许可跟着厂址走，而不是跟着取水口走。只有流域上限需要它。
     if assign_basins:
-        from ..builders.water import _assign_basin_codes
+        from ..builders.water_grid import _assign_basin_codes
 
         # industry_hubs.csv 的列名本来就是 `latitude`/`longitude`，正是 `_assign_basin_codes`
         # 所要的；无需改名（plants.csv 需要改名，这里不需要）。

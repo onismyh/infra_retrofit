@@ -31,7 +31,7 @@
 模型的取水列本身也不在公报的尺度上：其直流冷却强度是 Macknick (2011) 的美国数值
 （82.8-116.5 m3/MWh），把它们用到中国的淡水直流冷却机队上，仅煤电就得到 1034亿 m3/yr——
 比公报的全国工业取水总量还多。`builders/water_quota.once_through_calibration` 把它们重新
-缩放到公报基准上，正如 `builders/water.basin_bias_factors` 把模拟径流重新缩放到官方水资源
+缩放到公报基准上，正如 `builders/water_bias.basin_bias_factors` 把模拟径流重新缩放到官方水资源
 量基准上。
 
 刻意不包含的内容。

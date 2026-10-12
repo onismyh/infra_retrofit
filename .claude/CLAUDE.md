@@ -179,7 +179,7 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    （`constants.SLACK_PENALTY_CNY_PER_KG_H2`，其余同第十段），`water_availability.csv` 里 cwatm 配 ipsl / mpi / mri / ukesm 的偏差因子
    用的是标错的 CWatM 历史文件（ISIMIP issue #34：标 ipsl 的文件是 GFDL 的运行，mpi 是 IPSL，mri 是 MPI，ukesm 是 MRI）；此后到粗化水节点坐标
    改按径流加权的 PR（2026-10-12，`MODEL_SEGMENT = 13`）合入之前是第十二段：cwatm 的 ipsl / mpi / mri 按实际驱动它的历史文件估计偏差因子
-   （`builders/water.HISTORICAL_FILE_GCM`），ukesm 取其余四个 GCM 的均值（此前用的是 MRI 的文件），`water_availability.csv` 多 `bias_source` 列，
+   （`builders/water_bias.HISTORICAL_FILE_GCM`），ukesm 取其余四个 GCM 的均值（此前用的是 MRI 的文件），`water_availability.csv` 多 `bias_source` 列，
    粗化水节点坐标按校正后的可用量加权随之微移（≤ 0.13 km），所有情景的供水距离与输入摘要都变，其余同第十一段；此后才是现行口径
    （第十三段：粗化水节点坐标按各细节点模拟径流 `local_runoff_m3_per_year` 的均值加权，偏差因子不再牵动坐标，`water_nodes.csv` 的坐标
    最多移 4.5 km、供水链路 1 569 → 1 566 条、2 个厂址的最近节点改变，`water_availability.csv` 不变，其余同第十二段）。2026-10-10 起结果文件 `<结果名>.json`（代码与文档里简称 result.json）记 `resolved.model_segment`，出图与 `check_run_provenance.py --pair`

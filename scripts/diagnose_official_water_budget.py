@@ -20,7 +20,7 @@ import sys
 import pandas as pd
 from _bootstrap import ROOT
 
-from coal_retrofit.builders.water import _assign_basin_codes
+from coal_retrofit.builders.water_grid import _assign_basin_codes
 from coal_retrofit.builders.water_quota import (
     basin_caps,
     basin_reserved_withdrawal,

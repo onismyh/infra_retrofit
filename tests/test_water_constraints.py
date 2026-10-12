@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
-import coal_retrofit.builders.water as builders_water  # noqa: E402
+import coal_retrofit.builders.water_grid as builders_water_grid  # noqa: E402
 import coal_retrofit.builders.water_quota as builders_water_quota  # noqa: E402
 from coal_retrofit.optimization._shared import SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
@@ -117,7 +117,7 @@ def test_node_limit_keeps_existing_use_and_overdraw_lands_in_node_slack(tmp_path
     后者（存量不增）。2050 年要靠 CCS 达标，CCS 多耗的水在 toy 里没法用空冷抵（toy 没有空冷耗水列），超出部分
     只能记在节点松弛上：流经节点的水 = 可用量 + 松弛（缩放单位换回 m3 后仍成立）。厂用水另按耗水强度与解出的
     份额重算核对。流域指标不激活。"""
-    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_grid, "_assign_basin_codes", _toy_basin_codes)
     paths = _toy_paths(tmp_path, basin_caps=True, dry_use_m3=1.0e8)
     _, _, solution = _solve(paths, "TEST-WATER-NODE", apply_basin_cap=False)
     assert solution["status"] == "optimal"
@@ -150,7 +150,7 @@ def test_node_limit_keeps_existing_use_and_overdraw_lands_in_node_slack(tmp_path
 
 def test_node_limit_is_the_residual_when_it_exceeds_existing_use(tmp_path, monkeypatch) -> None:
     """径流大到余量高于不改造耗水时，节点可用量 = 0.20 x 枯水期径流 − 枯水期生活与灌溉耗水。"""
-    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_grid, "_assign_basin_codes", _toy_basin_codes)
     paths = _toy_paths(tmp_path, basin_caps=True, dry_season_m3=2.0e8, dry_use_m3=1.0e7)
     _, _, solution = _solve(paths, "TEST-WATER-RESIDUAL", apply_basin_cap=False)
     assert solution["status"] == "optimal"
@@ -165,7 +165,7 @@ def test_existing_use_cap_offsets_ccs_water_with_air_cooling(tmp_path, monkeypat
     """存量不增：toy 只有一个节点，余量为负时 CCS 多耗的水只能由本厂腾出（空冷，或每期至多 0.15 的自愿退役），否则记松弛。
     本测试核对空冷：给 toy 补上空冷耗水强度（湿冷 1.85、空冷 0.17，带捕集 3.37 与 0.31 m3/MWh）后，CCS 路径转空冷，
     节点流量不超过不改造耗水、没有松弛；同一电厂在余量充足时不转空冷、耗水高于不改造水平，目标值更低。只开生态流量。"""
-    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_grid, "_assign_basin_codes", _toy_basin_codes)
 
     def solve(experiment_id: str, **water):
         paths = _toy_paths(tmp_path / experiment_id, basin_caps=True, **water)
@@ -196,7 +196,7 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
     """流域上限打开：流域取水等于余量、流域松弛为零，即上限靠改变路径满足而非松弛；
     流域取水另按取水强度、工业取水与解出的份额重算核对。
     同一输入关掉流域上限（只剩环境流量规则）时流域字段全为空，目标值更低。"""
-    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_grid, "_assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
     paths = _toy_paths(tmp_path, basin_caps=True)
 
@@ -240,7 +240,7 @@ def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -
     from coal_retrofit.optimization.results_costs import build_costs_table
     from coal_retrofit.optimization.results_plant import _build_pathway_table, _build_plant_detail_table
 
-    monkeypatch.setattr(builders_water, "_assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_grid, "_assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
     scenario, prepared, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-AIR")
     assert solution["status"] == "optimal"

@@ -17,7 +17,9 @@ import pytest
 from shapely.geometry import box
 
 import coal_retrofit.builders.water as builders_water
-from coal_retrofit.builders.water import SECONDS_PER_YEAR, _cell_area_m2, build_water_scenarios_dataframe
+import coal_retrofit.builders.water_grid as builders_water_grid
+from coal_retrofit.builders.water import build_water_scenarios_dataframe
+from coal_retrofit.builders.water_grid import SECONDS_PER_YEAR, _cell_area_m2
 from coal_retrofit.builders.water_use import build_water_use_dataframe, water_use_file, write_water_use
 from coal_retrofit.paths import ProjectPaths
 
@@ -85,7 +87,7 @@ def paths(tmp_path, monkeypatch) -> ProjectPaths:
     ]).to_csv(tmp_path / "inputs" / "water_scenarios.csv", index=False)
     basins = gpd.GeoDataFrame({"code": ["B1", "B2"], "name": ["左", "右"]},
                               geometry=[box(100.0, 30.0, 101.0, 32.0), box(101.0, 30.0, 102.0, 32.0)], crs="EPSG:4326")
-    monkeypatch.setattr(builders_water, "load_basins", lambda _paths: basins)
+    monkeypatch.setattr(builders_water_grid, "load_basins", lambda _paths: basins)
     return ProjectPaths(root=tmp_path)
 
 

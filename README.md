@@ -173,7 +173,7 @@
 > - 耗水取同一气候成员的 ISIMIP3b `2015soc-from-histsoc` 运行（CWatM 的灌溉 = 总耗水 − 生活 − 工业 − 畜牧，WaterGAP2-2e 读
 >   `pirruse`），按一级流域汇总，枯水期取与径流同一组三个月；不扣工业与畜牧，不做偏差校正。新输入
 >   `_indtree/inputs/water_basin_use.csv`（720 行，`scripts/build_water_use.py` 生成；耗水文件由 `scripts/download_isimip_water_use.py`
->   下载，已扩到 5 个 GCM）。`water_availability.csv` 不重建：枯水期窗口的选取抽成 `builders/water._basin_dry_window` 两表共用，
+>   下载，已扩到 5 个 GCM）。`water_availability.csv` 不重建：枯水期窗口的选取抽成 `builders/water_grid._basin_dry_window` 两表共用，
 >   重构前后在 6 个成员的真实文件上输出逐字节相同，20 个成员的窗口都复现已入库的枯水期径流。缺成员、缺流域或缺枯水期列
 >   都报错，不再退回全年值。`build_water_scenarios_dataframe` 只收 qtot 文件（此前同目录有耗水文件就会被当成成员而报错）。
 > - 头部成员枯水期 2050 年余量（10⁸ m³/yr）：海河 −190、黄河 −61、淮河 −454、长江 −202、珠江 −140，其余为正；它在长江、珠江
@@ -609,7 +609,7 @@
 >   （qtot 数据逐格相同，只差文件头的 GCM 名），标 mpi 的是 IPSL 的，标 mri 的是 MPI 的，标 ukesm 的是 MRI 的，UKESM1-0-LL 自己的历史运行没有发布；
 >   未来文件 2023-02-16 已重发。归因用各 GCM 的 W5E5 偏差订正降水与各 qtot 文件在中国框内的月异常相关（`scripts/attribute_isimip_forcing.py`）：
 >   CWatM 历史 5 个文件如上，WaterGAP2-2e 历史 5 个与两个模型 ssp126 / ssp370 未来 20 个都对号（r 0.86–0.90）。
-> - 处理（作者批准 2026-10-12）：`builders/water.HISTORICAL_FILE_GCM` 把 cwatm 的 ipsl / mpi / mri 成员指到实际驱动它的历史文件；
+> - 处理（作者批准 2026-10-12）：`builders/water_bias.HISTORICAL_FILE_GCM` 把 cwatm 的 ipsl / mpi / mri 成员指到实际驱动它的历史文件；
 >   cwatm 的 ukesm1-0-ll 成员没有真实历史运行，偏差因子取其余四个 CWatM 成员的流域均值（取 1.0 会让它单独处于未校正状态，全国可用量比均值低 15%）。
 >   `water_availability.csv` 多一列 `bias_source`（历史文件名或均值说明）。
 > - 数字：只有 cwatm 的 ipsl / mpi / mri / ukesm 四个 GCM（8 个成员、11 936 行）的 `bias_factor` 与年、枯水期可用量变了，全国合计
@@ -635,6 +635,12 @@
 >   按最近节点计，随之换节点）；`data_prep._prepare_water` 重算的送水成本每条链路最多变 0.22 元/m³。
 > - 模型分段 12 → 13（`src/coal_retrofit/segment.py`）：输入表变了，此前的所有结果（含同日第十二段里的）都要用当前代码重解，
 >   出图与 `check_run_provenance.py --pair` 会拒绝旧结果。
+
+> 2026-10-12 起（同日第三个 PR）`builders/water.py`（799 行，贴着 800 行上限）拆成三个模块，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `water.py`（521 行）留构建流程（成员表与基准表、0.5° 网格节点、按流域预算并偏差校正的节点可用量、粗化、供水链路、`write_water_inputs`）；
+> `water_grid.py`（169 行）放网格与流域的共用工具（枯水期窗口、单元面积、省界与流域图层、流域归属），`water_use.py`、`water_quota.py`、
+> `optimization/data_prep.py`、`optimization/industry_inputs.py` 的共用函数改从这里取；`water_bias.py`（147 行）放偏差校正
+> （`HISTORICAL_FILE_GCM`、`basin_bias_factors`、`member_bias_factors`）。拆分后按 HEAD 重建五张水表逐字节不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -940,7 +946,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准 `a59327a`，与方法论文首相同；模型分段 13）：
+截至 2026-10-12（代码基准 `81f79df`，与方法论文首相同；模型分段 13）：
 
 | 部分 | 现状 |
 |---|---|
@@ -1039,7 +1045,7 @@ python -m ruff check src tests scripts
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
 | `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
-| `build_water_inputs.py` | `water.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
+| `build_water_inputs.py` | `water.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
 | `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |

@@ -20,9 +20,9 @@ Two windows are compared, because they answer different questions:
                so a checkout without them skips this block; the bias factors in
                `_indtree/inputs/water_availability.csv` (all != 1) show the build machine had
                them. Columns are keyed by MEMBER, and each member's file is the one
-               `builders/water._historical_source` picks: for CWatM that is not the file carrying
+               `builders/water_bias._historical_source` picks: for CWatM that is not the file carrying
                the member's name, because ISIMIP issue #34 shifted CWatM's historical qtot by one
-               GCM (`builders/water.HISTORICAL_FILE_GCM`); cwatm|ukesm1-0-ll has no historical run
+               GCM (`builders/water_bias.HISTORICAL_FILE_GCM`); cwatm|ukesm1-0-ll has no historical run
                and therefore no BASELINE column (its table factor is the mean of the other four,
                `bias_source` in water_availability.csv says so).
   CONTEMPORARY model 2015-2024 (scenario runs) vs the bulletin series 2015-2024. SSP1-2.6
@@ -34,7 +34,7 @@ Every member is one column, keyed `<hydrology model>|<GCM>|<SSP or historical>`;
 single column (the last one sorted won).
 
 Basin rasterisation, cell areas, annual and three-month-window volumes and the plant-to-basin
-assignment are the builder's own functions (`coal_retrofit.builders.water`), so this check
+assignment are the builder's own functions (`coal_retrofit.builders.water_grid`, `water_bias`), so this check
 cannot drift from what `build_water_inputs.py` writes.
 
 Usage:  python scripts/validate_basin_runoff.py
@@ -51,7 +51,8 @@ import pandas as pd
 
 from _bootstrap import ROOT
 from coal_retrofit.constants import BIAS_BASELINE_WINDOW, OFFICIAL_BASIN_WATER_1E8_M3
-from coal_retrofit.builders.water import (
+from coal_retrofit.builders.water_bias import _historical_source, has_genuine_history
+from coal_retrofit.builders.water_grid import (
     _annual_and_seasonal,
     _assign_basin_codes,
     _basin_dry_window,
@@ -59,9 +60,7 @@ from coal_retrofit.builders.water import (
     _cell_area_m2,
     _clean_series,
     _file_years,
-    _historical_source,
     _nc_path,
-    has_genuine_history,
     load_basins,
 )
 from coal_retrofit.paths import ProjectPaths
@@ -164,7 +163,7 @@ def _frames_by_member(files: list[Path], window: tuple[int, int]) -> dict[str, p
 
 
 def coal_capacity_by_basin() -> pd.Series:
-    """各一级流域的煤电装机（GW），hub 按所在或最近的流域多边形归属（`builders.water._assign_basin_codes`）。"""
+    """各一级流域的煤电装机（GW），hub 按所在或最近的流域多边形归属（`builders.water_grid._assign_basin_codes`）。"""
     plants = pd.read_csv(PATHS.inputs_dir / "plants.csv")
     points = plants.rename(columns={"centroid_longitude": "longitude", "centroid_latitude": "latitude"})
     plants["code"] = _assign_basin_codes(PATHS, points)
