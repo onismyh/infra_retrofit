@@ -1,169 +1,61 @@
+"""供给侧输入表：生物质供给曲线（`build_biomass_supply_dataframe`）与写盘入口 `write_supply_inputs`；绿氨供给曲线及其求解时重定价在
+`supply_ammonia`。栅格像元中心与按省-网格聚合的工具在 `spatial`。"""
 from __future__ import annotations
-
-import logging
-import re
 
 import numpy as np
 import pandas as pd
 import rasterio
-from pyproj import Transformer
 
 from ..artifacts import write_csv
 from ..constants import (
-    AMMONIA_NODE_AGGREGATION_DEGREES,
     BIOMASS_COST_BASE,
     BIOMASS_COST_HIGH,
     BIOMASS_COST_LOW,
     BIOMASS_GJ_PER_TONNE,
     BIOMASS_MATCH_BUFFER_KM,
     BIOMASS_NODE_AGGREGATION_DEGREES,
-    DEFAULT_DISCOUNT_RATE,
-    NH3_ELECTROLYSIS_TECHS,
-    NH3_H2_RATIO,
-    NH3_HB_CAPEX_LIFETIME_YEARS,
-    NH3_HB_CAPEX_USD_PER_TONNE_YEAR,
-    NH3_HB_POWER_KWH_PER_KG,
-    NH3_STORAGE_ADDER_USD_PER_KG,
-    NH3_TRANSPORT_ADDER_USD_PER_KG,
 )
-from ..constants_industry_capture import capital_recovery_factor
 from ..paths import ProjectPaths
-from ..spatial import latlon_row_areas, load_provinces, rasterize_provinces_to_match
+from ..spatial import (
+    aggregate_to_cells,
+    latlon_row_areas,
+    load_provinces,
+    pixel_centers,
+    province_lookup,
+    rasterize_provinces_to_match,
+)
+from .supply_ammonia import build_ammonia_supply_dataframe
 
-
-logger = logging.getLogger(__name__)
-
-H2_PATTERN = re.compile(r"(?P<resource>.+)_h2_production_(?P<tech>.+)\.tif")
-
-
-def province_lookup(provinces) -> dict[int, str]:
-    return dict(zip(provinces["province_id"], provinces["province_name"], strict=True))
-
-
-def _bin_coordinates(values: np.ndarray, cell_degrees: float, offset: float) -> np.ndarray:
-    return np.floor((values + offset) / cell_degrees).astype(np.int32)
-
-
-def _pixel_centers(transform, rows: np.ndarray, cols: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    lon = transform.c + (cols.astype(np.float64) + 0.5) * transform.a
-    lat = transform.f + (rows.astype(np.float64) + 0.5) * transform.e
-    return lon, lat
-
-
-def _pixel_centers_lonlat(
-    transform,
-    crs,
-    rows: np.ndarray,
-    cols: np.ndarray,
-    transformer_cache: dict[str, Transformer] | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    x, y = _pixel_centers(transform, rows, cols)
-    if crs is None or str(crs).upper() == "EPSG:4326":
-        return x, y
-
-    cache_key = crs.to_wkt() if hasattr(crs, "to_wkt") else str(crs)
-    transformer = None
-    if transformer_cache is not None:
-        transformer = transformer_cache.get(cache_key)
-    if transformer is None:
-        transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-        if transformer_cache is not None:
-            transformer_cache[cache_key] = transformer
-    lon, lat = transformer.transform(x, y)
-    return np.asarray(lon, dtype=np.float64), np.asarray(lat, dtype=np.float64)
-
-
-def hb_capex_annuity_usd_per_kg(discount_rate: float) -> float:
-    """Haber-Bosch + ASU 的年化资本成本，以每生产 1 kg NH3 的 USD 计。
-
-    构建输入时按 `DEFAULT_DISCOUNT_RATE` 写进 `ammonia_supply_curve.csv`；求解时
-    `reprice_hb_capex` 再按情景的 `discount_rate` 算一次，换掉 CSV 里的那一份。
-
-    Args:
-        discount_rate: 年贴现率。
-
-    Returns:
-        按满负荷、`NH3_HB_CAPEX_LIFETIME_YEARS` 年折算的每 kg NH3 年金（USD）。
-    """
-    crf = capital_recovery_factor(discount_rate, NH3_HB_CAPEX_LIFETIME_YEARS)
-    return NH3_HB_CAPEX_USD_PER_TONNE_YEAR * crf / 1000.0
-
-
-def reprice_h2_component(ammonia: pd.DataFrame) -> pd.DataFrame:
-    """把氨价里的氢成本换成按当前 `NH3_H2_RATIO` 折算的，返回新表，不改动传入的表。
-
-    `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_h2_cost_component_usd_per_kg`、加上 `weighted_lcoh_usd_per_kg_h2 x NH3_H2_RATIO`，
-    两列随之改写：表里那一份是构建输入时按当时的比例算的（2026-10-10 前的输入按 0.176）。没有这两列的表
-    （toy 测试的输入）原样使用。由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。
-
-    Raises:
-        ValueError: 两列有缺失值或非数值时，免得 NaN 价格进入目标函数。
-    """
-    repriced = ammonia.copy()
-    if not {"nh3_h2_cost_component_usd_per_kg", "weighted_lcoh_usd_per_kg_h2"} <= set(repriced.columns):
-        return repriced
-    cost = pd.to_numeric(repriced["nh3_cost_lb_usd_per_kg"], errors="coerce")
-    old_h2 = pd.to_numeric(repriced["nh3_h2_cost_component_usd_per_kg"], errors="coerce")
-    lcoh = pd.to_numeric(repriced["weighted_lcoh_usd_per_kg_h2"], errors="coerce")
-    bad = cost.isna() | old_h2.isna() | lcoh.isna()
-    if bad.any():
-        nodes = repriced.loc[bad, "ammonia_node_id"] if "ammonia_node_id" in repriced.columns else repriced.index[bad]
-        raise ValueError(
-            "ammonia supply curve has missing or non-numeric nh3_cost_lb / nh3_h2_cost_component / weighted_lcoh "
-            f"in {int(bad.sum())} rows; ammonia_node_id: {sorted({str(node) for node in nodes})[:10]}"
-        )
-    new_h2 = lcoh * NH3_H2_RATIO
-    repriced["nh3_cost_lb_usd_per_kg"] = cost - old_h2 + new_h2
-    repriced["nh3_h2_cost_component_usd_per_kg"] = new_h2
-    return repriced
-
-
-def reprice_hb_capex(ammonia: pd.DataFrame, discount_rate: float) -> pd.DataFrame:
-    """把氨供给曲线里的合成岛年金换成按 `discount_rate` 算的，返回新表，不改动传入的表。
-
-    `nh3_cost_lb_usd_per_kg` 减去表里的 `nh3_hb_capex_usd_per_kg`、加上新年金，该列随之改写。
-    表里那一份是构建输入时算的（2026-09-23 前的输入按 8%、20 年），模型自己折现与折年金的地方则都用情景贴现率。
-    由 `optimization.data_prep._prepare_ammonia_supply` 在求解时调用。没有这一列的表
-    （toy 测试的输入）不拆分成本，原样使用并记一条告警日志。
-
-    Args:
-        ammonia: 读入的 `ammonia_supply_curve.csv`。
-        discount_rate: 情景贴现率。
-
-    Returns:
-        换过年金的副本；缺这一列时是原表的副本。
-
-    Raises:
-        ValueError: 年金列或成本列有缺失值或非数值时，列出涉及的节点，免得 NaN 价格进入目标函数。
-    """
-    repriced = ammonia.copy()
-    if "nh3_hb_capex_usd_per_kg" not in repriced.columns:
-        logger.warning(
-            "ammonia supply curve has no nh3_hb_capex_usd_per_kg column; "
-            "using nh3_cost_lb_usd_per_kg as is (no re-annuitisation at the scenario discount rate)"
-        )
-        return repriced
-    cost = pd.to_numeric(repriced["nh3_cost_lb_usd_per_kg"], errors="coerce")
-    old_annuity = pd.to_numeric(repriced["nh3_hb_capex_usd_per_kg"], errors="coerce")
-    bad = cost.isna() | old_annuity.isna()
-    if bad.any():
-        nodes = repriced.loc[bad, "ammonia_node_id"] if "ammonia_node_id" in repriced.columns else repriced.index[bad]
-        raise ValueError(
-            "ammonia supply curve has missing or non-numeric nh3_cost_lb_usd_per_kg / nh3_hb_capex_usd_per_kg "
-            f"in {int(bad.sum())} rows; ammonia_node_id: {sorted({str(node) for node in nodes})[:10]}"
-        )
-    annuity = hb_capex_annuity_usd_per_kg(discount_rate)
-    repriced["nh3_cost_lb_usd_per_kg"] = cost - old_annuity + annuity
-    repriced["nh3_hb_capex_usd_per_kg"] = annuity
-    return repriced
+BIOMASS_COLUMNS = (
+    "biomass_node_id",
+    "province_id",
+    "province_name",
+    "longitude",
+    "latitude",
+    "available_gj",
+    "biomass_supply_gj",
+    "biomass_supply_tonnes_equiv",
+    "unit",
+    "mass_conversion_gj_per_tonne",
+    "base_cost_cny_per_gj",
+    "low_cost_cny_per_gj",
+    "high_cost_cny_per_gj",
+    "match_rule",
+    "competition_scope",
+    "buffer_km",
+    "aggregation_cell_deg",
+    "land_competition_included",
+    "source",
+    "year_basis",
+)
 
 
 def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
+    """Wang 2023 生物质栅格（GJ/km²）按省与 `BIOMASS_NODE_AGGREGATION_DEGREES` 网格聚合成供给节点，坐标按资源量加权。"""
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp")
     # Wang et al. 2023（Sci Data 10:384）的情景 4：农林残余物，不含能源作物，与采购成本（残余物）同口径。
     # 2026-10-11 之前读情景 3（`bioenergy_s3_AFE_abandon.tif`，另含废弃耕地上的能源作物）。
     biomass_tif = paths.find_data_file("bioenergy_s4_AF_max.tif")
-    lookup = province_lookup(provinces)
 
     with rasterio.open(biomass_tif) as src:
         biomass = src.read(1).astype(np.float64)
@@ -175,9 +67,9 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
         total_gj_grid = np.nan_to_num(biomass, nan=0.0, posinf=0.0, neginf=0.0) * pixel_area / 1e6
         valid_mask = (total_gj_grid > 0.0) & (zone_grid > 0)
         rows, cols = np.where(valid_mask)
-        lons, lats = _pixel_centers(src.transform, rows, cols)
+        lons, lats = pixel_centers(src.transform, rows, cols)
 
-    frame = pd.DataFrame(
+    points = pd.DataFrame(
         {
             "province_id": zone_grid[rows, cols].astype(np.int32),
             "longitude": lons,
@@ -185,32 +77,8 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
             "available_gj": total_gj_grid[rows, cols].astype(np.float64),
         }
     )
-    frame["lon_bin"] = _bin_coordinates(frame["longitude"].to_numpy(), BIOMASS_NODE_AGGREGATION_DEGREES, 180.0)
-    frame["lat_bin"] = _bin_coordinates(frame["latitude"].to_numpy(), BIOMASS_NODE_AGGREGATION_DEGREES, 90.0)
-
-    weighted = frame.assign(
-        weighted_lon=frame["longitude"] * frame["available_gj"],
-        weighted_lat=frame["latitude"] * frame["available_gj"],
-    )
-    grouped = (
-        weighted.groupby(["province_id", "lon_bin", "lat_bin"], as_index=False)[
-            ["available_gj", "weighted_lon", "weighted_lat"]
-        ]
-        .sum()
-        .sort_values(["province_id", "lon_bin", "lat_bin"])
-        .reset_index(drop=True)
-    )
-    grouped["longitude"] = np.where(
-        grouped["available_gj"] > 0,
-        grouped["weighted_lon"] / grouped["available_gj"],
-        0.0,
-    )
-    grouped["latitude"] = np.where(
-        grouped["available_gj"] > 0,
-        grouped["weighted_lat"] / grouped["available_gj"],
-        0.0,
-    )
-    grouped["province_name"] = grouped["province_id"].map(lookup)
+    grouped = aggregate_to_cells(points, "available_gj", BIOMASS_NODE_AGGREGATION_DEGREES)
+    grouped["province_name"] = grouped["province_id"].map(province_lookup(provinces))
     grouped["biomass_node_id"] = [f"B{index:05d}" for index in range(1, len(grouped) + 1)]
     grouped["biomass_supply_gj"] = grouped["available_gj"]
     grouped["biomass_supply_tonnes_equiv"] = grouped["available_gj"] / BIOMASS_GJ_PER_TONNE
@@ -227,241 +95,7 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     grouped["source"] = paths.rel(biomass_tif)
     grouped["year_basis"] = "static_resource_layer"
 
-    return grouped[
-        [
-            "biomass_node_id",
-            "province_id",
-            "province_name",
-            "longitude",
-            "latitude",
-            "available_gj",
-            "biomass_supply_gj",
-            "biomass_supply_tonnes_equiv",
-            "unit",
-            "mass_conversion_gj_per_tonne",
-            "base_cost_cny_per_gj",
-            "low_cost_cny_per_gj",
-            "high_cost_cny_per_gj",
-            "match_rule",
-            "competition_scope",
-            "buffer_km",
-            "aggregation_cell_deg",
-            "land_competition_included",
-            "source",
-            "year_basis",
-        ]
-    ].sort_values("biomass_node_id").reset_index(drop=True)
-
-
-def parse_h2_name(name: str) -> tuple[str, str] | None:
-    match = H2_PATTERN.fullmatch(name)
-    if not match:
-        return None
-    return match.group("resource"), match.group("tech")
-
-
-def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
-    provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp")
-    h2_root = paths.data_dir / "H2"
-    year_dirs = sorted(path for path in h2_root.iterdir() if path.is_dir() and path.name.isdigit())
-    lookup = province_lookup(provinces)
-    zone_cache: dict[str, np.ndarray] = {}
-    transformer_cache: dict[str, Transformer] = {}
-    grouped_frames: list[pd.DataFrame] = []
-
-    for year_dir in year_dirs:
-        for prod_path in sorted(year_dir.glob("*_h2_production_*.tif")):
-            parsed = parse_h2_name(prod_path.name)
-            if parsed is None:
-                continue
-            resource, tech = parsed
-            if NH3_ELECTROLYSIS_TECHS and tech not in NH3_ELECTROLYSIS_TECHS:
-                continue
-            lcoh_path = year_dir / f"{resource}_lcoh_{tech}.tif"
-            if not lcoh_path.exists():
-                continue
-            lcoe_path = year_dir / f"{resource}_lcoe.tif"
-            with rasterio.open(prod_path) as prod_src:
-                prod = prod_src.read(1).astype(np.float64)
-                prod_transform = prod_src.transform
-                prod_crs = prod_src.crs
-                cache_key = (
-                    f"{prod_src.crs.to_wkt() if prod_src.crs else 'none'}"
-                    f"|{prod_src.height}|{prod_src.width}|{prod_src.transform}"
-                )
-            if cache_key not in zone_cache:
-                zone_cache[cache_key], _ = rasterize_provinces_to_match(provinces, prod_path)
-            zone_grid = zone_cache[cache_key]
-            prod = np.nan_to_num(prod, nan=0.0, posinf=0.0, neginf=0.0)
-            valid = (prod > 0.0) & (zone_grid > 0)
-            if not np.any(valid):
-                continue
-            rows, cols = np.where(valid)
-            # 栅格单位为 kg H₂/yr/km²（Albers 1km 投影）；
-            # pixel_area_m2 = 1e6 m² = 1 km²。无需再乘面积，
-            # 因为每个像元本身就代表 1 km²。
-            h2_supply = prod[rows, cols]  # 每像元 kg/yr（= 每 km²）
-            if h2_supply.size == 0:
-                continue
-            with rasterio.open(lcoh_path) as lcoh_src:
-                lcoh = np.nan_to_num(lcoh_src.read(1), nan=0.0, posinf=0.0, neginf=0.0)
-                lcoh_values = lcoh[rows, cols].astype(np.float64)
-            # Haber-Bosch 合成回路与 ASU 的用电按同一地点的 LCOE（USD/MWh）购入，
-            # 而不是像之前的成本下界那样假定免费。
-            if lcoe_path.exists():
-                with rasterio.open(lcoe_path) as lcoe_src:
-                    lcoe = np.nan_to_num(lcoe_src.read(1), nan=0.0, posinf=0.0, neginf=0.0)
-                    lcoe_values = lcoe[rows, cols].astype(np.float64)
-            else:
-                logger.warning("Missing LCOE raster %s; HB power cost set to zero", lcoe_path.name)
-                lcoe_values = np.zeros_like(lcoh_values)
-            lons, lats = _pixel_centers_lonlat(
-                prod_transform,
-                prod_crs,
-                rows,
-                cols,
-                transformer_cache=transformer_cache,
-            )
-            province_ids = zone_grid[rows, cols].astype(np.int32)
-            lon_bin = _bin_coordinates(lons, AMMONIA_NODE_AGGREGATION_DEGREES, 180.0)
-            lat_bin = _bin_coordinates(lats, AMMONIA_NODE_AGGREGATION_DEGREES, 90.0)
-            frame = pd.DataFrame(
-                {
-                    "province_id": province_ids,
-                    "lon_bin": lon_bin,
-                    "lat_bin": lat_bin,
-                    "h2_supply_kg_per_year": h2_supply.astype(np.float64),
-                    "weighted_lcoh_component": (lcoh_values * h2_supply).astype(np.float64),
-                    "weighted_lcoe_component": (lcoe_values * h2_supply).astype(np.float64),
-                    "weighted_lon": (lons * h2_supply).astype(np.float64),
-                    "weighted_lat": (lats * h2_supply).astype(np.float64),
-                }
-            )
-            grouped = (
-                frame.groupby(["province_id", "lon_bin", "lat_bin"], as_index=False)[
-                    ["h2_supply_kg_per_year", "weighted_lcoh_component", "weighted_lcoe_component",
-                     "weighted_lon", "weighted_lat"]
-                ]
-                .sum()
-                .reset_index(drop=True)
-            )
-            grouped["longitude"] = np.where(
-                grouped["h2_supply_kg_per_year"] > 0,
-                grouped["weighted_lon"] / grouped["h2_supply_kg_per_year"],
-                0.0,
-            )
-            grouped["latitude"] = np.where(
-                grouped["h2_supply_kg_per_year"] > 0,
-                grouped["weighted_lat"] / grouped["h2_supply_kg_per_year"],
-                0.0,
-            )
-            grouped["weighted_lcoh_usd_per_kg_h2"] = np.where(
-                grouped["h2_supply_kg_per_year"] > 0,
-                grouped["weighted_lcoh_component"] / grouped["h2_supply_kg_per_year"],
-                np.nan,
-            )
-            grouped["province_name"] = grouped["province_id"].map(lookup)
-            grouped["year"] = int(year_dir.name)
-            grouped["resource"] = resource
-            grouped["electrolysis_tech"] = tech
-            grouped["weighted_lcoe_usd_per_mwh"] = np.where(
-                grouped["h2_supply_kg_per_year"] > 0,
-                grouped["weighted_lcoe_component"] / grouped["h2_supply_kg_per_year"],
-                np.nan,
-            )
-            grouped["nh3_supply_kg_per_year"] = grouped["h2_supply_kg_per_year"] / NH3_H2_RATIO
-            grouped["nh3_h2_cost_component_usd_per_kg"] = grouped["weighted_lcoh_usd_per_kg_h2"] * NH3_H2_RATIO
-            grouped["hb_power_need_kwh_per_kg_nh3"] = NH3_HB_POWER_KWH_PER_KG
-            # Haber-Bosch 用电，按同址可再生能源的 LCOE 计价。
-            grouped["nh3_hb_power_cost_usd_per_kg"] = (
-                NH3_HB_POWER_KWH_PER_KG * grouped["weighted_lcoe_usd_per_mwh"].fillna(0.0) / 1000.0
-            )
-            grouped["nh3_hb_capex_usd_per_kg"] = hb_capex_annuity_usd_per_kg(DEFAULT_DISCOUNT_RATE)
-            grouped["nh3_storage_adder_usd_per_kg"] = NH3_STORAGE_ADDER_USD_PER_KG
-            grouped["nh3_transport_adder_usd_per_kg"] = NH3_TRANSPORT_ADDER_USD_PER_KG
-            # 完整到岸成本：H2 原料 + HB/ASU 电力 + HB/ASU 资本 + 储存。
-            # （为兼容下游而保留该列名；它已不再是下界。）
-            grouped["nh3_cost_lb_usd_per_kg"] = (
-                grouped["nh3_h2_cost_component_usd_per_kg"]
-                + grouped["nh3_hb_power_cost_usd_per_kg"]
-                + grouped["nh3_hb_capex_usd_per_kg"]
-                + NH3_STORAGE_ADDER_USD_PER_KG
-                + NH3_TRANSPORT_ADDER_USD_PER_KG
-            )
-            grouped["source"] = paths.rel(prod_path)
-            grouped["year_basis"] = f"cost_year_{year_dir.name}"
-            grouped["buffer_km"] = BIOMASS_MATCH_BUFFER_KM
-            grouped_frames.append(grouped)
-
-    if not grouped_frames:
-        return pd.DataFrame(
-            columns=[
-                "ammonia_node_id",
-                "province_id",
-                "province_name",
-                "year",
-                "resource",
-                "electrolysis_tech",
-                "longitude",
-                "latitude",
-                "h2_supply_kg_per_year",
-                "weighted_lcoh_usd_per_kg_h2",
-            "weighted_lcoe_usd_per_mwh",
-                "nh3_supply_kg_per_year",
-                "nh3_h2_cost_component_usd_per_kg",
-                "hb_power_need_kwh_per_kg_nh3",
-            "nh3_hb_power_cost_usd_per_kg",
-            "nh3_hb_capex_usd_per_kg",
-                "nh3_storage_adder_usd_per_kg",
-                "nh3_transport_adder_usd_per_kg",
-                "nh3_cost_lb_usd_per_kg",
-                "match_rule",
-                "competition_scope",
-                "aggregation_cell_deg",
-                "buffer_km",
-                "source",
-                "year_basis",
-            ]
-        )
-
-    ammonia_nodes = pd.concat(grouped_frames, ignore_index=True, sort=False)
-    ammonia_nodes = ammonia_nodes.sort_values(
-        ["year", "province_id", "resource", "electrolysis_tech", "lon_bin", "lat_bin"]
-    ).reset_index(drop=True)
-    ammonia_nodes["ammonia_node_id"] = [f"A{index:06d}" for index in range(1, len(ammonia_nodes) + 1)]
-    ammonia_nodes["match_rule"] = "point_source_competition"
-    ammonia_nodes["competition_scope"] = "shared_ammonia_node"
-    ammonia_nodes["aggregation_cell_deg"] = AMMONIA_NODE_AGGREGATION_DEGREES
-    ammonia_nodes["buffer_km"] = BIOMASS_MATCH_BUFFER_KM
-    return ammonia_nodes[
-        [
-            "ammonia_node_id",
-            "province_id",
-            "province_name",
-            "year",
-            "resource",
-            "electrolysis_tech",
-            "longitude",
-            "latitude",
-            "h2_supply_kg_per_year",
-            "weighted_lcoh_usd_per_kg_h2",
-            "weighted_lcoe_usd_per_mwh",
-            "nh3_supply_kg_per_year",
-            "nh3_h2_cost_component_usd_per_kg",
-            "hb_power_need_kwh_per_kg_nh3",
-            "nh3_hb_power_cost_usd_per_kg",
-            "nh3_hb_capex_usd_per_kg",
-            "nh3_storage_adder_usd_per_kg",
-            "nh3_transport_adder_usd_per_kg",
-            "nh3_cost_lb_usd_per_kg",
-            "match_rule",
-            "competition_scope",
-            "aggregation_cell_deg",
-            "buffer_km",
-            "source",
-            "year_basis",
-        ]
-    ].reset_index(drop=True)
+    return grouped[list(BIOMASS_COLUMNS)].sort_values("biomass_node_id").reset_index(drop=True)
 
 
 def write_supply_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame]:

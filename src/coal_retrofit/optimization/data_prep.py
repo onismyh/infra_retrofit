@@ -150,7 +150,7 @@ def _prepare_ammonia_supply(
     ammonia = ammonia.dropna(subset=["ammonia_node_id", "year", "h2_supply_kg_per_year", "nh3_cost_lb_usd_per_kg"])
     # 到厂氨价 = 绿氢 x NH3_H2_RATIO + 合成岛电耗 + 合成岛 capex 年金 + 储存（+ 运输）。氢成本按当前折算比例、合成岛年金按
     # 情景贴现率重算（CSV 里那一份是构建输入时算的）。
-    from ..builders.supply import reprice_h2_component, reprice_hb_capex
+    from ..builders.supply_ammonia import reprice_h2_component, reprice_hb_capex
 
     ammonia = reprice_hb_capex(reprice_h2_component(ammonia), float(scenario.discount_rate))
     ammonia["cost_cny_per_kg"] = (

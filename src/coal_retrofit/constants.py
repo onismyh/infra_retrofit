@@ -35,7 +35,7 @@ BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 
 # 合成氨的氢耗，kg H2/kg NH3：DEA 可再生燃料技术数据表 98 Ammonia from hydrogen（[R09]）的工程值 0.18，含合成回路损耗；
 # 化学计量 1.5 x 2.016 / 17.031 = 0.1776，DECHEMA 2017 为 0.178（经 PyPSA technology-data）。2026-10-10 之前为 0.176，
-# 低于化学计量。节点上限按绿氢计，煤电用氨按此折成氢扣减；到厂氨价里的氢成本同按此折算（`builders.supply.reprice_h2_component`）。
+# 低于化学计量。节点上限按绿氢计，煤电用氨按此折成氢扣减；到厂氨价里的氢成本同按此折算（`builders.supply_ammonia.reprice_h2_component`）。
 NH3_H2_RATIO = 0.18
 # 资源与水松弛的罚额（`optimization/model_costs._slack_penalty`，结果侧 `results_costs._slack_costs` 同价）：远高于任何真实
 # 供给成本，只为保住可行性。绿氢节点上限 2026-10-10 起按 kg H2 计，此前按 kg NH3 计、罚 1000 元/kg NH3；折到氢
@@ -67,7 +67,7 @@ NH3_ELECTROLYSIS_TECHS = ("AE",)
 # 同时用于合成回路与空分（`dea_renewable_fuels`，经 `pypsa_techdata`）；2026-09-23 前取 20 a，无出处。30 a 是技术寿命，
 # 按经济寿命折的线索指向 25 a（J. Cleaner Production 2026 一文转引 IEA 2021，只见检索摘要）；工业捕集岛取的是
 # NPC 2019 的 20 a，不是 DEA 401 的技术寿命 25 a，两处口径不同。贴现率与模型其余部分相同：构建输入时按
-# DEFAULT_DISCOUNT_RATE，求解时再按情景的 `discount_rate` 重算（`builders/supply.reprice_hb_capex`）。
+# DEFAULT_DISCOUNT_RATE，求解时再按情景的 `discount_rate` 重算（`builders/supply_ammonia.reprice_hb_capex`）。
 # 2026-09-23 前这里单独用 8%。
 NH3_HB_CAPEX_USD_PER_TONNE_YEAR = 875.0
 NH3_HB_CAPEX_LIFETIME_YEARS = 30

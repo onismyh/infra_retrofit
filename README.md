@@ -493,7 +493,7 @@
 > - 绿氢共享上限：氨氢节点是绿氢产地，节点上限只按绿氢计（`h2_supply_kg_per_year`），煤电用的氨按氢耗 0.18 kg H2/kg NH3（DEA 工程值，
 >   含合成回路损耗；此前 0.176，低于化学计量 0.1776）折成氢扣减，工业氢路线直接扣减；全国绿氢上限 6.5 / 69 / 91 / 120 Mt H2/a
 >   照旧同时管两者。煤电掺烧绿氨的全国上限（2 / 12 / 47 / 55 Mt NH3/a）删去。到厂氨价 = 加权 LCOH × 0.18 + 合成岛电耗 + 合成岛
->   capex 年金 + 储存 + 运输，求解时按当前比例重算氢成本（`builders/supply.reprice_h2_component`），不重建输入。
+>   capex 年金 + 储存 + 运输，求解时按当前比例重算氢成本（`builders/supply_ammonia.reprice_h2_component`），不重建输入。
 > - 碳目标两个入口：情景字段 `sector_target_mode`，缺省 `"sector"`（四组各一条上限，同此前）；`"total"` 把电力、钢铁、水泥、化工合成
 >   一条，额度 = 四组额度之和，部门间可以调剂，缺口记在 `total` 下。新情景 `ST_TOT_BASE`（继承 `ST_BASE`，只差这一项）。
 > - 海上管道：边落在陆地（省界与邻国陆地）之外的那段（`pipeline_candidate_edges.csv` 新增 `offshore_length_km`，`builders/network_offshore.py`；
@@ -667,6 +667,17 @@
 > `water_basin_use` / `water_basin_caps`）逐字节相同，前六张与 `_indtree/inputs/` 的也相同（`water_basin_caps.csv` 在库里的那份 2026-09-28 在作者本机写出，
 > 36 行里 20 行的 `residual_m3_per_year` 只差第 16 位有效数字，四舍五入过的各列全同，是平台浮点差，不是口径差）；463 个测试通过（新增 3 个），
 > mypy 错误 135 → 133（`water_bias`、`water_quota` 两处手写年份循环上的 `union-attr` 随之消失）。
+>
+> 2026-10-12 起（同日第七个 PR）`builders/supply.py`（472 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `supply.py`（106 行）留生物质供给曲线与 `write_supply_inputs`；`supply_ammonia.py`（270 行）放绿氨供给曲线（`build_ammonia_supply_dataframe`，
+> 拆成读像元 `_h2_pixels` 与定价 `_price_nodes`）及求解时的重定价 `reprice_h2_component` / `reprice_hb_capex`（`optimization/data_prep` 与
+> `tests/test_discount_rate.py` 的导入随之改指；缺 LCOE 栅格与重定价的两条 warning 的 logger 名随模块改为 `builders.supply_ammonia`）。`spatial` 新增像元中心 `pixel_centers` / `pixel_centers_lonlat`（投影栅格转经纬度，Transformer 按 CRS
+> 缓存）、`province_lookup` 与按省-网格聚合 `aggregate_to_cells`（分箱、求和、按权重加权坐标），生物质与绿氨两处同样的聚合写法合成一处，
+> `builders/storage.py` 的像元中心也改走 `pixel_centers`。绿氨表的 25 个列名只写一遍（`AMMONIA_COLUMNS`），删掉 `h2_supply.size == 0` 的不可达分支、
+> 循环里随后被覆盖的 `buffer_km` 赋值，电解路线的过滤写成 `tech not in NH3_ELECTROLYSIS_TECHS`（此前多一个"元组为空则全收"的分支，
+> 常量为 `("AE",)`，不受影响）。拆分前后重建 `biomass_supply_curve.csv`、`storage_hubs.csv` 逐字节相同，与 `_indtree/inputs/` 的也相同；
+> `data/H2/` 不在本机，绿氨表用合成栅格（Albers 与 EPSG:4326 两种 CRS、缺 LCOE、缺 LCOH、PEM、非年份目录）拆分前后逐字节相同，一张可用栅格
+> 都没有时的空表也相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；466 个测试通过（新增 3 个），mypy 错误 133 不变。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -694,7 +705,7 @@
 | (b) BECCS 的生物质改造 | 捕集岛之上另收 +1 000 元/kW 的"生物质改造增量"（`beccs_retrofit_capex_cny_per_kw` = 4 500），又按掺烧档位收升级 capex，付了两次 | 删掉 +1 000；BECCS 捕集岛的 capex 与固定运维同 CCS，生物质改造只走档位 capex |
 | (c) 管道到寿命 | 每条边的累计新增上限把到寿命的管也算进去：2030 年铺满的边，2060 年管退出后不能再铺 | 累计新增上限、LP 热启动取整、结果表的"铺前存量"都只数在役的管 |
 | (d) 成本乘子 | 煤电乘 capex 与每 MWh 附加项（BECCS 的 30 元/MWh 掺烧运维随之变动），不乘固定运维；工业还乘能耗与耗材；工业 H2 路线的乘子同时乘 capex 与锚点溢价（含反推的非氢运行差额） | 两侧都只乘 capex 与随 capex 的固定运维；H2 路线反推的非氢运行差额固定在乘子为 1 时的值，所以锚点氢价下 m = 2 只让 H2 溢价增加 ν 倍的路线年资本项（ν 为铭牌系数），ν = 1 的 hub 为钢铁 25%、合成氨 14%、甲醇 2%（原来 +100%） |
-| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply.py:121-158` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元；这是按原来的 20 年寿命算的，寿命改为 30 年后合计低 0.0256 USD，见 §0.2）。氨价里的 LCOH 是外生数据（仓库根氨供给曲线的 2030–2060 四个规划年，按供给量加权的总额算占氨价的 77%–86%，合成岛年金按 6%、30 年算），内含的资本成本率不随情景变 |
+| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply_ammonia.py:110-147` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元；这是按原来的 20 年寿命算的，寿命改为 30 年后合计低 0.0256 USD，见 §0.2）。氨价里的 LCOH 是外生数据（仓库根氨供给曲线的 2030–2060 四个规划年，按供给量加权的总额算占氨价的 77%–86%，合成岛年金按 6%、30 年算），内含的资本成本率不随情景变 |
 
 对已有结果：(a)(b)(c)(e) 改了目标函数或约束，`_indtree/results/` 里在本 PR 合入之前落盘的 `ST_` 结果（含 09-22 到合入之间求的）
 与新代码的求解**不得相减**，需重解（CLAUDE.md §二.7、`_indtree/README.md` 已同步）；
@@ -797,7 +808,7 @@
 | 海上封存倍率 | × 2.2（2026-10-02 起；此前海上、陆上同价） | REMIND carbon management 表：海上、陆上注入投资 525 / 350，固定运维占投资 0.12 / 0.06 每年，寿命 40 年；按 6% 年化后之比 2.21（只按投资比为 1.5） | 推导（REMIND 的注入成本之比，套用到 An 的封存单价上；按模型贴现率 6% 年化，5%–8% 为 2.13–2.26；单位按表头推断，比值与单位无关） |
 | EOR 抵扣 | 12 元/t | — | ⚠ 假设（无出处） |
 | 管道寿命 | 30 年 | — | ⚠ 假设（设定值） |
-| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply.py:76-158`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
+| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply_ammonia.py:65-147`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
 | 工业用氢运费 | 0.03 元/(kg·km) | 注释称取中国氢能联盟白皮书 2019 的量级，未核到原文 | ⚠ 假设（临时值） |
 
 **表外参数**（不属投资，但进目标函数或约束。PR #2 审查时列出的这 20 项原来既无出处又没标 ⚠，2026-09-23 逐项查过；
@@ -952,8 +963,8 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的四个拆分 PR（§0 当日注）之后，超 400 行的文件剩 5 个：`builders/network.py` 559、`optimization/constraints.py` 556、
-> `builders/supply.py` 472、`builders/plants.py` 457、`optimization/assumptions.py` 445。
+> 2026-10-12 的五个拆分 PR（§0 当日注）之后，超 400 行的文件剩 4 个：`builders/network.py` 559、`optimization/constraints.py` 556、
+> `builders/plants.py` 457、`optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -1072,7 +1083,7 @@ python -m ruff check src tests scripts
 | `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
-| `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
+| `build_supply_inputs.py` | `supply.py`、`supply_ammonia.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
 | `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |

@@ -1,18 +1,20 @@
-"""空间工具：省界与流域的读取/栅格化、球面与大地线距离。
+"""空间工具：省界与流域的读取/栅格化、栅格像元中心与按省-网格聚合、球面与大地线距离。
 
 距离与面积一律在地理坐标下算（球面 haversine 或 WGS84 大地线），不在投影坐标下算（CLAUDE.md §4.1）。
 """
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import Iterable
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rasterio
 import shapely
 from numpy.typing import ArrayLike
-from pyproj import Geod
+from pyproj import Geod, Transformer
 from rasterio.features import rasterize
 
 EARTH_RADIUS_KM = 6371.0088   # IUGG 平均半径，全仓库 haversine 共用
@@ -123,6 +125,11 @@ def load_provinces(provinces_path: Path) -> gpd.GeoDataFrame:
     return provinces.sort_values("province_id").reset_index(drop=True)
 
 
+def province_lookup(provinces: gpd.GeoDataFrame) -> dict[int, str]:
+    """`load_provinces` 表的 province_id → province_name。"""
+    return dict(zip(provinces["province_id"], provinces["province_name"], strict=True))
+
+
 def rasterize_provinces_to_match(
     provinces: gpd.GeoDataFrame,
     raster_path: Path,
@@ -156,6 +163,52 @@ def latlon_row_areas(transform, height: int) -> np.ndarray:
         area, _ = geod.polygon_area_perimeter(lons, lats)
         row_areas[row] = abs(area)
     return row_areas
+
+
+def pixel_centers(transform, rows: np.ndarray, cols: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """栅格像元 (rows, cols) 的中心在栅格自身坐标系下的 (x, y)。"""
+    x = transform.c + (cols.astype(np.float64) + 0.5) * transform.a
+    y = transform.f + (rows.astype(np.float64) + 0.5) * transform.e
+    return x, y
+
+
+@functools.lru_cache(maxsize=None)
+def _to_lonlat(crs_wkt: str) -> Transformer:
+    """`crs_wkt` → EPSG:4326 的 Transformer，按 CRS 字串缓存（同一进程里同一网格的多张栅格只建一次）。"""
+    return Transformer.from_crs(crs_wkt, "EPSG:4326", always_xy=True)
+
+
+def pixel_centers_lonlat(transform, crs, rows: np.ndarray, cols: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """像元中心的经纬度：地理坐标的栅格（`crs` 为空或 EPSG:4326）直接取，投影栅格转到 EPSG:4326（Transformer 按 CRS 缓存）。"""
+    x, y = pixel_centers(transform, rows, cols)
+    if crs is None or str(crs).upper() == "EPSG:4326":
+        return x, y
+    lon, lat = _to_lonlat(crs.to_wkt() if hasattr(crs, "to_wkt") else str(crs)).transform(x, y)
+    return np.asarray(lon, dtype=np.float64), np.asarray(lat, dtype=np.float64)
+
+
+def _bin_index(values: np.ndarray, cell_degrees: float, offset: float) -> np.ndarray:
+    """坐标落在第几个 `cell_degrees` 宽的格里（int32）；`offset` 先把经度 +180 / 纬度 +90 移成非负。"""
+    return np.floor((values + offset) / cell_degrees).astype(np.int32)
+
+
+def aggregate_to_cells(points: pd.DataFrame, weight: str, cell_degrees: float) -> pd.DataFrame:
+    """把带 `province_id` / `longitude` / `latitude` 的点按 (省, `cell_degrees` 的经纬网格) 聚合成节点。
+
+    `weight` 与其余数值列逐格求和，坐标按 `weight` 加权平均（格内权重合计为 0 时记 0）。返回按
+    (province_id, lon_bin, lat_bin) 升序的表，保留两列分箱号与加权坐标和 `weighted_lon` / `weighted_lat`。
+    """
+    frame = points.assign(
+        lon_bin=_bin_index(points["longitude"].to_numpy(), cell_degrees, 180.0),
+        lat_bin=_bin_index(points["latitude"].to_numpy(), cell_degrees, 90.0),
+        weighted_lon=points["longitude"] * points[weight],
+        weighted_lat=points["latitude"] * points[weight],
+    ).drop(columns=["longitude", "latitude"])
+    cells = frame.groupby(["province_id", "lon_bin", "lat_bin"], as_index=False).sum()
+    total = cells[weight]
+    cells["longitude"] = np.where(total > 0, cells["weighted_lon"] / total, 0.0)
+    cells["latitude"] = np.where(total > 0, cells["weighted_lat"] / total, 0.0)
+    return cells
 
 
 def geometry_parts(geom) -> list:
