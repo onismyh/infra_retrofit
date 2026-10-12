@@ -727,6 +727,14 @@
 > `OptimizationAssumptions()` 的 76 个缺省值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；473 个测试通过（4 个测试文件的导入与字段名随之改），
 > mypy 错误 93 → 89（`constraints.py` 自写导入回退的 3 条与 `quicksum(list[object])` 的 1 条消失），其余文件不变。
 
+> 2026-10-12 起（同日第十一个 PR）`optimization/assumptions.py`（445 行）里的三张分省表搬到新模块 `constants_province.py`（44 行），
+> 只搬代码、不改口径，模型分段不变（仍为 13）：省名别名表 `PROVINCE_NAME_ALIASES`、分省煤价 `PROVINCE_COAL_COST_CNY_PER_GJ` 与分省煤电利用小时
+> `PROVINCE_OPERATING_HOURS`，出处注释随表搬走、数值逐字不变。`OptimizationAssumptions` 的 `province_coal_cost_cny_per_gj`、
+> `province_operating_hours` 缺省改为这两张表的副本（`default_factory=<表>.copy`，每个实例一份，情景仍可整张替换）；结果表的省名归一
+> （`optimization/results_regions`）改从 `constants_province` 导入别名表。`assumptions.py` 降到 416 行：剩下的是一个 dataclass 的 76 个字段与各自的出处注释、
+> 查表方法，不再拆。`constants` 快照与 `OptimizationAssumptions()` 的 76 个缺省值（含两张表的键序）相同；四个登记情景的 `show` 输出与
+> `diff` 逐字节相同；474 个测试通过（新增 1 个：两张表的缺省值与模块常量同序、各实例互不相干），mypy 错误 89 不变。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -763,19 +771,19 @@
 重算由 `tests/test_discount_rate.py` 覆盖（不求解，不依赖 Gurobi）——真实输入（v7 / v9 / v9.1 都是按 8%、20 年算的 0.0891 USD/kg；
 `_indtree/inputs/` 的那张表自 `89f8205` 起入库，与 v7 那份逐字节相同）上每条氨链路的成本都会变。
 
-另外更正了北京煤价：69.4 → 38.6 元/GJ（`optimization/assumptions.py:78-81`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
+另外更正了北京煤价：69.4 → 38.6 元/GJ（`constants_province.py:15-18`）。An et al. 2025 SI Table 2 里北京没有煤价，原来的
 9.92 $/GJ 是气价；京津两行的气价、生物质价与潜力完全相同，取天津的 5.51 $/GJ。煤电没有北京机组；仓库根
 `inputs/industry_hubs.csv` 里只有 1 个北京 hub（水泥 cement_039），它的捕集蒸汽变便宜（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。
 查不到省名时用的缺省煤价 38.2 元/GJ（`coal_fuel_cost_cny_per_gj`）原是 30 省的简单平均，含北京误取的 69.4；更正后简单平均
 为 37.2，缺省值没有跟改，改标 ⚠ 假设（设定值）。仓库根 hub 表里用到它的原是写作 "Neimenggu" 的 28 个 hub（煤价表里是
 "Inner Mongolia"，其中 14 个水泥 hub 的捕集蒸汽因此按 38.2 而不是 17.9 计价）与 4 个西藏 hub（优化侧已剔除）。
-2026-09-25（PR #3 合入）起读入时按 `optimization/assumptions.py` 的 `PROVINCE_NAME_ALIASES` 把 "Neimenggu" 换成 "Inner Mongolia"，
+2026-09-25（PR #3 合入）起读入时按 `constants_province.py` 的 `PROVINCE_NAME_ALIASES` 把 "Neimenggu" 换成 "Inner Mongolia"，
 仍查不到煤价的省名会告警；仓库根输入里已没有 hub 或机组用到缺省煤价（`_indtree/inputs/` 自 `89f8205` 起入库，
 机组表与 hub 表都与仓库根那两份逐字节相同；三个登记情景在它上面建模（不求解）都没有这条告警）。
 
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
-1. **煤电有几项运维不是"capex 的比例"。** 基线燃煤运维按发电量收 110 元/MWh（`optimization/assumptions.py:138`，Wang & Cai 的
+1. **煤电有几项运维不是"capex 的比例"。** 基线燃煤运维按发电量收 110 元/MWh（`optimization/assumptions.py:121`，Wang & Cai 的
    固定与可变运维按其全国平均利用小时折算）；掺烧能力 2026-10-10 起都按掺烧 capex 的 3%/年（生物质与 BECCS 的掺烧部分 2026-10-02 起，
    此前各 30 元/MWh；掺氨此前按发电量收 80 元/MWh，无出处）；空冷改造只有 capex（300 元/kW）和背压能耗，没有固定运维项。工业 CCS 另有 15 或 5 元/t 的耗材，
    煤电 CCS 没有单列。
@@ -1011,7 +1019,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的八个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 445。
+> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（一个 dataclass 的 76 个字段与出处注释，不再拆）。
 
 ## 1. 这个项目回答什么问题
 

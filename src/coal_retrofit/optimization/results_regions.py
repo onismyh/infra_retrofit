@@ -12,9 +12,9 @@ import geopandas as gpd
 import pandas as pd
 
 from ..constants import TARGET_GEO_CRS
+from ..constants_province import PROVINCE_NAME_ALIASES
 from ..spatial import load_provinces
 from ._shared import PreparedInputs
-from .assumptions import PROVINCE_NAME_ALIASES
 
 OFFSHORE = "Offshore"
 # 省名（输入表与分省煤价表的写法）-> (中文简称, 分区号)，顺序即结果表的行序。省到区的对应取自 ChinaCCS.xlsm 的

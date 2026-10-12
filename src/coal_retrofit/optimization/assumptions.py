@@ -1,5 +1,5 @@
-"""求解器的技术经济假设 `OptimizationAssumptions`（含分省煤价、分省利用小时等缺省表）与输入表省名的别名表
-`PROVINCE_NAME_ALIASES`；情景层的 `OptimizationScenario` 在 `scenario`。
+"""求解器的技术经济假设 `OptimizationAssumptions`；分省煤价、分省利用小时的缺省表与输入表省名的别名表在 `constants_province`，
+情景层的 `OptimizationScenario` 在 `scenario`。
 """
 from __future__ import annotations
 
@@ -8,14 +8,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ..constants import COOLING_WATER_INTENSITY_M3_PER_MWH, PLANNING_YEARS, cooling_class
+from ..constants_province import PROVINCE_COAL_COST_CNY_PER_GJ, PROVINCE_NAME_ALIASES, PROVINCE_OPERATING_HOURS
 
 logger = logging.getLogger(__name__)
-
-# 输入表里与分省煤价表（`OptimizationAssumptions.province_coal_cost_cny_per_gj`）写法不同的省名，
-# 读入时（`prepare_industry`、`_prepare_plants`）由 `OptimizationAssumptions.canonical_provinces`
-# 换成煤价表的写法。只收有证据的：仓库根 `inputs/industry_hubs.csv`（`a303f05`）的 28 个合成氨、水泥、甲醇 hub
-# 把内蒙古写作拼音 "Neimenggu"，2026-09-25（PR #3 合入）前查不到煤价，退回 `coal_fuel_cost_cny_per_gj`。
-PROVINCE_NAME_ALIASES: dict[str, str] = {"Neimenggu": "Inner Mongolia"}
 
 
 @dataclass(frozen=True)
@@ -75,20 +70,8 @@ class OptimizationAssumptions:
     # (0.150, 0.1054, 0.0899, 0.075)：2030 年的 15% 无出处，之后按 An 的相对下降缩放。
     ccs_energy_penalty_ratio_by_year: tuple[float, ...] = (0.2853, 0.1848, 0.1534, 0.1249)
 
-    # 分省煤价，CNY/GJ = An et al. 2025（Nat Commun）SI Table 2 的 USD/GJ × 7。原表北京无煤价（9.92 $/GJ 是气价，
-    # 2026-09-23 前误记为 69.4），京津两行气价、生物质价与潜力相同，取天津 5.51（38.6）；内蒙古取东、西两行 2.63 / 2.49 的均值。
-    province_coal_cost_cny_per_gj: dict[str, float] = field(default_factory=lambda: {
-        "Anhui": 42.8, "Beijing": 38.6, "Chongqing": 42.6,
-        "Fujian": 40.0, "Gansu": 37.0, "Guangdong": 41.5,
-        "Guangxi": 47.9, "Guizhou": 34.6, "Hainan": 33.6,
-        "Hebei": 30.8, "Heilongjiang": 35.6, "Henan": 42.1,
-        "Hubei": 46.2, "Hunan": 48.5, "Inner Mongolia": 17.9,
-        "Jiangsu": 40.7, "Jiangxi": 48.2, "Jilin": 39.1,
-        "Liaoning": 37.5, "Ningxia": 27.4, "Qinghai": 33.9,
-        "Shaanxi": 31.0, "Shandong": 41.5, "Shanghai": 38.1,
-        "Shanxi": 28.2, "Sichuan": 45.4, "Tianjin": 38.6,
-        "Xinjiang": 16.8, "Yunnan": 29.6, "Zhejiang": 39.4,
-    })
+    # 分省煤价，CNY/GJ，缺省为 `constants_province.PROVINCE_COAL_COST_CNY_PER_GJ` 的副本（出处见该处）。
+    province_coal_cost_cny_per_gj: dict[str, float] = field(default_factory=PROVINCE_COAL_COST_CNY_PER_GJ.copy)
     # 煤价乘子（2026-10-02 起，缺省 1.0，只作敏感性）：乘在上表与缺省煤价上，煤电与工业捕集蒸汽的用煤同时变。上表是 2023 价格年，
     # 2024–2025 年发电集团口径低 2%–11%、2025 年秦皇岛港口价低 14%（B），敏感性取 0.89、0.86，保留分省结构、整体平移
     # （docs/参数调研_20261001.md §2.3）。
@@ -365,20 +348,8 @@ class OptimizationAssumptions:
     # 0.12 USD/(t·km) = 0.00012 USD/(kg·km) × 7.0 = 0.00084 CNY/(kg·km)
     ammonia_transport_cost_cny_per_kg_km: float = 0.00084
 
-    # 分省年运行小时数（计算发电量时替代统一的 capacity_factor）
-    # 来源：中国电力企业联合会（China Electricity Council）统计，分省煤电平均利用小时数
-    province_operating_hours: dict[str, float] = field(default_factory=lambda: {
-        "Inner Mongolia": 5031.5, "Zhejiang": 5535.3, "Xinjiang": 5281.2,
-        "Jiangsu": 5015.5, "Fujian": 5126.2, "Anhui": 5082.1,
-        "Hainan": 5030.9, "Ningxia": 4970.9, "Shanghai": 4954.8,
-        "Sichuan": 4996.4, "Chongqing": 4794.2, "Guangdong": 4831.7,
-        "Guangxi": 4786.6, "Jiangxi": 4766.4, "Guizhou": 4747.1,
-        "Shanxi": 4629.5, "Shaanxi": 4538.0, "Yunnan": 4482.2,
-        "Hebei": 4455.1, "Shandong": 4361.1, "Tianjin": 4347.5,
-        "Gansu": 4189.6, "Qinghai": 4097.0, "Hunan": 3906.9,
-        "Hubei": 3749.6, "Jilin": 3621.4, "Henan": 3599.6,
-        "Heilongjiang": 3478.5, "Liaoning": 3100.7, "Beijing": 779.2,
-    })
+    # 分省年运行小时数（计算发电量时替代统一的 capacity_factor），缺省为 `constants_province.PROVINCE_OPERATING_HOURS` 的副本（出处见该处）。
+    province_operating_hours: dict[str, float] = field(default_factory=PROVINCE_OPERATING_HOURS.copy)
 
     def province_cf(self, province_name: str) -> float:
         """由运行小时数求某省的容量因子。"""
