@@ -615,7 +615,7 @@
 > - 数字：只有 cwatm 的 ipsl / mpi / mri / ukesm 四个 GCM（8 个成员、11 936 行）的 `bias_factor` 与年、枯水期可用量变了，全国合计
 >   ipsl +8.6%～+8.9%（枯水期 +9.4%～+10.0%）、mpi −3.6%～−4.0%（−3.6%～−4.2%）、mri −1.5%～−1.6%（−1.6%～−1.8%）、ukesm +0.9%～+1.0%
 >   （+0.9%～+1.1%）；gfdl 与 WaterGAP2-2e 的 12 个成员和 `local_runoff_m3_per_year` 数值不变（差异在 1e-16 级）。
->   粗化节点坐标按各成员平均可用量加权，随之最多移 0.13 km（中位 0.01 km）：`water_nodes.csv` 的坐标与 `water_supply_links.csv` 的
+>   粗化节点坐标当时按各成员平均可用量加权（同日下一条改按径流加权），随之最多移 0.13 km（中位 0.01 km）：`water_nodes.csv` 的坐标与 `water_supply_links.csv` 的
 >   `distance_km` 跟着变，1 569 条链路的集合、名次与每个厂址最近的节点无一变化；其余水表不变。`data_prep._prepare_water` 按节点坐标
 >   重算链路距离与送水成本（每 m³ 每 km 0.05 元），每条链路的送水成本最多变 0.0067 元/m³；`water_nodes.csv`、`water_availability.csv`
 >   是所有情景（含 `ST_BASE`）的输入文件，输入摘要全部改变。
@@ -623,6 +623,18 @@
 >   改按成员取历史文件（cwatm 的 ukesm 成员没有这一列）。
 > - 模型分段 11 → 12（`src/coal_retrofit/segment.py`）：输入表变了，此前的所有结果（含头部情景 `ST_WA_cwatm_126_dry_oq`——它用 cwatm 的
 >   gfdl-esm4 成员，可用量数值不变，但节点坐标与输入摘要变了）都要用当前代码重解，出图与 `check_run_provenance.py --pair` 会拒绝旧结果。
+>
+> 2026-10-12 起粗化水节点坐标改按模拟径流加权（**输入表变更，模型分段 12 → 13**；`docs/方法论.md` §2.3；CLAUDE.md §二.7 记第十三段边界；
+> 作者决定 2026-10-12）：
+> - 起因：上一条里偏差因子一变，粗化节点坐标就跟着微移，所有情景（含无水约束的）的供水距离与输入摘要都变。`coarsen_water_inputs`
+>   把 0.5° 网格按（流域，2° 分箱）并成 373 个粗节点时，坐标取细节点的加权平均，权重此前是校正后的可用量（各成员与规划年的均值）。
+> - 处理：权重改为 `local_runoff_m3_per_year`（模拟径流，不经偏差校正，各成员与规划年的均值）：偏差因子再改，坐标也不动。
+> - 数字：`water_availability.csv`、`water_scenarios.csv`、`water_base.csv` 逐字节不变；`water_nodes.csv` 373 个节点中 343 个坐标移动，
+>   最大 4.50 km、中位 0.24 km、p90 0.99 km（最大的五个都在海河流域）；`water_supply_links.csv` 1 569 → 1 566 条（200 km 边缘 5 条退出、
+>   2 条进入），1 420 条距离变化（最大 4.47 km、中位 0.10 km），20 条名次变化，P0027 与 P0111 两个厂址的最近节点改变（式（31）的存量项
+>   按最近节点计，随之换节点）；`data_prep._prepare_water` 重算的送水成本每条链路最多变 0.22 元/m³。
+> - 模型分段 12 → 13（`src/coal_retrofit/segment.py`）：输入表变了，此前的所有结果（含同日第十二段里的）都要用当前代码重解，
+>   出图与 `check_run_provenance.py --pair` 会拒绝旧结果。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -928,7 +940,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准 `e6f8f06`，与方法论文首相同；模型分段 12）：
+截至 2026-10-12（代码基准 `a59327a`，与方法论文首相同；模型分段 13）：
 
 | 部分 | 现状 |
 |---|---|
@@ -1027,7 +1039,7 @@ python -m ruff check src tests scripts
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
 | `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
-| `build_water_inputs.py` | `water.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 569 |
+| `build_water_inputs.py` | `water.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
 | `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |
