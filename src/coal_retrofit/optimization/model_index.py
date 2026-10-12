@@ -8,7 +8,8 @@ import numpy as np
 
 from ..constants_industry import POWER_TARGET_GROUP
 from ._shared import PATHWAY_INDEX, PreparedInputs
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 
 logger = logging.getLogger(__name__)
 

@@ -27,7 +27,8 @@ from ._shared import PreparedInputs
 from .industry import CCS, H2
 from .model_costs import _air_unit_capex, _blend_unit_capex, _island_unit_capex
 from .salvage import remaining_fraction
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .vintage import alive_vintages
 from .year_types import YearData, YearSolution
 

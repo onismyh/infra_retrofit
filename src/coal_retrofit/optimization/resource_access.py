@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ._shared import PreparedInputs, _nearest_year
-from .scenario import OptimizationAssumptions
+from .assumptions import OptimizationAssumptions
 
 
 def _sparse_membership(rows: list[int], link_count: int, row_count: int):

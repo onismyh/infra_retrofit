@@ -6,25 +6,29 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..constants_industry import (
+    INDUSTRY_ROUTES,
+    INDUSTRY_SECTORS,
+    SECTOR_HAS_H2_ROUTE,
+    water_quota,
+)
+from ..constants_industry_capture import (
     INDUSTRY_CAPTURE_LIFETIME_YEARS,
     INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2,
     INDUSTRY_CCS_FIXED_OM_FRACTION,
+    capturable_share,
+    capture_capex_cny_per_t_yr,
+    capture_steam_co2_t_per_t,
+    capture_variable_cost_cny_per_t,
+)
+from ..constants_industry_h2 import (
     INDUSTRY_H2_ABATEMENT_FRACTION,
     INDUSTRY_H2_INTENSITY_T_PER_T,
     INDUSTRY_H2_LIFETIME_YEARS,
     INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION,
     INDUSTRY_H2_USES_ADVANCED_QUOTA,
-    INDUSTRY_ROUTES,
-    INDUSTRY_SECTORS,
-    SECTOR_HAS_H2_ROUTE,
     SECTORS_H2_ABATES_CAPTURABLE_SHARE,
-    capturable_share,
-    capture_capex_cny_per_t_yr,
-    capture_steam_co2_t_per_t,
-    capture_variable_cost_cny_per_t,
     h2_route_capex_cny_per_t_yr,
     h2_route_opex_delta_cny_per_t,
-    water_quota,
 )
 from .industry_inputs import ABATABLE_SHARE_COLUMNS, IndustryInputs
 

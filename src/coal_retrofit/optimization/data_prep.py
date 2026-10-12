@@ -15,7 +15,8 @@ from ..paths import ProjectPaths
 from ..spatial import haversine_km
 from ._shared import PreparedInputs
 from .network import build_runtime_network
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .solver_provenance import _input_digest
 
 logger = logging.getLogger(__name__)

@@ -17,7 +17,8 @@ import pandas as pd
 import pytest
 
 from coal_retrofit import cli, run_controls, runner
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.solver import SolveControls
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.run_controls import RunError, WarmStartFailed

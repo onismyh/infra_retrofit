@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ._shared import PreparedInputs, SolveState
-from .scenario import OptimizationAssumptions
+from .assumptions import OptimizationAssumptions
 from .year_types import YearSolution
 
 

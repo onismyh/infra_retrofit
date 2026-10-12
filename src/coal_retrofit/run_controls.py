@@ -23,7 +23,8 @@ import numpy as np
 
 from .optimization._shared import PreparedInputs, SolveState
 from .optimization.data_prep import prepare_inputs
-from .optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from .optimization.assumptions import OptimizationAssumptions
+from .optimization.scenario import OptimizationScenario
 from .optimization.solver import SolveControls, _solve_joint_multi_period
 from .paths import ProjectPaths
 from .scenarios import REPO_ROOT, shown_path

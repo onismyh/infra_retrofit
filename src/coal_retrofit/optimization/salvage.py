@@ -35,7 +35,8 @@ except ImportError:  # pragma: no cover
 from ._shared import _discount_factor
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .scenario import OptimizationAssumptions, OptimizationScenario
+    from .assumptions import OptimizationAssumptions
+    from .scenario import OptimizationScenario
     from .year_types import YearPayload
 
 logger = logging.getLogger(__name__)

@@ -32,7 +32,8 @@ from coal_retrofit.optimization.results_plant import (
     _build_plant_detail_table,
     _build_province_table,
 )
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario
 from coal_retrofit.optimization.year_types import YearData, YearSolution
 
 SCENARIO = OptimizationScenario(experiment_id="T", description="toy")

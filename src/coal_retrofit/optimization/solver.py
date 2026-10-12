@@ -29,7 +29,8 @@ from .model_year import add_year_block
 from .resource_access import _biomass_access_matrices
 from .retirement import add_retired_rebuild_offset
 from .salvage import _add_salvage_credit
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .solver_extract import empty_year_solutions, extract_year_solutions
 from .solver_provenance import _optional_model_attr, _solver_quality
 from .solver_start import _apply_rounded_start, _incumbent_logger

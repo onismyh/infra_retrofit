@@ -11,7 +11,8 @@ except ImportError:  # pragma: no cover
     gp = None
     GRB = None
 
-from .scenario import OptimizationAssumptions, OptimizationScenario, PATHWAYS
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario, PATHWAYS
 from ._shared import PATHWAY_INDEX
 from .year_types import RebuiltShares, YearData
 

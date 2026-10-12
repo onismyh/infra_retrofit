@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 
 from ._shared import PATHWAY_INDEX, PreparedInputs
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 
 logger = logging.getLogger(__name__)
 

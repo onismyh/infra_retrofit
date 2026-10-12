@@ -36,7 +36,8 @@ from .results_workbook_sources import (
     stock_table,
     transmission_matrix,
 )
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 
 
 def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:

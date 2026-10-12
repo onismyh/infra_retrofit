@@ -14,12 +14,13 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.constants import part_load_heat_rate_factor
-from coal_retrofit.constants_industry import capture_variable_cost_cny_per_t
+from coal_retrofit.constants_industry_capture import capture_variable_cost_cny_per_t
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.industry_matrices import CCS
 from coal_retrofit.optimization.model_index import build_model_index
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
 from coal_retrofit.optimization.year_types import YearData
 from toy_inputs import TOY_UNIT_TYPE, _write_toy_inputs, _write_toy_units

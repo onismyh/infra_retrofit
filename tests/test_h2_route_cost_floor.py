@@ -14,7 +14,8 @@ gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver int
 
 from coal_retrofit.constants import AMMONIA_FLOW_SCALE  # noqa: E402
 from coal_retrofit.optimization.industry import H2, add_industry_year, industry_year_data  # noqa: E402
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions  # noqa: E402
+from coal_retrofit.optimization.scenario import OptimizationScenario  # noqa: E402
 from test_h2_route_multiplier import _steel_hub  # noqa: E402
 
 

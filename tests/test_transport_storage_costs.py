@@ -21,7 +21,8 @@ from coal_retrofit.optimization.results_network import _build_sinks_table
 from coal_retrofit.optimization.results_regions import OFFSHORE
 from coal_retrofit.optimization.results_workbook_network import cost_lines
 from coal_retrofit.optimization.results_workbook_sources import sinks_frame
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.run_controls import initial_state
 from toy_inputs import _write_targets, _write_toy_inputs

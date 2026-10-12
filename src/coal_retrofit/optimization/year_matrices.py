@@ -9,7 +9,8 @@ import pandas as pd
 from ._shared import PATHWAY_INDEX, PreparedInputs, SolveState
 from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _water_intensity_matrices
 from .resource_access import BiomassAccess, _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matrices
 from .year_types import RebuiltDelta, YearData
 

@@ -12,7 +12,7 @@ from coal_retrofit.constants import (
     SLACK_PENALTY_CNY_PER_M3_WATER,
 )
 from coal_retrofit.optimization.results_costs import _slack_costs
-from coal_retrofit.optimization.scenario import OptimizationAssumptions
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 
 UNIT_SLACKS = {
     "target_shortfall_mt": 1.0,

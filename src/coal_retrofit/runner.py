@@ -40,7 +40,8 @@ from .optimization.data_prep import _input_files, prepare_inputs
 from .optimization.results_regions import node_provinces
 from .optimization.results_tables import build_result_tables, write_result_tables
 from .optimization.results_workbook import write_ccs_workbook
-from .optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from .optimization.assumptions import OptimizationAssumptions
+from .optimization.scenario import OptimizationScenario
 from .optimization.solver import SolveControls, _solve_joint_multi_period
 from .paths import ProjectPaths
 from .run_controls import (

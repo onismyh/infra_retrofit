@@ -8,9 +8,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from coal_retrofit import constants_industry as ci
+from coal_retrofit import constants_industry_h2 as ch
 from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industry_year_data
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 
 
 def _steel_hub(capacity_kt: float = 1000.0) -> IndustryInputs:
@@ -37,19 +38,19 @@ def test_industry_h2_multiplier_scales_route_capex_and_its_fixed_om_only() -> No
         assumptions, 2030,
     )
     production_t = 1.0e6
-    capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
-    delta = ci.h2_route_opex_delta_cny_per_t(
-        "steel_bf_bof", ci.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"], base_scenario.discount_rate
+    capex = ch.h2_route_capex_cny_per_t_yr("steel_bf_bof")
+    delta = ch.h2_route_opex_delta_cny_per_t(
+        "steel_bf_bof", ch.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"], base_scenario.discount_rate
     )
     assert delta != 0.0
     assert base.route_available[0, H2] and doubled.route_available[0, H2]
     assert doubled.capex_cny_per_mt[0, H2] == pytest.approx(2.0 * base.capex_cny_per_mt[0, H2], rel=1e-12)
     # 铭牌产能与产量相同（`_steel_hub` 缺省），固定运维按铭牌产能计、运行差额按产量计，这里两者同为 production_t。
     assert base.opex_cny[0, H2] == pytest.approx(
-        production_t * (capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
+        production_t * (capex * ch.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
     assert doubled.opex_cny[0, H2] == pytest.approx(
-        production_t * (2.0 * capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
+        production_t * (2.0 * capex * ch.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
 
 
@@ -66,13 +67,13 @@ def test_h2_route_capex_has_no_learning_curve() -> None:
     assert learning < 0.8
     assert y40.capex_cny_per_mt[0, CCS] == pytest.approx(learning * y30.capex_cny_per_mt[0, CCS], rel=1e-12)
     assert y40.capex_cny_per_mt[0, H2] == pytest.approx(y30.capex_cny_per_mt[0, H2], rel=1e-12)
-    assert y40.capex_cny_per_mt[0, H2] == pytest.approx(ci.h2_route_capex_cny_per_t_yr("steel_bf_bof") * 1e6, rel=1e-12)
+    assert y40.capex_cny_per_mt[0, H2] == pytest.approx(ch.h2_route_capex_cny_per_t_yr("steel_bf_bof") * 1e6, rel=1e-12)
 
 
 @pytest.mark.parametrize(("sector", "increase"), [("steel_bf_bof", 0.2516), ("ammonia", 0.1415), ("methanol", 0.0189)])
 def test_h2_multiplier_reach_at_the_anchor_price(sector: str, increase: float) -> None:
     """铭牌系数 ν = 1 的 hub 在锚点氢价下乘子取 2 只让平准化溢价增加 capex x (CRF + 固定运维比例)，即路线的
     年资本项：钢铁 25%、合成氨 14%、甲醇 2%，即 scenario.py 字段注释与实现说明 §四.1 写的数。2026-09-23 前为 +100%。"""
-    premium_ref, _ = ci.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
+    premium_ref, _ = ch.INDUSTRY_H2_PREMIUM_CNY_PER_T_PRODUCT[sector]
     rate = OptimizationScenario(experiment_id="T", description="toy").discount_rate
-    assert ci.h2_route_annual_capital_cny_per_t(sector, rate) / premium_ref == pytest.approx(increase, abs=1e-4)
+    assert ch.h2_route_annual_capital_cny_per_t(sector, rate) / premium_ref == pytest.approx(increase, abs=1e-4)

@@ -42,7 +42,8 @@ from coal_retrofit.optimization.results_costs import (  # noqa: E402
     build_system_table,
     cost_closure,
 )
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions  # noqa: E402
+from coal_retrofit.optimization.scenario import OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
 from test_capex_stock_no_solver import _cement_hub  # noqa: E402

@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from coal_retrofit.constants_industry import (
-    INDUSTRY_CCS_FIXED_OM_FRACTION,
+from coal_retrofit.constants_industry_capture import INDUSTRY_CCS_FIXED_OM_FRACTION
+from coal_retrofit.constants_industry_h2 import (
     INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION,
     h2_route_capex_cny_per_t_yr,
 )
@@ -25,7 +25,8 @@ from coal_retrofit.optimization.industry_inputs import prepare_industry
 from coal_retrofit.optimization.results_costs import _industry_costs
 from coal_retrofit.optimization.results_industry import _build_industry_detail_table
 from coal_retrofit.optimization.results_network import _alive_edge_added_stock
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.vintage import alive_vintages
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
 from coal_retrofit.optimization.year_types import YearData

@@ -19,7 +19,8 @@ import pytest
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.results_costs import build_costs_table, build_system_table, cost_closure
 from coal_retrofit.optimization.results_tables import build_result_tables
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.run_controls import initial_state
 from toy_inputs import _write_targets, _write_toy_inputs

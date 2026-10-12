@@ -44,7 +44,8 @@ from .results import (
     _build_sources_table,
 )
 from .results_costs import build_costs_table, build_system_table, cost_closure
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 
 TABLES = ("sources", "source_routes", "sinks", "network", "resources", "resource_flows", "costs", "system", "checks")
 # 成本对账的容差：拆到各实体的合计与求解器合计的最大相对差（`results_costs.cost_closure`）。

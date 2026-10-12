@@ -11,7 +11,8 @@ import pytest
 from coal_retrofit.optimization._shared import PATHWAY_INDEX
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.plant_matrices import _plant_operating_matrices
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from toy_inputs import _write_targets, _write_toy_inputs
 
 

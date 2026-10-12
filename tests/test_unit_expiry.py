@@ -18,7 +18,8 @@ from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor, _year_objective_weight
 from coal_retrofit.optimization.data_prep import _with_expiry, prepare_inputs
 from coal_retrofit.optimization.results_costs import build_costs_table, build_system_table, cost_closure
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
 from toy_inputs import TOY_UNIT_TYPE, YEARS, _toy_assumptions, _write_toy_inputs, _write_toy_units
