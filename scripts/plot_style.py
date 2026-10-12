@@ -1,10 +1,11 @@
-"""全仓库唯一一套绘图样式与工具（CLAUDE.md §三、§四）。
+"""全仓库唯一一套绘图样式（CLAUDE.md §三）：字体与版式、配色、中英对照、常用画法与存图。
 
-出图脚本 `scripts/plot_fig*.py` 都从这里取：字体与版式（`apply_style`）、配色（§3.3）、中英对照（`labels`）、
-中国底图（EPSG:2380、九段线、南海小图）、读求解结果（`read_result`）、存图（`save_fig`：字体、字号、图宽、缺字四道检查）。
-各图脚本不自设字体、不自带色表。
+出图脚本 `scripts/plot_fig*.py` 都从这里取字体与版式（`apply_style`）、配色（§3.3）、中英对照（`labels`）与存图
+（`save_fig`：字体、字号、图宽、缺字四道检查）；中国底图（EPSG:2380、九段线、南海小图）在 `plot_map`，命令行与读求解结果
+在 `plot_io`。各图脚本不自设字体、不自带色表。
 
-    from plot_style import apply_style, figure_cli, langs, save_fig
+    from plot_io import figure_cli, langs
+    from plot_style import apply_style, save_fig
     args = figure_cli(__doc__).parse_args()
     for lang in langs(args.lang):
         apply_style(lang)
@@ -12,14 +13,10 @@
 """
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import re
 import warnings
-from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import matplotlib
 
@@ -33,15 +30,9 @@ from matplotlib.text import Text  # noqa: E402
 
 from _bootstrap import REPO_ROOT, ROOT  # noqa: E402  数据树 _indtree/
 from coal_retrofit.constants_water_quota import BASIN_NAMES_ZH  # noqa: E402
-from coal_retrofit.segment import check_segment  # noqa: E402
 
-INPUTS_DIR = ROOT / "inputs"
-# 结果图读入库的 `results/solved/<结果名>(.json)`（作者本机求解后拷进来，见该目录的 README.md）；`--scenario` 给路径时
-# 读那里（例如本机求解树的 `_indtree/results/<结果名>`）。图写到 `_indtree/results/figures/`，不入库。
-SOLVED_DIR = REPO_ROOT / "results" / "solved"
+# 图写到 `_indtree/results/figures/`，不入库（结果图读的结果目录见 `plot_io.SOLVED_DIR`）。
 FIGURES_DIR = ROOT / "results" / "figures"
-# 结果图缺省画的主情景（scenarios/st.toml）。只画单个情景：ST_ 系的差值只能按可证区间报告（CLAUDE.md 二.2）。
-MAIN_SCENARIO = "ST_WA_cwatm_126_dry_oq"
 
 # ── 版式（CLAUDE.md §3.2）────────────────────────────────────────────────────────
 MM = 1 / 25.4                # mm -> inch
@@ -52,7 +43,6 @@ MIN_FONT_PT = 5.0            # 排版社缩放后仍可读的下限，save_fig �
 MIN_SCRIPT_HOST_PT = 7.0
 
 # ── 字体：中文 SimHei、英文 Arial，各自单字体、不配 fallback（CLAUDE.md §3.1）──────────
-LANGS = ("zh", "en")
 FONTS = {"zh": "SimHei", "en": "Arial"}
 # 面板标号是单个拉丁字母，两种语言都用 Arial 加粗：SimHei 只有一个字重，bold 会被静默忽略。
 _LABEL_FONT = {"fontname": "Arial", "fontweight": "bold"}
@@ -196,236 +186,6 @@ def labels(lang: str) -> dict[str, dict[str, str]]:
     return LABELS[lang]
 
 
-# ── 命令行与读结果 ───────────────────────────────────────────────────────────────
-def figure_cli(doc: str | None, *, scenario: bool = True) -> argparse.ArgumentParser:
-    """出图脚本的统一参数：--lang zh|en|both（缺省两版都出），结果图另有 --scenario。"""
-    lines = (doc or "").strip().splitlines()
-    parser = argparse.ArgumentParser(description=lines[0] if lines else None,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--lang", choices=("zh", "en", "both"), default="both",
-                        help="出中文版、英文版或两版（缺省 both；英文版文件名加 _en）")
-    if scenario:
-        parser.add_argument("--scenario", default=MAIN_SCENARIO,
-                            help=f"结果名，读 results/solved/<结果名>/ 的结果表（缺省 {MAIN_SCENARIO}）；"
-                                 "给路径（含 /）时读该目录，如 _indtree/results/ST_BASE")
-    return parser
-
-
-def langs(choice: str) -> tuple[str, ...]:
-    return LANGS if choice == "both" else (choice,)
-
-
-def result_dir(scenario: str) -> Path:
-    """结果表目录：结果名在 `SOLVED_DIR` 下找，含路径分隔符的按路径（相对仓库根或绝对路径）。"""
-    if "/" in scenario or "\\" in scenario:
-        path = Path(scenario)
-        return path if path.is_absolute() else REPO_ROOT / path
-    return SOLVED_DIR / scenario
-
-
-def read_result(scenario: str, table: str) -> pd.DataFrame:
-    """读 `<结果目录>/<表>.csv`（`result_dir`）；同名 result.json 的模型分段号须是当前代码的（`read_result_json`）。"""
-    read_result_json(scenario)
-    path = result_dir(scenario) / f"{table}.csv"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} 不存在：结果目录里缺这张表")
-    return pd.read_csv(path, encoding="utf-8-sig")
-
-
-@lru_cache(maxsize=None)
-def read_result_json(scenario: str) -> dict:
-    """读结果目录旁的 `<结果名>.json`，核模型分段号（不是当前代码的就抛 `StaleResultError`），打印求解时的提交号。"""
-    folder = result_dir(scenario)
-    path = folder.parent / f"{folder.name}.json"
-    if not path.exists():
-        raise FileNotFoundError(f"{path} 不存在：先在本机求解 python -m coal_retrofit run {folder.name}，"
-                                "再把结果拷进 results/solved/（见该目录的 README.md）")
-    with path.open(encoding="utf-8") as f:
-        result = json.load(f)
-    check_segment(result, path)
-    code = (result.get("resolved") or {}).get("code") or {}
-    print(f"  {folder.name}：求解提交 {code.get('commit') or '未记录'}"
-          f"{'（有未提交的改动）' if code.get('dirty') else ''}")
-    return result
-
-
-def read_input(name: str) -> pd.DataFrame:
-    """读 `_indtree/inputs/<name>.csv`（列名去掉 BOM）。"""
-    frame = pd.read_csv(INPUTS_DIR / f"{name}.csv", encoding="utf-8-sig")
-    return frame
-
-
-def check_close(what: str, got, expected, *, atol: float = 1e-3, rtol: float = 1e-6) -> None:
-    """出图前的自检：图上要画的量与模型记的量对不上就报错，不出图。"""
-    got_arr = np.asarray(got, dtype=float)
-    exp_arr = np.asarray(expected, dtype=float)
-    if got_arr.shape != exp_arr.shape or not np.allclose(got_arr, exp_arr, rtol=rtol, atol=atol):
-        diff = np.nanmax(np.abs(got_arr - exp_arr)) if got_arr.shape == exp_arr.shape else float("nan")
-        raise ValueError(f"自检不通过：{what}（最大偏差 {diff:.6g}），不出图")
-
-
-# ── 中国底图（CLAUDE.md §4.1–4.4）────────────────────────────────────────────────
-MAP_CRS = "EPSG:2380"        # Xian 1980 / 3-degree Gauss-Kruger CM 105E，只用于显示，不在其下算长度与面积
-SCS_LONLAT = ((106.5, 2.8), (123.0, 24.5))   # 南海小图的西南角、东北角
-MAP_DIR = "ChinaMapTHT"
-PROV_FILE = "中华人民共和国.json"
-COUNTRY_FILE = "china_country_proj.shp"
-DASH_ADCODE = "100000_JD"    # GeoJSON 里单独成要素的九段线
-ISLAND_MIN_AREA_KM2 = 1000.0  # 主图国界只留大陆、台湾、海南三块（次大的岛只有 458 km2）
-_MAP_CACHE: dict = {}
-
-
-def to_map_xy(lon, lat) -> tuple[np.ndarray, np.ndarray]:
-    """经纬度 -> EPSG:2380 米制坐标。散点、折线的坐标都走这里。"""
-    from pyproj import Transformer
-
-    if "tf" not in _MAP_CACHE:
-        _MAP_CACHE["tf"] = Transformer.from_crs("EPSG:4326", MAP_CRS, always_xy=True)
-    x, y = _MAP_CACHE["tf"].transform(np.asarray(lon, dtype=float), np.asarray(lat, dtype=float))
-    return np.asarray(x), np.asarray(y)
-
-
-def map_layer(name: str):
-    """底图图层（EPSG:2380，读一次后缓存）：
-
-    - "provinces"：`中华人民共和国.json`（2023 版，含台湾与港澳）的省界，已剔除 adcode = 100000_JD 的九段线要素；
-    - "dash"：同一文件里 adcode = 100000_JD 的九段线，主图和小图都要画；
-    - "country"：`china_country_proj.shp` 国界，单要素、1 260 个部件，南到 3.83°N，只在南海小图里整层画；
-    - "country_main"：国界中面积 ≥ 1 000 km² 的部件，只有大陆、台湾、海南三块，主图用。面积在 shp 原生的
-      Albers 等积投影下算（§4.1：不在 EPSG:2380 下算面积）。
-    """
-    import geopandas as gpd
-
-    if name not in _MAP_CACHE:
-        base = REPO_ROOT / "data" / MAP_DIR   # 仓库根 data/ 入库；_indtree/data 只是本机的目录链接
-        if name == "country":
-            country = gpd.read_file(base / COUNTRY_FILE).to_crs("EPSG:4326")
-            # 断言不是防御性编程：换底图时九段线会静默消失，缺九段线的中国地图在国内是发表阻断项。
-            if float(country.total_bounds[1]) > 5.0:
-                raise RuntimeError(f"底图缺九段线：{base / COUNTRY_FILE} 的南界只到 "
-                                   f"{country.total_bounds[1]:.2f}N")
-            _MAP_CACHE[name] = country.to_crs(MAP_CRS)
-        elif name == "country_main":
-            native = gpd.read_file(base / COUNTRY_FILE)
-            parts = [g for g in native.geometry.iloc[0].geoms if g.area / 1e6 >= ISLAND_MIN_AREA_KM2]
-            _MAP_CACHE[name] = gpd.GeoDataFrame(geometry=parts, crs=native.crs).to_crs(MAP_CRS)
-        else:
-            layer = gpd.read_file(base / PROV_FILE).to_crs(MAP_CRS)
-            is_dash = layer["adcode"].astype(str) == DASH_ADCODE
-            if not is_dash.any():
-                raise RuntimeError(f"底图缺九段线要素 {DASH_ADCODE}：{base / PROV_FILE}")
-            _MAP_CACHE["provinces"] = layer[~is_dash].reset_index(drop=True)
-            _MAP_CACHE["dash"] = layer[is_dash]
-    return _MAP_CACHE[name]
-
-
-def draw_china_basemap(ax, *, facecolor: str = LAND, islands: bool = False,
-                       province_lw: float = 0.2, country_lw: float = 0.75) -> None:
-    """省界 + 国界 + 九段线（线宽与 zorder 见 CLAUDE.md §4.4）。
-
-    主图只画大陆、台湾、海南三块国界：国界层另有 1 257 个小岛部件（中位 1.0 km2，等积投影下算），在主图尺度上
-    每个都画不满一个像素，叠起来是东南海岸一圈黑毛刺。南海小图里 islands=True，岛礁在那个尺度上才是内容。
-    """
-    prov = map_layer("provinces")
-    if facecolor != "none":
-        prov.plot(ax=ax, facecolor=facecolor, edgecolor="none", zorder=0)
-    prov.boundary.plot(ax=ax, color="black", linewidth=province_lw, zorder=1)
-    country = map_layer("country" if islands else "country_main")
-    country.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=country_lw, zorder=1.5)
-    map_layer("dash").plot(ax=ax, facecolor="none", edgecolor="black", linewidth=country_lw, zorder=1.6)
-
-
-def mainland_extent(ax, *, south_lat: float = 17.5, pad: float = 0.02) -> None:
-    """主图范围：省界四至，南边裁到 17.5°N（南边不留白）。
-
-    省界层含南海要素（海南省要素含南沙），四至南到 3.8°N，直接用会把大陆压到画面上半部；
-    九段线主体与南海岛礁交给南海小图，这正是小图必需的原因（§4.2）。17.5°N 在中央经线上量：海南（最南 18.15°N）完整保留、离底边 77 km；
-    西沙（最北 17.12°N）与 16°N 附近的两段九段线离底边 30 km 以上，主图底边不会露出碎片。
-    """
-    x0, _, x1, y1 = map_layer("provinces").total_bounds
-    y0 = float(to_map_xy([105.0], [south_lat])[1][0])
-    dx, dy = pad * (x1 - x0), pad * (y1 - y0)
-    ax.set_xlim(x0 - dx, x1 + dx)
-    ax.set_ylim(y0, y1 + dy)
-    ax.set_aspect("equal")
-    ax.set_axis_off()
-
-
-def add_scs_inset(ax, draw=None, *, height: float = 0.26):
-    """南海小图：与主图同底图、同业务图层、同尺寸律，只换范围（§4.3）。在 mainland_extent 之后调用。
-
-    小图放在主图右下角、台湾以东的海面上，高为主图的 *height*，宽按小图范围的纵横比。省界四至的东界（抚远）
-    离台湾只有 490 km，放不下小图，所以先把主图东界往东扩到"小图这一带陆地的最东点 + 间距 + 小图宽"，
-    小图不压台湾与沿海。*draw(inset_ax)* 重画业务图层。
-    """
-    from shapely.geometry import box
-
-    (lon0, lat0), (lon1, lat1) = SCS_LONLAT
-    xs, ys = to_map_xy([lon0, lon1], [lat0, lat1])
-    (xa, xb), (ya, yb) = ax.get_xlim(), ax.get_ylim()
-    margin = 0.01 * (xb - xa)
-    inset_h = height * (yb - ya)
-    inset_w = inset_h * (xs[1] - xs[0]) / (ys[1] - ys[0])
-    band = box(xa, ya, xb, ya + margin + inset_h)
-    land_east = max(g.intersection(band).bounds[2] for g in map_layer("country_main").geometry
-                    if g.intersects(band))
-    xb = max(xb, land_east + 3 * margin + inset_w)
-    ax.set_xlim(xa, xb)
-    inset = ax.inset_axes((xb - margin - inset_w, ya + margin, inset_w, inset_h), transform=ax.transData)
-    draw_china_basemap(inset, islands=True, province_lw=0.15, country_lw=0.5)
-    if draw is not None:
-        draw(inset)
-    inset.set_xlim(xs[0], xs[1])
-    inset.set_ylim(ys[0], ys[1])
-    inset.set_aspect("equal")
-    inset.set_xticks([])
-    inset.set_yticks([])
-    inset.set_facecolor("white")
-    for side in inset.spines.values():
-        side.set_visible(True)     # apply_style 关了上、右轴线，小图要完整方框
-        side.set_linewidth(0.4)
-        side.set_edgecolor(MUTED)
-    return inset
-
-
-def check_off_land(ax, *artists) -> None:
-    """地图上的图例不许压到国土（大陆、台湾、海南）：按画出来的外框查，压到就报错，不出图。"""
-    from shapely.geometry import box
-
-    ax.apply_aspect()          # 等比例的轴画之前才定下外框，先定下来，数据坐标换算才与出图一致
-    renderer = ax.figure.canvas.get_renderer()
-    to_data = ax.transData.inverted()
-    for artist in artists:
-        (x0, y0), (x1, y1) = to_data.transform(artist.get_window_extent(renderer).get_points())
-        if any(g.intersects(box(x0, y0, x1, y1)) for g in map_layer("country_main").geometry):
-            raise RuntimeError("图例压到了国土：挪到国界以外的空白处（如西藏以南）或缩小，不出图")
-
-
-def edge_lines(edges: pd.DataFrame, nodes: pd.DataFrame) -> list[np.ndarray]:
-    """管段的 EPSG:2380 折线：有 WKT 的用 WKT，否则连两端节点；端点不在节点表里就报错（不静默少画）。
-
-    *edges* 要有 edge_id、from_node_id、to_node_id，可选 geometry_wkt；*nodes* 要有 node_id、lon、lat。
-    """
-    from shapely import wkt
-
-    lon = dict(zip(nodes["node_id"].astype(str), nodes["lon"].astype(float)))
-    lat = dict(zip(nodes["node_id"].astype(str), nodes["lat"].astype(float)))
-    has_wkt = "geometry_wkt" in edges.columns
-    out = []
-    for edge in edges.itertuples(index=False):
-        geom = getattr(edge, "geometry_wkt", None) if has_wkt else None
-        if isinstance(geom, str) and geom.startswith("LINESTRING"):
-            coords = np.asarray(wkt.loads(geom).coords)
-            x, y = to_map_xy(coords[:, 0], coords[:, 1])
-        else:
-            a, b = str(edge.from_node_id), str(edge.to_node_id)
-            if a not in lon or b not in lon:
-                raise ValueError(f"管段 {edge.edge_id} 的端点不在节点表里，图上会少画")
-            x, y = to_map_xy([lon[a], lon[b]], [lat[a], lat[b]])
-        out.append(np.column_stack([x, y]))
-    return out
-
-
 # ── 常用画法 ─────────────────────────────────────────────────────────────────────
 def panel_label(ax, letter: str, x: float = -0.12, y: float = 1.06) -> None:
     """面板标号：加粗小写字母，不加括号，放在面板左上角外侧（§3.2）。"""
@@ -466,10 +226,6 @@ def fmt_number(value: float) -> str:
     if abs(value) < 0.05:
         return "0"
     return f"{value:.0f}" if abs(value) >= 10 else f"{value:.1f}"
-
-
-MAP_LEGEND: dict[str, Any] = {"frameon": True, "facecolor": "white", "framealpha": 0.85, "edgecolor": "none",
-                              "borderpad": 0.4}   # 地图上的图例：白底半透明，压在省界上的字才看得清
 
 
 def legend_patches(keys, colors: dict[str, str], names: dict[str, str],

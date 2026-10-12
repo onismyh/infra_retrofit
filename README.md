@@ -735,6 +735,17 @@
 > 查表方法，不再拆。`constants` 快照与 `OptimizationAssumptions()` 的 76 个缺省值（含两张表的键序）相同；四个登记情景的 `show` 输出与
 > `diff` 逐字节相同；474 个测试通过（新增 1 个：两张表的缺省值与模块常量同序、各实例互不相干），mypy 错误 89 不变。
 
+> 2026-10-12 起（同日第十三个 PR；第十二个只同步 §2 的代码基准号）`scripts/plot_style.py`（592 行）拆成三个模块，只搬代码、不改口径，
+> 模型分段不变（仍为 13）：`plot_style.py`（348 行）留字体与版式（`apply_style`）、配色、中英对照、常用画法（面板标号、堆叠柱、尺寸图例）与
+> 存图 `save_fig` 的四道检查；`plot_map.py`（175 行）放中国底图（`MAP_CRS`、`map_layer`、`draw_china_basemap`、`mainland_extent`、`add_scs_inset`、
+> `check_off_land`、`to_map_xy`）、管段折线 `edge_lines` 与地图图例样式 `MAP_LEGEND`；`plot_io.py`（90 行）放命令行（`figure_cli`、`langs`）、
+> 读输入表与求解结果（`read_input`、`read_result`、`read_result_json`、`SOLVED_DIR`）与对账自检 `check_close`，不依赖 matplotlib。十个出图脚本按模块
+> 分开导入，CLAUDE.md §四的底图函数位置与示例导入改指 `plot_map`；`render_version.py` 原先为不导入 matplotlib 另写了一份 `SOLVED_DIR`，改为从
+> `plot_io` 导入，核对两份相同的测试用例随之删去，另加一个用例查 `plot_io` 不导入 matplotlib。拆分前的 77 个顶层定义（函数与常量，含文档串）
+> 各在一个模块里、AST 与拆分前相同；图 1–10 中英两版
+> （图 1、2 用库里的输入，图 3–10 用合成数据；本机没有 SimHei、Arial，换成 WenQuanYi Zen Hei 与 DejaVu Sans）拆分前后写出的 38 个 PDF 与 PNG
+> 逐字节相同，图 7 英文版两边都因替代字体偏宽（183.2 mm）被宽度检查拒绝；474 个测试通过（删 1 个、加 1 个），出图脚本的 mypy 错误 17 条不变。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -1019,7 +1030,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（一个 dataclass 的 76 个字段与出处注释，不再拆）。
+> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（一个 dataclass 的 76 个字段与出处注释，不再拆）。`scripts/` 下原有的 1 个（`plot_style.py` 592）同日第十三个 PR 拆开后没有了。
 
 ## 1. 这个项目回答什么问题
 
@@ -1040,7 +1051,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准 `c1ad62c`，与方法论文首相同；模型分段 13）：
+截至 2026-10-12（代码基准 `9c13e17`，与方法论文首相同；模型分段 13）：
 
 | 部分 | 现状 |
 |---|---|

@@ -2,7 +2,7 @@
 写出的，since 为 None 时全收；子目录 `main/`、`extended/` 里是已删脚本早先画的图，一律不收，`save_fig` 的临时文件
 （"." 开头）也不收。上一轮画的、这次没重画的图也还在 `_indtree/results/figures/` 里，`render_version` 正常运行靠 since
 过滤不把它们拷进归档；`main()` 怎么传 since（正常运行传画图前的时刻，`--skip-plots` 时传 None）不在本测试里。
-`copy_results` 归档出图读的 `results/solved/`（表与工作簿都拷；`SOLVED_DIR` 须与 `plot_style.SOLVED_DIR` 相同），不拷求解树
+`copy_results` 归档出图读的 `results/solved/`（表与工作簿都拷；`SOLVED_DIR` 取自出图读的 `plot_io.SOLVED_DIR`），不拷求解树
 `results/` 下的结果。
 不求解，不需要 Gurobi。"""
 from __future__ import annotations
@@ -66,11 +66,3 @@ def test_copy_results_archives_solved_results_not_tree_results(monkeypatch: pyte
     assert sorted(p.name for p in (data / "ST_BASE").iterdir()) == ["ccs_results.xlsx", "sources.csv"]
     assert (data / "ST_BASE.json").is_file() and (data / "storage_hubs.csv").is_file()
     assert not (data / "ST_LOCAL.json").exists() and not (data / "ST_ORPHAN.json").exists()
-
-
-def test_solved_dir_is_the_one_the_plots_read(monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("matplotlib", reason="plot_style 依赖 matplotlib")
-    render_version = _load(monkeypatch)
-    import plot_style
-
-    assert render_version.SOLVED_DIR == plot_style.SOLVED_DIR

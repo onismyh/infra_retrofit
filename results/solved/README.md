@@ -9,7 +9,7 @@ _indtree/results/<结果名>/       ->  results/solved/<结果名>/
 ```
 
 不要拷 `.sol`、求解日志以外的临时文件。`<结果名>.json` 的 `resolved.model_segment` 是求解时代码的模型分段号
-（`src/coal_retrofit/segment.py`）：与当前代码不同的结果，出图脚本（`scripts/plot_style.read_result_json`）与
+（`src/coal_retrofit/segment.py`）：与当前代码不同的结果，出图脚本（`scripts/plot_io.read_result_json`）与
 `scripts/check_run_provenance.py --pair --results results/solved` 都会拒绝（CLAUDE.md 二.7：段与段之间不得相减）。
 换了模型分段之后，这里的旧结果要么删掉，要么重解覆盖。
 

@@ -26,10 +26,10 @@ from matplotlib.patches import Patch
 # 先导入 _bootstrap 把 src/ 加进路径：不装包也能导入 coal_retrofit，不依赖导入顺序。
 import _bootstrap  # noqa: F401
 from coal_retrofit.constants_industry import POWER_TARGET_GROUP
+from plot_io import check_close, figure_cli, langs, read_result, read_result_json
 from plot_style import (
     BASELINE_COLOR, FULL_WIDTH_MM, GROUP_COLORS, GROUP_ORDER, MM, MT_CO2_YR, OVER_COLOR,
-    apply_style, check_close, figure_cli, fmt_number, labels, langs, panel_label, read_result, read_result_json,
-    save_fig,
+    apply_style, fmt_number, labels, panel_label, save_fig,
 )
 
 NAME = "fig5_sector_targets"

@@ -170,7 +170,7 @@ Linux / macOS `ln -s ../data _indtree/data`；没有它求解时直接报错：�
 经 `builders/water_grid._assign_basin_codes` 读 `ChinaBasins/basin_l1.gpkg`）；2026-10-02 起每个情景还要读省界
 `ChinaMap/provinces.shp`，给源、汇与节点表都给不出省名的管网节点按经纬度定省（`results_regions.node_provinces`，v9.2 有
 305 个这样的节点），`warm_start = "lp_relax"` 的情景要到热启动第 1 步之后才报这个错。
-出图不经它：2026-09-29 起 `plot_style.map_layer` 的底图直接读仓库根 `data/ChinaMapTHT/`（`REPO_ROOT`，已入库）。
+出图不经它：2026-09-29 起 `plot_map.map_layer`（2026-10-12 之前在 `plot_style`）的底图直接读仓库根 `data/ChinaMapTHT/`（`REPO_ROOT`，已入库）。
 
 ---
 
@@ -342,7 +342,7 @@ LP 松弛（热启动第 1 步的解）、有一边没有可用的解（目标�
 MIPFocus 不同、有一边没有 `resolved.code`（求解时的提交号，加这一项之前落盘），都判不过（退出码 1）；提交号不同、
 记不了提交号或求解时有未提交的改动只告警。可证区间（CLAUDE.md §二.3）里的目标函数下界 LB 用 result.json 记的 ObjBound。
 这份脚本缺省读本树 `results/`（`scripts/_bootstrap.py` 的 `ROOT`），`--results results/solved` 读入库的结果；结果图读的是入库的
-`results/solved/`（`plot_style.SOLVED_DIR`）。
+`results/solved/`（`plot_io.SOLVED_DIR`）。
 
 敏感性不进登记表，缺省值都不改模型（2026-10-02 起，见仓库根 README §0）：用 `--set 节.字段=值` 覆盖、`--as` 另起结果名，
 水约束情景用同一组 `--set`、另起结果名（如 `ST_WA_cwatm_126_dry_oq_dr5`）。贴现率、煤价乘子、煤电容量电价、部分负荷修正（机组全年在线小时）各两档：
