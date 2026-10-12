@@ -22,10 +22,10 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
+from plot_io import check_close, figure_cli, langs, read_result, read_result_json
 from plot_style import (
     FULL_WIDTH_MM, MM, MT_CO2_YR, ROUTE_COLORS, ROUTE_ORDER, SECTOR_ORDER,
-    apply_style, check_close, figure_cli, labels, langs, legend_patches, panel_label, read_result, read_result_json,
-    save_fig, stacked_bars,
+    apply_style, labels, legend_patches, panel_label, save_fig, stacked_bars,
 )
 
 NAME = "fig8_industry_abatement"

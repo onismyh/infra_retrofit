@@ -24,9 +24,10 @@ import pandas as pd
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
+from plot_io import check_close, figure_cli, langs, read_result
 from plot_style import (
     AIR_COLOR, BASIN_ORDER, FULL_WIDTH_MM, INK, MM, MUTED, OVER_COLOR,
-    apply_style, check_close, figure_cli, figure_label, fmt_number, labels, langs, read_result, save_fig,
+    apply_style, figure_label, fmt_number, labels, save_fig,
 )
 
 NAME = "fig7_water"

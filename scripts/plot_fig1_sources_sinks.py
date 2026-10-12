@@ -22,11 +22,11 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 
 from _bootstrap import ROOT
+from plot_io import figure_cli, langs, read_input
+from plot_map import MAP_LEGEND, add_scs_inset, check_off_land, draw_china_basemap, mainland_extent, to_map_xy
 from plot_style import (
-    FULL_WIDTH_MM, INK, MAP_LEGEND, MARKERS, MM, MT_CO2_YR, NEUTRAL, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS,
-    SINK_EDGE,
-    add_scs_inset, apply_style, area_scale, check_off_land, draw_china_basemap, figure_cli, figure_label, labels,
-    langs, mainland_extent, read_input, save_fig, size_legend, to_map_xy,
+    FULL_WIDTH_MM, INK, MARKERS, MM, MT_CO2_YR, NEUTRAL, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS, SINK_EDGE,
+    apply_style, area_scale, figure_label, labels, save_fig, size_legend,
 )
 
 NAME = "fig1_sources_sinks"

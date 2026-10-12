@@ -26,12 +26,12 @@ from matplotlib.collections import LineCollection
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 
+from plot_io import check_close, figure_cli, langs, read_input, read_result
+from plot_map import add_scs_inset, check_off_land, draw_china_basemap, edge_lines, mainland_extent, to_map_xy
 from plot_style import (
     FULL_WIDTH_MM, IDLE_PIPE_COLOR, INK, MARKERS, MM, MT_CO2_YR, NEUTRAL, PIPE_COLOR, SECTOR_COLORS, SECTOR_ORDER,
     SINK_COLORS, SINK_EDGE,
-    add_scs_inset, apply_style, area_scale, check_close, check_off_land, draw_china_basemap, edge_lines, figure_cli,
-    figure_label, fmt_number, labels, langs, mainland_extent, read_input, read_result, save_fig, size_legend,
-    to_map_xy,
+    apply_style, area_scale, figure_label, fmt_number, labels, save_fig, size_legend,
 )
 
 NAME = "fig6_co2_network"

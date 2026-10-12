@@ -1,12 +1,13 @@
-"""出图脚本（scripts/plot_fig1 … plot_fig10、plot_style）的数据函数与出图前自检：不画整张图、不求解，不需要 Gurobi。
+"""出图脚本（scripts/plot_fig1 … plot_fig10 与共用的 plot_style、plot_map、plot_io）的数据函数与出图前自检：不画整张图、不求解，不需要 Gurobi。
 
 各图的自检是"图上要画的量与模型记的量对不上就报错、不出图"，这里用最小的表造出对得上与对不上两种情形；
-另查 plot_style 的四件事：旧模型分段的结果读不进来，同值的圆点、菱形、方块面积相同，本机没有所用字体时 save_fig 拒绝出图，没有文件头的脚本
-也能建命令行；最后一条查底图：南海小图不压台湾与大陆沿海，图例压到国土会报错（要 geopandas 与仓库里的 data/ChinaMapTHT）。
+另查共用模块的五件事：旧模型分段的结果读不进来，同值的圆点、菱形、方块面积相同，本机没有所用字体时 save_fig 拒绝出图，没有文件头的脚本
+也能建命令行，plot_io 不导入 matplotlib；最后一条查底图：南海小图不压台湾与大陆沿海，图例压到国土会报错（要 geopandas 与仓库里的 data/ChinaMapTHT）。
 """
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -340,7 +341,7 @@ def test_results_of_an_old_model_segment_are_refused(monkeypatch: pytest.MonkeyP
     monkeypatch.syspath_prepend(str(SCRIPTS))
     import json
 
-    import plot_style
+    import plot_io
     from coal_retrofit.segment import MODEL_SEGMENT, StaleResultError
 
     (tmp_path / "R").mkdir()
@@ -348,13 +349,25 @@ def test_results_of_an_old_model_segment_are_refused(monkeypatch: pytest.MonkeyP
     for segment, ok in ((None, False), (MODEL_SEGMENT - 1, False), (MODEL_SEGMENT, True)):
         resolved = {} if segment is None else {"model_segment": segment}
         (tmp_path / "R.json").write_text(json.dumps({"resolved": resolved}), encoding="utf-8")
-        plot_style.read_result_json.cache_clear()
+        plot_io.read_result_json.cache_clear()
         if ok:
-            assert plot_style.read_result(str(tmp_path / "R"), "t").columns.tolist() == ["a"]
+            assert plot_io.read_result(str(tmp_path / "R"), "t").columns.tolist() == ["a"]
         else:
             with pytest.raises(StaleResultError, match="重解"):
-                plot_style.read_result(str(tmp_path / "R"), "t")
-    assert plot_style.result_dir("ST_BASE") == plot_style.SOLVED_DIR / "ST_BASE"
+                plot_io.read_result(str(tmp_path / "R"), "t")
+    assert plot_io.result_dir("ST_BASE") == plot_io.SOLVED_DIR / "ST_BASE"
+
+
+def test_plot_io_does_not_import_matplotlib(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`plot_io` 不导入 matplotlib（`render_version.py` 归档时只从它取 `SOLVED_DIR`），在新进程里查；它的 `LANGS` 与
+    `plot_style.FONTS` 的语言一一对应。"""
+    code = "import sys, plot_io; assert not [m for m in sys.modules if m.startswith('matplotlib')]"
+    subprocess.run([sys.executable, "-c", code], cwd=SCRIPTS, check=True)
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import plot_io
+    import plot_style
+
+    assert set(plot_io.LANGS) == set(plot_style.FONTS)
 
 
 def test_save_fig_refuses_a_missing_font(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -362,6 +375,7 @@ def test_save_fig_refuses_a_missing_font(monkeypatch: pytest.MonkeyPatch, tmp_pa
     字体在就照常出图。没有文件头的脚本也能建命令行。"""
     monkeypatch.syspath_prepend(str(SCRIPTS))
     import matplotlib.pyplot as plt
+    import plot_io
     import plot_style
 
     def figure(family: str):
@@ -375,7 +389,7 @@ def test_save_fig_refuses_a_missing_font(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert list(tmp_path.iterdir()) == []
     written = plot_style.save_fig(figure("DejaVu Sans"), "t", "en", out_dir=tmp_path)
     assert sorted(p.name for p in written) == ["t_en.pdf", "t_en.png"]
-    assert plot_style.figure_cli(None).parse_args([]).lang == "both"
+    assert plot_io.figure_cli(None).parse_args([]).lang == "both"
 
 
 def test_save_fig_refuses_small_text_with_scripts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -408,19 +422,19 @@ def test_scs_inset_leaves_taiwan_uncovered_and_legends_off_land(monkeypatch: pyt
 
     monkeypatch.syspath_prepend(str(SCRIPTS))
     import matplotlib.pyplot as plt
-    import plot_style
+    import plot_map
 
     fig, ax = plt.subplots()
-    plot_style.mainland_extent(ax)
-    inset = plot_style.add_scs_inset(ax)
+    plot_map.mainland_extent(ax)
+    inset = plot_map.add_scs_inset(ax)
     fig.canvas.draw()
     (x0, y0), (x1, y1) = ax.transData.inverted().transform(inset.get_window_extent().get_points())
-    land = plot_style.map_layer("country_main").geometry
+    land = plot_map.map_layer("country_main").geometry
     assert len(land) == 3                                  # 大陆、台湾、海南（面积按 shp 原生的等积投影算）
     assert not any(part.intersects(box(x0, y0, x1, y1)) for part in land)
-    taiwan = min(land, key=lambda part: abs(part.centroid.x - plot_style.to_map_xy([121.0], [23.7])[0][0]))
+    taiwan = min(land, key=lambda part: abs(part.centroid.x - plot_map.to_map_xy([121.0], [23.7])[0][0]))
     assert ax.get_xlim()[1] > taiwan.bounds[2]            # 台湾在主图范围内
     label = ax.text(0.5, 0.5, "legend", transform=ax.transAxes)   # 主图正中，压在国土上
     with pytest.raises(RuntimeError, match="国土"):
-        plot_style.check_off_land(ax, label)
+        plot_map.check_off_land(ax, label)
     plt.close(fig)

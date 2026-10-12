@@ -22,10 +22,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from plot_io import check_close, figure_cli, langs, read_result, read_result_json
 from plot_style import (
     COST_COLORS, COST_ORDER, FULL_WIDTH_MM, INK, MM,
-    apply_style, check_close, figure_cli, fmt_number, langs, panel_label, read_result, read_result_json, save_fig,
-    stacked_bars,
+    apply_style, fmt_number, panel_label, save_fig, stacked_bars,
 )
 
 NAME = "fig10_costs"

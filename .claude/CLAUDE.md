@@ -338,12 +338,12 @@ cmap = ListedColormap(colors)
 ## 四、地图绘制规范
 
 方法蒸馏自 `D:\6. Transfer\数据-昊天\氢管网论文EST\给晋辉\GIS_layer\plot.ipynb`。
-本仓库 `scripts/plot_style.py` 的底图函数已按此实现，地图（图 1、2、6）都直接调用。
+本仓库 `scripts/plot_map.py` 的底图函数已按此实现，地图（图 1、2、6）都直接调用。
 
 ### 4.1 投影：EPSG:2380（强制）
 
 ```python
-MAP_CRS = "EPSG:2380"          # Xian 1980 / 3-degree Gauss-Kruger CM 105E，单位 m；代码里是 plot_style.MAP_CRS
+MAP_CRS = "EPSG:2380"          # Xian 1980 / 3-degree Gauss-Kruger CM 105E，单位 m；代码里是 plot_map.MAP_CRS
 gdf = gdf.to_crs(MAP_CRS)
 ```
 
@@ -356,7 +356,7 @@ gdf = gdf.to_crs(MAP_CRS)
 
 ### 4.2 九段线（强制出现）
 
-**出图底图自 2026-09-12 起统一为 `data/ChinaMapTHT/`**（唐昊天 GIS_layer/plot.ipynb 那一套，由 `plot_style.map_layer()`
+**出图底图自 2026-09-12 起统一为 `data/ChinaMapTHT/`**（唐昊天 GIS_layer/plot.ipynb 那一套，由 `plot_map.map_layer()`
 从仓库根 `data/ChinaMapTHT/` 读）：
 
 | 图层 | 数据 | 内容 |
@@ -386,11 +386,12 @@ gdf = gdf.to_crs(MAP_CRS)
 > 叠起来就是南海一片黑斑加东部海岸毛刺 —— 那不是信息，是噪点。
 > **主图只画 61010 + 26100；岛礁只在南海小图里画**，那个尺度上它们才是内容。
 
-直接用 `plot_style` 的封装，不要各图自己拼图层：
+直接用 `plot_map` 的封装，不要各图自己拼图层：
 
 ```python
-from plot_style import (MAP_LEGEND, MM, add_scs_inset, check_off_land, draw_china_basemap, mainland_extent,
-                        save_fig, to_map_xy)
+from plot_map import (MAP_LEGEND, add_scs_inset, check_off_land, draw_china_basemap, mainland_extent,
+                      to_map_xy)
+from plot_style import MM, save_fig
 
 draw_china_basemap(ax)                        # 省界 0.20 + 国界/九段线 0.75，省份填浅灰 LAND
 x, y = to_map_xy(lon, lat)                    # 散点/折线坐标 -> EPSG:2380
@@ -413,7 +414,7 @@ check_off_land(ax, legend)                    # 图例压到国土就报错
 
 ### 4.3 主图 + 南海小图的标准骨架
 
-地图脚本都用 `plot_style` 的封装，不再各自拼图层与定位点（图 2 `plot_fig2_candidate_network.py` 就是范例）：
+地图脚本都用 `plot_map` 的封装，不再各自拼图层与定位点（图 2 `plot_fig2_candidate_network.py` 就是范例）：
 
 ```python
 fig = plt.figure(figsize=(183 * MM, 143 * MM))

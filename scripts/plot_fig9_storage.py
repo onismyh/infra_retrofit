@@ -22,10 +22,10 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
+from plot_io import check_close, figure_cli, langs, read_result, read_result_json
 from plot_style import (
     FULL_WIDTH_MM, INK, MM, MT_CO2_YR, SINK_COLORS,
-    apply_style, check_close, figure_cli, fmt_number, labels, langs, legend_patches, panel_label, read_result,
-    read_result_json, save_fig, stacked_bars,
+    apply_style, fmt_number, labels, legend_patches, panel_label, save_fig, stacked_bars,
 )
 
 NAME = "fig9_storage"

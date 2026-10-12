@@ -3,7 +3,7 @@
     python scripts/render_version.py --version <版本> [--freeze-tag <标签>] [--timeout 秒] [--skip-plots]
 
 出图脚本读求解树 <tree>（固定是 `_bootstrap.ROOT`，即 `_indtree`）的 inputs/，结果图读入库的 results/solved/
-（`plot_style.SOLVED_DIR`），图写到 <tree>/results/figures/。所以没有 `--tree`：另指一棵树，归档的就不是画图用的那套。
+（`plot_io.SOLVED_DIR`），图写到 <tree>/results/figures/。所以没有 `--tree`：另指一棵树，归档的就不是画图用的那套。
 `--version` 必填（原缺省 `v9`，会把 `_indtree` 的图拷进 v9 的归档）。
 v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维护复现步骤（README §0）。
 
@@ -33,9 +33,7 @@ import time
 from pathlib import Path
 
 from _bootstrap import REPO_ROOT, ROOT
-
-# 结果图读的结果目录，与 `plot_style.SOLVED_DIR` 相同（不导入 plot_style：归档用不着 matplotlib）。
-SOLVED_DIR = REPO_ROOT / "results" / "solved"
+from plot_io import SOLVED_DIR  # 结果图读的结果目录（plot_io 不依赖 matplotlib）
 
 
 def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, float]]:

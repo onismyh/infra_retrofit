@@ -21,10 +21,14 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.typing import LineStyleType
 
+from plot_io import figure_cli, langs, read_input
+from plot_map import (
+    MAP_LEGEND,
+    add_scs_inset, check_off_land, draw_china_basemap, edge_lines, mainland_extent, to_map_xy,
+)
 from plot_style import (
-    BLUES, FULL_WIDTH_MM, MAP_LEGEND, MARKERS, MM, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS, SINK_EDGE,
-    add_scs_inset, apply_style, check_off_land, draw_china_basemap, edge_lines, figure_cli, labels, langs,
-    mainland_extent, read_input, save_fig, to_map_xy,
+    BLUES, FULL_WIDTH_MM, MARKERS, MM, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS, SINK_EDGE,
+    apply_style, labels, save_fig,
 )
 
 NAME = "fig2_candidate_network"
