@@ -7,7 +7,7 @@
   b  各部门现状排放合计（Mt CO2/yr），括号里是源的个数。
 读图注意：排放是现状值（煤电 = 装机 × 分省利用小时 × hub 毛热耗 × 排放因子，工业取 industry_hubs.csv），不是求解结果；
           规划年的排放会按利用小时轨迹与产量指数缩放。
-数据：煤电用模型自己的读入函数 `data_prep._prepare_plants`，工业用 `industry_inputs.prepare_industry`
+数据：煤电用模型自己的读入函数 `data_prep_plants._prepare_plants`，工业用 `industry_inputs.prepare_industry`
       （已按模型剔除西藏 hub），封存汇取 `_indtree/inputs/storage_hubs.csv`。
 自检：坐标与排放没有缺值（缺值的点会被静默丢掉）；部门都在 `SECTOR_ORDER` 里；封存汇类型只有 dsa / eor。
 输出：_indtree/results/figures/fig1_sources_sinks{,_en}.{pdf,png}
@@ -43,7 +43,7 @@ SMAX = 70.0                  # 排放最大的源（煤电与工业合在一起�
 
 def load() -> dict[str, pd.DataFrame]:
     """煤电厂址、工业 hub、封存汇，都是进模型的那一套。"""
-    from coal_retrofit.optimization.data_prep import _prepare_plants
+    from coal_retrofit.optimization.data_prep_plants import _prepare_plants
     from coal_retrofit.optimization.industry_inputs import prepare_industry
     from coal_retrofit.optimization.assumptions import OptimizationAssumptions
     from coal_retrofit.optimization.scenario import OptimizationScenario

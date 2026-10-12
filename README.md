@@ -275,7 +275,7 @@
 >   一代）；管道仍按建成量计，原址重建仍按建成量计、扣回期末已关停的。现行寿命与 10 年网格下，煤电改造能力（20 年）只有 2060 年
 >   建的有残值，而它们都是当年要用才建的，数值不变；工业氢路线（25 年）2050 年建的能力到 2060 年因减产闲置的部分不再计残值。
 >   此前按建成量计，期末不在用的也抵扣。
-> - 重建部分按重建毛热耗分类（`optimization/data_prep._with_expiry`、`optimization/model_year.py:55-60`、
+> - 重建部分按重建毛热耗分类（`optimization/data_prep_plants._with_expiry`、`optimization/model_year.py:55-60`、
 >   `optimization/constraints.py:50-102`、`optimization/model_linking.py:104-119`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
 >   重建份额是各类之和，每类不超过该类已到期的装机份额、各自不减，先重建哪一类由求解器定；运行路径份额、空冷份额与掺烧各档的重建
 >   部分按类拆，系数取该类与未重建部分之差。ST 输入到 2060 年有到期机组的 324 个 hub 里，231 个只有一类（与此前相同），87 个两类、
@@ -303,7 +303,7 @@
 > - 炉型上限：煤粉炉 0.15、CFB 0.30（`biomass_blend_max_pulverized`、`biomass_blend_max_cfb`；CFB 的 20%–30% 是调研稿 B 级，原文
 >   未取得：⚠ 假设）。hub 里落在 0.15 以上档位的在用份额（生物质与 BECCS 合计）不超过该 hub 的 CFB 装机份额，落在 0.30 以上
 >   档位的为零（现行档位没有），每个 hub 每期一条（`optimization/constraints._add_blend_level_constraints`）。CFB 装机份额按机组表
->   `combustion` 算到 hub（带 `/CCS` 后缀的按本体机型；`optimization/data_prep._with_expiry`），非 CFB 机组（含 1 台 IGCC）都按
+>   `combustion` 算到 hub（带 `/CCS` 后缀的按本体机型；`optimization/data_prep_plants._with_expiry`），非 CFB 机组（含 1 台 IGCC）都按
 >   煤粉炉计。CFB 装机份额不随机组到期与重建变（到 2060 年已到期的 CFB 有 1.73 GW）。ST 输入的 CFB 共 7.04 GW（全国装机的
 >   0.5%），分布在 47 个 hub，其中 6 个全是 CFB（合计 0.85 GW）：0.20 档只对这 47 个 hub 开放，落在 0.20 档的生物质与 BECCS 份额
 >   合计不超过 CFB 份额（独热档位下两者的份额都落在所选的一档上，只有那 6 个能把全部装机放到 0.20），其余 303 个 hub 最高 0.15。
@@ -649,6 +649,13 @@
 > `optimization/assumptions.py`（445 行）放 `OptimizationAssumptions` 与省名别名表 `PROVINCE_NAME_ALIASES`；`scenario.py`（189 行）留 `PATHWAYS`
 > 与 `OptimizationScenario`。引用方按名字的新家改导入。拆分前后三个常量模块的 38 个常量与 159 个函数取值、四个登记情景的 `show` 输出与
 > `diff ST_BASE ST_CP_BASE` 逐字节相同（工业输入表的重建要作者本机的点源工作簿，这里没跑）。
+>
+> 2026-10-12 起（同日第五个 PR）`optimization/data_prep.py`（529 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `data_prep.py`（300 行）留封存、生物质、氨、水、流域指标与耗水、部门目标与产量指数的读入，以及 `_input_files` 与 `prepare_inputs`；
+> `data_prep_plants.py`（213 行）放机组表的加工（`_prepare_plants`、`_read_unit_hub_map`、`_with_expiry`）。新建 `optimization/input_tables.read_input_csv`
+> 统一五处"文件存在 + 必需列"检查（报错文字不变）；`spatial.within_radius` 统一厂址到生物质 / 氨 / 水节点与工业 hub 到氢节点的四处半径配对
+> （水链路按距离排名）；`industry_inputs.py` 删掉 `usecols` 读表后到不了的缺列检查；读入后多余的 `.copy()` 去掉。拆分前后四个登记情景的 `show`
+> 输出与 `diff ST_BASE ST_CP_BASE` 逐字节相同，458 个测试通过，mypy 错误数不变（135）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -707,7 +714,7 @@
 3. **工业 H2 路线的 capex 没有学习曲线**（两侧 CCS 都有）。H2 路线的非氢运行差额由文献溢价锚点反推，目标计入
    max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:116` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
-   （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep._prepare_plants`），再加情景加价
+   （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep_plants._prepare_plants`），再加情景加价
    `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:209-213`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
@@ -934,8 +941,8 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的两个拆分 PR（§0 当日注）之后，超 400 行的文件剩 7 个：`builders/network.py` 559、`optimization/constraints.py` 556、
-> `optimization/data_prep.py` 529、`builders/water.py` 521、`builders/supply.py` 472、`builders/plants.py` 457、`optimization/assumptions.py` 445。
+> 2026-10-12 的三个拆分 PR（§0 当日注）之后，超 400 行的文件剩 6 个：`builders/network.py` 559、`optimization/constraints.py` 556、
+> `builders/water.py` 521、`builders/supply.py` 472、`builders/plants.py` 457、`optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -956,7 +963,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准 `a29db7f`，与方法论文首相同；模型分段 13）：
+截至 2026-10-12（代码基准 `66700ee`，与方法论文首相同；模型分段 13）：
 
 | 部分 | 现状 |
 |---|---|

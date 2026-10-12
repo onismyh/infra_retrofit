@@ -17,7 +17,7 @@ from ..constants_industry_capture import (
     capturable_share,
 )
 from ..paths import ProjectPaths
-from ..spatial import haversine_km
+from ..spatial import within_radius
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +58,8 @@ def _national_h2_price(paths: ProjectPaths, usd_to_cny: float) -> dict[int, floa
             f"{path} not found; industry's H2 route is priced from it. Build it with "
             "scripts/build_supply_inputs.py."
         )
+    # 缺列时 pandas 自己按 `usecols` 报 ValueError。
     curve = pd.read_csv(path, usecols=["year", "h2_supply_kg_per_year", "weighted_lcoh_usd_per_kg_h2"])
-    missing = {"year", "h2_supply_kg_per_year", "weighted_lcoh_usd_per_kg_h2"} - set(curve.columns)
-    if missing:
-        raise ValueError(f"{path} lacks required columns {sorted(missing)}")
     prices: dict[int, float] = {}
     for year, block in curve.groupby(curve["year"].astype(int)):
         weight = block["h2_supply_kg_per_year"].astype(float)
@@ -225,13 +223,13 @@ def prepare_industry_h2_links(
         node_ids = nodes["ammonia_node_id"].astype(str).to_numpy()
         lcoh = nodes["weighted_lcoh_usd_per_kg_h2"].astype(float).to_numpy()
         for hub in eligible.itertuples(index=False):
-            distances = haversine_km(float(hub.longitude), float(hub.latitude), lons, lats)
-            for node_idx in np.flatnonzero(distances <= radius_km):
+            matched, distances = within_radius(float(hub.longitude), float(hub.latitude), lons, lats, radius_km)
+            for node_idx, distance in zip(matched, distances, strict=True):
                 rows.append({
                     "year": int(year),
                     "hub_id": str(hub.hub_id),
                     "ammonia_node_id": node_ids[node_idx],
-                    "distance_km": round(float(distances[node_idx]), 3),
+                    "distance_km": round(float(distance), 3),
                     "lcoh_usd_per_kg": float(lcoh[node_idx]),
                 })
     links = pd.DataFrame(rows, columns=columns)

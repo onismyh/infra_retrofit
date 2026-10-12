@@ -71,7 +71,7 @@ class YearData:
     emissions_operating_mt: np.ndarray
     emissions_retrofit_mt: np.ndarray
     heat_rate_eff: np.ndarray
-    expired_share: np.ndarray  # (plant_count,) 本年已到期的装机份额 f（`data_prep._with_expiry`）
+    expired_share: np.ndarray  # (plant_count,) 本年已到期的装机份额 f（`data_prep_plants._with_expiry`）
     # (plant_count, 类数) 本年已到期的装机里各重建热耗类的份额 f_c，按类相加为 f；类按重建热耗升序，各年同序。
     rebuilt_class_share: np.ndarray
     rebuilt_deltas: tuple[RebuiltDelta, ...]  # 每类一份，与 `rebuilt_class_share` 的列同序
@@ -81,7 +81,7 @@ class YearData:
     # 能力计入 `incremental_om`（生物质 2026-10-02 起，掺氨 2026-10-10 起）。
     biomass_blend_om_per_level: np.ndarray
     ammonia_blend_om_per_level: np.ndarray
-    cfb_share: np.ndarray  # (plant_count,) CFB 装机份额（`data_prep._with_expiry`），掺生物质比例的炉型上限用
+    cfb_share: np.ndarray  # (plant_count,) CFB 装机份额（`data_prep_plants._with_expiry`），掺生物质比例的炉型上限用
     energy_penalty_matrix: np.ndarray
     biomass_penalty_coeff_per_level: np.ndarray
     ccs_penalty_emissions_matrix: np.ndarray

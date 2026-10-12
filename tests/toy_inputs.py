@@ -16,7 +16,7 @@ from coal_retrofit.paths import ProjectPaths
 YEARS = (2050, 2060)
 TOY_TARGET_YEARS = (2030, 2040, 2050, 2060)
 # toy 电厂的 hub 毛热耗：2026-10-02 前全国一个数的值（3.6 / 0.42 取四位）。与下面 toy 机组的逐台毛热耗不一致：toy 的
-# 机组只有一台、不会部分到期，只有部分到期的 hub 要求两者一致（`data_prep._with_expiry`）；换机组表用 `_write_toy_units`。
+# 机组只有一台、不会部分到期，只有部分到期的 hub 要求两者一致（`data_prep_plants._with_expiry`）；换机组表用 `_write_toy_units`。
 TOY_HEAT_RATE_GJ_PER_MWH = 8.5714
 # toy 机组的机型与冷却方式（映射表的两列）：600MW 级亚临界湿冷，逐台毛热耗 314 x 0.95 x 0.0293076 = 8.742 GJ/MWh，
 # 比重建的 3.6 / 0.45 = 8.0 高，全部到期时重建热耗为 8.0，与按 hub 毛热耗取 min 相同。

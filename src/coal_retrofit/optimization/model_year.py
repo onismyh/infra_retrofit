@@ -223,7 +223,7 @@ def _add_expiry_rules(
 ) -> None:
     """到期装机（份额 f）退役或原址重建：退役份额 >= f - 重建份额，重建份额 <= f；没有到期装机的 hub 不能重建。
 
-    整数 hub 的 f 只取 0 或 1（整个 hub 一起到期，`data_prep._with_expiry`），约束与 2026-10-02 前相同；
+    整数 hub 的 f 只取 0 或 1（整个 hub 一起到期，`data_prep_plants._with_expiry`），约束与 2026-10-02 前相同；
     连续 hub 按机组逐台到期，0 < f < 1 时多一条重建上限。
     """
     retire_idx = PATHWAY_INDEX["retire"]

@@ -334,7 +334,7 @@ def unit_heat_rate_gj_per_mwh(units: pd.DataFrame) -> pd.Series:
 
 def unit_rebuild_heat_rate_cap_gj_per_mwh(units: pd.DataFrame, rebuild_efficiency: float) -> pd.Series:
     """到期机组原址重建后的毛热耗上限：3.6 / 重建效率，空冷机组另加空冷的 +15 g/kWh（重建效率与分档煤耗一样按湿冷
-    机组计，原址重建不换冷却方式）。重建机组取 min(原机组毛热耗, 上限)，见 `optimization.data_prep._with_expiry`。
+    机组计，原址重建不换冷却方式）。重建机组取 min(原机组毛热耗, 上限)，见 `optimization.data_prep_plants._with_expiry`。
     """
     air = units["cooling_technology"].map(_cooling_class).eq("air").astype(float)
     adder = AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH * (1.0 - COAL_STATION_SERVICE_RATE) * STANDARD_COAL_GJ_PER_KG

@@ -43,7 +43,7 @@ def _plant_operating_matrices(
         generation_retrofit,           # beccs
         generation_retrofit,           # ammonia
     ])
-    # hub 毛热耗（基线排放按它算，`data_prep._prepare_plants`）与各部分的毛热耗（`data_prep._with_expiry`）：
+    # hub 毛热耗（基线排放按它算，`data_prep_plants._prepare_plants`）与各部分的毛热耗（`data_prep_plants._with_expiry`）：
     # 未重建部分（未到期机组；全部到期的 hub 取各类重建热耗的装机加权平均）与各类原址重建部分（到期机组逐台
     # min(机组毛热耗, 3.6 / rebuild_efficiency，空冷机组加 +15 g/kWh)，按这个值分类）。本年没有某类到期装机的 hub，
     # 该类取未重建部分的毛热耗，差恰为零。2026-10-02 前全国一个热耗 8.5714，整个 hub 自 `retirement_year` 起乘
@@ -171,7 +171,7 @@ def _plant_operating_matrices(
     fixed_cost_matrix = generation_cost_basis * pathway_fixed_costs[None, :]
 
     # 搁浅资产（每单位新增提前退役，`retirement.retirement_flows`）：新建成本 x 未到期装机的平均剩余账面份额
-    # ℓ / (1 - f)。ℓ 是全 hub 的剩余账面份额（到期装机为 0，`data_prep._with_expiry`）；全部到期的 hub 为零，
+    # ℓ / (1 - f)。ℓ 是全 hub 的剩余账面份额（到期装机为 0，`data_prep_plants._with_expiry`）；全部到期的 hub 为零，
     # 到期退役不罚。2026-10-02 前按 hub 的剩余寿命份额 min(1, max(0, retirement_year - 年) / 20) 计在退役份额的
     # 增量上（整数 hub 与现在的 ℓ 相同）。
     fraction_remaining = prepared.plants[f"remaining_life_fraction_{year}"].astype(float).to_numpy()

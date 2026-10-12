@@ -15,7 +15,7 @@ import pytest
 
 from coal_retrofit.builders import water_quota
 from coal_retrofit.constants_industry_capture import capture_variable_cost_cny_per_t
-from coal_retrofit.optimization.data_prep import _prepare_plants
+from coal_retrofit.optimization.data_prep_plants import _prepare_plants
 from coal_retrofit.optimization.industry import CCS, industry_year_data
 from coal_retrofit.optimization.industry_inputs import prepare_industry
 from coal_retrofit.optimization.assumptions import OptimizationAssumptions
