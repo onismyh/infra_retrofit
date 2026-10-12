@@ -64,7 +64,7 @@ def make_edge_record(
 ) -> dict[str, object]:
     """一条候选边的记录，键序即 `EDGE_COLUMNS`，长度保留三位小数。
 
-    `geometry_wkt` 为 None（接入支线不存几何）时写缺失值，几何由 `network_repair._build_edge_geometry` 按两端节点坐标补成直线。
+    `geometry_wkt` 为 None（接入支线不存几何）时写缺失值，几何由 `network_repair.build_edge_geometry` 按两端节点坐标补成直线。
     """
     return {
         "edge_id": edge_id,
@@ -96,6 +96,9 @@ def next_edge_index(edges: pd.DataFrame) -> int:
     不是 `len(edges) + 1`：去交叉过滤删掉若干行之后，表中最大的 id 会超过表长，按表长编号
     会悄悄重发已在使用的 id。`prepare_inputs` 以 `edge_id` 为键，所以重复项会被丢弃而不是
     报错——早先有一次建网就这样丢了 410 条候选边，连一条警告都没有。
+
+    表为空或没有 `edge_id` 列时返回 1；有 `edge_id` 但没有一个以数字结尾时返回 `len(edges) + 1`：
+    调用方的新 id 形如 `edge_{n:05d}`，以数字结尾，撞不上这些旧 id。
     """
     if edges.empty or "edge_id" not in edges.columns:
         return 1

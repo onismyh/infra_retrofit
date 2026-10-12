@@ -274,7 +274,7 @@ def build_attachment_tables(
 
         # 支线是直线接入，所以和其他直线候选边带同样的绕行系数（`make_edge_record` 缺省的 tortuosity）。把它们留在原始
         # 大地线长度上，曾使接入走廊的支线相对于走廊本身显得比实际便宜——走廊的 length_km 是真实路由的折线长度。
-        # 支线不存几何，`network_repair._build_edge_geometry` 按两端坐标补直线。
+        # 支线不存几何，`network_repair.build_edge_geometry` 按两端坐标补直线。
         branch_edge_rows.append(
             make_edge_record(
                 f"edge_{next_edge_index:05d}",
