@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from ..paths import ProjectPaths
 from ..spatial import haversine_km, nearest_polygon_index
 from ..spatial import load_provinces as load_provinces_layer
 
+logger = logging.getLogger(__name__)
 
 WATER_PATTERN = re.compile(
     r"(?P<hydrology>[^_]+)_(?P<gcm>.+?)_w5e5_(?P<ssp>ssp\d+)_"
@@ -311,17 +313,41 @@ def _basin_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> t
     return zones, [str(v) for v in basins["code"]]
 
 
+# ISIMIP issue #34（data.isimip.org/issues/34，2023-02）：CWatM 的 `historical` qtot 文件在 GCM 之间错位一格，文件名里的
+# GCM 不是实际驱动它的 GCM。ISIMIP 只重发了未来文件（2023-02-16 版，本地即此版），historical 至今是 2022-12-15 的错位版。
+# 2026-10-12 用各 GCM 自己的 W5E5 降水异常与径流异常做格点合并相关核定（`scripts/attribute_isimip_forcing.py`；WaterGAP2-2e
+# 的 historical 与两家的 ssp126 / ssp370 未来文件全部对号，相关 0.86–0.90）：标 ipsl 的文件是 GFDL 的模拟（qtot 数据与 gfdl
+# 文件逐格相同，只差文件头的 GCM 名）、标 mpi 的是 IPSL、标 mri 的是 MPI、标 ukesm 的是 MRI，真正的 UKESM 历史运行服务器上没有。
+# 键 (水文模型, 实际驱动 GCM) → 文件名里写的 GCM；None 表示没有真实的历史运行，这时 `member_bias_factors` 取同一水文模型
+# 其余成员因子的流域均值（作者决定 2026-10-12）。不在表里的组合按文件名直接取。
+HISTORICAL_FILE_GCM: dict[tuple[str, str], str | None] = {
+    ("cwatm", "ipsl-cm6a-lr"): "mpi-esm1-2-hr",
+    ("cwatm", "mpi-esm1-2-hr"): "mri-esm2-0",
+    ("cwatm", "mri-esm2-0"): "ukesm1-0-ll",
+    ("cwatm", "ukesm1-0-ll"): None,
+}
+
+
+def has_genuine_history(hydrology_model: str, gcm: str) -> bool:
+    """该 (水文模型, GCM) 组合有没有真实的 `historical` 运行（与文件是否已下载无关）。"""
+    return HISTORICAL_FILE_GCM.get((hydrology_model, gcm), gcm) is not None
+
+
 def _historical_source(paths: ProjectPaths, hydrology_model: str, gcm: str) -> Path | None:
-    """某个 (水文模型, GCM) 组合的 `historical` qtot 运行文件（若已下载）。
+    """某个 (水文模型, GCM) 组合的 `historical` qtot 运行文件（若已下载）；没有真实历史运行的组合返回 None。
 
     两个键缺一不可。ISIMIP3b 用每个 GCM 分别驱动每个水文模型，所以 `historical` 运行是
     按组合存在的，而不是按水文模型。只按水文模型匹配、取排序后的第一个命中，曾对每个
     GCM 都悄悄返回 gfdl-esm4 的运行（它排在最前），这本会把一个 GCM 的偏差因子套用到
-    所有 GCM 上，恰好抹平集合本来要度量的 GCM 间离散。
+    所有 GCM 上，恰好抹平集合本来要度量的 GCM 间离散。文件名里的 GCM 按 `HISTORICAL_FILE_GCM`
+    换成实际驱动该 GCM 的那份，因为 CWatM 的文件在服务器上就标错了。
     """
+    if not has_genuine_history(hydrology_model, gcm):
+        return None
+    file_gcm = HISTORICAL_FILE_GCM.get((hydrology_model, gcm), gcm)
     matches = sorted(
         p for p in (paths.data_dir / "water").glob("*historical*qtot*.nc")
-        if p.name.startswith(f"{hydrology_model}_{gcm}_")
+        if p.name.startswith(f"{hydrology_model}_{file_gcm}_")
     )
     return matches[0] if matches else None
 
@@ -369,7 +395,8 @@ def basin_bias_factors(
     并施加到该组合的每一年、每个 SSP 上，因此每个成员的变化率被精确保留，只替换绝对
     水平。按组合而不是按水文模型估计，对集合很重要：历史偏差既是水文模型的属性，同样
     也是驱动 GCM 的属性，把一个 GCM 的因子套用到其他 GCM 上会抹掉真实存在的 GCM 间
-    离散。若该组合的历史运行尚未下载，则对每个流域都返回 1.0。
+    离散。若该组合没有历史运行文件（未下载，或 `HISTORICAL_FILE_GCM` 记为没有真实运行），则对每个流域都返回 1.0；
+    用其余成员的均值补全在 `member_bias_factors` 里做。
     """
     source = _historical_source(paths, hydrology_model, gcm)
     if source is None:
@@ -380,6 +407,39 @@ def basin_bias_factors(
         official_m3 = OFFICIAL_BASIN_WATER_1E8_M3.get(code, 0.0) * 1e8
         model_m3 = modelled.get(code, 0.0)
         factors[code] = official_m3 / model_m3 if model_m3 > 0 and official_m3 > 0 else 1.0
+    return factors
+
+
+def member_bias_factors(
+    paths: ProjectPaths,
+    hydrology_model: str,
+    gcms: list[str],
+    zones: np.ndarray,
+    codes: list[str],
+    area_m2: np.ndarray,
+) -> dict[str, tuple[dict[str, float], str]]:
+    """同一水文模型各 GCM 的流域偏差因子及其来源：历史文件名、均值说明或 "none"。
+
+    有真实历史运行的成员按自己的运行算（`basin_bias_factors`）。`HISTORICAL_FILE_GCM` 记为没有真实运行的成员
+    （cwatm|ukesm1-0-ll），取其余有真实运行成员因子的流域均值：GCM 专属的那部分偏差无从得知，均值是对"该水文模型
+    配任意 GCM"偏差的估计，且全集合都在校正状态下（作者决定 2026-10-12；取 1.0 会把它单独留在未校正状态，全国
+    可用量比均值低 15%）。文件未下载的成员保持 1.0、记 "none"，也不参与均值，缺文件不被均值掩盖。
+    """
+    factors: dict[str, tuple[dict[str, float], str]] = {}
+    for gcm in gcms:
+        source = _historical_source(paths, hydrology_model, gcm)
+        if source is not None:
+            factors[gcm] = (basin_bias_factors(paths, hydrology_model, gcm, zones, codes, area_m2), source.name)
+    donors = [gcm for gcm in gcms if gcm in factors]
+    for gcm in gcms:
+        if gcm in factors:
+            continue
+        if not has_genuine_history(hydrology_model, gcm) and donors:
+            mean = {code: float(np.mean([factors[donor][0][code] for donor in donors])) for code in codes}
+            factors[gcm] = (mean, f"mean of {hydrology_model} {', '.join(donors)}")
+        else:
+            logger.warning("%s|%s: no historical qtot file, bias factor left at 1.0 (uncorrected)", hydrology_model, gcm)
+            factors[gcm] = ({code: 1.0 for code in codes}, "none")
     return factors
 
 
@@ -437,6 +497,8 @@ def build_water_availability_dataframe(
         basin_runoff   = sum(qtot x cell_area x seconds_per_year) x bias_factor   [m3/yr]
         node_available = basin_runoff x node_runoff / sum(node_runoff in basin)
 
+    `bias_factor` 列记该成员在该流域的因子，`bias_source` 列记它来自哪个历史文件或哪些成员的均值（`member_bias_factors`）。
+
     这里以流域而不是省为单元，理由有二：水是流域量（黄河流经九个省），而流域也是全球
     水文模型率定所用的尺度、中国公布官方总量所用的尺度。按省做预算还会使与官方统计之比
     落在 0.34x 到 4.00x 之间，其中大部分是用省界切割 0.5 deg 网格造成的假象；按流域时
@@ -466,7 +528,7 @@ def build_water_availability_dataframe(
     lon_indices = water_nodes["lon_index"].astype(int).to_numpy()
     node_ids = water_nodes["water_node_id"].astype(str).to_numpy()
     node_basins = water_nodes["basin_code"].astype(str).to_numpy()
-    bias_cache: dict[tuple[str, str], dict[str, float]] = {}
+    bias_cache: dict[tuple[str, str], tuple[dict[str, float], str]] = {}
 
     for _, scenario_row in scenarios.iterrows():
         scenario_path = _resolve_source_path(paths, str(scenario_row["source"]))
@@ -485,13 +547,16 @@ def build_water_availability_dataframe(
             basin_zones, basin_codes = _basin_zone_grid(paths, lat, lon)
             hydrology_model = str(scenario_row["hydrology_model"])
             gcm = str(scenario_row["gcm"])
-            # 按组合缓存：每个 (水文模型, GCM) 一套因子，各 SSP 共用。
+            # 每个 (水文模型, GCM) 一套因子，各 SSP 共用；一个水文模型的各 GCM 一次算齐，
+            # 因为没有真实历史运行的成员要取其余成员的均值（`member_bias_factors`）。
             bias_key = (hydrology_model, gcm)
             if bias_key not in bias_cache:
-                bias_cache[bias_key] = basin_bias_factors(
-                    paths, hydrology_model, gcm, basin_zones, basin_codes, area_m2
+                model_gcms = sorted(
+                    set(scenarios.loc[scenarios["hydrology_model"].astype(str) == hydrology_model, "gcm"].astype(str))
                 )
-            bias_factors = bias_cache[bias_key]
+                member_factors = member_bias_factors(paths, hydrology_model, model_gcms, basin_zones, basin_codes, area_m2)
+                bias_cache.update({(hydrology_model, member_gcm): value for member_gcm, value in member_factors.items()})
+            bias_factors, bias_source = bias_cache[bias_key]
 
             for planning_year in PLANNING_YEARS:
                 window_start, window_end = WATER_WINDOW_BASIS[planning_year]
@@ -555,6 +620,7 @@ def build_water_availability_dataframe(
                             "local_runoff_m3_per_year": max(0.0, float(node_annual[idx])),
                             "basin_code": str(node_basins[idx]),
                             "bias_factor": round(float(bias_factors.get(str(node_basins[idx]), 1.0)), 4),
+                            "bias_source": bias_source,
                             "proxy_type": "basin_budgeted_bias_corrected_local_runoff",
                             "unit": "m3/yr",
                             "source": str(scenario_row["source"]),
@@ -630,6 +696,7 @@ def coarsen_water_inputs(
         dry_season_water_m3_per_year=("dry_season_water_m3_per_year", "sum"),
         local_runoff_m3_per_year=("local_runoff_m3_per_year", "sum"),
         bias_factor=("bias_factor", "first"),
+        bias_source=("bias_source", "first"),
     )
     coarse_availability["proxy_type"] = "basin_budgeted_bias_corrected_local_runoff"
     coarse_availability["unit"] = "m3/yr"

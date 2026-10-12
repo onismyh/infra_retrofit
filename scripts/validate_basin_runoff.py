@@ -16,11 +16,15 @@ Two windows are compared, because they answer different questions:
   BASELINE     model 1956-2014 (historical run) vs the Third National Water Resources
                Survey and Evaluation, 1956-2016. Pure model bias, no forcing signal.
                Needs the `historical` qtot run of each (hydrology model, GCM) pair:
-               `download_isimip_extra_gcms.py` fetches them for the four extra GCMs, the
-               gfdl-esm4 `historical` runs have no download script. data/water is not tracked,
+               `download_isimip_extra_gcms.py` fetches all ten. data/water is not tracked,
                so a checkout without them skips this block; the bias factors in
                `_indtree/inputs/water_availability.csv` (all != 1) show the build machine had
-               all ten.
+               them. Columns are keyed by MEMBER, and each member's file is the one
+               `builders/water._historical_source` picks: for CWatM that is not the file carrying
+               the member's name, because ISIMIP issue #34 shifted CWatM's historical qtot by one
+               GCM (`builders/water.HISTORICAL_FILE_GCM`); cwatm|ukesm1-0-ll has no historical run
+               and therefore no BASELINE column (its table factor is the mean of the other four,
+               `bias_source` in water_availability.csv says so).
   CONTEMPORARY model 2015-2024 (scenario runs) vs the bulletin series 2015-2024. SSP1-2.6
                and SSP3-7.0 have barely diverged this early, so this window gives a bias
                estimate for every member including those without a historical file.
@@ -55,7 +59,9 @@ from coal_retrofit.builders.water import (
     _cell_area_m2,
     _clean_series,
     _file_years,
+    _historical_source,
     _nc_path,
+    has_genuine_history,
     load_basins,
 )
 from coal_retrofit.paths import ProjectPaths
@@ -121,10 +127,31 @@ def basin_runoff(nc_path: Path, window: tuple[int, int]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("code")
 
 
-def _member_tag(path: Path) -> str:
+def _tag(hydro: str, gcm: str, run: str) -> str:
     """`<hydrology model>|<GCM>|<SSP or historical>`, e.g. `cwatm|gfdl-esm4|126`."""
-    hydro, gcm, _, run = path.name.split("_")[:4]
     return f"{hydro.replace('watergap2-2e', 'wgap')}|{gcm}|{run.replace('ssp', '')}"
+
+
+def _member_tag(path: Path) -> str:
+    """`_tag` read off an ISIMIP qtot file name."""
+    hydro, gcm, _, run = path.name.split("_")[:4]
+    return _tag(hydro, gcm, run)
+
+
+def _baseline_frames() -> dict[str, pd.DataFrame]:
+    """每个成员自己的 historical 运行，键同 `_member_tag`；文件由 `_historical_source` 按 `HISTORICAL_FILE_GCM` 选，没有真实运行的成员没有这一列。"""
+    members = pd.read_csv(PATHS.inputs_dir / "water_scenarios.csv", encoding="utf-8-sig")
+    frames: dict[str, pd.DataFrame] = {}
+    for hydro, gcm in members[["hydrology_model", "gcm"]].drop_duplicates().itertuples(index=False):
+        source = _historical_source(PATHS, str(hydro), str(gcm))
+        if source is None:
+            why = ("no genuine historical run (its table factor is the mean of the other members)"
+                   if not has_genuine_history(str(hydro), str(gcm)) else "historical file not downloaded, skipped")
+            print(f"  {hydro}|{gcm}: {why}")
+            continue
+        print(f"  {hydro}|{gcm}: {source.name}")
+        frames[_tag(str(hydro), str(gcm), "historical")] = basin_runoff(source, BASELINE_WINDOW)
+    return frames
 
 
 def _frames_by_member(files: list[Path], window: tuple[int, int]) -> dict[str, pd.DataFrame]:
@@ -166,9 +193,8 @@ def main() -> None:
     recent = pd.Series(BULLETIN_2015_2024_1E8_M3)
     coal_gw = coal_capacity_by_basin().round(0)
 
-    hist_files = sorted(WATER_DIR.glob("*historical*qtot*.nc"))
-    if hist_files:
-        frames = _frames_by_member(hist_files, BASELINE_WINDOW)
+    frames = _baseline_frames()
+    if frames:
         _report(
             f"BASELINE  model {BASELINE_WINDOW[0]}-{BASELINE_WINDOW[1]} vs "
             "Third National Survey 1956-2016",
