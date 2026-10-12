@@ -32,6 +32,21 @@ def haversine_matrix_km(lons: ArrayLike, lats: ArrayLike) -> np.ndarray:
     return haversine_km(lons[:, None], lats[:, None], lons[None, :], lats[None, :])
 
 
+def within_radius(
+    lon: float, lat: float, lons: ArrayLike, lats: ArrayLike, radius_km: float, *, ranked: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
+    """(lon, lat) 周围 `radius_km` 以内的点：返回 (下标, 对应的 haversine 距离 km)。
+
+    缺省按下标升序；`ranked=True` 按距离升序（`np.argsort` 缺省算法，并列的先后不保证）。厂址到生物质 / 氨 / 水节点、
+    工业 hub 到氢节点的候选链路都由它配对，各处的列、四舍五入位数与排序要求留在调用方。
+    """
+    distances = haversine_km(lon, lat, lons, lats)
+    matched = np.flatnonzero(distances <= radius_km)
+    if ranked:
+        matched = matched[np.argsort(distances[matched])]
+    return matched, distances[matched]
+
+
 def _densified_vertices(geometries: Iterable, max_segment_deg: float) -> np.ndarray:
     """把线（或多边形边界）按 *max_segment_deg* 加密后的全部顶点，(n, 2) 的 (lon, lat)。"""
     dense = shapely.segmentize(np.asarray(list(geometries), dtype=object), max_segment_deg)

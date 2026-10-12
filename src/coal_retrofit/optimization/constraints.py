@@ -50,7 +50,7 @@ def _add_mccormick_product(model, share_var, binary_var, name: str):
 def _add_rebuilt_split(
     model, share, rebuild_class, air_share, expired_share, class_share, plant_count: int, allow_air: bool, sfx: str
 ) -> tuple[RebuiltShares, RebuiltShares]:
-    """有到期装机的 hub 把运行路径的份额拆出原址重建机组承担的部分，按重建毛热耗分类 c（`data_prep._with_expiry`），
+    """有到期装机的 hub 把运行路径的份额拆出原址重建机组承担的部分，按重建毛热耗分类 c（`data_prep_plants._with_expiry`），
     各类与未重建部分的毛热耗不同。
 
     每条运行路径 k：r_{c,k} >= 0，Σ_c r_{c,k} <= x_k；Σ_k r_{c,k} <= 该类的重建份额 ρ_c（重建机组至多全部运行）；

@@ -1,5 +1,5 @@
 """掺生物质比例的炉型上限（2026-10-02 起，`constraints._add_blend_level_constraints`）与 hub 的 CFB 装机份额
-（`data_prep._with_expiry`）。
+（`data_prep_plants._with_expiry`）。
 
 高于煤粉炉上限（0.15）的档位只有 CFB 能用：落在这些档位上的份额（生物质与 BECCS 合计）不超过 hub 的 CFB 装机份额；
 高于 CFB 上限（0.30）的档位谁都不能用。约束的用例只建一个 hub 的掺烧档位约束（需要 Gurobi），校验的用例在建模之前

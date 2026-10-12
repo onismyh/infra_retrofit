@@ -16,7 +16,8 @@ import pytest
 from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
 from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor, _year_objective_weight
-from coal_retrofit.optimization.data_prep import _with_expiry, prepare_inputs
+from coal_retrofit.optimization.data_prep import prepare_inputs
+from coal_retrofit.optimization.data_prep_plants import _with_expiry
 from coal_retrofit.optimization.results_costs import build_costs_table, build_system_table, cost_closure
 from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario

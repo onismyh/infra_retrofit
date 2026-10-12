@@ -76,7 +76,7 @@ class OptimizationScenario:
     water_scenario_id: str = ""
     # 没有口径开关：节点可用水量（生态流量）约束作用于耗水，水价按中国取水定额计，取水只进
     # 流域用水总量指标约束（`OptimizationAssumptions.apply_basin_cap`）。为什么拿取水去对照生态流量
-    # 允许量是范畴错误，见 `data_prep._prepare_plants`。
+    # 允许量是范畴错误，见 `data_prep_plants._prepare_plants`。
     # "annual" 用十年均值；"dry" 用最低的连续三个月，火电厂恰恰在这段时间真正被限发。
     water_season: str = "annual"
     water_multiplier: float = 1.0
@@ -128,7 +128,7 @@ class OptimizationScenario:
     # 原址重建参数：到期电厂可按新建成本的 70% 重建
     rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%；⚠ 假设（无出处）
     # 重建机组取超超临界效率：逐台毛热耗取 min(机组毛热耗, 3.6 / 0.45 = 8.0 GJ/MWh)，不劣于原值；空冷机组原址重建仍为
-    # 空冷，上限加空冷的 +15 g/kWh（折毛 0.418，即 8.418；`data_prep._with_expiry`）。
+    # 空冷，上限加空冷的 +15 g/kWh（折毛 0.418，即 8.418；`data_prep_plants._with_expiry`）。
     # Wang et al. 2025 SI Table 1 引 NDRC 2022 标准，"Ultra-supercritical/ccs" 一行为 270 gce/kWh（供电），按低位热值折
     # 0.455，取值低 1.1%；该行名原文如此、含义有歧义，NDRC 原文未核。这里把 0.45 直接当毛效率用，比按 5% 厂用电率折毛
     # （270 -> 7.52 GJ/MWh）保守。
