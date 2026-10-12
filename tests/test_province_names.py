@@ -15,6 +15,7 @@ import pytest
 
 from coal_retrofit.builders import water_quota
 from coal_retrofit.constants_industry_capture import capture_variable_cost_cny_per_t
+from coal_retrofit.constants_province import PROVINCE_COAL_COST_CNY_PER_GJ, PROVINCE_OPERATING_HOURS
 from coal_retrofit.optimization.data_prep_plants import _prepare_plants
 from coal_retrofit.optimization.industry import CCS, industry_year_data
 from coal_retrofit.optimization.industry_inputs import prepare_industry
@@ -139,3 +140,18 @@ def test_withdrawal_calibration_reads_hours_by_the_canonical_province_name(monke
     _withdrawal_matrices(SimpleNamespace(plants=plants), scenario, assumptions, intensity, 2030)
     hours = assumptions.province_operating_hours["Inner Mongolia"]
     assert captured["generation"][0] == pytest.approx(1000.0 * hours, rel=1e-12)
+
+
+def test_province_tables_default_to_private_copies() -> None:
+    """分省煤价与利用小时的缺省表在 `constants_province`（2026-10-12 起）：每个 `OptimizationAssumptions` 实例拿一份
+    同序的副本，改实例的表不动模块常量与其他实例。"""
+    first, second = OptimizationAssumptions(), OptimizationAssumptions()
+    for field_name, table in (
+        ("province_coal_cost_cny_per_gj", PROVINCE_COAL_COST_CNY_PER_GJ),
+        ("province_operating_hours", PROVINCE_OPERATING_HOURS),
+    ):
+        values = getattr(first, field_name)
+        assert list(values.items()) == list(table.items())
+        assert len(values) == 30
+        values["Atlantis"] = 1.0
+        assert "Atlantis" not in table and "Atlantis" not in getattr(second, field_name)
