@@ -10,7 +10,7 @@ from scipy import ndimage
 
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
-from ..spatial import load_provinces
+from ..spatial import load_provinces, pixel_centers
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +70,7 @@ def _extract_storage_nodes(
 
     # 像素中心在投影 CRS 下的坐标
     rows_idx, cols_idx = np.where(valid)
-    x_proj = transform.c + (cols_idx + 0.5) * transform.a
-    y_proj = transform.f + (rows_idx + 0.5) * transform.e
+    x_proj, y_proj = pixel_centers(transform, rows_idx, cols_idx)
 
     storage_vals = storage[valid]
     inj_vals = injectivity[valid]

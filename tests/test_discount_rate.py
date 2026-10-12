@@ -8,7 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from coal_retrofit.builders.supply import hb_capex_annuity_usd_per_kg, reprice_hb_capex
+from coal_retrofit.builders.supply_ammonia import hb_capex_annuity_usd_per_kg, reprice_hb_capex
 from coal_retrofit.optimization.data_prep import _prepare_ammonia_supply
 from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.optimization.scenario import OptimizationScenario
@@ -90,7 +90,7 @@ def test_reprice_hb_capex_rejects_missing_or_non_numeric_costs() -> None:
 
 def test_ammonia_hydrogen_cost_follows_the_current_conversion_ratio(tmp_path) -> None:
     """CSV 里按构建时的比例（0.176）折算的氢成本，求解时换成按当前 NH3_H2_RATIO 折算的；没有这两列的表原样使用。"""
-    from coal_retrofit.builders.supply import reprice_h2_component
+    from coal_retrofit.builders.supply_ammonia import reprice_h2_component
     from coal_retrofit.constants import NH3_H2_RATIO
 
     curve = pd.DataFrame({"ammonia_node_id": ["A1"], "nh3_cost_lb_usd_per_kg": [1.0],

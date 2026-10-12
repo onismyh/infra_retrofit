@@ -84,7 +84,7 @@ def _ammonia_access_data(
     节点是绿氢的产地（风光电解），上限只按绿氢计（`h2_supply_kg_per_year`，2026-10-10 起；此前按折成氨的
     `nh3_supply_kg_per_year` 计，另有一条全国绿氨上限）：煤电用的氨在节点上由绿氢合成，按 `NH3_H2_RATIO` 折成氢
     从同一上限里扣，工业氢路线直接扣（`model_resources.add_resource_balances`）。到厂的氨价 = 绿氢 x 折算系数
-    + 合成岛电耗与 capex 年金 + 储存（`nh3_cost_lb_usd_per_kg`，`builders.supply`）+ 运输。
+    + 合成岛电耗与 capex 年金 + 储存（`nh3_cost_lb_usd_per_kg`，`builders.supply_ammonia`）+ 运输。
     """
     from ..constants import AMMONIA_FLOW_SCALE
     source_year = _nearest_year(year, prepared.available_ammonia_years)
