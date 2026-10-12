@@ -138,7 +138,7 @@ def _with_expiry(
     （`builders.plants.unit_rebuild_heat_rate_cap_gj_per_mwh`）；规划期内到期的机组按这个值（六位小数）分类，
     类按重建热耗升序编号，没有该类的 hub 填 hub 毛热耗、f_j 为 0。哪一类重建由求解器定（`model_year`）。
     未重建部分取 (hub 毛热耗 - f x 到期机组的毛热耗) / (1 - f)；f = 0 时取 hub 毛热耗，f = 1 时没有未重建部分，取到期机组
-    重建热耗的装机加权平均（`constraints._add_rebuilt_split` 只拆两类以上的这种 hub，拆了与它无关）。逐台毛热耗与
+    重建热耗的装机加权平均（`constraints_rebuilt.add_rebuilt_split` 只拆两类以上的这种 hub，拆了与它无关）。逐台毛热耗与
     hub 毛热耗同一算法（`builders.plants.unit_heat_rate_gj_per_mwh`）。按机组细化的 `4d5ce30`（2026-10-02）里重建部分
     只有一类，取到期机组重建热耗的装机加权平均；再之前全国一个热耗 8.5714，整个 hub 自 `retirement_year` 起乘
     0.42 / rebuild_efficiency，不论到期装机是重建还是退役。

@@ -345,7 +345,7 @@ class OptimizationAssumptions:
     biomass_upgrade_om_fraction: float = 0.03
     # 掺生物质比例的炉型上限（2026-10-02 起）：煤粉炉不超过 0.15（Fan et al. 2023 的基准掺烧比例），CFB 不超过 0.30
     # （调研稿 B 级，原文未取得：⚠ 假设）。hub 内落在煤粉炉上限以上档位的在用份额不超过该 hub 的 CFB 装机份额，
-    # 落在 CFB 上限以上的为零（`constraints._add_blend_level_constraints`）。都设 1.0 即不限。
+    # 落在 CFB 上限以上的为零（`constraints_blend.add_blend_level_constraints`）。都设 1.0 即不限。
     biomass_blend_max_pulverized: float = 0.15
     biomass_blend_max_cfb: float = 0.30
     ammonia_upgrade_capex_cny_per_mw_per_level: float = 25_000.0  # 最高档（50% 掺烧）≈125 CNY/kW。

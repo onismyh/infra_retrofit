@@ -51,7 +51,7 @@
 > `--results` 可换目录（只配 `--pair`）。
 > 模型、参数缺省值与结果表都不变。
 >
-> 2026-09-27 起连续 hub 下路径份额恰好分摊到各掺烧档位上（`Σ_l z = s`，此前是 `≤`；`optimization/constraints.py`，
+> 2026-09-27 起连续 hub 下路径份额恰好分摊到各掺烧档位上（`Σ_l z = s`，此前是 `≤`；`optimization/constraints_blend.py`，
 > 实现说明 §9.8）：份额为正就至少按最低档掺烧。此前份额可以有一部分不落在任何档位上：关掉 CCS 时，BECCS 不掺生物质
 > 就是 CCS；煤价低时，"生物质"份额不烧生物质，也能拿改造路径的 CF 提升。**这是模型改动**：独热档位的整数可行解不变
 > （LP 松弛变紧、模型指纹变了，重解不复现旧的搜索路径），连续 hub 的最优值只会不变或变高。改前改后的结果不得相减；
@@ -209,7 +209,7 @@
 >   原址重建不改冷却方式）；未重建部分取未到期机组的装机加权毛热耗（由 hub 值反推，两部分按 f 加权还原 hub 值；反推放大误差，
 >   部分到期 hub 的 hub 值与按现行分档基准逐台现算、按装机加权的值相差超过 1e-4 就报错）。0 < f < 1 的 hub
 >   把每条运行路径的份额、空冷份额与掺烧各档拆出重建机组承担的部分（运行的重建部分不超过重建份额，未重建部分不超过未到期装机
->   1 − f，`optimization/constraints.py:50-102`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
+>   1 − f，`optimization/constraints_rebuilt.py:15-67`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
 >   空冷背压惩罚的排放与捕集仍按 hub 毛热耗（作者决定维持）。哪几台机组运行、退役、改空冷由求解器定，模型不追踪逐台状态；
 >   拆到各路径的份额不受跨期约束，跨期约束只管 hub 合计与重建部分的运行合计（自愿退役核算，见下条）。f = 0 或 1 的 hub（整数
 >   hub 都是）两部分相同，不加变量（2026-10-02 起重建部分再按重建毛热耗分类，f = 1 而有两类以上的 hub 也拆，见本节末）。
@@ -276,7 +276,7 @@
 >   建的有残值，而它们都是当年要用才建的，数值不变；工业氢路线（25 年）2050 年建的能力到 2060 年因减产闲置的部分不再计残值。
 >   此前按建成量计，期末不在用的也抵扣。
 > - 重建部分按重建毛热耗分类（`optimization/data_prep_plants._with_expiry`、`optimization/model_year.py:55-60`、
->   `optimization/constraints.py:50-102`、`optimization/model_linking.py:104-119`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
+>   `optimization/constraints_rebuilt.py:15-67`、`optimization/model_linking.py:104-119`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
 >   重建份额是各类之和，每类不超过该类已到期的装机份额、各自不减，先重建哪一类由求解器定；运行路径份额、空冷份额与掺烧各档的重建
 >   部分按类拆，系数取该类与未重建部分之差。ST 输入到 2060 年有到期机组的 324 个 hub 里，231 个只有一类（与此前相同），87 个两类、
 >   6 个三类，类间毛热耗相差 0.8%–6.4%；全部到期而有两类以上的 hub 也拆。此前重建部分取到期机组重建毛热耗的装机加权平均，不分实际
@@ -302,7 +302,7 @@
 >   10%–15% 有工程证据（Fan 基准 15%），0.25 以上没有，0.75、1.00 实为改烧。BECCS 用同一组档位。
 > - 炉型上限：煤粉炉 0.15、CFB 0.30（`biomass_blend_max_pulverized`、`biomass_blend_max_cfb`；CFB 的 20%–30% 是调研稿 B 级，原文
 >   未取得：⚠ 假设）。hub 里落在 0.15 以上档位的在用份额（生物质与 BECCS 合计）不超过该 hub 的 CFB 装机份额，落在 0.30 以上
->   档位的为零（现行档位没有），每个 hub 每期一条（`optimization/constraints._add_blend_level_constraints`）。CFB 装机份额按机组表
+>   档位的为零（现行档位没有），每个 hub 每期一条（`optimization/constraints_blend.add_blend_level_constraints`）。CFB 装机份额按机组表
 >   `combustion` 算到 hub（带 `/CCS` 后缀的按本体机型；`optimization/data_prep_plants._with_expiry`），非 CFB 机组（含 1 台 IGCC）都按
 >   煤粉炉计。CFB 装机份额不随机组到期与重建变（到 2060 年已到期的 CFB 有 1.73 GW）。ST 输入的 CFB 共 7.04 GW（全国装机的
 >   0.5%），分布在 47 个 hub，其中 6 个全是 CFB（合计 0.85 GW）：0.20 档只对这 47 个 hub 开放，落在 0.20 档的生物质与 BECCS 份额
@@ -714,6 +714,19 @@
 > mypy 错误 133 → 93，减少的 40 条全在网络构建模块（`record.update({...})` 的 26 条 dict-item 随边记录工厂消失，走廊节点统计改用 `Counter` /
 > `defaultdict` 后 `object` 相关的 9 条消失，坐标与几何收进两个函数、边记录标注 `dict[str, object]` 后少 5 条 arg-type），其余文件不变。
 
+> 2026-10-12 起（同日第十个 PR）`optimization/constraints.py`（556 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `constraints.py`（203 行）留逐厂路径约束 `_add_plant_path_constraints`（空冷份额与新建、耗水、物理捕集量与残余排放）；`constraints_blend.py`
+> （304 行）放掺烧档位 `add_blend_level_constraints`（原 `_add_blend_level_constraints`）与 McCormick 线性化；`constraints_rebuilt.py`（72 行）放
+> 原址重建部分的拆分 `add_rebuilt_split`、点积 `rebuilt_dot` 与运行路径列 `RUNNING`（原 `_add_rebuilt_split` / `_rebuilt_dot`）。生物质（含 BECCS）
+> 与掺氨两组档位此前各写一遍的 z / rz 变量、`Σ_l z = 份额` 的分摊约束、Σβ·z 与在用掺烧能力的累加和分层，合成 `_LevelShares` 类（一组共用档位的
+> 路径一个实例：`add_level`、`add_partition`、`layers`），两组只剩各自的用量、减排与惩罚项；两个函数此前返回 18 个、21 个元素的元组，改为同名字段的
+> `BlendTerms` / `PlantPathTerms`（NamedTuple），`model_year` 按字段名取用；路径系数矩阵乘份额的逐列求和（CCS 额外燃料与空冷背压的捕集和排放）
+> 改走 `_path_dot`；gurobipy 的导入回退改用 `_shared` 已有的那一份。变量与约束的名字和创建顺序不变：8 个单 hub 玩具情形（一台与两台机组、连续与整数 hub、
+> 部分到期与全部到期的两类重建、关空冷、加宽生物质档位使 `cfb_max_b` 生效）拆分前后写出的 LP 文件与求解结果逐字节相同，5 个 hub（无到期、部分到期、
+> 全部到期的一类与两类、含零份额的类）的合成数据直接调 `_add_plant_path_constraints` 的 12 种组合写出的 LP 与返回的表达式逐字节相同；`constants` 快照与
+> `OptimizationAssumptions()` 的 76 个缺省值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；473 个测试通过（4 个测试文件的导入与字段名随之改），
+> mypy 错误 93 → 89（`constraints.py` 自写导入回退的 3 条与 `quicksum(list[object])` 的 1 条消失），其余文件不变。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -722,7 +735,7 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:204`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:198`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:58-79`、`optimization/model_industry.py:175` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
 | 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:128`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
@@ -998,7 +1011,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的七个拆分 PR（§0 当日注）之后，超 400 行的文件剩 2 个：`optimization/constraints.py` 556、`optimization/assumptions.py` 445。
+> 2026-10-12 的八个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -1019,7 +1032,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准 `66700ee`，与方法论文首相同；模型分段 13）：
+截至 2026-10-12（代码基准 `41f0538`，与方法论文首相同；模型分段 13）：
 
 | 部分 | 现状 |
 |---|---|
@@ -1157,7 +1170,7 @@ python -m ruff check src tests scripts
 | 步 | 函数（模块，`optimization/`） | 内容 |
 |---|---|---|
 | 1 | `build_model_index`（`model_index`） | 节点编号、源 / 汇 / 管网节点集合、关联矩阵、各部门 2030 年基线 |
-| 2 | 逐年 `add_year_block`（`model_year`；煤电约束在 `constraints`，资源在 `model_resources`，工业在 `model_industry`） | 每个规划年的变量与年内约束 |
+| 2 | 逐年 `add_year_block`（`model_year`；煤电约束在 `constraints`（掺烧档位在 `constraints_blend`，原址重建部分的拆分在 `constraints_rebuilt`），资源在 `model_resources`，工业在 `model_industry`） | 每个规划年的变量与年内约束 |
 | 3 | `add_inter_period_constraints`、`add_capacity_vintages`（`model_linking`，分代在 `vintage`） | 跨期不可逆与单调性；分代能力的在役与到寿命退出 |
 | 4 | 逐年先 `add_capacity_constraints`（`model_linking`）后 `add_year_costs`（`model_costs`） | 当年的管道与封存容量；年度运行成本、资源采购、运输与封存、一次性 capex、松弛罚项，以及退役流量与自愿退役速率上限（`retirement`） |
 | 5 | `add_retired_rebuild_offset`（`retirement`）、`_add_salvage_credit`（`salvage`） | 期末已关停的重建装机从残值台账扣回；期末残值抵扣 |

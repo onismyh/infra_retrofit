@@ -92,13 +92,7 @@ def add_year_block(
     edge_flow_mtpa = model.addMVar(edge_count, lb=0.0, name=f"edge_flow_mtpa_{year_suffix}")
     storage_use_mtpa = model.addMVar(storage_count, lb=0.0, name=f"storage_use_mtpa_{year_suffix}")
 
-    (
-        captured_mt_by_plant, biomass_use_gj, ammonia_use_kg, water_use_m3, total_reduction_mt,
-        select_b, select_a, blend_level_b, blend_level_a, blend_layers_b, blend_layers_a,
-        bio_penalty_by_plant, plant_reduction_exprs, air_share, air_new,
-        bio_blend_x_share, beccs_blend_x_share, amm_blend_x_share,
-        rebuilt_share, rebuilt_air_share, rebuilt_blend_x_share,
-    ) = _add_plant_path_constraints(
+    plant = _add_plant_path_constraints(
         model, share, rebuild_class, year_data, plant_count, scenario, assumptions, year_suffix=year_suffix,
     )
     model.addConstrs((share[plant_idx, :].sum() == 1.0 for plant_idx in range(plant_count)), name=f"share_sum_{year_suffix}")
@@ -112,7 +106,7 @@ def add_year_block(
     # --- CO2 管网节点平衡；工业捕集在 hub 自己的节点进入同一张图，所以工业年块建在两段之间 ---
     _add_co2_power_storage_balance(
         model, prepared, idx, co2_node_outflow, co2_flow_fwd, co2_flow_bwd,
-        captured_mt_by_plant, storage_use_mtpa, year_suffix,
+        plant.captured_mt_by_plant, storage_use_mtpa, year_suffix,
     )
     industry_payload = add_industry_year(
         model, prepared.industry, year_data.industry, year_suffix,
@@ -128,19 +122,19 @@ def add_year_block(
     add_resource_balances(
         model, year_data, assumptions, year, plant_count, idx.biomass_node_count,
         biomass_flow_gj=biomass_flow_gj, ammonia_flow_kg=ammonia_flow_kg, water_flow_m3=water_flow_m3,
-        biomass_use_gj=biomass_use_gj, ammonia_use_kg=ammonia_use_kg, water_use_m3=water_use_m3,
+        biomass_use_gj=plant.biomass_use_gj, ammonia_use_kg=plant.ammonia_use_kg, water_use_m3=plant.water_use_m3,
         biomass_slack_gj=biomass_slack_gj, h2_slack_kg=h2_slack_kg, water_slack_m3=water_slack_m3,
         industry_h2_flow_kg=industry_payload.h2_flow_kg, year_suffix=year_suffix,
     )
     water_basin_slack_m3, water_basin_use_m3 = add_basin_withdrawal_cap(
-        model, year_data, share, air_share, industry_payload.withdrawal_by_hub_scaled,
+        model, year_data, share, plant.air_share, industry_payload.withdrawal_by_hub_scaled,
         plant_count, year_suffix,
     )
 
     # --- 注入速率、部门目标、路径开关 ---
     _add_injectivity_limit(model, year_data, storage_use_mtpa, injectivity_slack_mtpa, storage_count, year_suffix)
     target_shortfall_by_group = _add_sector_targets(
-        model, year_data, scenario, idx, year, total_reduction_mt,
+        model, year_data, scenario, idx, year, plant.total_reduction_mt,
         industry_payload.residual_by_group, target_shortfall_mt, year_suffix,
     )
     _add_pathway_switches(model, share, scenario, plant_count, year_suffix)
@@ -158,7 +152,7 @@ def add_year_block(
         rebuild=rebuild,
         rebuild_class=rebuild_class,
         retrofit_new=retrofit_new,
-        air_new=air_new,
+        air_new=plant.air_new,
         blend_new_b=blend_new_b,
         blend_new_a=blend_new_a,
         new_cap_mtpa=new_cap_mtpa,
@@ -177,26 +171,26 @@ def add_year_block(
         edge_slack_mtpa=edge_slack_mtpa,
         edge_flow_mtpa=edge_flow_mtpa,
         storage_use_mtpa=storage_use_mtpa,
-        captured_mt_by_plant=captured_mt_by_plant,
-        biomass_use_gj=biomass_use_gj,
-        ammonia_use_kg=ammonia_use_kg,
-        water_use_m3=water_use_m3,
-        air_share=air_share,
-        select_b=select_b,
-        select_a=select_a,
-        blend_level_b=blend_level_b,
-        blend_level_a=blend_level_a,
-        blend_layers_b=blend_layers_b,
-        blend_layers_a=blend_layers_a,
-        plant_reduction_exprs=plant_reduction_exprs,
-        biomass_blend_x_share=bio_blend_x_share,
-        beccs_blend_x_share=beccs_blend_x_share,
-        ammonia_blend_x_share=amm_blend_x_share,
-        rebuilt_share=rebuilt_share,
-        rebuilt_air_share=rebuilt_air_share,
-        rebuilt_blend_x_share=rebuilt_blend_x_share,
-        total_reduction_mt=total_reduction_mt,
-        bio_penalty_by_plant=bio_penalty_by_plant,
+        captured_mt_by_plant=plant.captured_mt_by_plant,
+        biomass_use_gj=plant.biomass_use_gj,
+        ammonia_use_kg=plant.ammonia_use_kg,
+        water_use_m3=plant.water_use_m3,
+        air_share=plant.air_share,
+        select_b=plant.select_b,
+        select_a=plant.select_a,
+        blend_level_b=plant.blend_level_b,
+        blend_level_a=plant.blend_level_a,
+        blend_layers_b=plant.blend_layers_b,
+        blend_layers_a=plant.blend_layers_a,
+        plant_reduction_exprs=plant.plant_reduction_exprs,
+        biomass_blend_x_share=plant.biomass_blend_x_share,
+        beccs_blend_x_share=plant.beccs_blend_x_share,
+        ammonia_blend_x_share=plant.ammonia_blend_x_share,
+        rebuilt_share=plant.rebuilt_share,
+        rebuilt_air_share=plant.rebuilt_air_share,
+        rebuilt_blend_x_share=plant.rebuilt_blend_x_share,
+        total_reduction_mt=plant.total_reduction_mt,
+        bio_penalty_by_plant=plant.bio_penalty_by_plant,
         industry=industry_payload,
     )
 

@@ -212,7 +212,7 @@ def _rebuilt_shape(payload: YearPayload, plant_count: int) -> tuple[int, int, in
 
 
 def _rebuilt_values(parts: RebuiltShares, shape: tuple[int, int, int]) -> np.ndarray:
-    """各路径份额或空冷份额里各类的重建部分（`constraints._add_rebuilt_split`），(类数, plant_count, len(PATHWAYS))。"""
+    """各路径份额或空冷份额里各类的重建部分（`constraints_rebuilt.add_rebuilt_split`），(类数, plant_count, len(PATHWAYS))。"""
     out = np.zeros(shape)
     for p, classes in parts.items():
         for c, part in classes.items():

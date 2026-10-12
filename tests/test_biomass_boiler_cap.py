@@ -1,4 +1,4 @@
-"""掺生物质比例的炉型上限（2026-10-02 起，`constraints._add_blend_level_constraints`）与 hub 的 CFB 装机份额
+"""掺生物质比例的炉型上限（2026-10-02 起，`constraints_blend.add_blend_level_constraints`）与 hub 的 CFB 装机份额
 （`data_prep_plants._with_expiry`）。
 
 高于煤粉炉上限（0.15）的档位只有 CFB 能用：落在这些档位上的份额（生物质与 BECCS 合计）不超过 hub 的 CFB 装机份额；
@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from coal_retrofit.optimization._shared import PATHWAY_INDEX
-from coal_retrofit.optimization.constraints import _add_blend_level_constraints
+from coal_retrofit.optimization.constraints_blend import add_blend_level_constraints
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario
@@ -46,8 +46,8 @@ def _max_blend_ratio(
     fixed[0, PATHWAY_INDEX["biomass"]] = fixed[0, PATHWAY_INDEX["beccs"]] = share
     shares = model.addMVar(fixed.shape, lb=fixed, ub=fixed)
     assumptions = OptimizationAssumptions(hub_decisions_continuous=continuous, **assumption_overrides)
-    blocks = _add_blend_level_constraints(model, shares, 1, scenario, assumptions, year_data, "")
-    model.setObjective(blocks[-3][0] + blocks[-2][0], gp.GRB.MAXIMIZE)
+    blocks = add_blend_level_constraints(model, shares, 1, scenario, assumptions, year_data, "")
+    model.setObjective(blocks.biomass_blend_x_share[0] + blocks.beccs_blend_x_share[0], gp.GRB.MAXIMIZE)
     model.optimize()
     assert model.Status == gp.GRB.OPTIMAL
     return float(model.ObjVal) / (2.0 * share)
@@ -83,7 +83,7 @@ def test_bad_levels_and_caps_are_rejected() -> None:
     """档位不在 (0, 1] 内严格升序（乱序、重复、0、大于 1、NaN），或煤粉炉上限不为正、高于 CFB 上限时建约束报错，不静默地
     多关档位。校验在建模之前，模型、份额与年度数据都传 None，不需要 Gurobi。"""
     def build(scenario: OptimizationScenario = SCENARIO, **assumption_overrides: float) -> None:
-        _add_blend_level_constraints(None, None, 1, scenario, OptimizationAssumptions(**assumption_overrides), None, "")
+        add_blend_level_constraints(None, None, 1, scenario, OptimizationAssumptions(**assumption_overrides), None, "")
 
     for levels in ((0.20, 0.10, 0.15), (0.0, 0.10), (0.10, 1.5), (0.10, float("nan"))):
         with pytest.raises(ValueError, match="biomass_blend_levels"):

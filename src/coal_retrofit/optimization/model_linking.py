@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from ._shared import PATHWAY_INDEX, SolveState, gp
-from .constraints import RUNNING
+from .constraints_rebuilt import RUNNING
 from .model_industry import add_industry_capacity
 from .salvage import horizon_end_year
 from .assumptions import OptimizationAssumptions

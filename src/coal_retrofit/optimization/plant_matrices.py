@@ -23,7 +23,7 @@ def _plant_operating_matrices(
     """发电、排放、运行成本、能耗惩罚、CCS/BECCS capex、搁浅资产。
 
     随毛热耗变的系数（`by_heat_rate`）按未重建部分的毛热耗算；原址重建部分按重建热耗分类，每类与未重建部分算出的
-    系数之差放在 `rebuilt_deltas`，乘该类重建部分的份额加进约束与成本（`constraints._add_rebuilt_split`）。
+    系数之差放在 `rebuilt_deltas`，乘该类重建部分的份额加进约束与成本（`constraints_rebuilt.add_rebuilt_split`）。
     """
     # 本年利用小时：`annual_generation_mwh` 是当前省级统计，按情景小时轨迹逐年缩放，
     # 发电、基线排放与每 MWh 成本同步移动。
@@ -107,7 +107,7 @@ def _plant_operating_matrices(
         eta = GJ_PER_MWH / heat_rate
         # 两个排放基数（基线排放之外）：运行（基线排放按毛热耗 / hub 毛热耗缩放）、改造（再乘 CF 提升）。
         emissions_operating_mt = emissions_mt * (heat_rate / hub_heat_rate)
-        # 能耗惩罚（效率损失 -> 多烧煤）：CCS 项只随份额变；生物质项随掺烧档位变，在 constraints 里 McCormick 线性化。
+        # 能耗惩罚（效率损失 -> 多烧煤）：CCS 项只随份额变；生物质项随掺烧档位变，在 constraints_blend 里 McCormick 线性化。
         # CCS 能耗惩罚直接以单位出力的额外燃料比表示，逐年下降：额外燃料 = ratio(year) x 毛热耗 [GJ/MWh]。
         ccs_penalty_fuel = eps_ratio_ccs * heat_rate
         # 生物质档位效率惩罚：每单位掺烧比例多烧 (ε_per_ratio / η) x 毛热耗 [GJ/MWh]，乘 G_p x β_b 即惩罚燃料。

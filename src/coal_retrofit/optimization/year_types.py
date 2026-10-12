@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 # 字段若直接标 `gp.MVar`，mypy 会在几十处正确的建模代码上报假阳性，所以按 Any 放行，别名只说明字段是什么。
 GrbMVar = Any
 GrbExpr = Any  # LinExpr、0 维 MLinExpr 或 float
-# 原址重建部分的份额：{厂: {重建热耗类: {路径列: 变量}}}，只含拆出重建部分的 hub（`constraints._add_rebuilt_split`）。
+# 原址重建部分的份额：{厂: {重建热耗类: {路径列: 变量}}}，只含拆出重建部分的 hub（`constraints_rebuilt.add_rebuilt_split`）。
 RebuiltShares = dict[int, dict[int, dict[int, Any]]]
 
 
@@ -37,7 +37,7 @@ RebuiltShares = dict[int, dict[int, dict[int, Any]]]
 class RebuiltDelta:
     """一类原址重建部分与未重建部分的系数之差（各按自己的毛热耗算，`plant_matrices`），每个重建热耗类一份。
 
-    字段与 `YearData` 的同名字段同形状、同单位，乘该类重建部分的份额进约束与成本（`constraints._add_rebuilt_split`）。
+    字段与 `YearData` 的同名字段同形状、同单位，乘该类重建部分的份额进约束与成本（`constraints_rebuilt.add_rebuilt_split`）。
     全部到期的 hub 没有未重建部分，系数取各类重建热耗的装机加权平均，差为该类与平均之差；没有该类的 hub 差为零。
     空冷背压的排放与捕集按 hub 毛热耗计，没有差。
     """
@@ -218,7 +218,7 @@ class YearPayload:
     air_share: GrbMVar
     select_b: GrbMVar
     select_a: GrbMVar
-    # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表（`constraints._add_blend_level_constraints`）；
+    # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表（`constraints_blend.add_blend_level_constraints`）；
     # 生物质的另计掺烧能力的固定运维（2026-10-02 起）。独热档位下是所选档位 x 路径份额；连续 hub 下非整数时对应不到任何一档。
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
@@ -231,7 +231,7 @@ class YearPayload:
     biomass_blend_x_share: list[GrbExpr]
     beccs_blend_x_share: list[GrbExpr]
     ammonia_blend_x_share: list[GrbExpr]
-    # 拆出原址重建部分的 hub（`constraints._add_rebuilt_split`），只含这些 hub：各运行路径份额与空冷份额里由各类重建机组
+    # 拆出原址重建部分的 hub（`constraints_rebuilt.add_rebuilt_split`），只含这些 hub：各运行路径份额与空冷份额里由各类重建机组
     # 承担的部分，{厂: {类: {路径列: 变量}}}；掺烧三条路径上各类重建部分的 Σβ_l·rz_l，{(厂, 类, 路径列): 表达式}。
     rebuilt_share: RebuiltShares
     rebuilt_air_share: RebuiltShares

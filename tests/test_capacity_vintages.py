@@ -317,10 +317,10 @@ def test_air_and_blend_capacity_retire_after_20_years(monkeypatch) -> None:
 
 @pytest.mark.parametrize("continuous", [True, False])
 def test_blend_layers_count_the_share_at_or_above_each_level(continuous: bool) -> None:
-    """掺烧能力按档位分层（`constraints._add_blend_level_constraints`，2026-10-02 起）：第 l 层是落在第 l 档及以上的份额，
+    """掺烧能力按档位分层（`constraints_blend.add_blend_level_constraints`，2026-10-02 起）：第 l 层是落在第 l 档及以上的份额，
     各层相加即在用的掺烧能力 `blend_level`。生物质份额 0.2，连续 hub 与独热档位相同：全落在最高档时各层（L 层）都是 0.2、
     能力 0.2L；全落在最低档时只有第一层是 0.2、能力 0.2。hub 全是 CFB，炉型上限不起作用。"""
-    from coal_retrofit.optimization.constraints import _add_blend_level_constraints
+    from coal_retrofit.optimization.constraints_blend import add_blend_level_constraints
 
     year_data = cast(YearData, SimpleNamespace(
         emissions_retrofit_mt=np.ones(1), heat_rate_eff=np.full(1, 9.0),
@@ -334,10 +334,10 @@ def test_blend_layers_count_the_share_at_or_above_each_level(continuous: bool) -
     fixed = np.zeros((1, len(PATHWAYS)))
     fixed[0, PATHWAY_INDEX["biomass"]] = 0.2
     share = model.addMVar(fixed.shape, lb=fixed, ub=fixed)
-    blocks = _add_blend_level_constraints(
+    blocks = add_blend_level_constraints(
         model, share, 1, SCENARIO, OptimizationAssumptions(hub_decisions_continuous=continuous), year_data, "",
     )
-    level_b, layers_b, x_share = blocks[2], blocks[4], blocks[-3]
+    level_b, layers_b, x_share = blocks.blend_level_b, blocks.blend_layers_b, blocks.biomass_blend_x_share
     n_levels = len(SCENARIO.biomass_blend_levels)
     top, bottom = [0.2] * n_levels, [0.2] + [0.0] * (n_levels - 1)
     for sense, layers, level in ((gp.GRB.MAXIMIZE, top, 0.2 * n_levels), (gp.GRB.MINIMIZE, bottom, 0.2)):
