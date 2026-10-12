@@ -18,7 +18,7 @@ from shapely.prepared import prep
 
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, load_provinces
-from .network_repair import _build_edge_geometry, node_coordinates
+from .network_repair import build_edge_geometry, node_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def offshore_length_km(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataF
     coords = node_coordinates(nodes)
     shares = []
     for _, row in edges.iterrows():
-        geom = _build_edge_geometry(row, coords)
+        geom = build_edge_geometry(row, coords)
         if geom is None:
             raise ValueError(f"{row['edge_id']}：没有几何，端点也不全在节点表里，量不了海上段")
         shares.append(_sea_share(_along_great_circle(geom), land, land_prepared))

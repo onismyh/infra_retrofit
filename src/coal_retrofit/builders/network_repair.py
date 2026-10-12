@@ -37,8 +37,8 @@ _EDGE_CLASS_PRIORITY = {
 }
 
 
-def _build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, float]]) -> LineString | None:
-    """为一条边构建 Shapely LineString；有 WKT 时直接用 WKT。"""
+def build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, float]]) -> LineString | None:
+    """为一条边构建 Shapely LineString：有 WKT 时直接用 WKT，否则连两端节点的直线；端点不全在 *node_coords* 里返回 None。"""
     wkt_str = row.get("geometry_wkt", "")
     if isinstance(wkt_str, str) and wkt_str.startswith("LINESTRING"):
         return shapely_wkt.loads(wkt_str)
@@ -57,8 +57,8 @@ def node_coordinates(nodes: pd.DataFrame) -> dict[str, tuple[float, float]]:
 
 
 def edge_geometries(edges: pd.DataFrame, node_coords: dict[str, tuple[float, float]]) -> list[LineString]:
-    """各边的几何（`_build_edge_geometry`），按 *edges* 的行序，建不出几何或几何为空的边略去。"""
-    return [g for g in (_build_edge_geometry(row, node_coords) for _, row in edges.iterrows())
+    """各边的几何（`build_edge_geometry`），按 *edges* 的行序，建不出几何或几何为空的边略去。"""
+    return [g for g in (build_edge_geometry(row, node_coords) for _, row in edges.iterrows())
             if g is not None and not g.is_empty]
 
 
@@ -169,7 +169,7 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
     # 构建几何并按优先级排序
     records: list[tuple[int, int, LineString]] = []  # (priority, df_index, geom)
     for idx, row in edges.iterrows():
-        geom = _build_edge_geometry(row, node_coords)
+        geom = build_edge_geometry(row, node_coords)
         if geom is not None and not geom.is_empty:
             priority = _EDGE_CLASS_PRIORITY.get(row.get("edge_class", ""), 2)
             records.append((priority, idx, geom))
