@@ -131,12 +131,18 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > （`docs/方法论.md` §4.1、§4.2、§4.3）。
 > 2026-10-11 起 `biomass_supply_curve.csv` 改由 Wang et al. 2023 情景 4 的栅格 `bioenergy_s4_AF_max.tif`（农林残余物）重建：
 > 13 949 → 13 883 个节点，合计 30.05 → 18.12 EJ/a（此前是情景 3 栅格，另含能源作物；`docs/方法论.md` §2.2，根 README §0）。
+> 2026-10-12 起 `water_availability.csv` 重建（多一列 `bias_source`）：CWatM 的 `historical` qtot 文件在 ISIMIP 服务器上 GCM 标签错位一格
+> （issue #34），偏差因子改按实际驱动文件估计、cwatm 的 ukesm 成员取其余四成员均值；只有 cwatm 的 ipsl / mpi / mri / ukesm 四个 GCM 的因子
+> 与可用量变了（全国约 +8.8% / −3.7% / −1.5% / +1.0%），其余 12 个成员与 `local_runoff_m3_per_year` 不变；粗化节点坐标随加权最多移 0.13 km，
+> `water_nodes.csv` 与 `water_supply_links.csv` 的 `distance_km` 跟着变，链路与最近节点不变。输入表变更，模型分段 11 → 12
+> （`docs/方法论.md` §7.2，根 README §0，CLAUDE.md §二.7）。
 
 其余一律不动：`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
 氨的供给曲线。
 
-> 上面"只替换了三个网络文件""`plants_unit.csv` 不变""其余一律不动"是 2026-09-12 重建时的快照；上文各条之外另有两处改动：
+> 上面"只替换了三个网络文件""`plants_unit.csv` 不变""其余一律不动"是 2026-09-12 重建时的快照（`water_availability.csv` 与
+> `water_nodes.csv` 已于 2026-10-12 重建，见上）；上文各条之外另有两处改动：
 > 2026-10-07 起 `plants.csv`、`plants_unit.csv`、`plants_unit_hub.csv` 按 CFB 改标重写（厂名写明 CFB 的 5 台加 `/CFB`，提交 `4f74e78`）；
 > 2026-10-10 起 `pipeline_candidate_edges.csv` 多一列 `offshore_length_km`（海上段长度，现 15 列；提交 `5e6bf49`，
 > 补算用 `scripts/build_network_inputs.py --offshore-only`）。
@@ -149,7 +155,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
   同样顺序，32 个共有列的数值差全部 < 1e-9，只多 4 个 v9.1 需要的取水强度列
   （`once_through_withdrawal_*`、`air_withdrawal_*`）。
 * v9 的 `pipeline_nodes.csv` 引用的 350 个 `plant_id` **全部存在**于 `plants.csv`。
-* `water_availability.csv` 与 `water_nodes.csv` 与 `_v9tree` 逐字节相同（v9.1 已核对）。
+* `water_availability.csv` 与 `water_nodes.csv` 与 `_v9tree` 逐字节相同（v9.1 已核对；2026-10-12 重建后不再相同，见上）。
 * `water_basin_caps.csv` 由指标、预留与 `industry_sources.csv`（扣出已建模的工业取水）生成，
   **不含任何管网信息**，所以直接沿用是正确的。
 
@@ -296,6 +302,10 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 >
 > ⚠ **模型改动（2026-10-11，模型分段 11）**：绿氢节点松弛罚额按 `NH3_H2_RATIO` 折到氢（1000/0.18 ≈ 5 556 元/kg H₂，此前
 > 1000 元/kg H₂；`docs/方法论.md` §3.5、附录 B.7）。只影响松弛被触发的解，但分段号已加一，下表的结果同样**不得与改后的求解相减**。
+>
+> ⚠ **模型改动（2026-10-12，模型分段 12）**：`water_availability.csv` 按真实驱动 GCM 的历史文件重建（ISIMIP issue #34），cwatm 的
+> ipsl / mpi / mri / ukesm 四个 GCM 的偏差因子与可用量变了，粗化水节点坐标微移（≤ 0.13 km）使所有情景的供水距离与输入摘要都变
+> （`docs/方法论.md` §2.3、§7.2、附录 B.4）。下表的结果都在此之前落盘，**不得与改后的求解相减**，要用须重解。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值；其中封存爬坡与全国氨上限已于 2026-10-10 删除）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

@@ -13,7 +13,9 @@ from typing import Any
 # 煤电成本增量口径与运维取值（掺氨按 capex 比例、基线 110 元/MWh）。
 # 第 10 段（2026-10-11）：生物质供给表改用 Wang 2023 情景 4（农林残余物，不含能源作物）。
 # 第 11 段（2026-10-11）：绿氢节点松弛罚额按 NH3_H2_RATIO 折到氢（1000 / 0.18 元/kg H2，此前 1000 元/kg H2）。
-MODEL_SEGMENT = 11
+# 第 12 段（2026-10-12）：水表重建：cwatm 的 ipsl / mpi / mri 偏差因子按实际驱动的历史文件（ISIMIP issue #34），
+# ukesm 取其余四个 GCM 的均值；粗化水节点坐标随之微移，所有情景的供水距离与输入摘要都变。
+MODEL_SEGMENT = 12
 
 
 class StaleResultError(RuntimeError):

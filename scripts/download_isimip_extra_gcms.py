@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the 24 ISIMIP3b qtot files (16 future + 8 historical) reliably on Windows.
+"""Download the 26 ISIMIP3b qtot files (16 future + 10 historical) reliably on Windows.
 
 Why Python+requests instead of curl: this box's curl is a mingw build using the
 Schannel TLS backend, which fails the handshake against files.isimip.org
@@ -7,14 +7,24 @@ Schannel TLS backend, which fails the handshake against files.isimip.org
 certifi) and connects cleanly (verified: HTTP 200, content-length matches,
 byte-range supported). The original data set was also downloaded this way.
 
-Two packages, 24 files, ~8.2 GB total:
+Two packages, 26 files, ~9.2 GB total:
   future      (cwatm + watergap2-2e) x 4 extra GCMs x {ssp126, ssp370} = 16, ~4.2 GB
-  historical  (cwatm + watergap2-2e) x 4 extra GCMs                    =  8, ~4.0 GB
+  historical  (cwatm + watergap2-2e) x all 5 GCMs                      = 10, ~5.0 GB
 
 The historical half is a prerequisite, not a bonus: bias correction is estimated per
 (hydrology model, GCM) pair against that pair's own historical run, so a member whose
 historical file is absent stays uncorrected while its siblings are corrected -- a
-correction-on/off contrast that would masquerade as GCM spread in the ensemble.
+correction-on/off contrast that would masquerade as GCM spread in the ensemble. The
+gfdl-esm4 historical pair is in the list too (2026-10-12; until then it had no download script).
+
+The CWatM historical files are kept under the names the server gives them, although those
+names are wrong: ISIMIP issue #34 (data.isimip.org/issues/34) shifted CWatM's historical qtot
+by one GCM -- the file labelled ipsl-cm6a-lr is GFDL's run (same qtot data cell for cell as the gfdl
+file; only the header's GCM name differs), mpi-esm1-2-hr is IPSL's, mri-esm2-0 is MPI's, ukesm1-0-ll
+is MRI's, and UKESM's own run does not exist; only the future files were re-issued (2023-02-16).
+`builders/water.HISTORICAL_FILE_GCM`
+maps each member to the file that actually drove it, so the ukesm-labelled file is still needed
+(it is the mri member's baseline). Verified 2026-10-12 with `scripts/attribute_isimip_forcing.py`.
 
 Naming follows the existing convention so `builders/water.py`'s WATER_PATTERN parses
 the future files. Resume-safe: on a broken connection we restart from the byte offset
@@ -33,6 +43,7 @@ from _bootstrap import REPO_ROOT
 # 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。
 DEST = str(REPO_ROOT / "data" / "water")
 GCMS = ["ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+HISTORICAL_GCMS = ["gfdl-esm4", *GCMS]
 SSPS = ["ssp126", "ssp370"]
 HYD = {"cwatm": "CWatM", "watergap2-2e": "WaterGAP2-2e"}
 # files.isimip.org drops long TLS transfers well before a 261 MB file completes -- the first
@@ -72,13 +83,15 @@ FUTURE_URLS = [
     for s in SSPS
 ]
 
-# 8 historical files (hydro x gcm), ~4.0 GB. Not optional: `builders/water.basin_bias_factors`
+# 10 historical files (hydro x gcm), ~5.0 GB. Not optional: `builders/water.basin_bias_factors`
 # estimates each member's basin bias against ITS OWN (hydrology model, GCM) historical run, so a
 # missing historical file silently leaves that member uncorrected at factor 1.0. Shipping an
 # ensemble where gfdl-esm4 is bias-corrected and the other four GCMs are raw would be worse than
 # no correction at all -- WaterGAP2-2e runs 2.43x too wet in Hai, so the uncorrected members
 # would separate from gfdl mostly through the correction rather than through their hydrology,
-# and any GCM-spread panel would report that artefact as GCM variance.
+# and any GCM-spread panel would report that artefact as GCM variance. For CWatM "its own" run is
+# the file `builders/water.HISTORICAL_FILE_GCM` points to, not the one carrying the member's name
+# (see the module docstring).
 HISTORICAL_URLS = [
     (
         _historical_basename(h, g),
@@ -86,7 +99,7 @@ HISTORICAL_URLS = [
         f"{_historical_basename(h, g)}",
     )
     for h in HYD
-    for g in GCMS
+    for g in HISTORICAL_GCMS
 ]
 
 URLS = FUTURE_URLS + HISTORICAL_URLS

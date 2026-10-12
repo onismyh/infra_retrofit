@@ -175,8 +175,12 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    此后到生物质供给表改读 Wang 2023 情景 4 栅格的 PR（2026-10-11，`MODEL_SEGMENT = 10`）合入之前是第九段：供给表读情景 3 栅格
    （`bioenergy_s3_AFE_abandon.tif`，另含废弃耕地上的能源作物，节点合计约 30 EJ/a）；此后到绿氢松弛罚额折到氢的 PR（2026-10-11，
    `MODEL_SEGMENT = 11`）合入之前是第十段：读情景 4 栅格（只有农林残余物，约 18 EJ/a），绿氢节点松弛仍按 1000 元/kg H2 罚
-   （第 9 段把节点上限从氨改按氢计时直接沿用了 1000 元/kg NH3 的数）；此后才是现行口径（第十一段，罚额 1000 / 0.18 ≈ 5 556 元/kg H2，
-   `constants.SLACK_PENALTY_CNY_PER_KG_H2`，其余同第十段）。2026-10-10 起结果文件 `<结果名>.json`（代码与文档里简称 result.json）记 `resolved.model_segment`，出图与 `check_run_provenance.py --pair`
+   （第 9 段把节点上限从氨改按氢计时直接沿用了 1000 元/kg NH3 的数）；此后到水表按真实驱动 GCM 重建的 PR（2026-10-12，`MODEL_SEGMENT = 12`）合入之前是第十一段：罚额 1000 / 0.18 ≈ 5 556 元/kg H2
+   （`constants.SLACK_PENALTY_CNY_PER_KG_H2`，其余同第十段），`water_availability.csv` 里 cwatm 配 ipsl / mpi / mri / ukesm 的偏差因子
+   用的是标错的 CWatM 历史文件（ISIMIP issue #34：标 ipsl 的文件是 GFDL 的运行，mpi 是 IPSL，mri 是 MPI，ukesm 是 MRI）；此后才是现行口径
+   （第十二段：cwatm 的 ipsl / mpi / mri 按实际驱动它的历史文件估计偏差因子（`builders/water.HISTORICAL_FILE_GCM`），ukesm 取其余四个
+   GCM 的均值（此前用的是 MRI 的文件），`water_availability.csv` 多 `bias_source` 列，粗化水节点坐标按可用量加权随之微移（≤ 0.13 km），
+   所有情景的供水距离与输入摘要都变，其余同第十一段）。2026-10-10 起结果文件 `<结果名>.json`（代码与文档里简称 result.json）记 `resolved.model_segment`，出图与 `check_run_provenance.py --pair`
    遇到与当前 `MODEL_SEGMENT` 不同（含没有这一项）的结果直接拒绝；此后每次改模型口径都把它加一，并在这里记下新段的边界。
    `<结果名>.json` 有 `resolved.code` 的记了求解时的
    提交号（`commit`，`dirty` 标有无未提交的改动），按提交号判断（`commit` 为空的记不了提交号，同样按落盘时间判断）；

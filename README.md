@@ -602,6 +602,27 @@
 >   汇表库函数 `build_storage_hub_dataframe` / `write_storage_hubs` 的膨胀像素缺省改 6（与脚本及库内 89 个汇一致；0 为不合并，
 >   负数在读栅格前报错）。`spatial` 的点坐标校验补一维与经纬度范围（标量算一个点），图层校验补空几何。
 >   `download_isimip_water_use.py` 有下载失败时以 1 退出、HTTP 416 按已完整处理。
+>
+> 2026-10-12 起 `water_availability.csv` 重建（**输入表变更，模型分段 11 → 12**；`docs/方法论.md` §2.3、§7.2、附录 B.4；CLAUDE.md §二.7 记第十二段边界）：
+> - 起因：作者核出偏差因子有误。核实不是拷贝错——重新下载的 ISIMIP 文件按旧代码重建，五张水表与库内逐字节相同——而是 ISIMIP 上游缺陷
+>   （issue #34，data.isimip.org/issues/34）：CWatM 的 `historical` qtot 文件在 GCM 之间错位一格，标 ipsl-cm6a-lr 的是 GFDL-ESM4 的运行
+>   （qtot 数据逐格相同，只差文件头的 GCM 名），标 mpi 的是 IPSL 的，标 mri 的是 MPI 的，标 ukesm 的是 MRI 的，UKESM1-0-LL 自己的历史运行没有发布；
+>   未来文件 2023-02-16 已重发。归因用各 GCM 的 W5E5 偏差订正降水与各 qtot 文件在中国框内的月异常相关（`scripts/attribute_isimip_forcing.py`）：
+>   CWatM 历史 5 个文件如上，WaterGAP2-2e 历史 5 个与两个模型 ssp126 / ssp370 未来 20 个都对号（r 0.86–0.90）。
+> - 处理（作者批准 2026-10-12）：`builders/water.HISTORICAL_FILE_GCM` 把 cwatm 的 ipsl / mpi / mri 成员指到实际驱动它的历史文件；
+>   cwatm 的 ukesm1-0-ll 成员没有真实历史运行，偏差因子取其余四个 CWatM 成员的流域均值（取 1.0 会让它单独处于未校正状态，全国可用量比均值低 15%）。
+>   `water_availability.csv` 多一列 `bias_source`（历史文件名或均值说明）。
+> - 数字：只有 cwatm 的 ipsl / mpi / mri / ukesm 四个 GCM（8 个成员、11 936 行）的 `bias_factor` 与年、枯水期可用量变了，全国合计
+>   ipsl +8.6%～+8.9%（枯水期 +9.4%～+10.0%）、mpi −3.6%～−4.0%（−3.6%～−4.2%）、mri −1.5%～−1.6%（−1.6%～−1.8%）、ukesm +0.9%～+1.0%
+>   （+0.9%～+1.1%）；gfdl 与 WaterGAP2-2e 的 12 个成员和 `local_runoff_m3_per_year` 数值不变（差异在 1e-16 级）。
+>   粗化节点坐标按各成员平均可用量加权，随之最多移 0.13 km（中位 0.01 km）：`water_nodes.csv` 的坐标与 `water_supply_links.csv` 的
+>   `distance_km` 跟着变，1 569 条链路的集合、名次与每个厂址最近的节点无一变化；其余水表不变。`data_prep._prepare_water` 按节点坐标
+>   重算链路距离与送水成本（每 m³ 每 km 0.05 元），每条链路的送水成本最多变 0.0067 元/m³；`water_nodes.csv`、`water_availability.csv`
+>   是所有情景（含 `ST_BASE`）的输入文件，输入摘要全部改变。
+> - 脚本：`download_isimip_extra_gcms.py` 补上 gfdl-esm4 的两份历史文件（此前有文件没有下载脚本）；`validate_basin_runoff.py` 的 BASELINE 块
+>   改按成员取历史文件（cwatm 的 ukesm 成员没有这一列）。
+> - 模型分段 11 → 12（`src/coal_retrofit/segment.py`）：输入表变了，此前的所有结果（含头部情景 `ST_WA_cwatm_126_dry_oq`——它用 cwatm 的
+>   gfdl-esm4 成员，可用量数值不变，但节点坐标与输入摘要变了）都要用当前代码重解，出图与 `check_run_provenance.py --pair` 会拒绝旧结果。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -907,7 +928,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-11（代码基准 `19671b7`，与方法论文首相同；模型分段 11）：
+截至 2026-10-12（代码基准 `e6f8f06`，与方法论文首相同；模型分段 12）：
 
 | 部分 | 现状 |
 |---|---|
