@@ -7,6 +7,9 @@ PLANT_YEAR_BASIS = "2025"
 STATIC_LAYER_YEAR_BASIS = "static_source_layer"
 NETWORK_EDGE_CLASS_MAIN = "existing_main_corridor"
 NETWORK_EDGE_CLASS_TRIANGULATION = "triangulation_candidate"
+# 接入支线：煤电与工业点源到走廊、走廊到封存汇（`builders.network_branches`）。
+NETWORK_EDGE_CLASS_PLANT_BRANCH = "hub_to_corridor_branch"
+NETWORK_EDGE_CLASS_STORAGE_BRANCH = "corridor_to_storage_branch"
 NETWORK_COORD_DECIMALS = 6
 NETWORK_TRIANGULATION_CRS = "+proj=aea +lat_1=25 +lat_2=47 +lat_0=0 +lon_0=105 +datum=WGS84 +units=m +no_defs"
 NETWORK_TRIANGULATION_MAX_EDGE_KM = 500.0

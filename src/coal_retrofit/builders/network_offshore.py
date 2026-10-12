@@ -18,7 +18,7 @@ from shapely.prepared import prep
 
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, load_provinces
-from .network_repair import _build_edge_geometry
+from .network_repair import _build_edge_geometry, node_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def offshore_length_km(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataF
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp").to_crs("EPSG:4326").geometry.union_all()
     land = provinces.union(gpd.read_file(paths.data_dir / NATURAL_EARTH_LAND).to_crs("EPSG:4326").geometry.union_all())
     land_prepared = prep(land)
-    coords = {str(n): (float(x), float(y)) for n, x, y in zip(nodes["node_id"], nodes["lon"], nodes["lat"])}
+    coords = node_coordinates(nodes)
     shares = []
     for _, row in edges.iterrows():
         geom = _build_edge_geometry(row, coords)

@@ -693,6 +693,27 @@
 > `OptimizationAssumptions()` 的 76 个缺省值快照相同，13 种冷却标签的统一耗水值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；
 > 468 个测试通过（新增 2 个：冷却归类与统一耗水值、聚类分簇），mypy 错误 133 不变（`plants.py` 的 6 条随代码搬到 `plants_water.py`）。
 
+> 2026-10-12 起（同日第九个 PR）`builders/network.py`（559 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `network.py`（174 行）留构建流程 `build_network_tables`、走廊表与支线表的合并、只含端点的节点表与写盘；`network_corridors.py`（100 行）放
+> 既有干线走廊的读图层与建表（`load_corridor_layer`、`build_corridor_tables`）；`network_triangulation.py`（207 行）放等积投影、k 近邻、
+> Delaunay、长度图、三角剖分候选边与源到汇的专线（`build_triangulation_candidate_edges`、`build_direct_sink_edges`）；`network_edges.py`
+> （105 行）放两张表的列序 `NODE_COLUMNS` / `EDGE_COLUMNS`、边记录工厂 `make_edge_record`、无向边键 `unordered_edge_key` 与下一个边号
+> `next_edge_index`（原 `_unordered_edge_key` / `_next_edge_index`）。六处写边记录的字典（走廊、支线、三角剖分、缝合、并片、专线）都改走
+> `make_edge_record`（`length_km = direct_length_km × tortuosity`，保留三位小数；走廊边 `tortuosity` 1、`existing_corridor_flag` 1），支线行的
+> `geometry_wkt` 在内存里由 NaN 变为 `pd.NA`（合表后这一列的 dtype 由 str 变 object；读它的地方都按是否为字串判断），写出的 CSV 逐字节相同；
+> `network_repair` 新增 `node_coordinates` / `edge_geometries`，替掉去交叉、缝合、并片、剔除西藏、专线与海上段六处重复的节点坐标字典与几何列表；
+> 三角剖分与专线判断"这对节点已有边"的键统一为 `unordered_edge_key`（此前一处排序元组、一处 frozenset）；`network_repair._EDGE_CLASS_PRIORITY` 与 `optimization/year_matrices._edge_capex_multiplier` 写死的 edge_class 字面量改引
+> `constants.NETWORK_EDGE_CLASS_*`（新增 `NETWORK_EDGE_CLASS_PLANT_BRANCH` / `NETWORK_EDGE_CLASS_STORAGE_BRANCH`，值不变，`network_branches`
+> 的 `PLANT_BRANCH_EDGE_CLASS` / `STORAGE_BRANCH_EDGE_CLASS` 随之删去）；`_drop_edges_over_excluded_region` 改走已有的 `_excluded_region`，去掉
+> 函数内重复的导入与读图层；走廊节点的度数与来源统计改用 `Counter` / `defaultdict`。Delaunay 回退的 warning 与 "kept … direct source-sink
+> arcs" 的 logger 名随代码改为 `coal_retrofit.builders.network_triangulation`。拆分前后用库内 `plants.csv`、`storage_hubs.csv` 重建
+> `--no-corridors` 的候选网络（439 节点 / 1 260 边）逐字节相同；`data/corridors/` 不在本机，用两个合成走廊图层（含多部件要素）加库内三张
+> 点表重建带走廊的网络（833 节点 / 1 315 边：走廊 5、支线 823、三角剖分 359、专线 128；去交叉删 878、缝合 1）逐字节相同，日志只差 logger 名；
+> 玩具图上的缝合边与并片边相同；`constants` 快照只多两个新常量，`OptimizationAssumptions()` 的 76 个缺省值相同；四个登记情景的 `show` 输出与
+> `diff` 逐字节相同；473 个测试通过（新增 5 个：边记录的键序与长度、走廊与支线两种变体、无向边键、下一个边号、走廊表的端点去重与度数），
+> mypy 错误 133 → 93，减少的 40 条全在网络构建模块（`record.update({...})` 的 26 条 dict-item 随边记录工厂消失，走廊节点统计改用 `Counter` /
+> `defaultdict` 后 `object` 相关的 9 条消失，坐标与几何收进两个函数、边记录标注 `dict[str, object]` 后少 5 条 arg-type），其余文件不变。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -704,10 +725,10 @@
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:204`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:58-79`、`optimization/model_industry.py:175` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:127`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:128`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:204-209`、`:235-242` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:199` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:127`、`optimization/industry_matrices.py:238`、`:291` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:128`、`optimization/industry_matrices.py:238`、`:291` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:65`、`optimization/model_costs.py:67-104`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
@@ -977,8 +998,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的六个拆分 PR（§0 当日注）之后，超 400 行的文件剩 3 个：`builders/network.py` 559、`optimization/constraints.py` 556、
-> `optimization/assumptions.py` 445。
+> 2026-10-12 的七个拆分 PR（§0 当日注）之后，超 400 行的文件剩 2 个：`optimization/constraints.py` 556、`optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -1096,7 +1116,7 @@ python -m ruff check src tests scripts
 | `build_plant_inputs.py [--hubs]` | `plants.py`、`plants_water.py` | `plants_unit.csv`；加 `--hubs` 另写 `plants.csv`、`plants_unit_hub.csv` | 3 623；350、3 623 |
 | `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
-| `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
+| `build_network_inputs.py` | `network.py`、`network_corridors.py`、`network_triangulation.py`、`network_edges.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
 | `build_supply_inputs.py` | `supply.py`、`supply_ammonia.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
 | `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |

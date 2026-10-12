@@ -5,7 +5,8 @@ import argparse
 import pandas as pd
 from _bootstrap import ROOT
 from coal_retrofit.artifacts import write_csv
-from coal_retrofit.builders.network import load_corridor_layer, write_network_inputs
+from coal_retrofit.builders.network import write_network_inputs
+from coal_retrofit.builders.network_corridors import load_corridor_layer
 from coal_retrofit.builders.network_offshore import offshore_length_km
 from coal_retrofit.paths import ProjectPaths
 

@@ -1,3 +1,5 @@
+"""接入支线：煤电厂址、封存汇与工业 hub 各自接到最近的走廊节点（`build_attachment_tables`），每个接入点一个节点、一条直线支线；
+三张表的读入与坐标回退（缺坐标时取省质心）也在这里。由 `network.build_network_tables` 调用。"""
 from __future__ import annotations
 
 import re
@@ -6,15 +8,14 @@ from collections import Counter, defaultdict
 import geopandas as gpd
 import pandas as pd
 
-from ..constants import NETWORK_DETOUR_FACTOR, TARGET_GEO_CRS
+from ..constants import NETWORK_EDGE_CLASS_PLANT_BRANCH, NETWORK_EDGE_CLASS_STORAGE_BRANCH, TARGET_GEO_CRS
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
+from .network_edges import make_edge_record
 
-PLANT_BRANCH_EDGE_CLASS = "hub_to_corridor_branch"
-STORAGE_BRANCH_EDGE_CLASS = "corridor_to_storage_branch"
 # 工业点源走和煤电完全相同的接入规则（同一 edge_class -> 同一 capex 乘子），
 # 唯一的区别是它们以前只在求解时挂进来，因此没有参加三角剖分与去交叉。
-INDUSTRY_BRANCH_EDGE_CLASS = PLANT_BRANCH_EDGE_CLASS
+INDUSTRY_BRANCH_EDGE_CLASS = NETWORK_EDGE_CLASS_PLANT_BRANCH
 # 西藏不参与减排：4 个水泥 hub（`industry_sources.csv` 的 8 个点源，合计 6.95 Mt/yr）连同它们带出的备选管段一起去掉。
 EXCLUDED_PROVINCES = {"xizang", "tibet", "西藏", "西藏自治区"}
 
@@ -271,25 +272,22 @@ def build_attachment_tables(
             }
         )
 
+        # 支线是直线接入，所以和其他直线候选边带同样的绕行系数（`make_edge_record` 缺省的 tortuosity）。把它们留在原始
+        # 大地线长度上，曾使接入走廊的支线相对于走廊本身显得比实际便宜——走廊的 length_km 是真实路由的折线长度。
+        # 支线不存几何，`network_repair._build_edge_geometry` 按两端坐标补直线。
         branch_edge_rows.append(
-            {
-                "edge_id": f"edge_{next_edge_index:05d}",
-                "feature_index": int(row_data[index_column]) if pd.notna(row_data[index_column]) else 0,
-                "part_index": 1,
-                "from_node_id": corridor_node_id if from_corridor_to_attachment else node_id,
-                "to_node_id": node_id if from_corridor_to_attachment else corridor_node_id,
-                # 支线是直线接入，所以和其他直线候选边带同样的绕行系数。把它们留在原始
-                # 大地线长度上，曾使接入走廊的支线相对于走廊本身显得比实际便宜——走廊的
-                # length_km 是真实路由的折线长度。
-                "length_km": round(distance_km * NETWORK_DETOUR_FACTOR, 3),
-                "direct_length_km": round(distance_km, 3),
-                "tortuosity": NETWORK_DETOUR_FACTOR,
-                "corridor_type": corridor_type_lookup.get(corridor_node_id, "main_corridor"),
-                "existing_corridor_flag": 0,
-                "edge_class": edge_class,
-                "source": source,
-                "year_basis": year_basis,
-            }
+            make_edge_record(
+                f"edge_{next_edge_index:05d}",
+                int(row_data[index_column]) if pd.notna(row_data[index_column]) else 0,
+                corridor_node_id if from_corridor_to_attachment else node_id,
+                node_id if from_corridor_to_attachment else corridor_node_id,
+                distance_km,
+                geometry_wkt=None,
+                corridor_type=corridor_type_lookup.get(corridor_node_id, "main_corridor"),
+                edge_class=edge_class,
+                source=source,
+                year_basis=year_basis,
+            )
         )
         next_edge_index += 1
 
@@ -297,7 +295,7 @@ def build_attachment_tables(
         add_branch_node_and_edge(
             attachment_row=row,
             node_type="plant",
-            edge_class=PLANT_BRANCH_EDGE_CLASS,
+            edge_class=NETWORK_EDGE_CLASS_PLANT_BRANCH,
             from_corridor_to_attachment=False,
             source=str(row.source),
             year_basis=str(row.year_basis),
@@ -308,7 +306,7 @@ def build_attachment_tables(
         add_branch_node_and_edge(
             attachment_row=row,
             node_type="storage_hub",
-            edge_class=STORAGE_BRANCH_EDGE_CLASS,
+            edge_class=NETWORK_EDGE_CLASS_STORAGE_BRANCH,
             from_corridor_to_attachment=True,
             source=str(row.source),
             year_basis=str(row.year_basis),
