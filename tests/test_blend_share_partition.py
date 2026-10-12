@@ -68,7 +68,7 @@ def test_a_positive_share_cannot_skip_blending(pathway) -> None:
     再令 Σβ·z = 0（改造了不掺烧）就不可行（改前 z 全取 0 即可行）。
     掺氨那一处靠这条测：toy 上没找到改前会"改造了不掺氨"的情形，两条 toy 测试拦不住它。"""
     gp = pytest.importorskip("gurobipy", reason=GUROBI)
-    from coal_retrofit.optimization.constraints import _add_blend_level_constraints
+    from coal_retrofit.optimization.constraints_blend import add_blend_level_constraints
 
     year_data = cast(YearData, SimpleNamespace(
         emissions_retrofit_mt=np.ones(1), heat_rate_eff=np.full(1, 9.0),
@@ -82,10 +82,12 @@ def test_a_positive_share_cannot_skip_blending(pathway) -> None:
     model.Params.DualReductions = 0  # 不可行时报 INFEASIBLE，不报 INF_OR_UNBD
     share = model.addMVar((1, len(PATHWAYS)), lb=0.0, ub=1.0)
     model.addConstr(share[0, PATHWAY_INDEX[pathway]] == 0.5)
-    blocks = _add_blend_level_constraints(
+    blocks = add_blend_level_constraints(
         model, share, 1, SCENARIO, OptimizationAssumptions(hub_decisions_continuous=True), year_data, "",
     )
-    x_share = dict(zip(("biomass", "beccs", "ammonia"), blocks[-3:]))[pathway][0]
+    x_share = {
+        "biomass": blocks.biomass_blend_x_share, "beccs": blocks.beccs_blend_x_share, "ammonia": blocks.ammonia_blend_x_share,
+    }[pathway][0]
     model.setObjective(x_share, gp.GRB.MAXIMIZE)
     model.optimize()
     assert model.Status == gp.GRB.OPTIMAL

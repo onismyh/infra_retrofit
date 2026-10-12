@@ -21,7 +21,7 @@ from ._shared import (
     _year_objective_weight,
     gp,
 )
-from .constraints import _rebuilt_dot
+from .constraints_rebuilt import rebuilt_dot
 from .retirement import add_retirement_rate_limit, retirement_flows
 from .assumptions import OptimizationAssumptions
 from .scenario import PATHWAYS, OptimizationScenario
@@ -156,7 +156,7 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
         + _priced(year_data.ammonia_blend_om_per_level, payload.blend_level_a)
     )
 
-    # 能耗惩罚：CCS 固定项 + 空冷背压项（仅转换份额）；生物质档位相关项在 constraints 里线性化。
+    # 能耗惩罚：CCS 固定项 + 空冷背压项（仅转换份额）；生物质档位相关项在 constraints_blend 里线性化。
     energy_penalty_cost = gp.quicksum(
         float(year_data.energy_penalty_matrix[p, k]) * payload.share[p, k]
         for p in range(plant_count) for k in range(len(PATHWAYS))
@@ -169,17 +169,17 @@ def _operating_costs(payload: YearPayload, plant_count: int) -> dict[str, GrbExp
             for p in range(plant_count) for k in range(len(PATHWAYS))
         )
     # 上面三项的系数按未重建部分的毛热耗算；拆出重建部分的 hub 再逐类加该类与未重建部分之差 x 该类重建部分的份额
-    # （`constraints._add_rebuilt_split`）。掺烧惩罚的差已在 `bio_penalty_by_plant` 里。
+    # （`constraints_rebuilt.add_rebuilt_split`）。掺烧惩罚的差已在 `bio_penalty_by_plant` 里。
     deltas = year_data.rebuilt_deltas
     baseline_net = baseline_net + gp.quicksum(
-        _rebuilt_dot(deltas[c].baseline_net_matrix[p], part)
+        rebuilt_dot(deltas[c].baseline_net_matrix[p], part)
         for p, classes in payload.rebuilt_share.items() for c, part in classes.items()
     )
     energy_penalty_cost = energy_penalty_cost + gp.quicksum(
-        _rebuilt_dot(deltas[c].energy_penalty_matrix[p], part)
+        rebuilt_dot(deltas[c].energy_penalty_matrix[p], part)
         for p, classes in payload.rebuilt_share.items() for c, part in classes.items()
     ) + gp.quicksum(
-        _rebuilt_dot(deltas[c].air_penalty_cost_matrix[p], part)
+        rebuilt_dot(deltas[c].air_penalty_cost_matrix[p], part)
         for p, classes in payload.rebuilt_air_share.items() for c, part in classes.items()
     )
     # 捕集岛固定运维：在役且在用的捕集岛 x 建设年的单价（`vintage`，闲置不付）。2026-09-30 前按当年单价 x 捕集份额计。

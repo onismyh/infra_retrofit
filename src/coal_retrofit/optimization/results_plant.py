@@ -27,7 +27,7 @@ def _blend_ratios(
 
     连续 hub 下一个 hub 可以把不同份额改造到不同档位；`blend_level`（在用的掺烧能力 Σ 档位下标 x 落在该档的份额）
     只是档位下标的加权和：非整数时对应不到任何一档，恰为整数时也可能是几档的混合（一半第 1 档、
-    一半第 3 档记作 2）。模型的减排、燃料用量与惩罚都按 Σβ_l·z_l 计（`constraints._add_blend_level_constraints`），
+    一半第 3 档记作 2）。模型的减排、燃料用量与惩罚都按 Σβ_l·z_l 计（`constraints_blend.add_blend_level_constraints`），
     这里除以同一条路径的份额。生物质与 BECCS 共用档位容量与生物质档位表，但各自的 z 不同，比例分开算。
     结果截到 [0, 最高档]：份额只比 `_SHARE_EPS` 略大时，分子分母都在求解器容差量级，商可能越出档位范围。
     """

@@ -227,7 +227,7 @@ def test_rebuilt_split_bounds() -> None:
     承担（r = 0）时全不在。hub 3：f = 1，两类的到期份额 0.7、0.3，份额同 hub 2，重建 0.8：各路径全由重建部分承担
     （Σ_c r_c = 份额），第 0 类承担的在 [0.8 - 0.3, 0.7] = [0.5, 0.7] 之间。不开空冷时不拆空冷份额。"""
     gp = pytest.importorskip("gurobipy", reason=GUROBI)
-    from coal_retrofit.optimization.constraints import _add_rebuilt_split
+    from coal_retrofit.optimization.constraints_rebuilt import add_rebuilt_split
 
     ccs = PATHWAY_INDEX["ccs"]
     fixed = np.zeros((4, len(PATHWAYS)))
@@ -245,7 +245,7 @@ def test_rebuilt_split_bounds() -> None:
         rebuild_class = model.addMVar(class_share.shape, lb=0.0, ub=class_share)
         model.addConstr(rebuild_class[2, :].sum() == 0.5)
         model.addConstr(rebuild_class[3, :].sum() == 0.8)
-        r, ra = _add_rebuilt_split(model, share, rebuild_class, air_share, expired, class_share, 4, allow_air, "_t")
+        r, ra = add_rebuilt_split(model, share, rebuild_class, air_share, expired, class_share, 4, allow_air, "_t")
         return model, r, ra
 
     for allow_air in (True, False):
