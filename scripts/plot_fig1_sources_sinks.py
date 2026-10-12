@@ -45,7 +45,8 @@ def load() -> dict[str, pd.DataFrame]:
     """煤电厂址、工业 hub、封存汇，都是进模型的那一套。"""
     from coal_retrofit.optimization.data_prep import _prepare_plants
     from coal_retrofit.optimization.industry_inputs import prepare_industry
-    from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+    from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+    from coal_retrofit.optimization.scenario import OptimizationScenario
     from coal_retrofit.paths import ProjectPaths
 
     paths = ProjectPaths(ROOT)

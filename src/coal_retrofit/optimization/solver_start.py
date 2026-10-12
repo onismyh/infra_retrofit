@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ._shared import GRB
-from .scenario import OptimizationAssumptions
+from .assumptions import OptimizationAssumptions
 from .year_types import YearPayload
 
 logger = logging.getLogger(__name__)

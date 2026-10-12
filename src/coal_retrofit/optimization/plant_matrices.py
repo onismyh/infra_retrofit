@@ -10,7 +10,8 @@ import numpy as np
 
 from ..constants import GJ_PER_MWH
 from ._shared import PATHWAY_INDEX, PreparedInputs
-from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import PATHWAYS, OptimizationScenario
 
 
 def _plant_operating_matrices(

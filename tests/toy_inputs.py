@@ -10,7 +10,7 @@ import pandas as pd
 
 from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
 from coal_retrofit.constants import COAL_DESIGN_LIFE_YEARS
-from coal_retrofit.optimization.scenario import OptimizationAssumptions
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.paths import ProjectPaths
 
 YEARS = (2050, 2060)

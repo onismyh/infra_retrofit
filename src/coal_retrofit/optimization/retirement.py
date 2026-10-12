@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from ._shared import PATHWAY_INDEX, gp
 from .salvage import horizon_end_year, remaining_fraction
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .year_types import GrbExpr, YearPayload
 
 _RETIRE = PATHWAY_INDEX["retire"]

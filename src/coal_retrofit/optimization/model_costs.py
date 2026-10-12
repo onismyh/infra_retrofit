@@ -23,7 +23,8 @@ from ._shared import (
 )
 from .constraints import _rebuilt_dot
 from .retirement import add_retirement_rate_limit, retirement_flows
-from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import PATHWAYS, OptimizationScenario
 from .vintage import alive_vintages
 from .year_types import GrbExpr, GrbMVar, YearData, YearPayload
 

@@ -38,7 +38,8 @@ from coal_retrofit.optimization.results_workbook_sources import (
     transmission_matrix,
 )
 from coal_retrofit.optimization.salvage import remaining_fraction
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario
 from coal_retrofit.spatial import load_provinces
 from test_h2_route_multiplier import _steel_hub
 

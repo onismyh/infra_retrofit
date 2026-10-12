@@ -16,7 +16,8 @@ import numpy as np
 import pytest
 
 from coal_retrofit.optimization._shared import PATHWAY_INDEX
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import PATHWAYS
 from coal_retrofit.optimization.year_types import YearData
 from test_blend_ratios import LEVELS_A, LEVELS_B, SCENARIO, _solve_blend_toy
 

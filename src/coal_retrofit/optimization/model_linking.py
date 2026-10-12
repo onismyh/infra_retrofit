@@ -7,7 +7,8 @@ from ._shared import PATHWAY_INDEX, SolveState, gp
 from .constraints import RUNNING
 from .model_industry import add_industry_capacity
 from .salvage import horizon_end_year
-from .scenario import OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import OptimizationScenario
 from .vintage import add_vintage_stock
 from .year_types import YearPayload
 

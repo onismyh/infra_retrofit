@@ -41,9 +41,9 @@
 不再含任何平准化每吨成本。2026-09-10 至 2026-09-22 期间，ACCA21 的平准化捕集成本被拆成
 按 CRF 反年化的资本部分与年度余项；这样做把平准化数字隐含的资本回收假设保留在了一个
 本身就是要决定何时建设的模型里。ACCA21 的区间保留下来，作交叉核对
-（`constants_industry.levelised_capture_cost_cny_per_t`）。
+（`constants_industry_capture.levelised_capture_cost_cny_per_t`）。
 
-CCS 路线（`constants_industry.INDUSTRY_CCS_*`）：按每吨年捕集能力计的 capex。水泥 1 150 CNY/(t/a) 参照三个中国
+CCS 路线（`constants_industry_capture.INDUSTRY_CCS_*`）：按每吨年捕集能力计的 capex。水泥 1 150 CNY/(t/a) 参照三个中国
 项目公告；长流程钢 1 000 参照两个项目公告、北大宝武案例与 IEAGHG 各一个值；电炉钢 1 150、高浓度化工 450 为
 ⚠ 假设（化工由全成本反推，按注释里的输入扣耗材后只得约 368）。固定运维 5%/a；再生蒸汽由厂内燃煤锅炉产生，按 hub
 所在省的煤价计价；电按情景电价；耗材 15 或 5 CNY/t。蒸汽的 CO2 直接放空，并从该路线的减排量中扣除（2026-09-22

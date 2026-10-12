@@ -24,7 +24,8 @@ from coal_retrofit.builders.plants import (
 from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
 from coal_retrofit.optimization.year_types import YearData
 from toy_inputs import TOY_HEAT_RATE_GJ_PER_MWH, _write_toy_inputs

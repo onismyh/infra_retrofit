@@ -39,7 +39,8 @@ from coal_retrofit.optimization.industry import (  # noqa: E402
 )
 from coal_retrofit.optimization.results_costs import build_costs_table  # noqa: E402
 from coal_retrofit.optimization.salvage import remaining_fraction  # noqa: E402
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions  # noqa: E402
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.optimization.vintage import add_vintage_stock  # noqa: E402
 from coal_retrofit.optimization.year_types import YearData  # noqa: E402

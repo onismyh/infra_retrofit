@@ -16,10 +16,13 @@ import pandas as pd
 import pytest
 
 from coal_retrofit import constants_industry as ci
+from coal_retrofit import constants_industry_capture as cc
+from coal_retrofit import constants_industry_h2 as ch
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.industry import CCS, H2, UNABATED, IndustryInputs, industry_year_data
 from coal_retrofit.optimization.salvage import horizon_end_year, remaining_fraction
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization._shared import SolveState
 from coal_retrofit.optimization.solver import _solve_joint_multi_period
 from toy_inputs import _write_targets, _write_toy_inputs
@@ -28,17 +31,17 @@ from toy_inputs import _write_targets, _write_toy_inputs
 # ---------------------------------------------------------------------------- 闭式检查 ---
 @pytest.mark.parametrize("sector", sorted(ci.INDUSTRY_SECTORS))
 def test_levelised_capture_cost_sits_near_the_acca21_range(sector: str) -> None:
-    lo, hi = ci.INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T[sector]
-    implied = ci.levelised_capture_cost_cny_per_t(sector, 0.06, 38.2, 400.0)
+    lo, hi = cc.INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T[sector]
+    implied = cc.levelised_capture_cost_cny_per_t(sector, 0.06, 38.2, 400.0)
     # 隐含成本多在 ACCA21 区间低端，长流程钢低于下限 348，所以允许低于区间下限 10%。
     assert 0.9 * lo <= implied <= hi, (sector, implied, lo, hi)
 
 
 def test_capital_recovery_factor_is_reciprocal_of_annuity() -> None:
-    crf = ci.capital_recovery_factor(0.06, 20)
+    crf = cc.capital_recovery_factor(0.06, 20)
     annuity = sum(1.0 / 1.06**t for t in range(1, 21))
     assert crf * annuity == pytest.approx(1.0, rel=1e-12)
-    assert ci.capital_recovery_factor(0.0, 20) == pytest.approx(0.05)
+    assert cc.capital_recovery_factor(0.0, 20) == pytest.approx(0.05)
 
 
 def _toy_industry() -> IndustryInputs:
@@ -70,48 +73,48 @@ def test_industry_year_data_prices_capex_om_energy_explicitly() -> None:
     # 钢铁 hub（铭牌 = 产量）：份额为 1 时 capex = 捕集能力 t/a x 单位 capex x 学习系数；opex = 可变成本；
     # 固定运维按每 t/a 能力、建设年的单价另给（在役且在用的能力 x 该单价，`vintage`）。
     captured_t = 2.0e6 * scenario.capture_rate
-    capex_unit = ci.capture_capex_cny_per_t_yr("steel_bf_bof") * learning
-    var_unit = ci.capture_variable_cost_cny_per_t("steel_bf_bof", assumptions.province_coal_cost("Shanxi"), elec)
+    capex_unit = cc.capture_capex_cny_per_t_yr("steel_bf_bof") * learning
+    var_unit = cc.capture_variable_cost_cny_per_t("steel_bf_bof", assumptions.province_coal_cost("Shanxi"), elec)
     assert data.capacity_mt_per_share[0, CCS] == pytest.approx(captured_t / 1e6, rel=1e-12)
     assert data.capex_cny_per_mt[0, CCS] * data.capacity_mt_per_share[0, CCS] == pytest.approx(
         captured_t * capex_unit, rel=1e-9
     )
-    assert data.fixed_om_cny_per_mt[0, CCS] == pytest.approx(capex_unit * 1e6 * ci.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
+    assert data.fixed_om_cny_per_mt[0, CCS] == pytest.approx(capex_unit * 1e6 * cc.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
     assert data.opex_cny[0, CCS] == pytest.approx(captured_t * var_unit, rel=1e-9)
     # 再沸器（reboiler）蒸汽的 CO2 直接排放：胺法捕集的减排量 < 捕集量，合成氨两者相等。
-    steam = ci.capture_steam_co2_t_per_t("steel_bf_bof", ef_gj)
+    steam = cc.capture_steam_co2_t_per_t("steel_bf_bof", ef_gj)
     assert 0.2 < steam < 0.4
     assert data.reduction_mt[0, CCS] == pytest.approx(data.captured_mt[0, CCS] * (1.0 - steam), rel=1e-9)
     assert data.reduction_mt[2, CCS] == pytest.approx(data.captured_mt[2, CCS], rel=1e-9)
     # 未知省份不崩溃。合成氨捕集不用蒸汽，煤价不进这一项，所以这里测不出回退到哪个煤价；
     # 回退煤价由 `test_province_names.py` 用水泥 hub 测。合成氨只捕集原料流股（2026-10-02 起）：hub 表没有
     # `capturable_share` 列，按 default 原料（煤头）0.75。
-    var_nat = ci.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
-    capex_nat = ci.capture_capex_cny_per_t_yr("ammonia") * learning
+    var_nat = cc.capture_variable_cost_cny_per_t("ammonia", assumptions.coal_fuel_cost_cny_per_gj, elec)
+    capex_nat = cc.capture_capex_cny_per_t_yr("ammonia") * learning
     assert data.opex_cny[2, CCS] == pytest.approx(
-        1.0e6 * ci.capturable_share("ammonia") * scenario.capture_rate * var_nat, rel=1e-9
+        1.0e6 * cc.capturable_share("ammonia") * scenario.capture_rate * var_nat, rel=1e-9
     )
-    assert data.fixed_om_cny_per_mt[2, CCS] == pytest.approx(capex_nat * 1e6 * ci.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
+    assert data.fixed_om_cny_per_mt[2, CCS] == pytest.approx(capex_nat * 1e6 * cc.INDUSTRY_CCS_FIXED_OM_FRACTION, rel=1e-9)
 
     # H2 路线：capex 按铭牌产能计（这里 = 产量）；年度项 = 固定运维 + opex 差额，固定运维不单列；氢逐链路购买。
     assert data.route_available[0, H2] and data.route_available[2, H2]
     assert not data.route_available[1, H2]
     production = 1000.0e3
-    route_capex = ci.h2_route_capex_cny_per_t_yr("steel_bf_bof")
+    route_capex = ch.h2_route_capex_cny_per_t_yr("steel_bf_bof")
     # 长流程钢的需氢量取 63 kg/t（2026-10-02 起），不取 hub 表里点源库的 81。
-    intensity = ci.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"]
-    delta = ci.h2_route_opex_delta_cny_per_t("steel_bf_bof", intensity, scenario.discount_rate)
+    intensity = ch.INDUSTRY_H2_INTENSITY_T_PER_T["steel_bf_bof"]
+    delta = ch.h2_route_opex_delta_cny_per_t("steel_bf_bof", intensity, scenario.discount_rate)
     assert data.capacity_mt_per_share[0, H2] == pytest.approx(production / 1e6, rel=1e-12)
     assert data.capex_cny_per_mt[0, H2] * data.capacity_mt_per_share[0, H2] == pytest.approx(
         production * route_capex, rel=1e-9
     )
     assert data.opex_cny[0, H2] == pytest.approx(
-        production * (route_capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
+        production * (route_capex * ch.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + delta), rel=1e-9
     )
     assert data.h2_demand_kg_per_share[0] == pytest.approx(intensity * 1000.0 * production, rel=1e-9)
     assert data.capex_lifetime_years == {
-        CCS: ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
-        H2: ci.INDUSTRY_H2_LIFETIME_YEARS,
+        CCS: cc.INDUSTRY_CAPTURE_LIFETIME_YEARS,
+        H2: ch.INDUSTRY_H2_LIFETIME_YEARS,
     }
     assert data.capex_cny_per_mt[:, UNABATED].sum() == 0.0
     assert data.capacity_mt_per_share[:, UNABATED].sum() == 0.0
@@ -213,8 +216,8 @@ def test_salvage_ledger_carries_both_industry_capex_items(tmp_path, monkeypatch)
     scenario, assumptions, solution = _solve(paths, salvage=True, cement_caps=(1.0, 1.0, 0.5))
     assert solution["status"] == "optimal"
     lives = {name: life for ledger in ledgers for name, _, life in ledger}
-    assert lives["industry_ccs_capex"] == ci.INDUSTRY_CAPTURE_LIFETIME_YEARS
-    assert lives["industry_h2_capex"] == ci.INDUSTRY_H2_LIFETIME_YEARS
+    assert lives["industry_ccs_capex"] == cc.INDUSTRY_CAPTURE_LIFETIME_YEARS
+    assert lives["industry_h2_capex"] == ch.INDUSTRY_H2_LIFETIME_YEARS
 
     ys = solution["year_solutions"]
     rate, base, end_year = scenario.discount_rate, scenario.discount_base_year, 2060
@@ -226,7 +229,7 @@ def test_salvage_ledger_carries_both_industry_capex_items(tmp_path, monkeypatch)
         "air_retrofit_capex": assumptions.air_retrofit_lifetime_years,
         "rebuild_capex": assumptions.rebuild_lifetime_years,
         # 水泥没有氢路线，工业 capex 全是捕集岛。
-        "industry_capex": ci.INDUSTRY_CAPTURE_LIFETIME_YEARS,
+        "industry_capex": cc.INDUSTRY_CAPTURE_LIFETIME_YEARS,
     }
     expected = 0.0
     for year in (2030, 2040, 2050):

@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 
 from ..constants_industry import (
-    INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR,
     INDUSTRY_SECTORS,
     SECTOR_HAS_H2_ROUTE,
     SECTOR_TARGET_GROUP,
+)
+from ..constants_industry_capture import (
+    INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR,
     capturable_share,
 )
 from ..paths import ProjectPaths

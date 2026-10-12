@@ -15,7 +15,8 @@ from shapely.geometry import box
 from coal_retrofit.builders.network_offshore import NATURAL_EARTH_LAND, offshore_length_km
 from coal_retrofit.constants import NETWORK_DETOUR_FACTOR
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.year_matrices import _edge_matrices
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.run_controls import initial_state

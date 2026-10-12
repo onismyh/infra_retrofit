@@ -33,7 +33,7 @@ from coal_retrofit.constants_water_quota import (
     BASIN_WITHDRAWAL_2025_1E8_M3,
     YELLOW_RIVER_CONSUMPTION_CAP_1E8_M3,
 )
-from coal_retrofit.optimization.scenario import OptimizationAssumptions
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.paths import ProjectPaths
 
 logger = logging.getLogger(__name__)

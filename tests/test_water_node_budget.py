@@ -13,7 +13,8 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.optimization.data_prep import _prepare_basin_use
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.optimization.water_access import _water_available_by_node
 from coal_retrofit.paths import ProjectPaths
 

@@ -14,7 +14,8 @@ gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver int
 from coal_retrofit.optimization._shared import SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.results_costs import build_costs_table  # noqa: E402
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions  # noqa: E402
+from coal_retrofit.optimization.scenario import OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.paths import ProjectPaths  # noqa: E402
 from toy_inputs import (  # noqa: E402

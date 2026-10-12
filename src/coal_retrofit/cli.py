@@ -50,7 +50,8 @@ from typing import Any
 
 from .constants import PLANNING_YEARS
 from .hydrology import MEMBERS_FILE, check_members, load_members, member_id, water_arg, water_overrides
-from .optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from .optimization.assumptions import OptimizationAssumptions
+from .optimization.scenario import OptimizationScenario
 from .run_controls import RunError, WarmStartFailed
 from .runner import DEFAULT_THREADS, DEFAULT_TIME_LIMIT, SOLVER_ENV_FIELDS, build_parameters, run
 from .scenarios import (

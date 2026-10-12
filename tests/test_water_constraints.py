@@ -23,7 +23,8 @@ import coal_retrofit.builders.water_grid as builders_water_grid  # noqa: E402
 import coal_retrofit.builders.water_quota as builders_water_quota  # noqa: E402
 from coal_retrofit.optimization._shared import SolveState  # noqa: E402
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario  # noqa: E402
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions  # noqa: E402
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario  # noqa: E402
 from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa: E402
 from coal_retrofit.paths import ProjectPaths  # noqa: E402
 from toy_inputs import YEARS, _write_targets, _write_toy_inputs  # noqa: E402

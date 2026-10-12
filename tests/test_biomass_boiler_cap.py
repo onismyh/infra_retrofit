@@ -17,7 +17,8 @@ import pytest
 from coal_retrofit.optimization._shared import PATHWAY_INDEX
 from coal_retrofit.optimization.constraints import _add_blend_level_constraints
 from coal_retrofit.optimization.data_prep import prepare_inputs
-from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import PATHWAYS, OptimizationScenario
 from coal_retrofit.optimization.year_matrices import _build_year_matrices
 from coal_retrofit.optimization.year_types import YearData
 from coal_retrofit.run_controls import initial_state

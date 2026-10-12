@@ -6,7 +6,8 @@ import numpy as np
 from ..constants import NH3_H2_RATIO
 from ._shared import gp
 from .constraints import _add_vector_equality, _add_vector_upper_bound
-from .scenario import PATHWAYS, OptimizationAssumptions
+from .assumptions import OptimizationAssumptions
+from .scenario import PATHWAYS
 from .year_types import GrbExpr, GrbMVar, YearData
 
 

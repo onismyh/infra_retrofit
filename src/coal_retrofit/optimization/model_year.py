@@ -9,7 +9,8 @@ from .constraints import _add_plant_path_constraints
 from .model_index import ModelIndex
 from .model_resources import add_basin_withdrawal_cap, add_resource_balances
 from .resource_access import BiomassAccess
-from .scenario import PATHWAYS, OptimizationAssumptions, OptimizationScenario
+from .assumptions import OptimizationAssumptions
+from .scenario import PATHWAYS, OptimizationScenario
 from .year_matrices import _build_year_matrices
 from .year_types import GrbExpr, GrbMVar, YearData, YearPayload
 

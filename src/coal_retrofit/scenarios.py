@@ -33,7 +33,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from .optimization.assumptions import OptimizationAssumptions
+from .optimization.scenario import OptimizationScenario
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_DIR = REPO_ROOT / "scenarios"

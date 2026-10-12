@@ -15,9 +15,12 @@ import pandas as pd
 import pytest
 
 from coal_retrofit import constants_industry as ci
+from coal_retrofit import constants_industry_capture as cc
+from coal_retrofit import constants_industry_h2 as ch
 from coal_retrofit.optimization.industry import CCS, H2, IndustryInputs, industry_year_data, prepare_industry
 from coal_retrofit.optimization.results_industry import _build_industry_detail_table
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.scenarios import parse_set
 from test_h2_route_multiplier import _steel_hub
 from test_province_names import _cement_hubs
@@ -51,15 +54,15 @@ def _chemical_paths(root):
 
 def test_capturable_share_table() -> None:
     """化工按原料取值，表里没有的原料按该部门的 default 行（煤头）；长流程钢、水泥 1，电炉钢 0；没有 default 行的部门报错。"""
-    assert ci.capturable_share("ammonia", "Coal") == 0.75
-    assert ci.capturable_share("ammonia", "Gas") == 0.67
-    assert ci.capturable_share("ammonia", "Oil") == ci.capturable_share("ammonia", "Anthracite") == 0.75
-    assert ci.capturable_share("methanol", "Coal") == ci.capturable_share("methanol", "电石炉尾气") == 0.57
-    assert ci.capturable_share("methanol", "Coke oven gas") == ci.capturable_share("methanol", "Gas") == 0.0
-    assert ci.capturable_share("steel_bf_bof") == ci.capturable_share("cement") == 1.0
-    assert ci.capturable_share("steel_eaf") == 0.0
+    assert cc.capturable_share("ammonia", "Coal") == 0.75
+    assert cc.capturable_share("ammonia", "Gas") == 0.67
+    assert cc.capturable_share("ammonia", "Oil") == cc.capturable_share("ammonia", "Anthracite") == 0.75
+    assert cc.capturable_share("methanol", "Coal") == cc.capturable_share("methanol", "电石炉尾气") == 0.57
+    assert cc.capturable_share("methanol", "Coke oven gas") == cc.capturable_share("methanol", "Gas") == 0.0
+    assert cc.capturable_share("steel_bf_bof") == cc.capturable_share("cement") == 1.0
+    assert cc.capturable_share("steel_eaf") == 0.0
     with pytest.raises(KeyError):
-        ci.capturable_share("refinery")
+        cc.capturable_share("refinery")
 
 
 def test_hub_share_is_weighted_by_source_co2_and_gates_ccs_and_h2(tmp_path) -> None:
@@ -93,10 +96,10 @@ def test_mixed_hub_routes_act_on_its_positive_share_sources_only(tmp_path) -> No
     assert data.h2_demand_kg_per_share[0] == pytest.approx(190.0 * production_t, rel=1e-12)
     assert data.h2_demand_kg_per_share[2] == 180.0 * 1.0e6
     assert data.capacity_mt_per_share[2, CCS] == data.captured_mt[2, CCS]
-    capex = ci.h2_route_capex_cny_per_t_yr("methanol")
-    delta = ci.h2_route_opex_delta_cny_per_t("methanol", 0.19, _SCENARIO.discount_rate)
+    capex = ch.h2_route_capex_cny_per_t_yr("methanol")
+    delta = ch.h2_route_opex_delta_cny_per_t("methanol", 0.19, _SCENARIO.discount_rate)
     assert data.opex_cny[0, H2] == pytest.approx(
-        production_t * 1.25 * capex * ci.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + production_t * delta, rel=1e-12
+        production_t * 1.25 * capex * ch.INDUSTRY_H2_ROUTE_FIXED_OM_FRACTION + production_t * delta, rel=1e-12
     )
     ratio = {s: ci.water_quota(s, "default", advanced=True) / ci.water_quota(s, "default") for s in ("methanol", "ammonia")}
     assert data.water_m3[0, H2] == pytest.approx(0.3e6 + 0.7e6 * ratio["methanol"], rel=1e-12)
@@ -198,8 +201,8 @@ def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share
     assumptions = OptimizationAssumptions(industry_capture_waste_heat_share={"cement": share})
     base = industry_year_data(industry, _SCENARIO, OptimizationAssumptions(industry_capture_waste_heat_share={}), 2030)
     data = industry_year_data(industry, _SCENARIO, assumptions, 2030)
-    steam_gj = ci.INDUSTRY_CCS_STEAM_GJ_PER_T_CO2["cement"]
-    coal_per_t = steam_gj / ci.INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY
+    steam_gj = cc.INDUSTRY_CCS_STEAM_GJ_PER_T_CO2["cement"]
+    coal_per_t = steam_gj / cc.INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY
     coal_cost_per_t = coal_per_t * assumptions.province_coal_cost("Shanxi")
     lost_power_cost_per_t = steam_gj * 55.0 / 1000.0 * _SCENARIO.electricity_price_for_year(2030)
     captured_t = data.captured_mt[1, CCS] * 1e6
@@ -215,7 +218,7 @@ def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share
 def test_cement_takes_waste_heat_share_0p3_by_default() -> None:
     """主线（2026-10-07 起）：水泥再生蒸汽的余热份额缺省 0.3、其余部门 0，净减排系数 0.9 x (1 − 0.7 x 0.3044) = 0.708。"""
     assert OptimizationAssumptions().industry_capture_waste_heat_share == {"cement": 0.3}
-    assert ci.INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ == {"cement": 55.0}
+    assert cc.INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ == {"cement": 55.0}
     data = industry_year_data(_steel_and_cement_hubs(), _SCENARIO, OptimizationAssumptions(), 2030)
     explicit = industry_year_data(
         _steel_and_cement_hubs(), _SCENARIO, OptimizationAssumptions(industry_capture_waste_heat_share={"cement": 0.3}), 2030
@@ -233,8 +236,8 @@ def test_waste_heat_share_without_a_lost_power_value_is_refused() -> None:
     with pytest.raises(KeyError, match="waste-heat lost power"):
         industry_year_data(_steel_hub(), _SCENARIO, assumptions, 2030)
     for sector in ("ammonia", "methanol"):
-        assert ci.capture_variable_cost_cny_per_t(sector, 30.0, 400.0, 0.5) == ci.capture_variable_cost_cny_per_t(sector, 30.0, 400.0)
-        assert ci.capture_steam_co2_t_per_t(sector, 0.0957, 0.5) == ci.capture_steam_co2_t_per_t(sector, 0.0957) == 0.0
+        assert cc.capture_variable_cost_cny_per_t(sector, 30.0, 400.0, 0.5) == cc.capture_variable_cost_cny_per_t(sector, 30.0, 400.0)
+        assert cc.capture_steam_co2_t_per_t(sector, 0.0957, 0.5) == cc.capture_steam_co2_t_per_t(sector, 0.0957) == 0.0
 
 
 @pytest.mark.parametrize("value", [{"cemnt": 0.5}, {"cement": 1.5}, {"cement": -0.1}, {"cement": float("nan")}])

@@ -7,7 +7,8 @@ from __future__ import annotations
 import pytest
 
 from coal_retrofit.optimization.industry import H2, industry_year_data
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from test_h2_route_multiplier import _steel_hub
 
 
@@ -15,7 +16,7 @@ def test_steel_h2_route_removes_95_percent_of_hub_co2() -> None:
     """长流程钢 hub 全部转氢后减排 = hub CO2 × 0.95。
 
     0.95 由 MPP 钢铁模型 100% 绿氢 DRI-EAF 的直接排放 0.0816 t/t 钢（`mpp_steel`）推得：1 - 0.0816/1.8 = 0.955，
-    1.8 是点源表长流程的排放因子；两者按同一口径（直接排放）相比，这一前提未核，见 `constants_industry.py` 的注释。
+    1.8 是点源表长流程的排放因子；两者按同一口径（直接排放）相比，这一前提未核，见 `constants_industry_h2.py` 的注释。
     2026-09-23 前为 0.85，把 EAF 用的网电排放也算作残余。
     """
     data = industry_year_data(

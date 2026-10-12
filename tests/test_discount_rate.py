@@ -10,7 +10,8 @@ import pytest
 
 from coal_retrofit.builders.supply import hb_capex_annuity_usd_per_kg, reprice_hb_capex
 from coal_retrofit.optimization.data_prep import _prepare_ammonia_supply
-from coal_retrofit.optimization.scenario import OptimizationAssumptions, OptimizationScenario
+from coal_retrofit.optimization.assumptions import OptimizationAssumptions
+from coal_retrofit.optimization.scenario import OptimizationScenario
 from coal_retrofit.paths import ProjectPaths
 
 # 2026-09-23 前构建输入时按 8%、20 年写进 ammonia_supply_curve.csv 的合成岛年金（v7 / v9 / v9.1 输入都是这个数）。
