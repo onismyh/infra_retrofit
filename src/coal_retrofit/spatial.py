@@ -1,4 +1,4 @@
-"""空间工具：省界与流域的读取/栅格化、栅格像元中心与按省-网格聚合、球面与大地线距离。
+"""空间工具：省界与流域的读取/栅格化、栅格像元中心与按省-网格聚合、球面与大地线距离、按球面距离聚类。
 
 距离与面积一律在地理坐标下算（球面 haversine 或 WGS84 大地线），不在投影坐标下算（CLAUDE.md §4.1）。
 """
@@ -32,6 +32,16 @@ def haversine_matrix_km(lons: ArrayLike, lats: ArrayLike) -> np.ndarray:
     lons = np.asarray(lons, dtype=np.float64)
     lats = np.asarray(lats, dtype=np.float64)
     return haversine_km(lons[:, None], lats[:, None], lons[None, :], lats[None, :])
+
+
+def cluster_labels(lons: ArrayLike, lats: ArrayLike, n_clusters: int) -> np.ndarray:
+    """点按球面 haversine 距离做凝聚层次聚类（average linkage，距离矩阵预先算好），返回每点的簇号 0 … n_clusters-1。
+    煤电机组与工业点源聚成 hub 都走这里（`builders.plants`、`builders.industry`）；点数不多于簇数时调用方不聚类
+    （煤电沿用原厂址，工业逐点编号）。sklearn 只有这里用，放在函数内导入，`show` / `diff` 等不建表的命令不加载它。"""
+    from sklearn.cluster import AgglomerativeClustering
+
+    clustering = AgglomerativeClustering(n_clusters=n_clusters, metric="precomputed", linkage="average")
+    return clustering.fit_predict(haversine_matrix_km(lons, lats))
 
 
 def within_radius(

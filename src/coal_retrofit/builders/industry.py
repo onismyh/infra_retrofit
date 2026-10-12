@@ -23,7 +23,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import AgglomerativeClustering
 
 from ..artifacts import write_csv
 from ..constants import PLANT_YEAR_BASIS
@@ -46,7 +45,7 @@ from ..constants_industry import (
 )
 from ..paths import ProjectPaths
 # 与煤电机组共用同一套球面距离矩阵：两类 hub 必须在完全相同的几何上聚类，否则它们的 hub 规模不可比。
-from ..spatial import haversine_matrix_km
+from ..spatial import cluster_labels
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +328,7 @@ def cluster_sector_hubs(
 ) -> pd.DataFrame:
     """把点源聚类为 hub，且只在每个部门内部分别聚类。
 
-    算法与煤电机组相同（`builders/plants._cluster_plants_to_hubs`）：凝聚层次聚类、
+    算法与煤电机组相同（`spatial.cluster_labels`，`builders/plants._cluster_plants_to_hubs` 也走它）：凝聚层次聚类、
     平均链接（average linkage）、预先算好的 haversine 距离。按部门聚类使每个 hub 在技术上
     同质——一个把水泥窑和合成氨厂混在一起的 hub，其用水强度、氢基准与捕集成本都没有意义。
     """
@@ -341,10 +340,7 @@ def cluster_sector_hubs(
         if len(group) <= n_hubs:
             group["hub_id"] = [f"{sector}_{i:03d}" for i in range(len(group))]
         else:
-            distances = haversine_matrix_km(group["longitude"].to_numpy(), group["latitude"].to_numpy())
-            labels = AgglomerativeClustering(
-                n_clusters=n_hubs, metric="precomputed", linkage="average"
-            ).fit_predict(distances)
+            labels = cluster_labels(group["longitude"].to_numpy(), group["latitude"].to_numpy(), n_hubs)
             group["hub_id"] = [f"{sector}_{int(x):03d}" for x in labels]
         labelled.append(group)
     return pd.concat(labelled, ignore_index=True)

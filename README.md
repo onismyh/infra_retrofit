@@ -679,6 +679,20 @@
 > `data/H2/` 不在本机，绿氨表用合成栅格（Albers 与 EPSG:4326 两种 CRS、缺 LCOE、缺 LCOH、PEM、非年份目录）拆分前后逐字节相同，一张可用栅格
 > 都没有时的空表也相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；466 个测试通过（新增 3 个），mypy 错误 133 不变。
 
+> 2026-10-12 起（同日第八个 PR）`builders/plants.py`（457 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `plants.py`（293 行）留机组表读入、聚类、hub 汇总与逐台毛热耗；`plants_water.py`（165 行）放用水强度（`hub_water_intensities`、
+> `finalize_water_intensities`、`combustion_class`，此前为 `_hub_water_intensities` / `_combustion_class`）与海水冷却分类
+> （`add_seawater_classification`、`SEAWATER_COAST_DISTANCE_KM`），原先函数内的 `import geopandas` 提到模块顶部。冷却方式归类（含 once 为直流、
+> 含 air / dry 为空冷、其余为循环）此前在 `builders/plants._cooling_class` 与 `OptimizationAssumptions.cooling_baseline_water_intensity`
+> 各写一遍，合成 `constants.cooling_class`，后者改为按归类查三个缺省值，三个缺省值（0.35 / 1.85 / 0.37）改为引用
+> `constants.COOLING_WATER_INTENSITY_M3_PER_MWH` 的同一组数；煤电机组与工业点源的聚类（haversine 距离矩阵 +
+> `AgglomerativeClustering(precomputed, average)`）此前在 `plants.py` 与 `industry.py` 各写一遍，合成 `spatial.cluster_labels`，标签格式与
+> "点数不多于簇数"的处理仍在各自调用处，sklearn 只有它用、在函数内导入，`show` / `diff` 等不建表的命令不加载它（此前只在建表路径按需导入）。拆分前后用库内 `plants_unit.csv` 重建 `plants.csv`、`plants_unit_hub.csv` 逐字节相同（与
+> `_indtree/inputs/` 的也相同）；用库内 `industry_sources.csv` 重聚类并汇总的 `industry_sources.csv`、`industry_hubs.csv` 逐字节相同
+> （390 个 hub 标签与库内逐行一致，数值列与 2026-09-28 写出的库内文件只有 CSV 往返带来的浮点末位差）；`constants` 全部常量与
+> `OptimizationAssumptions()` 的 76 个缺省值快照相同，13 种冷却标签的统一耗水值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；
+> 468 个测试通过（新增 2 个：冷却归类与统一耗水值、聚类分簇），mypy 错误 133 不变（`plants.py` 的 6 条随代码搬到 `plants_water.py`）。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -963,8 +977,8 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的五个拆分 PR（§0 当日注）之后，超 400 行的文件剩 4 个：`builders/network.py` 559、`optimization/constraints.py` 556、
-> `builders/plants.py` 457、`optimization/assumptions.py` 445。
+> 2026-10-12 的六个拆分 PR（§0 当日注）之后，超 400 行的文件剩 3 个：`builders/network.py` 559、`optimization/constraints.py` 556、
+> `optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -1079,7 +1093,7 @@ python -m ruff check src tests scripts
 
 | 脚本（`scripts/`） | 构建模块（`builders/`） | 输出（`_indtree/inputs/`） | 现有行数 |
 |---|---|---|---|
-| `build_plant_inputs.py [--hubs]` | `plants.py` | `plants_unit.csv`；加 `--hubs` 另写 `plants.csv`、`plants_unit_hub.csv` | 3 623；350、3 623 |
+| `build_plant_inputs.py [--hubs]` | `plants.py`、`plants_water.py` | `plants_unit.csv`；加 `--hubs` 另写 `plants.csv`、`plants_unit_hub.csv` | 3 623；350、3 623 |
 | `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |

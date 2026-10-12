@@ -7,7 +7,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from ..constants import PLANNING_YEARS
+from ..constants import COOLING_WATER_INTENSITY_M3_PER_MWH, PLANNING_YEARS, cooling_class
 
 logger = logging.getLogger(__name__)
 
@@ -208,11 +208,11 @@ class OptimizationAssumptions:
     # ~3 CNY/kg，中国氢能联盟白皮书 2019 区间 2-4），待作者给出有出处的数值。作用同煤电侧
     # 的 `ammonia_transport_cost_cny_per_kg_km`。⚠ 假设（临时值；白皮书区间未核到原文）。
     h2_transport_cost_cny_per_kg_km: float = 0.03
-    cooling_once_through_water_intensity_m3_per_mwh: float = 0.35  # 耗水口径（耗水量）：
-    # 0.29-0.41 m³/MWh，依据 NDRC et al. 2015 No.9 清洁生产基准（中位数 ≈0.35）。
-    # （原值 1.0 混淆了取水口径与耗水口径。）
-    cooling_recirculating_water_intensity_m3_per_mwh: float = 1.85
-    cooling_air_water_intensity_m3_per_mwh: float = 0.37
+    # 缺逐机组用水表时按冷却方式取的统一耗水值，与 `constants.COOLING_WATER_INTENSITY_M3_PER_MWH` 同一组数（耗水口径：
+    # 直流 0.29-0.41 m³/MWh，依据 NDRC et al. 2015 No.9 清洁生产基准，中位数 ≈0.35；原值 1.0 混淆了取水口径与耗水口径）。
+    cooling_once_through_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["once-through"]
+    cooling_recirculating_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["recirculating"]
+    cooling_air_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["air"]
     ccs_water_multiplier: float = 1.82
     biomass_water_multiplier: float = 1.00
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
@@ -437,9 +437,9 @@ class OptimizationAssumptions:
         return self._fraction_for_year(self.green_h2_national_cap_mt_by_year, year)
 
     def cooling_baseline_water_intensity(self, cooling_label: str) -> float:
-        label = str(cooling_label).strip().lower()
-        if "once" in label:
-            return self.cooling_once_through_water_intensity_m3_per_mwh
-        if "air" in label or "dry" in label:
-            return self.cooling_air_water_intensity_m3_per_mwh
-        return self.cooling_recirculating_water_intensity_m3_per_mwh
+        """缺逐机组用水表时的统一耗水值（m³/MWh），冷却方式按 `constants.cooling_class` 归类。"""
+        return {
+            "once-through": self.cooling_once_through_water_intensity_m3_per_mwh,
+            "air": self.cooling_air_water_intensity_m3_per_mwh,
+            "recirculating": self.cooling_recirculating_water_intensity_m3_per_mwh,
+        }[cooling_class(cooling_label)]
