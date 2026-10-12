@@ -3,8 +3,8 @@
 
 为什么需要：ISIMIP issue #34（data.isimip.org/issues/34）——CWatM 的 `historical` qtot 文件在 GCM 之间错位一格，文件名里的
 GCM 不是实际驱动它的 GCM，ISIMIP 只重发了未来文件，historical 没有重发。偏差因子按 (水文模型, GCM) 从各自的历史运行估计
-（`builders/water.basin_bias_factors`），文件标错就把一个 GCM 的偏差套到了另一个成员上。2026-10-12 的核定结果写在
-`builders/water.HISTORICAL_FILE_GCM`：标 ipsl 的是 GFDL 的模拟（qtot 数据逐格相同，只差文件头的 GCM 名）、标 mpi 的是 IPSL、标 mri 的是 MPI、
+（`builders/water_bias.basin_bias_factors`），文件标错就把一个 GCM 的偏差套到了另一个成员上。2026-10-12 的核定结果写在
+`builders/water_bias.HISTORICAL_FILE_GCM`：标 ipsl 的是 GFDL 的模拟（qtot 数据逐格相同，只差文件头的 GCM 名）、标 mpi 的是 IPSL、标 mri 的是 MPI、
 标 ukesm 的是 MRI，真正的 UKESM 历史运行没有；WaterGAP2-2e 的 historical 与两家的 ssp126 / ssp370 未来文件全部对号（相关 0.86–0.90，
 其余列 |r| < 0.17）。
 

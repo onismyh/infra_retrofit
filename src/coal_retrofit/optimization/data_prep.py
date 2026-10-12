@@ -98,7 +98,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     # 节点所在的流域归属，因为取水许可就是这样核发的。只在这里算一次：它是一次空间连接
     # （spatial join），若按每个规划年、每个情景重做，耗时会超过其余全部准备工作之和。
     if scenario.water_mode != "no_water":
-        from ..builders.water import _assign_basin_codes
+        from ..builders.water_grid import _assign_basin_codes
 
         located = plants.rename(columns={"centroid_latitude": "latitude",
                                          "centroid_longitude": "longitude"})
@@ -475,7 +475,7 @@ def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[st
     if scenario.water_mode != "no_water":
         files["water_basin_caps"] = inputs / "water_basin_caps.csv"
         files["water_basin_use"] = inputs / "water_basin_use.csv"
-        # 电厂与工业 hub 按厂址归一级流域（`builders.water.load_basins`），读的是 data/ 而不是 inputs/。
+        # 电厂与工业 hub 按厂址归一级流域（`builders.water_grid.load_basins`），读的是 data/ 而不是 inputs/。
         files["basin_polygons"] = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
     return files
 

@@ -237,7 +237,7 @@ class OptimizationAssumptions:
     # 这一阶梯正是去别名化换来的：BASE->envonly 给生态流量标准定价，envonly->oq 给分配规则定价，
     # 各自独立。
     apply_basin_cap: bool = True
-    # 向求解器提供水量时施加流域偏差校正因子。这些因子（builders/water.py 中的
+    # 向求解器提供水量时施加流域偏差校正因子。这些因子（builders/water_bias.py 中的
     # `.basin_bias_factors`，由各模型 `historical` 试验对照第三次水资源调查的流域总量估计）
     # 已固化进 water_availability.csv 的 `available_water_m3_per_year`；
     # `local_runoff_m3_per_year` 存的是同一个数的未校正值。设为 False 时提供未经校正的

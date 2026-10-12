@@ -14,7 +14,7 @@ docs/工业部门参数溯源.md §六 第 1 条、§七）。本模块只求这
 不做偏差校正：没有官方的分流域耗水可对（水资源公报只给全国分部门耗水率）。已知 ISIMIP 的华北灌溉需水比公报
 高 2-3 倍（`water_quota` 模块说明），所以华北的扣减偏大、余量偏紧。
 
-季节。枯水期耗水取与径流枯水期同一个三个月窗口（`water._basin_dry_window`，按该成员自己的 qtot 在流域合计上选），
+季节。枯水期耗水取与径流枯水期同一个三个月窗口（`water_grid._basin_dry_window`，按该成员自己的 qtot 在流域合计上选），
 年化后与 `water_availability.csv` 的 `dry_season_water_m3_per_year` 相减；全年口径取十年均值。偏差因子只乘在径流上，
 不改变窗口的选择，所以不需要历史期文件。
 """
@@ -31,7 +31,7 @@ import pandas as pd
 from ..artifacts import write_csv
 from ..constants import PLANNING_YEARS
 from ..paths import ProjectPaths
-from .water import (
+from .water_grid import (
     WATER_WINDOW_BASIS,
     _annual_and_seasonal,
     _basin_dry_window,

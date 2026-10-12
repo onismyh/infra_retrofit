@@ -1,8 +1,9 @@
+"""水输入表的构建流程（`write_water_inputs`）：成员表与基准表、0.5° 网格节点、按流域预算并偏差校正的节点可用量、
+粗化到 2° 节点、厂址到节点的供水链路。网格与流域的共用工具在 `water_grid`，偏差校正在 `water_bias`。
+"""
 from __future__ import annotations
 
-import logging
 import re
-from pathlib import Path
 
 import geopandas as gpd
 import netCDF4
@@ -10,32 +11,28 @@ import numpy as np
 import pandas as pd
 
 from ..artifacts import write_csv
-from ..constants import (
-    BIAS_BASELINE_WINDOW,
-    OFFICIAL_BASIN_WATER_1E8_M3,
-    PLANNING_YEARS,
-    TARGET_GEO_CRS,
-    WATER_COARSE_GRID_DEGREES,
-    WATER_MATCH_BUFFER_KM,
-)
+from ..constants import PLANNING_YEARS, TARGET_GEO_CRS, WATER_COARSE_GRID_DEGREES, WATER_MATCH_BUFFER_KM
 from ..paths import ProjectPaths
-from ..spatial import haversine_km, nearest_polygon_index
-from ..spatial import load_provinces as load_provinces_layer
-
-logger = logging.getLogger(__name__)
+from ..spatial import haversine_km
+from .water_bias import member_bias_factors
+from .water_grid import (
+    WATER_WINDOW_BASIS,
+    _annual_and_seasonal,
+    _assign_basin_codes,
+    _basin_dry_window,
+    _basin_zone_grid,
+    _cell_area_m2,
+    _clean_series,
+    _file_years,
+    _resolve_source_path,
+    load_provinces,
+)
 
 WATER_PATTERN = re.compile(
     r"(?P<hydrology>[^_]+)_(?P<gcm>.+?)_w5e5_(?P<ssp>ssp\d+)_"
     r"(?P<socioeconomics>.+?)_default_(?P<variable>[^_]+)_global_monthly_"
     r"(?P<start_year>\d{4})_(?P<end_year>\d{4})\.nc"
 )
-WATER_WINDOW_BASIS = {
-    2030: (2021, 2030),
-    2040: (2031, 2040),
-    2050: (2041, 2050),
-    2060: (2051, 2060),
-}
-SECONDS_PER_YEAR = 365.25 * 24.0 * 3600.0
 
 
 def _scenario_family(ssp: str) -> str:
@@ -104,22 +101,6 @@ def build_water_base_dataframe(scenarios: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["planning_year", "hydrology_model", "gcm"]).reset_index(drop=True)
 
 
-def load_provinces(paths: ProjectPaths) -> gpd.GeoDataFrame:
-    provinces = load_provinces_layer(paths.find_data_file("provinces.shp"))
-    if provinces.crs is None:
-        raise ValueError("Province layer has no CRS defined")
-    if provinces.crs.to_string() != TARGET_GEO_CRS:
-        provinces = provinces.to_crs(TARGET_GEO_CRS)
-    return provinces.sort_values("province_id").reset_index(drop=True)
-
-
-def _clean_series(series: np.ndarray, fill_value: float | None) -> np.ndarray:
-    data = np.asarray(np.ma.filled(series, np.nan), dtype=np.float64)
-    if fill_value is not None:
-        data = np.where(data == fill_value, np.nan, data)
-    return data
-
-
 def _representative_scenario_rows(scenarios: pd.DataFrame) -> dict[str, pd.Series]:
     baseline_candidates = scenarios[scenarios["ssp"] == "ssp126"].sort_values(["hydrology_model", "gcm"]).reset_index(drop=True)
     if baseline_candidates.empty:
@@ -138,29 +119,6 @@ def _representative_scenario_rows(scenarios: pd.DataFrame) -> dict[str, pd.Serie
         "baseline": baseline_row,
         "high_pressure": high_candidates.iloc[0],
     }
-
-
-def _resolve_source_path(paths: ProjectPaths, source: str) -> str:
-    relative = Path(str(source))
-    if relative.exists():
-        return str(relative)
-    cwd_candidate = Path.cwd() / relative
-    if cwd_candidate.exists():
-        return str(cwd_candidate)
-    root_candidate = paths.root / relative
-    if root_candidate.exists():
-        return str(root_candidate)
-    return str(relative)
-
-
-def _nc_path(path: Path) -> str:
-    """netCDF4 能打开的路径：其 C 层在 Windows 上拒绝含非 ASCII 字符的绝对路径。"""
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except ValueError:
-        import os
-
-        return os.path.relpath(path, Path.cwd())
 
 
 def _candidate_grid_points(
@@ -238,242 +196,6 @@ def build_water_nodes_dataframe(paths: ProjectPaths, scenarios: pd.DataFrame) ->
             "year_basis",
         ]
     ].sort_values("water_node_id").reset_index(drop=True)
-
-
-EARTH_RADIUS_M = 6_371_000.0
-
-
-def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
-    """规则经纬网格上每个纬度带的网格单元面积（m²）。"""
-    half = cell_degrees / 2.0
-    band = (
-        EARTH_RADIUS_M ** 2
-        * np.deg2rad(cell_degrees)
-        * np.abs(np.sin(np.deg2rad(lat + half)) - np.sin(np.deg2rad(lat - half)))
-    )
-    return band
-
-
-def _province_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, list[str]]:
-    """把省界多边形栅格化到气候网格上；0 = 中国境外。"""
-    from rasterio.features import rasterize
-    from rasterio.transform import from_origin
-
-    provinces = load_provinces(paths).to_crs("EPSG:4326")
-    cell = float(abs(lat[1] - lat[0]))
-    transform = from_origin(float(lon.min() - cell / 2.0), float(lat.max() + cell / 2.0), cell, cell)
-    zones = rasterize(
-        ((geom, idx + 1) for idx, geom in enumerate(provinces.geometry)),
-        out_shape=(len(lat), len(lon)),
-        transform=transform,
-        fill=0,
-        dtype="int32",
-    )
-    name_col = "province_name" if "province_name" in provinces.columns else provinces.columns[0]
-    return zones, [str(v) for v in provinces[name_col]]
-
-
-def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
-    """按所在（或最近的）多边形，给每个点（`longitude` / `latitude` 列）分配一级流域代码。
-
-    先按包含关系配对；落在所有多边形之外的点（海岸、多边形之间的缝隙）取边界最近的流域，否则这些网格会被
-    所有流域预算漏掉，其水量被悄悄删除。距离按球面算（`spatial.nearest_polygon_index`），2026-10-11 前在 EPSG:2380 下算。
-    """
-    basins = load_basins(paths)
-    index = nearest_polygon_index(nodes["longitude"].to_numpy(float), nodes["latitude"].to_numpy(float), basins.geometry)
-    return basins["code"].astype(str).to_numpy()[index]
-
-
-def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
-    """水资源一级区，即中国公布官方水资源总量所用的单元。"""
-    path = paths.data_dir / "ChinaBasins" / "basin_l1.gpkg"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"{path} 不存在。该文件入库在仓库根 data/ChinaBasins/，求解树经 <tree>/data 链接读它"
-            "（README 的 `_indtree/data` 一行）；列为 `code`（A-K）、`name`、`name_en`，EPSG:4326。"
-        )
-    return gpd.read_file(path).to_crs(TARGET_GEO_CRS)
-
-
-def _basin_zone_grid(paths: ProjectPaths, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, list[str]]:
-    """把一级流域多边形栅格化到气候网格上；0 = 不在任何流域内。"""
-    from rasterio.features import rasterize
-    from rasterio.transform import from_origin
-
-    basins = load_basins(paths)
-    cell = float(abs(lat[1] - lat[0]))
-    transform = from_origin(float(lon.min() - cell / 2.0), float(lat.max() + cell / 2.0), cell, cell)
-    zones = rasterize(
-        ((geom, idx + 1) for idx, geom in enumerate(basins.geometry)),
-        out_shape=(len(lat), len(lon)),
-        transform=transform,
-        fill=0,
-        dtype="int32",
-    )
-    return zones, [str(v) for v in basins["code"]]
-
-
-# ISIMIP issue #34（data.isimip.org/issues/34，2023-02）：CWatM 的 `historical` qtot 文件在 GCM 之间错位一格，文件名里的
-# GCM 不是实际驱动它的 GCM。ISIMIP 只重发了未来文件（2023-02-16 版，本地即此版），historical 至今是 2022-12-15 的错位版。
-# 2026-10-12 用各 GCM 自己的 W5E5 降水异常与径流异常做格点合并相关核定（`scripts/attribute_isimip_forcing.py`；WaterGAP2-2e
-# 的 historical 与两家的 ssp126 / ssp370 未来文件全部对号，相关 0.86–0.90）：标 ipsl 的文件是 GFDL 的模拟（qtot 数据与 gfdl
-# 文件逐格相同，只差文件头的 GCM 名）、标 mpi 的是 IPSL、标 mri 的是 MPI、标 ukesm 的是 MRI，真正的 UKESM 历史运行服务器上没有。
-# 键 (水文模型, 实际驱动 GCM) → 文件名里写的 GCM；None 表示没有真实的历史运行，这时 `member_bias_factors` 取同一水文模型
-# 其余成员因子的流域均值（作者决定 2026-10-12）。不在表里的组合按文件名直接取。
-HISTORICAL_FILE_GCM: dict[tuple[str, str], str | None] = {
-    ("cwatm", "ipsl-cm6a-lr"): "mpi-esm1-2-hr",
-    ("cwatm", "mpi-esm1-2-hr"): "mri-esm2-0",
-    ("cwatm", "mri-esm2-0"): "ukesm1-0-ll",
-    ("cwatm", "ukesm1-0-ll"): None,
-}
-
-
-def has_genuine_history(hydrology_model: str, gcm: str) -> bool:
-    """该 (水文模型, GCM) 组合有没有真实的 `historical` 运行（与文件是否已下载无关）。"""
-    return HISTORICAL_FILE_GCM.get((hydrology_model, gcm), gcm) is not None
-
-
-def _historical_source(paths: ProjectPaths, hydrology_model: str, gcm: str) -> Path | None:
-    """某个 (水文模型, GCM) 组合的 `historical` qtot 运行文件（若已下载）；没有真实历史运行的组合返回 None。
-
-    两个键缺一不可。ISIMIP3b 用每个 GCM 分别驱动每个水文模型，所以 `historical` 运行是
-    按组合存在的，而不是按水文模型。只按水文模型匹配、取排序后的第一个命中，曾对每个
-    GCM 都悄悄返回 gfdl-esm4 的运行（它排在最前），这本会把一个 GCM 的偏差因子套用到
-    所有 GCM 上，恰好抹平集合本来要度量的 GCM 间离散。文件名里的 GCM 按 `HISTORICAL_FILE_GCM`
-    换成实际驱动该 GCM 的那份，因为 CWatM 的文件在服务器上就标错了。
-    """
-    if not has_genuine_history(hydrology_model, gcm):
-        return None
-    file_gcm = HISTORICAL_FILE_GCM.get((hydrology_model, gcm), gcm)
-    matches = sorted(
-        p for p in (paths.data_dir / "water").glob("*historical*qtot*.nc")
-        if p.name.startswith(f"{hydrology_model}_{file_gcm}_")
-    )
-    return matches[0] if matches else None
-
-
-def _basin_runoff_from_file(
-    path: Path, window: tuple[int, int], zones: np.ndarray, codes: list[str], area_m2: np.ndarray
-) -> dict[str, float]:
-    """在已栅格化的网格上，逐流域求 `window` 内的总径流，m3/yr。"""
-    # netCDF4 的 C 层在 Windows 上打不开含非 ASCII 字符的绝对路径。
-    with netCDF4.Dataset(_nc_path(path), "r") as ds:
-        time_var = ds.variables["time"]
-        years = np.array(
-            [
-                int(dt.year)
-                for dt in netCDF4.num2date(
-                    time_var[:], time_var.units, getattr(time_var, "calendar", "standard")
-                )
-            ]
-        )
-        mask = (years >= window[0]) & (years <= window[1])
-        if not mask.any():
-            raise ValueError(f"{path.name} covers {years.min()}-{years.max()}, not {window}")
-        runoff_var = ds.variables["qtot"]
-        series = _clean_series(np.asarray(runoff_var[mask]), getattr(runoff_var, "_FillValue", None))
-        annual = np.nan_to_num(np.nanmean(series, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
-    return {code: float(annual[zones == idx].sum()) for idx, code in enumerate(codes, start=1)}
-
-
-def basin_bias_factors(
-    paths: ProjectPaths,
-    hydrology_model: str,
-    gcm: str,
-    zones: np.ndarray,
-    codes: list[str],
-    area_m2: np.ndarray,
-) -> dict[str, float]:
-    """乘性校正因子：把某个模型的流域径流拉到官方基准上。
-
-    0.5 deg 的全球水文模型即使全国总量正确，也带有很大的区域偏差：在 1956-2014 年，
-    WaterGAP2-2e 复现中国总量的误差在 1.2% 以内，却在海河流域偏湿 2.43x、在淮河偏湿
-    1.69x——这两个流域承载着 358 GW 煤电，也正是可用水量约束真正起作用的地方。若不
-    校正，这一偏差就会被当作水文模型不确定性报告出来。
-
-    该因子对每个 (水文模型, GCM) 组合只估计一次，取自该组合自己的 `historical` 运行，
-    并施加到该组合的每一年、每个 SSP 上，因此每个成员的变化率被精确保留，只替换绝对
-    水平。按组合而不是按水文模型估计，对集合很重要：历史偏差既是水文模型的属性，同样
-    也是驱动 GCM 的属性，把一个 GCM 的因子套用到其他 GCM 上会抹掉真实存在的 GCM 间
-    离散。若该组合没有历史运行文件（未下载，或 `HISTORICAL_FILE_GCM` 记为没有真实运行），则对每个流域都返回 1.0；
-    用其余成员的均值补全在 `member_bias_factors` 里做。
-    """
-    source = _historical_source(paths, hydrology_model, gcm)
-    if source is None:
-        return {code: 1.0 for code in codes}
-    modelled = _basin_runoff_from_file(source, BIAS_BASELINE_WINDOW, zones, codes, area_m2)
-    factors: dict[str, float] = {}
-    for code in codes:
-        official_m3 = OFFICIAL_BASIN_WATER_1E8_M3.get(code, 0.0) * 1e8
-        model_m3 = modelled.get(code, 0.0)
-        factors[code] = official_m3 / model_m3 if model_m3 > 0 and official_m3 > 0 else 1.0
-    return factors
-
-
-def member_bias_factors(
-    paths: ProjectPaths,
-    hydrology_model: str,
-    gcms: list[str],
-    zones: np.ndarray,
-    codes: list[str],
-    area_m2: np.ndarray,
-) -> dict[str, tuple[dict[str, float], str]]:
-    """同一水文模型各 GCM 的流域偏差因子及其来源：历史文件名、均值说明或 "none"。
-
-    有真实历史运行的成员按自己的运行算（`basin_bias_factors`）。`HISTORICAL_FILE_GCM` 记为没有真实运行的成员
-    （cwatm|ukesm1-0-ll），取其余有真实运行成员因子的流域均值：GCM 专属的那部分偏差无从得知，均值是对"该水文模型
-    配任意 GCM"偏差的估计，且全集合都在校正状态下（作者决定 2026-10-12；取 1.0 会把它单独留在未校正状态，全国
-    可用量比均值低 15%）。文件未下载的成员保持 1.0、记 "none"，也不参与均值，缺文件不被均值掩盖。
-    """
-    factors: dict[str, tuple[dict[str, float], str]] = {}
-    for gcm in gcms:
-        source = _historical_source(paths, hydrology_model, gcm)
-        if source is not None:
-            factors[gcm] = (basin_bias_factors(paths, hydrology_model, gcm, zones, codes, area_m2), source.name)
-    donors = [gcm for gcm in gcms if gcm in factors]
-    for gcm in gcms:
-        if gcm in factors:
-            continue
-        if not has_genuine_history(hydrology_model, gcm) and donors:
-            mean = {code: float(np.mean([factors[donor][0][code] for donor in donors])) for code in codes}
-            factors[gcm] = (mean, f"mean of {hydrology_model} {', '.join(donors)}")
-        else:
-            logger.warning("%s|%s: no historical qtot file, bias factor left at 1.0 (uncorrected)", hydrology_model, gcm)
-            factors[gcm] = ({code: 1.0 for code in codes}, "none")
-    return factors
-
-
-def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
-    """逐个时间步的公历年份。"""
-    time_var = ds.variables["time"]
-    dates = netCDF4.num2date(time_var[:], time_var.units, getattr(time_var, "calendar", "standard"))
-    return np.array([int(dt.year) for dt in dates])
-
-
-def _annual_and_seasonal(window: np.ndarray, area_m2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """整年的逐月序列（kg m-2 s-1，从 1 月起）的逐网格年均水量与 12 个候选三个月窗口的年化水量，m3/yr。
-
-    第 m 个窗口是从第 m 个日历月（0 = 1 月）起的连续三个月，取多年月均的年循环。径流与耗水共用，
-    所以两者的枯水期是同一组月份。
-    """
-    # kg m-2 s-1 -> 每个网格的 m3/yr（水的密度 1000 kg m-3）
-    annual = np.nan_to_num(np.nanmean(window, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
-    months = np.arange(window.shape[0]) % 12
-    monthly_clim = np.stack(
-        [np.nan_to_num(np.nanmean(window[months == m], axis=0)) for m in range(12)]
-    )
-    rolling = np.stack([monthly_clim[np.arange(m, m + 3) % 12].mean(axis=0) for m in range(12)])
-    return annual, rolling * area_m2 * SECONDS_PER_YEAR / 1000.0
-
-
-def _basin_dry_window(rolling_volume: np.ndarray, cells: np.ndarray) -> tuple[int, float]:
-    """流域的枯水季：12 个候选三个月窗口中流域径流合计最小的那个，返回 (窗口序号, 年化水量 m3/yr)。
-
-    在流域合计上选，不逐网格选，理由见 `build_water_availability_dataframe` 里选取处的注释块。
-    """
-    basin_rolling = rolling_volume[:, cells].sum(axis=1)
-    dry = int(np.argmin(basin_rolling))
-    return dry, float(basin_rolling[dry])
 
 
 def build_water_availability_dataframe(

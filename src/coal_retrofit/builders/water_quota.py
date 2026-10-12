@@ -44,7 +44,7 @@ from ..constants_water_quota import (
     province_cap,
 )
 from ..paths import ProjectPaths
-from .water import (
+from .water_grid import (
     SECONDS_PER_YEAR,
     _basin_zone_grid,
     _cell_area_m2,
@@ -230,7 +230,7 @@ def calibrated_withdrawal_intensities(
 def once_through_calibration(plants: pd.DataFrame, generation_mwh: pd.Series) -> float:
     """把模拟的直流冷却取水重新缩放到水资源公报基准上的因子。
 
-    构造与 `water.basin_bias_factors` 相同：官方总量除以模拟总量，以乘法施加。用一个全国
+    构造与 `water_bias.basin_bias_factors` 相同：官方总量除以模拟总量，以乘法施加。用一个全国
     因子而不是九个流域因子——这一差异是强度表（一个美国凝汽器设计假设）的属性，而不是任何
     流域的属性；并且公报按区域公布直流火(核)电，但不按燃料公布，所以逐流域因子拟合的将是
     各区域煤电相对于核电与燃气机队的份额，而这是观测不到的。
@@ -279,7 +279,7 @@ def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
     if not path.exists():
         logger.info("industry_sources.csv absent; no industrial carve-out from the reservation")
         return {}
-    from .water import _assign_basin_codes
+    from .water_grid import _assign_basin_codes
 
     sources = pd.read_csv(path)
     sources["basin_code"] = _assign_basin_codes(paths, sources)

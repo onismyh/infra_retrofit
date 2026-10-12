@@ -22,7 +22,7 @@ names are wrong: ISIMIP issue #34 (data.isimip.org/issues/34) shifted CWatM's hi
 by one GCM -- the file labelled ipsl-cm6a-lr is GFDL's run (same qtot data cell for cell as the gfdl
 file; only the header's GCM name differs), mpi-esm1-2-hr is IPSL's, mri-esm2-0 is MPI's, ukesm1-0-ll
 is MRI's, and UKESM's own run does not exist; only the future files were re-issued (2023-02-16).
-`builders/water.HISTORICAL_FILE_GCM`
+`builders/water_bias.HISTORICAL_FILE_GCM`
 maps each member to the file that actually drove it, so the ukesm-labelled file is still needed
 (it is the mri member's baseline). Verified 2026-10-12 with `scripts/attribute_isimip_forcing.py`.
 
@@ -83,14 +83,14 @@ FUTURE_URLS = [
     for s in SSPS
 ]
 
-# 10 historical files (hydro x gcm), ~5.0 GB. Not optional: `builders/water.basin_bias_factors`
+# 10 historical files (hydro x gcm), ~5.0 GB. Not optional: `builders/water_bias.basin_bias_factors`
 # estimates each member's basin bias against ITS OWN (hydrology model, GCM) historical run, so a
 # missing historical file silently leaves that member uncorrected at factor 1.0. Shipping an
 # ensemble where gfdl-esm4 is bias-corrected and the other four GCMs are raw would be worse than
 # no correction at all -- WaterGAP2-2e runs 2.43x too wet in Hai, so the uncorrected members
 # would separate from gfdl mostly through the correction rather than through their hydrology,
 # and any GCM-spread panel would report that artefact as GCM variance. For CWatM "its own" run is
-# the file `builders/water.HISTORICAL_FILE_GCM` points to, not the one carrying the member's name
+# the file `builders/water_bias.HISTORICAL_FILE_GCM` points to, not the one carrying the member's name
 # (see the module docstring).
 HISTORICAL_URLS = [
     (

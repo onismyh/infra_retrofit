@@ -1,4 +1,4 @@
-"""建输入时的两处地理归属按真实函数（不打桩）走一遍：点归一级流域（`builders.water._assign_basin_codes`）与海水冷却判定
+"""建输入时的两处地理归属按真实函数（不打桩）走一遍：点归一级流域（`builders.water_grid._assign_basin_codes`）与海水冷却判定
 （`builders.plants.add_seawater_classification`），toy 图层写进临时 data/ 目录。"""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from shapely.geometry import LineString, box
 
 from coal_retrofit.builders.plants import SEAWATER_COAST_DISTANCE_KM, add_seawater_classification
-from coal_retrofit.builders.water import _assign_basin_codes, load_basins
+from coal_retrofit.builders.water_grid import _assign_basin_codes, load_basins
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.spatial import haversine_km
 

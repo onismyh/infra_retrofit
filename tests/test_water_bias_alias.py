@@ -1,4 +1,4 @@
-"""CWatM historical 文件对应表（`builders/water.HISTORICAL_FILE_GCM`）与成员均值补全（`member_bias_factors`），在合成文件上。
+"""CWatM historical 文件对应表（`builders/water_bias.HISTORICAL_FILE_GCM`）与成员均值补全（`member_bias_factors`），在合成文件上。
 
 ISIMIP issue #34：CWatM 的 historical qtot 文件在 GCM 之间错位一格（标 ipsl 的是 GFDL 的模拟、标 mpi 的是 IPSL、标 mri 的是
 MPI、标 ukesm 的是 MRI，真正的 UKESM 没有）。合成五份 cwatm 历史文件（gfdl、ipsl、mpi、mri、ukesm 标签，径流水平各不同）与
@@ -16,14 +16,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from coal_retrofit.builders.water import (
-    SECONDS_PER_YEAR,
-    _cell_area_m2,
-    _historical_source,
-    coarsen_water_inputs,
-    has_genuine_history,
-    member_bias_factors,
-)
+from coal_retrofit.builders.water import coarsen_water_inputs
+from coal_retrofit.builders.water_bias import _historical_source, has_genuine_history, member_bias_factors
+from coal_retrofit.builders.water_grid import SECONDS_PER_YEAR, _cell_area_m2
 from coal_retrofit.constants import OFFICIAL_BASIN_WATER_1E8_M3
 from coal_retrofit.paths import ProjectPaths
 
@@ -112,7 +107,7 @@ def test_member_factors_use_the_remapped_file_and_mean_for_ukesm(paths: ProjectP
 def test_mapped_member_without_its_file_stays_uncorrected(paths: ProjectPaths, caplog) -> None:
     # mri 的真实历史运行是标 ukesm 的文件；删掉它，mri 就是"文件未下载"：1.0、"none"、告警，且不进 ukesm 的均值
     (paths.data_dir / "water" / _name("cwatm", "ukesm1-0-ll")).unlink()
-    with caplog.at_level(logging.WARNING, logger="coal_retrofit.builders.water"):
+    with caplog.at_level(logging.WARNING, logger="coal_retrofit.builders.water_bias"):
         members = member_bias_factors(paths, "cwatm", GCMS, ZONES, CODES, AREA)
     assert members["mri-esm2-0"] == ({"C": 1.0, "F": 1.0}, "none")
     assert any("cwatm|mri-esm2-0" in record.getMessage() for record in caplog.records)

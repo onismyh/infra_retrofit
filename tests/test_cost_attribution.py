@@ -89,7 +89,7 @@ def test_water_air_cooling_and_node_slack_close(tmp_path, monkeypatch, air: bool
     缺的水靠空冷改造补上。"""
     import test_water_constraints as water
 
-    monkeypatch.setattr(water.builders_water, "_assign_basin_codes", water._toy_basin_codes)
+    monkeypatch.setattr(water.builders_water_grid, "_assign_basin_codes", water._toy_basin_codes)
     paths = water._toy_paths(tmp_path, basin_caps=True, dry_use_m3=1.0e8)
     if air:
         plants = pd.read_csv(paths.inputs_dir / "plants.csv")
