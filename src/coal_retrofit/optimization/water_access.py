@@ -70,7 +70,7 @@ def _water_available_by_node(
 
     生态余量（环境流量规则，作用于耗水）：流域径流的 20%（`WATER_EXTRACTABLE_FRACTION`）先扣掉该流域的生活与灌溉
     耗水（`water_basin_use.csv`），再按节点的径流份额分到节点，即 径流_n x 0.20 − 耗水_b x 径流_n / 径流_b。径流本身就是
-    按流域预算、按本地径流比例分到节点的（`builders/water.build_water_availability_dataframe`），扣减用同一口径。
+    按流域预算、按本地径流比例分到节点的（`builders/water_availability.build_water_availability_dataframe`），扣减用同一口径。
     工业不扣：它是决策主体，取水进流域取水指标（`_basin_cap_data`）。
 
     存量（作者决定 2026-10-01，存量不增）：归到该节点的煤电不改造同年耗水（`_baseline_use_by_node`）。余量为负的

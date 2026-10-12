@@ -58,7 +58,7 @@ from coal_retrofit.builders.water_grid import (
     _basin_dry_window,
     _basin_zone_grid,
     _cell_area_m2,
-    _clean_series,
+    _clean_window,
     _file_years,
     _nc_path,
     load_basins,
@@ -104,10 +104,9 @@ def basin_runoff(nc_path: Path, window: tuple[int, int]) -> pd.DataFrame:
         mask = (years >= window[0]) & (years <= window[1])
         if not mask.any():
             raise ValueError(f"{nc_path.name} covers {years.min()}-{years.max()}, not {window}")
-        runoff_var = ds.variables["qtot"]
+        series = _clean_window(ds, "qtot", mask)
         lat = np.asarray(ds.variables["lat"][:], dtype=np.float64)
         lon = np.asarray(ds.variables["lon"][:], dtype=np.float64)
-        series = _clean_series(np.asarray(runoff_var[mask]), getattr(runoff_var, "_FillValue", None))
     area = _cell_area_m2(lat)[:, None] * np.ones((1, len(lon)))
     zones, codes = _basin_zone_grid(PATHS, lat, lon)
     annual, rolling_volume = _annual_and_seasonal(series, area)

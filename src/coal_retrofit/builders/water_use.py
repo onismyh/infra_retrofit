@@ -37,7 +37,7 @@ from .water_grid import (
     _basin_dry_window,
     _basin_zone_grid,
     _cell_area_m2,
-    _clean_series,
+    _clean_window,
     _file_years,
     _nc_path,
     _resolve_source_path,
@@ -72,8 +72,7 @@ def _window(ds: netCDF4.Dataset, variable: str, years: np.ndarray, planning_year
     mask = (years >= start) & (years <= end)
     if not mask.any():
         raise ValueError(f"{variable} covers {years.min()}-{years.max()}, not {start}-{end}")
-    var = ds.variables[variable]
-    return _clean_series(np.asarray(var[mask]), getattr(var, "_FillValue", None))
+    return _clean_window(ds, variable, mask)
 
 
 def build_water_use_dataframe(paths: ProjectPaths, scenarios: pd.DataFrame) -> pd.DataFrame:

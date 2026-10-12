@@ -1,6 +1,7 @@
 """水输入构建共用的网格与流域工具：ISIMIP 0.5° 网格的面积、时间窗、枯水期窗口，省界与一级流域的读取、栅格化与点归属。
 
-`water`（可用量与节点）、`water_bias`（偏差校正）、`water_use`（生活与灌溉耗水）、`water_quota`（流域取水指标）与
+`water_availability`（节点与可用量）、`water`（粗化与链路）、`water_bias`（偏差校正）、`water_use`（生活与灌溉耗水）、
+`water_quota`（流域取水指标）与
 `scripts/validate_basin_runoff.py` 都从这里取，保证各表在同一网格、同一枯水期窗口与同一流域归属上算。
 """
 from __future__ import annotations
@@ -57,6 +58,12 @@ def _clean_series(series: np.ndarray, fill_value: float | None) -> np.ndarray:
     return data
 
 
+def _clean_window(ds: netCDF4.Dataset, variable: str, mask: np.ndarray) -> np.ndarray:
+    """变量 `variable` 在时间掩膜 `mask` 内的逐月序列，填充值换成 NaN。"""
+    var = ds.variables[variable]
+    return _clean_series(np.asarray(var[mask]), getattr(var, "_FillValue", None))
+
+
 def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
     """逐个时间步的公历年份。"""
     time_var = ds.variables["time"]
@@ -75,14 +82,18 @@ def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
     return band
 
 
+def _annual_m3(series: np.ndarray, area_m2: np.ndarray) -> np.ndarray:
+    """逐月序列（kg m-2 s-1）的多年均值换成每个网格的年水量，m3/yr（水的密度 1000 kg m-3）。"""
+    return np.nan_to_num(np.nanmean(series, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
+
+
 def _annual_and_seasonal(window: np.ndarray, area_m2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """整年的逐月序列（kg m-2 s-1，从 1 月起）的逐网格年均水量与 12 个候选三个月窗口的年化水量，m3/yr。
 
     第 m 个窗口是从第 m 个日历月（0 = 1 月）起的连续三个月，取多年月均的年循环。径流与耗水共用，
     所以两者的枯水期是同一组月份。
     """
-    # kg m-2 s-1 -> 每个网格的 m3/yr（水的密度 1000 kg m-3）
-    annual = np.nan_to_num(np.nanmean(window, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
+    annual = _annual_m3(window, area_m2)
     months = np.arange(window.shape[0]) % 12
     monthly_clim = np.stack(
         [np.nan_to_num(np.nanmean(window[months == m], axis=0)) for m in range(12)]
@@ -94,7 +105,7 @@ def _annual_and_seasonal(window: np.ndarray, area_m2: np.ndarray) -> tuple[np.nd
 def _basin_dry_window(rolling_volume: np.ndarray, cells: np.ndarray) -> tuple[int, float]:
     """流域的枯水季：12 个候选三个月窗口中流域径流合计最小的那个，返回 (窗口序号, 年化水量 m3/yr)。
 
-    在流域合计上选，不逐网格选，理由见 `build_water_availability_dataframe` 里选取处的注释块。
+    在流域合计上选，不逐网格选，理由见 `water_availability.build_water_availability_dataframe` 里选取处的注释块。
     """
     basin_rolling = rolling_volume[:, cells].sum(axis=1)
     dry = int(np.argmin(basin_rolling))

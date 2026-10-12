@@ -655,7 +655,18 @@
 > `data_prep_plants.py`（213 行）放机组表的加工（`_prepare_plants`、`_read_unit_hub_map`、`_with_expiry`）。新建 `optimization/input_tables.read_input_csv`
 > 统一五处"文件存在 + 必需列"检查（报错文字不变）；`spatial.within_radius` 统一厂址到生物质 / 氨 / 水节点与工业 hub 到氢节点的四处半径配对
 > （水链路按距离排名）；`industry_inputs.py` 删掉 `usecols` 读表后到不了的缺列检查；读入后多余的 `.copy()` 去掉。拆分前后四个登记情景的 `show`
-> 输出与 `diff ST_BASE ST_CP_BASE` 逐字节相同，458 个测试通过，mypy 错误数不变（135）。
+> 输出与 `diff ST_BASE ST_CP_BASE` 逐字节相同，460 个测试通过，mypy 错误数不变（135）。
+>
+> 2026-10-12 起（同日第六个 PR）`builders/water.py`（521 行）再拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
+> `water.py`（249 行）留成员表与基准表、粗化、供水链路与 `write_water_inputs`；`water_availability.py`（269 行）放 0.5° 网格节点与按流域预算并
+> 偏差校正的节点可用量（`build_water_nodes_dataframe`、`build_water_availability_dataframe`）。`water_grid` 新增 `_clean_window`（读时间窗内的
+> 序列并换填充值）与 `_annual_m3`（逐月序列年化成 m3/yr），替掉 `water_bias`、`water_quota`、`water_use`、可用量构建与 `scripts/validate_basin_runoff.py`
+> 里的五处同样写法，`water_bias` 与 `water_quota` 里两处手写的逐时间步年份改用 `water_grid._file_years`；供水链路改走 `spatial.within_radius`；
+> 节点网格的参照成员只取 ssp126 的第一个（成员表须同时有 ssp126 与 ssp370 的检查保留），不再挑选未使用的 ssp370 行；流域模拟径流只求和一次。
+> 拆分前后在同一份 `data/` 上重建七张水表（`water_scenarios` / `water_base` / `water_nodes` / `water_availability` / `water_supply_links` /
+> `water_basin_use` / `water_basin_caps`）逐字节相同，前六张与 `_indtree/inputs/` 的也相同（`water_basin_caps.csv` 在库里的那份 2026-09-28 在作者本机写出，
+> 36 行里 20 行的 `residual_m3_per_year` 只差第 16 位有效数字，四舍五入过的各列全同，是平台浮点差，不是口径差）；463 个测试通过（新增 3 个），
+> mypy 错误 135 → 133（`water_bias`、`water_quota` 两处手写年份循环上的 `union-attr` 随之消失）。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -941,8 +952,8 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的三个拆分 PR（§0 当日注）之后，超 400 行的文件剩 6 个：`builders/network.py` 559、`optimization/constraints.py` 556、
-> `builders/water.py` 521、`builders/supply.py` 472、`builders/plants.py` 457、`optimization/assumptions.py` 445。
+> 2026-10-12 的四个拆分 PR（§0 当日注）之后，超 400 行的文件剩 5 个：`builders/network.py` 559、`optimization/constraints.py` 556、
+> `builders/supply.py` 472、`builders/plants.py` 457、`optimization/assumptions.py` 445。
 
 ## 1. 这个项目回答什么问题
 
@@ -1062,7 +1073,7 @@ python -m ruff check src tests scripts
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
 | `build_supply_inputs.py` | `supply.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
-| `build_water_inputs.py` | `water.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
+| `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
 | `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |

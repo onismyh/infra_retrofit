@@ -16,9 +16,9 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-import coal_retrofit.builders.water as builders_water
 import coal_retrofit.builders.water_grid as builders_water_grid
 from coal_retrofit.builders.water import build_water_scenarios_dataframe
+from coal_retrofit.builders.water_availability import build_water_availability_dataframe
 from coal_retrofit.builders.water_grid import SECONDS_PER_YEAR, _cell_area_m2
 from coal_retrofit.builders.water_use import build_water_use_dataframe, water_use_file, write_water_use
 from coal_retrofit.paths import ProjectPaths
@@ -122,7 +122,7 @@ def test_dry_window_is_the_one_behind_the_dry_season_runoff(paths) -> None:
         {"water_node_id": f"W{i}{j}", "lat_index": i, "lon_index": j, "basin_code": "B1" if j < 2 else "B2"}
         for i in range(len(LAT)) for j in range(len(LON))
     ])
-    availability = builders_water.build_water_availability_dataframe(paths, scenarios, nodes)
+    availability = build_water_availability_dataframe(paths, scenarios, nodes)
     use = build_water_use_dataframe(paths, pd.read_csv(paths.inputs_dir / "water_scenarios.csv"))
     totals = availability.groupby(["scenario_id", "planning_year", "basin_code"])[
         ["available_water_m3_per_year", "dry_season_water_m3_per_year"]].sum()

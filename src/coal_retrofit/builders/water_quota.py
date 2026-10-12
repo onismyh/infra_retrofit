@@ -45,10 +45,11 @@ from ..constants_water_quota import (
 )
 from ..paths import ProjectPaths
 from .water_grid import (
-    SECONDS_PER_YEAR,
+    _annual_m3,
     _basin_zone_grid,
     _cell_area_m2,
-    _clean_series,
+    _clean_window,
+    _file_years,
     _nc_path,
     _province_zone_grid,
 )
@@ -93,16 +94,9 @@ def _weight_grid(paths: ProjectPaths, kind: WeightKind) -> tuple[np.ndarray, np.
         area = _cell_area_m2(lat)[:, None] * np.ones((1, len(lon)))
         if kind == "area":
             return area, lat, lon
-        time_var = dataset.variables["time"]
-        years = np.array([
-            date.year for date in netCDF4.num2date(
-                time_var[:], time_var.units, getattr(time_var, "calendar", "standard")
-            )
-        ])
+        years = _file_years(dataset)
         window = (years >= WEIGHT_WINDOW[0]) & (years <= WEIGHT_WINDOW[1])
-        variable = dataset.variables[WEIGHT_VARIABLE]
-        series = _clean_series(np.asarray(variable[window]), getattr(variable, "_FillValue", None))
-        weight = np.nan_to_num(np.nanmean(series, axis=0)) * area * SECONDS_PER_YEAR / 1000.0
+        weight = _annual_m3(_clean_window(dataset, WEIGHT_VARIABLE, window), area)
     return np.clip(weight, 0.0, None), lat, lon
 
 
