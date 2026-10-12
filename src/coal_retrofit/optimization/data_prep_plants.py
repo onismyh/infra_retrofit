@@ -49,7 +49,7 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         else plants["dominant_cooling_technology"].astype(str)
     )
     # 必须来自淡水系统的水量。
-    # `builders/plants.py` 依据 Wang (2023) 表为每个厂址写出四个按装机容量加权的强度：
+    # `builders/plants_water.py` 依据 Wang (2023) 表为每个厂址写出四个按装机容量加权的强度：
     # 逐机组按蒸汽参数（steam cycle）与冷却方式查表，沿海的海水凝汽器已置零。没有这些列
     # 的旧输入退回到按冷却方式取的统一耗水值。
     # 三种口径，三种用途。它们不可互换，模型三种都用：

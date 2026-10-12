@@ -8,6 +8,7 @@ from shapely.geometry import LineString, Polygon, box
 
 from coal_retrofit.spatial import (
     EARTH_RADIUS_KM,
+    cluster_labels,
     distance_to_lines_km,
     haversine_km,
     haversine_matrix_km,
@@ -115,3 +116,12 @@ def test_layers_with_empty_geometries_are_rejected() -> None:
     polygons = gpd.GeoSeries([Polygon(), box(2, 0, 3, 1)], crs="EPSG:4326")
     with pytest.raises(ValueError, match="空几何"):
         nearest_polygon_index([0.5], [0.5], polygons)
+
+
+def test_cluster_labels_groups_nearby_points() -> None:
+    """两团各三点、相距约 1 000 km：聚成 2 簇时同团同号、异团异号，簇号为 0 与 1。"""
+    lons = np.array([100.0, 100.1, 100.2, 110.0, 110.1, 110.2])
+    lats = np.array([30.0, 30.1, 30.0, 35.0, 35.1, 35.0])
+    labels = cluster_labels(lons, lats, 2)
+    assert labels.shape == (6,) and set(labels.tolist()) == {0, 1}
+    assert len(set(labels[:3].tolist())) == 1 and len(set(labels[3:].tolist())) == 1 and labels[0] != labels[3]

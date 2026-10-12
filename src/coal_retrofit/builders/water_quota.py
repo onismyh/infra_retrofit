@@ -162,7 +162,7 @@ def basin_caps(
 def _once_through_component(plants: pd.DataFrame, capture: bool) -> pd.Series:
     """每个 hub 的淡水直流冷却取水强度，m3/MWh，标定前。
 
-    直接读取 `builders/plants.finalize_water_intensities` 写出的列，即逐机组的精确差值
+    直接读取 `builders/plants_water.finalize_water_intensities` 写出的列，即逐机组的精确差值
     `_intensity_all - _intensity_fresh`。不要用 `dominant_combustion` x
     `capacity_mw_once_through` 重建它：hub 的主导蒸汽参数往往不是其直流冷却机组的蒸汽
     参数，那种重建在全机队合计上错了 24%（404 vs 530 1e8 m3/yr），而且悄无声息，因为
@@ -184,7 +184,7 @@ def once_through_withdrawal(plants: pd.DataFrame, generation_mwh: pd.Series) -> 
     `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的循环冷却与空冷行已与 Macknick 交叉核对，吻合到
     5-14% 以内，并与中国实际相符；与水资源公报相差两倍的正是直流冷却行。
 
-    海水冷却 hub 返回零：公报不含海水直接利用量，`builders/plants.py` 也已把它们的凝汽器
+    海水冷却 hub 返回零：公报不含海水直接利用量，`builders/plants_water.py` 也已把它们的凝汽器
     过流置零，所以标定两侧排除的是同一批机组。
     """
     return generation_mwh * _once_through_component(plants, capture=False)

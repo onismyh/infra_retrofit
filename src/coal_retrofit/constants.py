@@ -98,6 +98,20 @@ COOLING_WATER_INTENSITY_M3_PER_MWH = {
     "air": 0.37,
 }
 
+
+def cooling_class(label: object) -> str:
+    """GEM 的冷却方式标签（或已归类的名字）→ 上表与 `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的三个冷却键：含 `once` 为直流
+    （once-through），含 `air` 或 `dry` 为空冷（air），其余（含缺失）为循环冷却（recirculating）。逐台毛热耗、hub 用水强度与
+    缺用水表时的统一耗水值（`OptimizationAssumptions.cooling_baseline_water_intensity`）都按它归类。hub 各冷却方式的装机份额
+    （`builders.plants.build_plant_dataframe`）按上表键名做子串匹配，不走这里。"""
+    text = str(label).strip().lower()
+    if "once" in text:
+        return "once-through"
+    if "air" in text or "dry" in text:
+        return "air"
+    return "recirculating"
+
+
 # --- 按燃烧技术与冷却方式分列的取水与耗水 ------------------------------------------------
 # 参考文献键：wang2023waterintensity（主要来源）、macknick2011（交叉核对）。
 # 这两篇在此处和一幅图注中都有引用，但在 v5 之前一直没有收进 references.bib；
