@@ -1,7 +1,7 @@
 """流域偏差校正：各 (水文模型, GCM) 组合的 `historical` 运行对照官方流域水资源总量得到的乘性因子（`basin_bias_factors`），
 以及同一水文模型各成员的因子与来源（`member_bias_factors`，没有真实历史运行的成员取其余成员的均值）。
 
-`water.build_water_availability_dataframe` 把因子乘到流域径流上；`scripts/validate_basin_runoff.py` 用同一套函数核对。
+`water_availability.build_water_availability_dataframe` 把因子乘到流域径流上；`scripts/validate_basin_runoff.py` 用同一套函数核对。
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import numpy as np
 
 from ..constants import BIAS_BASELINE_WINDOW, OFFICIAL_BASIN_WATER_1E8_M3
 from ..paths import ProjectPaths
-from .water_grid import SECONDS_PER_YEAR, _clean_series, _nc_path
+from .water_grid import _annual_m3, _clean_window, _file_years, _nc_path
 
 logger = logging.getLogger(__name__)
 
@@ -62,21 +62,11 @@ def _basin_runoff_from_file(
     """在已栅格化的网格上，逐流域求 `window` 内的总径流，m3/yr。"""
     # netCDF4 的 C 层在 Windows 上打不开含非 ASCII 字符的绝对路径。
     with netCDF4.Dataset(_nc_path(path), "r") as ds:
-        time_var = ds.variables["time"]
-        years = np.array(
-            [
-                int(dt.year)
-                for dt in netCDF4.num2date(
-                    time_var[:], time_var.units, getattr(time_var, "calendar", "standard")
-                )
-            ]
-        )
+        years = _file_years(ds)
         mask = (years >= window[0]) & (years <= window[1])
         if not mask.any():
             raise ValueError(f"{path.name} covers {years.min()}-{years.max()}, not {window}")
-        runoff_var = ds.variables["qtot"]
-        series = _clean_series(np.asarray(runoff_var[mask]), getattr(runoff_var, "_FillValue", None))
-        annual = np.nan_to_num(np.nanmean(series, axis=0)) * area_m2 * SECONDS_PER_YEAR / 1000.0
+        annual = _annual_m3(_clean_window(ds, "qtot", mask), area_m2)
     return {code: float(annual[zones == idx].sum()) for idx, code in enumerate(codes, start=1)}
 
 
