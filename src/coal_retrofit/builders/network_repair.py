@@ -11,25 +11,29 @@ import numpy as np
 import pandas as pd
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString
+from shapely.geometry.base import BaseGeometry
 from shapely.strtree import STRtree
 
 from ..constants import (
-    NETWORK_DETOUR_FACTOR,
     NETWORK_EDGE_CLASS_DIRECT,
+    NETWORK_EDGE_CLASS_MAIN,
+    NETWORK_EDGE_CLASS_PLANT_BRANCH,
+    NETWORK_EDGE_CLASS_STORAGE_BRANCH,
     NETWORK_EDGE_CLASS_TRIANGULATION,
-    STATIC_LAYER_YEAR_BASIS,
 )
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, haversine_km
+from .network_edges import make_edge_record
 
 logger = logging.getLogger(__name__)
 
 
+# 去交叉时的保留优先级：既有走廊 > 接入支线 > 新建候选边（专线在去交叉之后才补，不在表里）。
 _EDGE_CLASS_PRIORITY = {
-    "existing_main_corridor": 0,
-    "hub_to_corridor_branch": 1,
-    "corridor_to_storage_branch": 1,
-    "triangulation_candidate": 2,
+    NETWORK_EDGE_CLASS_MAIN: 0,
+    NETWORK_EDGE_CLASS_PLANT_BRANCH: 1,
+    NETWORK_EDGE_CLASS_STORAGE_BRANCH: 1,
+    NETWORK_EDGE_CLASS_TRIANGULATION: 2,
 }
 
 
@@ -45,6 +49,17 @@ def _build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, flo
     if c1 and c2:
         return LineString([c1, c2])
     return None
+
+
+def node_coordinates(nodes: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """节点 id 到 (经度, 纬度)。"""
+    return {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+
+
+def edge_geometries(edges: pd.DataFrame, node_coords: dict[str, tuple[float, float]]) -> list[LineString]:
+    """各边的几何（`_build_edge_geometry`），按 *edges* 的行序，建不出几何或几何为空的边略去。"""
+    return [g for g in (_build_edge_geometry(row, node_coords) for _, row in edges.iterrows())
+            if g is not None and not g.is_empty]
 
 
 def _terminal_ids(nodes: pd.DataFrame) -> tuple[set[str], set[str]]:
@@ -83,10 +98,9 @@ def _repair_connectivity(
     片区数严格递减，因此必然终止；只有在所有候选对都相交时才退回最短那条。
     `dropped` 仅用于日志，不再回填。
     """
-    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    coords = node_coordinates(nodes)
     sources, sinks = _terminal_ids(nodes)
-    geometries = [g for g in (_build_edge_geometry(row, coords) for _, row in kept.iterrows())
-                  if g is not None and not g.is_empty]
+    geometries = edge_geometries(kept, coords)
 
     def _components(frame: pd.DataFrame) -> dict[str, int]:
         graph = nx.Graph()
@@ -128,23 +142,14 @@ def _repair_connectivity(
         direct_km, node_a, node_b, line = chosen
         direct_km = max(float(direct_km), MIN_STITCH_LENGTH_KM)
         stitched += 1
-        record = {column: pd.NA for column in kept.columns}
-        record.update({
-            "edge_id": f"edge_stitch_{stitched:05d}",
-            "feature_index": -1,
-            "part_index": 1,
-            "from_node_id": node_a,
-            "to_node_id": node_b,
-            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
-            "direct_length_km": round(direct_km, 3),
-            "tortuosity": NETWORK_DETOUR_FACTOR,
-            "geometry_wkt": line.wkt,
-            "corridor_type": "triangulation",
-            "existing_corridor_flag": 0,
-            "edge_class": NETWORK_EDGE_CLASS_TRIANGULATION,
-            "source": "connectivity_stitch_rule",
-            "year_basis": STATIC_LAYER_YEAR_BASIS,
-        })
+        record: dict[str, object] = {column: pd.NA for column in kept.columns}
+        record.update(
+            make_edge_record(
+                f"edge_stitch_{stitched:05d}", -1, node_a, node_b, direct_km,
+                geometry_wkt=line.wkt, corridor_type="triangulation",
+                edge_class=NETWORK_EDGE_CLASS_TRIANGULATION, source="connectivity_stitch_rule",
+            )
+        )
         kept = pd.concat([kept, pd.DataFrame([record])], ignore_index=True)
         geometries.append(line)
     if stitched:
@@ -159,10 +164,7 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
     优先级：既有走廊 > 支线 > 三角剖分候选边。结果在平面性不需付出代价的地方都是平面的，
     并且处处连通——见 `_repair_connectivity`。
     """
-    node_coords = {
-        str(row.node_id): (float(row.lon), float(row.lat))
-        for row in nodes.itertuples(index=False)
-    }
+    node_coords = node_coordinates(nodes)
 
     # 构建几何并按优先级排序
     records: list[tuple[int, int, LineString]] = []  # (priority, df_index, geom)
@@ -202,25 +204,27 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
 EXCLUDED_REGION_NAMES = ("西藏", "西藏自治区")
 
 
-def _drop_edges_over_excluded_region(paths, nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
-    """丢掉穿过不参与减排省份（西藏）的三角剖分候选边。
+def _excluded_region(paths: ProjectPaths) -> BaseGeometry | None:
+    """不参与减排省份的几何；没有图层或图层里没有这个省时返回 None。"""
+    path = paths.data_dir / "ChinaMap" / "provinces.shp"
+    if not path.exists():
+        return None
+    hit = gpd.read_file(path)
+    hit = hit[hit["NAME"].astype(str).isin(EXCLUDED_REGION_NAMES)]
+    return None if hit.empty else hit.to_crs("EPSG:4326").geometry.union_all()
+
+
+def _drop_edges_over_excluded_region(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
+    """丢掉穿过不参与减排省份（西藏）的三角剖分候选边与专线。
 
     这些边不是任何源或汇的接入线——西藏没有封存汇，工业点源已在装载时剔除——
     它们只是 Delaunay 在空旷西部连出来的长边，留着既不会被选中，又让图上看着像有管网。
     既有管廊与接入支线不动：那是真实存在的管道。
     """
-    import geopandas as gpd
-    from shapely.geometry import LineString as _LS
-
-    path = paths.data_dir / "ChinaMap" / "provinces.shp"
-    if not path.exists():
+    region = _excluded_region(paths)
+    if region is None:
         return edges
-    prov = gpd.read_file(path)
-    hit = prov[prov["NAME"].astype(str).isin(EXCLUDED_REGION_NAMES)]
-    if hit.empty:
-        return edges
-    region = hit.to_crs("EPSG:4326").geometry.union_all()
-    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    coords = node_coordinates(nodes)
     drop = []
     for row in edges.itertuples(index=False):
         if str(row.edge_class) not in (NETWORK_EDGE_CLASS_TRIANGULATION, NETWORK_EDGE_CLASS_DIRECT):
@@ -228,22 +232,12 @@ def _drop_edges_over_excluded_region(paths, nodes: pd.DataFrame, edges: pd.DataF
         a, b = coords.get(str(row.from_node_id)), coords.get(str(row.to_node_id))
         if a is None or b is None:
             continue
-        if _LS([a, b]).intersects(region):
+        if LineString([a, b]).intersects(region):
             drop.append(str(row.edge_id))
     if drop:
         logger.info("dropped %d triangulation edges crossing %s", len(drop), EXCLUDED_REGION_NAMES[0])
         edges = edges[~edges["edge_id"].astype(str).isin(set(drop))].reset_index(drop=True)
     return edges
-
-
-def _excluded_region(paths: ProjectPaths):
-    """不参与减排省份的几何；没有图层时返回 None。"""
-    path = paths.data_dir / "ChinaMap" / "provinces.shp"
-    if not path.exists():
-        return None
-    hit = gpd.read_file(path)
-    hit = hit[hit["NAME"].astype(str).isin(EXCLUDED_REGION_NAMES)]
-    return None if hit.empty else hit.to_crs("EPSG:4326").geometry.union_all()
 
 
 def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
@@ -254,10 +248,9 @@ def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFr
     IND_*_t95 的 2060 年有 26 个小汇被超注入 196 Mt/yr，而 S002 闲置 162 Mt/yr。
     备选网络不该替优化器决定"谁不许去哪个汇"；要不要真建这些管段仍由优化器决定。
     """
-    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    coords = node_coordinates(nodes)
     region = _excluded_region(paths)
-    geometries = [g for g in (_build_edge_geometry(row, coords) for _, row in edges.iterrows())
-                  if g is not None and not g.is_empty]
+    geometries = edge_geometries(edges, coords)
     ids = list(coords)
     lon = np.array([coords[n][0] for n in ids], dtype=np.float64)
     lat = np.array([coords[n][1] for n in ids], dtype=np.float64)
@@ -302,23 +295,14 @@ def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFr
                         MIN_STITCH_LENGTH_KM)
         graph.add_edge(node_a, node_b)
         geometries.append(line)
-        record = {column: pd.NA for column in edges.columns}
-        record.update({
-            "edge_id": f"edge_merge_{len(added) + 1:05d}",
-            "feature_index": -3,
-            "part_index": 1,
-            "from_node_id": node_a,
-            "to_node_id": node_b,
-            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
-            "direct_length_km": round(direct_km, 3),
-            "tortuosity": NETWORK_DETOUR_FACTOR,
-            "geometry_wkt": line.wkt,
-            "corridor_type": "triangulation",
-            "existing_corridor_flag": 0,
-            "edge_class": NETWORK_EDGE_CLASS_TRIANGULATION,
-            "source": "component_merge_rule",
-            "year_basis": STATIC_LAYER_YEAR_BASIS,
-        })
+        record: dict[str, object] = {column: pd.NA for column in edges.columns}
+        record.update(
+            make_edge_record(
+                f"edge_merge_{len(added) + 1:05d}", -3, node_a, node_b, direct_km,
+                geometry_wkt=line.wkt, corridor_type="triangulation",
+                edge_class=NETWORK_EDGE_CLASS_TRIANGULATION, source="component_merge_rule",
+            )
+        )
         added.append(record)
     if added:
         logger.info("merged the network into one component with %d links (%d unavoidable)",

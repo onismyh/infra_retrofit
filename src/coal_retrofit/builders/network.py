@@ -1,306 +1,28 @@
+"""候选管网两张表（`pipeline_nodes.csv`、`pipeline_candidate_edges.csv`）的构建流程 `build_network_tables`：
+既有油气干线走廊（`network_corridors`）与煤电、封存、工业点源的接入支线（`network_branches`）合成一张图，加源—汇
+三角剖分候选边（`network_triangulation`），剔西藏、去交叉、缝合、并片（`network_repair`），再补源到汇的专线，最后量每条边的
+海上段（`network_offshore`）。`--no-corridors` 时只有煤电与封存端点，没有走廊与支线。列序与边记录在 `network_edges`。"""
 from __future__ import annotations
 
 import logging
-from itertools import combinations
-from pathlib import Path
 
-import geopandas as gpd
-import networkx as nx
-import numpy as np
 import pandas as pd
-from pyproj import Transformer
-from scipy.spatial import Delaunay, QhullError
-from shapely.geometry import LineString
-from shapely.strtree import STRtree
 
 from ..artifacts import write_csv
-from ..constants import (
-    NETWORK_COORD_DECIMALS,
-    NETWORK_DETOUR_FACTOR,
-    NETWORK_DIRECT_SINK_TOP_K,
-    NETWORK_EDGE_CLASS_DIRECT,
-    NETWORK_EDGE_CLASS_MAIN,
-    NETWORK_EDGE_CLASS_TRIANGULATION,
-    NETWORK_TRIANGULATION_CRS,
-    NETWORK_TRIANGULATION_MAX_EDGE_KM,
-    NETWORK_TRIANGULATION_MAX_STRETCH,
-    STATIC_LAYER_YEAR_BASIS,
-    TARGET_GEO_CRS,
-)
 from ..paths import ProjectPaths
-from ..spatial import geodesic_length_km, geometry_parts, haversine_km
 from .network_branches import build_attachment_tables
+from .network_corridors import build_corridor_tables, load_corridor_layer
+from .network_edges import EDGE_COLUMNS, NODE_COLUMNS
 from .network_offshore import offshore_length_km
 from .network_repair import (
-    _build_edge_geometry,
     _drop_edges_over_excluded_region,
     _merge_components,
     _remove_crossing_edges,
     _unreached_terminals,
 )
+from .network_triangulation import build_direct_sink_edges, build_triangulation_candidate_edges
 
 logger = logging.getLogger(__name__)
-
-
-def load_corridor_layer(paths: ProjectPaths, filename: str, corridor_type: str) -> tuple[gpd.GeoDataFrame, Path, list[str]]:
-    path = paths.find_data_file(filename)
-    gdf = gpd.read_file(path)
-    fields = [column for column in gdf.columns if column != "geometry"]
-    if gdf.crs is None:
-        raise ValueError(f"{path} has no CRS defined")
-    if gdf.crs.to_string() != TARGET_GEO_CRS:
-        gdf = gdf.to_crs(TARGET_GEO_CRS)
-    gdf = gdf.reset_index(drop=True).copy()
-    gdf["corridor_type"] = corridor_type
-    gdf["source"] = paths.rel(path)
-    gdf["year_basis"] = STATIC_LAYER_YEAR_BASIS
-    return gdf, path, fields
-
-
-def build_corridor_tables(paths: ProjectPaths, layers: list[tuple[gpd.GeoDataFrame, Path]]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    node_stats: dict[tuple[float, float], dict[str, object]] = {}
-    edge_rows: list[dict[str, object]] = []
-    edge_counter = 0
-
-    for gdf, path in layers:
-        source = paths.rel(path)
-        corridor_type = str(gdf["corridor_type"].iloc[0])
-        for feature_index, row in enumerate(gdf.itertuples(index=False), start=1):
-            for part_index, part in enumerate(geometry_parts(row.geometry), start=1):
-                coords = list(part.coords)
-                if len(coords) < 2:
-                    continue
-
-                wp_from = (round(coords[0][0], NETWORK_COORD_DECIMALS), round(coords[0][1], NETWORK_COORD_DECIMALS))
-                wp_to   = (round(coords[-1][0], NETWORK_COORD_DECIMALS), round(coords[-1][1], NETWORK_COORD_DECIMALS))
-
-                for wp in [wp_from, wp_to]:
-                    stats = node_stats.setdefault(
-                        wp,
-                        {"lon": wp[0], "lat": wp[1], "degree": 0, "sources": set()},
-                    )
-                    stats["sources"].add(source)
-
-                node_stats[wp_from]["degree"] = int(node_stats[wp_from]["degree"]) + 1
-                node_stats[wp_to]["degree"]   = int(node_stats[wp_to]["degree"])   + 1
-
-                length_km = geodesic_length_km(coords)
-                edge_counter += 1
-                edge_rows.append(
-                    {
-                        "edge_id": f"edge_{edge_counter:05d}",
-                        "feature_index": feature_index,
-                        "part_index": part_index,
-                        "from_node_key": wp_from,
-                        "to_node_key": wp_to,
-                        "length_km": round(length_km, 3),
-                        "direct_length_km": round(length_km, 3),
-                        "tortuosity": 1.0,
-                        "geometry_wkt": part.wkt,
-                        "corridor_type": corridor_type,
-                        "existing_corridor_flag": 1,
-                        "edge_class": NETWORK_EDGE_CLASS_MAIN,
-                        "source": source,
-                        "year_basis": STATIC_LAYER_YEAR_BASIS,
-                    }
-                )
-
-    node_keys = sorted(node_stats.keys(), key=lambda item: (item[0], item[1]))
-    node_id_map = {key: f"node_{index:05d}" for index, key in enumerate(node_keys, start=1)}
-
-    nodes = pd.DataFrame(
-        {
-            "node_id": node_id_map[key],
-            "lon": node_stats[key]["lon"],
-            "lat": node_stats[key]["lat"],
-            "node_type": "corridor_junction" if int(node_stats[key]["degree"]) > 1 else "corridor_endpoint",
-            "degree": int(node_stats[key]["degree"]),
-            "source": ";".join(sorted(node_stats[key]["sources"])),
-            "year_basis": STATIC_LAYER_YEAR_BASIS,
-        }
-        for key in node_keys
-    ).sort_values(["lon", "lat", "node_id"]).reset_index(drop=True)
-
-    edges = pd.DataFrame(
-        {
-            "edge_id": row["edge_id"],
-            "feature_index": row["feature_index"],
-            "part_index": row["part_index"],
-            "from_node_id": node_id_map[row["from_node_key"]],
-            "to_node_id": node_id_map[row["to_node_key"]],
-            "length_km": row["length_km"],
-            "direct_length_km": row.get("direct_length_km", row["length_km"]),
-            "tortuosity": row.get("tortuosity", 1.0),
-            "geometry_wkt": row.get("geometry_wkt", ""),
-            "corridor_type": row["corridor_type"],
-            "existing_corridor_flag": row["existing_corridor_flag"],
-            "edge_class": row["edge_class"],
-            "source": row["source"],
-            "year_basis": row["year_basis"],
-        }
-        for row in edge_rows
-    ).sort_values(["corridor_type", "feature_index", "part_index", "edge_id"]).reset_index(drop=True)
-
-    return nodes, edges
-
-
-def _unordered_edge_key(from_node_id: str, to_node_id: str) -> tuple[str, str]:
-    return tuple(sorted((str(from_node_id), str(to_node_id))))
-
-
-def _next_edge_index(edges: pd.DataFrame) -> int:
-    """`edge_id` 中最大数字后缀加一。
-
-    不是 `len(edges) + 1`：去交叉过滤删掉若干行之后，表中最大的 id 会超过表长，按表长编号
-    会悄悄重发已在使用的 id。`prepare_inputs` 以 `edge_id` 为键，所以重复项会被丢弃而不是
-    报错——早先有一次建网就这样丢了 410 条候选边，连一条警告都没有。
-    """
-    if edges.empty or "edge_id" not in edges.columns:
-        return 1
-    suffixes = (
-        edges["edge_id"].astype(str).str.extract(r"(\d+)$", expand=False).dropna().astype(int)
-    )
-    return int(suffixes.max()) + 1 if len(suffixes) else len(edges) + 1
-
-
-def _project_points(nodes: pd.DataFrame) -> np.ndarray:
-    transformer = Transformer.from_crs(TARGET_GEO_CRS, NETWORK_TRIANGULATION_CRS, always_xy=True)
-    x, y = transformer.transform(
-        nodes["lon"].astype(float).to_numpy(),
-        nodes["lat"].astype(float).to_numpy(),
-    )
-    return np.column_stack([np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)])
-
-
-def _knn_candidate_pairs(points_xy: np.ndarray, k: int = 3) -> set[tuple[int, int]]:
-    candidate_pairs: set[tuple[int, int]] = set()
-    point_count = len(points_xy)
-    if point_count < 2:
-        return candidate_pairs
-    for idx in range(point_count):
-        deltas = points_xy - points_xy[idx]
-        distance_sq = np.einsum("ij,ij->i", deltas, deltas)
-        ranked = np.argsort(distance_sq)
-        for neighbor_idx in ranked[1 : min(point_count, k + 1)]:
-            candidate_pairs.add(tuple(sorted((idx, int(neighbor_idx)))))
-    return candidate_pairs
-
-
-def _triangulation_candidate_pairs(points_xy: np.ndarray) -> set[tuple[int, int]]:
-    point_count = len(points_xy)
-    if point_count < 2:
-        return set()
-    if point_count == 2:
-        return {(0, 1)}
-    try:
-        simplices = Delaunay(points_xy, qhull_options="QJ").simplices
-    except (QhullError, ValueError) as exc:
-        logger.warning("Delaunay 三角化失败（%s），候选边改用 k=3 近邻", exc)
-        return _knn_candidate_pairs(points_xy, k=3)
-
-    candidate_pairs: set[tuple[int, int]] = set()
-    for simplex in simplices:
-        for idx_a, idx_b in combinations(sorted(int(value) for value in simplex), 2):
-            candidate_pairs.add((idx_a, idx_b))
-    return candidate_pairs
-
-
-def _build_length_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
-    graph = nx.Graph()
-    for row in nodes.itertuples(index=False):
-        graph.add_node(str(row.node_id))
-    for row in edges.itertuples(index=False):
-        graph.add_edge(
-            str(row.from_node_id),
-            str(row.to_node_id),
-            length_km=float(row.length_km),
-        )
-    return graph
-
-
-def build_triangulation_candidate_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
-    terminals = nodes.loc[
-        nodes["node_type"].isin(["plant", "storage_hub"]),
-        ["node_id", "lon", "lat", "node_type", "plant_id", "storage_hub_id", "source", "year_basis"],
-    ].dropna(subset=["lon", "lat"]).reset_index(drop=True)
-    if len(terminals) < 2:
-        return pd.DataFrame(columns=list(edges.columns))
-
-    points_xy = _project_points(terminals)
-    candidate_pairs = _triangulation_candidate_pairs(points_xy)
-    if not candidate_pairs:
-        return pd.DataFrame(columns=list(edges.columns))
-
-    graph = _build_length_graph(nodes, edges)
-    existing_edge_keys = {
-        _unordered_edge_key(str(row.from_node_id), str(row.to_node_id))
-        for row in edges.itertuples(index=False)
-    }
-
-    edge_rows: list[dict[str, object]] = []
-    next_edge_index = _next_edge_index(edges)
-    feature_index = 1
-
-    for idx_a, idx_b in sorted(candidate_pairs):
-        node_a = terminals.iloc[idx_a]
-        node_b = terminals.iloc[idx_b]
-        from_node_id = str(node_a["node_id"])
-        to_node_id = str(node_b["node_id"])
-        edge_key = _unordered_edge_key(from_node_id, to_node_id)
-        if edge_key in existing_edge_keys:
-            continue
-
-        direct_length_km = geodesic_length_km(
-            [
-                (float(node_a["lon"]), float(node_a["lat"])),
-                (float(node_b["lon"]), float(node_b["lat"])),
-            ]
-        )
-        if direct_length_km > NETWORK_TRIANGULATION_MAX_EDGE_KM:
-            continue
-
-        # 新建管道不会沿大圆走。本表中既有走廊的边已带有实际路由的折线长度，所以把三角
-        # 剖分边留在原始大地线长度上，曾使新建管道从构造上就显得比复用走廊便宜。
-        routed_length_km = direct_length_km * NETWORK_DETOUR_FACTOR
-
-        try:
-            existing_path_km = float(nx.shortest_path_length(graph, from_node_id, to_node_id, weight="length_km"))
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            existing_path_km = float("inf")
-
-        if np.isfinite(existing_path_km) and existing_path_km <= routed_length_km * NETWORK_TRIANGULATION_MAX_STRETCH:
-            continue
-
-        line_geom = LineString([
-            (float(node_a["lon"]), float(node_a["lat"])),
-            (float(node_b["lon"]), float(node_b["lat"]))
-        ])
-
-        edge_rows.append(
-            {
-                "edge_id": f"edge_{next_edge_index:05d}",
-                "feature_index": feature_index,
-                "part_index": 1,
-                "from_node_id": from_node_id,
-                "to_node_id": to_node_id,
-                "length_km": round(float(routed_length_km), 3),
-                "direct_length_km": round(float(direct_length_km), 3),
-                "tortuosity": NETWORK_DETOUR_FACTOR,
-                "geometry_wkt": line_geom.wkt,
-                "corridor_type": "triangulation",
-                "existing_corridor_flag": 0,
-                "edge_class": NETWORK_EDGE_CLASS_TRIANGULATION,
-                "source": "source_sink_delaunay_rule",
-                "year_basis": STATIC_LAYER_YEAR_BASIS,
-            }
-        )
-        existing_edge_keys.add(edge_key)
-        next_edge_index += 1
-        feature_index += 1
-
-    if not edge_rows:
-        return pd.DataFrame(columns=list(edges.columns))
-    return pd.DataFrame(edge_rows)
 
 
 def _merge_network_tables(
@@ -310,6 +32,8 @@ def _merge_network_tables(
     branch_edges: pd.DataFrame,
     corridor_degree_additions: dict[str, int],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """走廊表与支线表合成一张图：走廊节点的度数加上接入的支线数并据此重定节点类型，两表按 `NODE_COLUMNS` / `EDGE_COLUMNS`
+    补齐列并按 id 排序。"""
     nodes = main_nodes.copy()
     if corridor_degree_additions:
         added_degree = nodes["node_id"].map(corridor_degree_additions).fillna(0).astype(int)
@@ -325,123 +49,18 @@ def _merge_network_tables(
     if not branch_edges.empty:
         edges = pd.concat([edges, branch_edges], ignore_index=True, sort=False)
 
-    node_columns = [
-        "node_id",
-        "lon",
-        "lat",
-        "node_type",
-        "degree",
-        "source",
-        "year_basis",
-        "plant_id",
-        "plant_index",
-        "storage_hub_id",
-        "storage_hub_index",
-        "industry_hub_id",
-        "industry_index",
-        "province",
-    ]
-    edge_columns = [
-        "edge_id",
-        "feature_index",
-        "part_index",
-        "from_node_id",
-        "to_node_id",
-        "length_km",
-        "direct_length_km",
-        "tortuosity",
-        "geometry_wkt",
-        "corridor_type",
-        "existing_corridor_flag",
-        "edge_class",
-        "source",
-        "year_basis",
-    ]
-
-    for column in node_columns:
+    for column in NODE_COLUMNS:
         if column not in nodes.columns:
             nodes[column] = pd.NA
-    for column in edge_columns:
+    for column in EDGE_COLUMNS:
         if column not in edges.columns:
             edges[column] = pd.NA
 
     return (
-        nodes[node_columns].sort_values(["node_id"]).reset_index(drop=True),
-        edges[edge_columns].sort_values(["edge_id"]).reset_index(drop=True),
+        nodes[list(NODE_COLUMNS)].sort_values(["node_id"]).reset_index(drop=True),
+        edges[list(EDGE_COLUMNS)].sort_values(["edge_id"]).reset_index(drop=True),
     )
 
-
-def build_direct_sink_edges(
-    nodes: pd.DataFrame, edges: pd.DataFrame, top_k: int = NETWORK_DIRECT_SINK_TOP_K
-) -> pd.DataFrame:
-    """每个源到其最近 top_k 个汇的专线候选弧，但只保留不与已有边相交的那些。
-
-    专线是真实存在的接入方式（`direct_fallback_capex_multiplier` 2.8 倍就是为它准备的
-    溢价），去掉它会把"必须全程走共享干线"当成硬约束，2050 年水泥捕集因此少了约 70 Mt。
-    但原实现把这些弧放在去交叉之后追加，于是它们以直线穿过整张图——正是图上那些"很奇怪
-    的线"。这里改为：逐条测试，与既有候选边相交的直接丢弃，被接受的立刻计入测试集合，
-    所以专线之间也不会互相交叉。源包括煤电与工业点源。
-    """
-    sources = nodes.loc[
-        nodes["node_type"].isin(["plant", "industry_hub"]), ["node_id", "lon", "lat"]
-    ].dropna().reset_index(drop=True)
-    sinks = nodes.loc[nodes["node_type"] == "storage_hub", ["node_id", "lon", "lat"]].dropna().reset_index(drop=True)
-    if sources.empty or sinks.empty:
-        return pd.DataFrame(columns=list(edges.columns))
-
-    coords = {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
-    kept_geoms = [g for g in (_build_edge_geometry(row, coords) for _, row in edges.iterrows())
-                  if g is not None and not g.is_empty]
-    existing = {
-        frozenset((str(r.from_node_id), str(r.to_node_id)))
-        for r in edges.itertuples(index=False)
-    }
-    sink_lon = sinks["lon"].to_numpy(dtype=np.float64)
-    sink_lat = sinks["lat"].to_numpy(dtype=np.float64)
-    sink_ids = sinks["node_id"].astype(str).to_numpy()
-
-    next_index = 1
-    rows: list[dict[str, object]] = []
-    order = []
-    for row in sources.itertuples(index=False):
-        dist = haversine_km(float(row.lon), float(row.lat), sink_lon, sink_lat)
-        for position in np.argsort(dist)[:top_k]:
-            order.append((float(dist[position]), str(row.node_id), str(sink_ids[position])))
-    order.sort()                                    # 短的先试，长的更可能被挡掉
-
-    tree = STRtree(kept_geoms)
-    pending: list[LineString] = []
-    for direct_km, from_id, to_id in order:
-        if frozenset((from_id, to_id)) in existing:
-            continue
-        line = LineString([coords[from_id], coords[to_id]])
-        if any(line.crosses(kept_geoms[int(k)]) for k in tree.query(line)):
-            continue
-        if any(line.crosses(other) for other in pending):
-            continue
-        pending.append(line)
-        existing.add(frozenset((from_id, to_id)))
-        rows.append({
-            "edge_id": f"edge_direct_{next_index:05d}",
-            "feature_index": -2,
-            "part_index": 1,
-            "from_node_id": from_id,
-            "to_node_id": to_id,
-            "length_km": round(direct_km * NETWORK_DETOUR_FACTOR, 3),
-            "direct_length_km": round(direct_km, 3),
-            "tortuosity": NETWORK_DETOUR_FACTOR,
-            "geometry_wkt": line.wkt,
-            "corridor_type": "direct",
-            "existing_corridor_flag": 0,
-            "edge_class": NETWORK_EDGE_CLASS_DIRECT,
-            "source": "direct_sink_rule",
-            "year_basis": STATIC_LAYER_YEAR_BASIS,
-        })
-        next_index += 1
-    if not rows:
-        return pd.DataFrame(columns=list(edges.columns))
-    logger.info("kept %d of %d direct source-sink arcs (crossing-free)", len(rows), len(order))
-    return pd.DataFrame(rows)
 
 def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
     if use_corridors:
@@ -544,11 +163,7 @@ def _build_terminal_only_nodes(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.Da
         node_index += 1
 
     nodes = pd.DataFrame(node_rows)
-    edges = pd.DataFrame(columns=[
-        "edge_id", "feature_index", "part_index", "from_node_id", "to_node_id",
-        "length_km", "direct_length_km", "tortuosity", "geometry_wkt",
-        "corridor_type", "existing_corridor_flag", "edge_class", "source", "year_basis",
-    ])
+    edges = pd.DataFrame(columns=list(EDGE_COLUMNS))
     return nodes, edges
 
 

@@ -57,7 +57,7 @@ CLAUDE.md §二.6 记的 "v8 = 重建版本（103 个汇、**连通性修复网�
 直连弧（`runtime_direct_fallback`）。这些弧是在去交叉**之后**追加的，所以以直线横穿整张
 图——2050 年它们承担了 41 575 km、930 Mt，占管网长度的一半。图上那些"很奇怪的线"就是它们。
 
-重建后的规则（`builders/network.py`、`builders/network_branches.py`）：
+重建后的规则（`builders/network.py`；走廊、三角剖分与专线、去交叉与缝合、接入支线分别在 `network_corridors.py`、`network_triangulation.py`、`network_repair.py`、`network_branches.py`）：
 
 1. 工业点源与煤电、封存汇一起进入节点表，一起做 Delaunay 三角剖分；
 2. 西藏不参与减排：hub 在装载时剔除（4 个水泥 hub，即 `industry_sources.csv` 的 8 个点源），穿越西藏的新建候选边一律删除；
