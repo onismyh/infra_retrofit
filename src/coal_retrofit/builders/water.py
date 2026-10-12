@@ -655,8 +655,10 @@ def coarsen_water_inputs(
         for ci, cj, bid in zip(nodes["_ci"], nodes["_cj"], nodes["_bid"])
     ]
 
+    # 粗节点坐标按各细节点的模拟径流（`local_runoff_m3_per_year`，所有成员与规划年的均值）加权：径流不经偏差校正，
+    # 偏差因子改了坐标也不动，`water_nodes.csv` 与供水距离不随之变（作者决定 2026-10-12；此前按校正后的可用量加权）。
     weight = (
-        fine_availability.groupby("water_node_id")["available_water_m3_per_year"].mean().rename("_w")
+        fine_availability.groupby("water_node_id")["local_runoff_m3_per_year"].mean().rename("_w")
     )
     nodes = nodes.merge(weight, left_on="water_node_id", right_index=True, how="left")
     nodes["_w"] = nodes["_w"].fillna(0.0)

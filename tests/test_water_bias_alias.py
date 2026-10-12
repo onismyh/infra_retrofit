@@ -4,7 +4,7 @@ ISIMIP issue #34：CWatM 的 historical qtot 文件在 GCM 之间错位一格（
 MPI、标 ukesm 的是 MRI，真正的 UKESM 没有）。合成五份 cwatm 历史文件（gfdl、ipsl、mpi、mri、ukesm 标签，径流水平各不同）与
 一份 watergap2-2e 的 ipsl 文件，核对：成员取到的是实际驱动它的文件、因子等于官方总量除以该文件的流域径流、cwatm|ukesm 取
 四个真实成员的均值、没下载文件的成员保持 1.0 且不进均值（并有告警）、对应表指向的文件缺失时该成员同样 1.0、没有捐赠成员时
-ukesm 也是 1.0、WaterGAP 不受对应表影响；粗化按情景保留 `bias_source`。
+ukesm 也是 1.0、WaterGAP 不受对应表影响；粗化按情景保留 `bias_source`、坐标按模拟径流而不是校正后的可用量加权。
 """
 from __future__ import annotations
 
@@ -155,3 +155,20 @@ def test_coarsening_keeps_bias_source() -> None:
     assert len(coarse) == 2
     assert coarse["available_water_m3_per_year"].tolist() == pytest.approx([3.0e6, 3.0e6])
     assert dict(zip(coarse["gcm"], coarse["bias_source"], strict=True)) == source
+
+
+def test_coarsening_weights_coordinates_by_local_runoff() -> None:
+    nodes = pd.DataFrame({"water_node_id": ["N1", "N2"], "province_name": ["北京市", "北京市"], "basin_code": ["C", "C"],
+                          "longitude": [116.0, 117.0], "latitude": [40.0, 41.0]})
+    availability = pd.DataFrame({
+        "water_node_id": ["N1", "N2"], "planning_year": [2030, 2030], "scenario_family": ["baseline"] * 2,
+        "scenario_id": ["cwatm|gfdl-esm4|ssp126"] * 2, "hydrology_model": ["cwatm"] * 2, "gcm": ["gfdl-esm4"] * 2,
+        "ssp": ["ssp126"] * 2, "basin_code": ["C", "C"],
+        # 校正后可用量相同、模拟径流 1 : 3——坐标只跟径流走，与偏差因子无关
+        "available_water_m3_per_year": [1.0e6, 1.0e6], "dry_season_water_m3_per_year": [1.0e5, 1.0e5],
+        "local_runoff_m3_per_year": [1.0e6, 3.0e6], "bias_factor": [1.0, 1.0 / 3.0], "bias_source": ["f", "f"],
+    })
+    coarse, _ = coarsen_water_inputs(nodes, availability, 2.0)
+    assert len(coarse) == 1
+    assert coarse["longitude"].iloc[0] == pytest.approx(116.75)
+    assert coarse["latitude"].iloc[0] == pytest.approx(40.75)

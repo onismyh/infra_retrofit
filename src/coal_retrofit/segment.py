@@ -15,7 +15,8 @@ from typing import Any
 # 第 11 段（2026-10-11）：绿氢节点松弛罚额按 NH3_H2_RATIO 折到氢（1000 / 0.18 元/kg H2，此前 1000 元/kg H2）。
 # 第 12 段（2026-10-12）：水表重建：cwatm 的 ipsl / mpi / mri 偏差因子按实际驱动的历史文件（ISIMIP issue #34），
 # ukesm 取其余四个 GCM 的均值；粗化水节点坐标随之微移，所有情景的供水距离与输入摘要都变。
-MODEL_SEGMENT = 12
+# 第 13 段（2026-10-12）：粗化水节点坐标改按模拟径流（local_runoff）加权（此前按校正后的可用量），水节点与供水链路表重建。
+MODEL_SEGMENT = 13
 
 
 class StaleResultError(RuntimeError):
