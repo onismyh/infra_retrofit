@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..constants import DEFAULT_DISCOUNT_RATE, PLANNING_YEARS, part_load_heat_rate_factor
+from ..constants import DEFAULT_DISCOUNT_RATE, HOURS_PER_YEAR, PLANNING_YEARS, part_load_heat_rate_factor
 from .assumptions import OptimizationAssumptions
 
 PATHWAYS = ("unabated", "retire", "ccs", "biomass", "beccs", "ammonia")
@@ -165,8 +165,8 @@ class OptimizationScenario:
         online = float(self.coal_part_load_online_hours)
         if online == 0.0:
             return 1.0
-        if not 0.0 < online <= 8760.0:
-            raise ValueError(f"coal_part_load_online_hours must be 0 (off) or in (0, 8760], got {online}")
+        if not 0.0 < online <= HOURS_PER_YEAR:
+            raise ValueError(f"coal_part_load_online_hours must be 0 (off) or in (0, {HOURS_PER_YEAR:g}], got {online}")
         hours = (
             self._interpolate_year_tuple(self.coal_operating_hours_by_year, year)
             if self.coal_operating_hours_by_year else float(fleet_hours_now)

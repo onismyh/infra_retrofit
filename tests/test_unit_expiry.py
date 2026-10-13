@@ -14,8 +14,8 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
-from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG
-from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor, _year_objective_weight
+from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG, annuity_factor
+from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.data_prep_plants import _with_expiry
 from coal_retrofit.optimization.results_costs import build_costs_table, build_system_table, cost_closure
@@ -318,8 +318,8 @@ def test_running_capacity_burns_at_its_own_heat_rate(tmp_path, electricity, reti
     reference = float(year_data.baseline_reference_cny[0])
     assert float(delta_rows["cost_cny"].sum()) + reference == pytest.approx(expected, rel=1e-6)
     # 目标函数里的同一项（除去折现与年金系数）。
-    weight = _discount_factor(2050, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
-        scenario.interval_years(YEARS, 0, assumptions), scenario.discount_rate
+    weight = _discount_factor(2050, scenario.discount_base_year, scenario.discount_rate) * annuity_factor(
+        scenario.discount_rate, scenario.interval_years(YEARS, 0, assumptions)
     )
     assert ys["cost_breakdown_cny"]["coal_operating_delta"] / weight + reference == pytest.approx(expected, rel=1e-6)
 

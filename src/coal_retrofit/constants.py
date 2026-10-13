@@ -306,3 +306,33 @@ PLANNING_YEARS = [2030, 2040, 2050, 2060]
 # 为 8%，受益期长的项目可降低但不低于 6%（只见检索摘要，条款与后续修订未核）；Wang et al. 2025 取 5%（敏感性
 # 3-8%），`reference/CCS_Network_Optimize.gms` 取 8%。
 DEFAULT_DISCOUNT_RATE = 0.06
+
+
+def _discounted_share(rate: float, n: int) -> float:
+    """1 − (1 + r)^−n：年金系数与资本回收系数共用的一项。"""
+    return 1.0 - (1.0 + rate) ** (-n)
+
+
+def annuity_factor(rate: float, years: int) -> float:
+    """年金系数：`years` 年内每年 1 单位按 `rate` 折到期初的现值，(1 − (1 + r)^−n) / r；r ≈ 0 时为 n，年数下限为 1。
+
+    目标函数的区间年金权重（`optimization.model_costs`）用它；资本回收系数是它的倒数（`capital_recovery_factor`）。
+    """
+    n = max(1, int(years))
+    if rate <= 1e-9:
+        return float(n)
+    return _discounted_share(rate, n) / rate
+
+
+def capital_recovery_factor(rate: float, years: int) -> float:
+    """资本回收系数：按 `rate` 在 `years` 年内还清单位资本的每年支付额，r / (1 − (1 + r)^−n)，即年金系数的倒数；
+    r ≈ 0 时为 1 / n，年数下限为 1。工业捕集与氢路线的平准化核对、氨价里的合成岛年金用它。"""
+    n = max(1, int(years))
+    if rate <= 1e-9:
+        return 1.0 / n
+    return rate / _discounted_share(rate, n)
+
+
+# 一年的小时数：煤电利用小时与容量因子互换（cf = 小时 / 8760），`src/` 与 `scripts/` 只此一处。ISIMIP 径流的年化
+# 另按 365.25 天（`builders.water_grid.SECONDS_PER_YEAR`），两者用途不同、不合并。
+HOURS_PER_YEAR = 8760.0

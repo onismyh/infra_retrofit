@@ -139,6 +139,9 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
 > 2026-10-12 起（同日第二个 PR）粗化水节点坐标改按模拟径流 `local_runoff_m3_per_year` 加权（此前按校正后的可用量，偏差因子一变坐标就动）：
 > `water_availability.csv` 不变，`water_nodes.csv` 343 个节点坐标移动（最大 4.50 km、中位 0.24 km），`water_supply_links.csv` 1 569 → 1 566 条，
 > P0027、P0111 的最近节点改变。输入表变更，模型分段 12 → 13（`docs/方法论.md` §2.3，根 README §0，CLAUDE.md §二.7）。
+> 2026-10-13 起 ISIMIP 网格面积的地球半径改用 haversine 的 6 371.0088 km（此前 6 371 km）：`water_basin_use.csv` 的耗水与
+> `water_availability.csv` 的 `local_runoff_m3_per_year` 整体放大 2.76 ppm，偏差校正后的可用量与 `water_nodes.csv` 坐标只差浮点末位，
+> `bias_factor` 1 384 行末位翻动；`water_basin_caps.csv` 的 `residual_m3_per_year` 取整到 m³。输入表变更，模型分段 13 → 14（根 README §0，CLAUDE.md §二.7）。
 
 其余一律不动：`industry_hubs.csv`、`industry_sources.csv`、
 `water_availability.csv`、`water_nodes.csv`、`water_basin_caps.csv`、
@@ -313,6 +316,9 @@ python scripts/summarize_industry_runs.py IND_BASE_t95 IND_WA_cwatm_126_dry_oq_t
 > ⚠ **模型改动（2026-10-12，模型分段 13）**：粗化水节点坐标改按模拟径流加权（此前按校正后的可用量），`water_nodes.csv` 坐标最多移 4.50 km，
 > 供水链路 1 569 → 1 566 条、两个厂址的最近节点改变，`water_availability.csv` 不变（`docs/方法论.md` §2.3）。下表的结果与同日
 > 第十二段的任何结果都**不得与改后的求解相减**，要用须重解。
+>
+> ⚠ **模型改动（2026-10-13，模型分段 14）**：网格面积的地球半径统一（耗水与模拟径流整体放大 2.76 ppm）、流域余量取整到 m³、煤电发电量直接按
+> 利用小时算（不经容量因子往返）。除耗水与模拟径流的 2.76 ppm 外，其余数值只在浮点末位附近变，但分段号已加一，下表的结果与第十三段的任何结果都**不得与改后的求解相减**，要用须重解。
 
 `IND_` 系之后的重构（部门目标、利用小时轨迹、工业产量指数、封存爬坡、整数管径、全国生物质 / 氨 / 氢上限、
 capex 与走廊参数改出处值；其中封存爬坡与全国氨上限已于 2026-10-10 删除）见 `docs/工业联合减排实现说明.md` §九。**`ST_` 与 `IND_` 不得相减。**

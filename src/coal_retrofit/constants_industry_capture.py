@@ -1,11 +1,12 @@
 """工业 CO2 捕集（CCS 路线）参数与计价函数：可捕集份额、捕集岛改造 capex、固定运维、蒸汽与电耗、耗材、用水惩罚、寿命，
-以及资本回收系数与按模型煤价电价计的每吨捕集成本。成本口径（作者 2026-09-22 决定）见下方注释；每个数字要么附出处，
+以及按模型煤价电价计的每吨捕集成本（资本回收系数在 `constants.capital_recovery_factor`）。成本口径（作者 2026-09-22 决定）见下方注释；每个数字要么附出处，
 要么标 `⚠ 假设`。部门键与取水定额在 `constants_industry`，氢路线在 `constants_industry_h2`。
 """
 from __future__ import annotations
 
 from typing import Final
 
+from .constants import capital_recovery_factor
 from .constants_industry import (
     SECTOR_AMMONIA,
     SECTOR_CEMENT,
@@ -188,22 +189,6 @@ INDUSTRY_CAPTURE_COST_REFERENCE_CNY_PER_T: Final[dict[str, tuple[float, float]]]
 # 这一项叠加在该部门 GB/T 18916 单位产品取水量之上，正是它让工业 CCS 与煤电冷却
 # 争夺同一份流域定额。
 INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2: Final[float] = 1.65
-
-
-def capital_recovery_factor(rate: float, life_years: int) -> float:
-    """资本回收系数，即年金系数的倒数。
-
-    Args:
-        rate: 年贴现率。
-        life_years: 经济寿命（年），下限为 1。
-
-    Returns:
-        按 `rate` 在 `life_years` 年内还清单位资本所需的每年支付额。
-    """
-    n = max(1, int(life_years))
-    if rate <= 1e-9:
-        return 1.0 / n
-    return rate / (1.0 - (1.0 + rate) ** (-n))
 
 
 def _require(table: dict[str, float], sector: str, what: str) -> float:

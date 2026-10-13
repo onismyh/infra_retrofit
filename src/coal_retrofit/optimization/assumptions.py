@@ -7,7 +7,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from ..constants import COOLING_WATER_INTENSITY_M3_PER_MWH, PLANNING_YEARS, cooling_class
+from ..constants import COOLING_WATER_INTENSITY_M3_PER_MWH, HOURS_PER_YEAR, PLANNING_YEARS, cooling_class
 from ..constants_province import PROVINCE_COAL_COST_CNY_PER_GJ, PROVINCE_NAME_ALIASES, PROVINCE_OPERATING_HOURS
 
 logger = logging.getLogger(__name__)
@@ -351,10 +351,9 @@ class OptimizationAssumptions:
     # 分省年运行小时数（计算发电量时替代统一的 capacity_factor），缺省为 `constants_province.PROVINCE_OPERATING_HOURS` 的副本（出处见该处）。
     province_operating_hours: dict[str, float] = field(default_factory=PROVINCE_OPERATING_HOURS.copy)
 
-    def province_cf(self, province_name: str) -> float:
-        """由运行小时数求某省的容量因子。"""
-        hours = self.province_operating_hours.get(province_name, self.capacity_factor * 8760.0)
-        return hours / 8760.0
+    def province_hours(self, province_name: str) -> float:
+        """某省的年利用小时数；分省表里没有的省按 `capacity_factor` × `HOURS_PER_YEAR`。发电量直接按它算。"""
+        return self.province_operating_hours.get(province_name, self.capacity_factor * HOURS_PER_YEAR)
 
     def fixed_cost_cny_per_mwh(self, pathway: str) -> float:
         return {

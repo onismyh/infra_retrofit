@@ -333,7 +333,8 @@ def write_basin_caps(paths: ProjectPaths, kind: WeightKind = "demand") -> pd.Dat
                 "compliance_ratio": round(ratio, 4),
                 "residual_uncapped_1e8_m3": round(uncapped, 3),
                 "residual_1e8_m3": round(residual, 3),
-                "residual_m3_per_year": residual * 1e8,
+                # 取整到 m3：不取整时末位浮点随平台的求和顺序变（2026-10-13 前不取整，重建的表与库内表差 4e-15）。
+                "residual_m3_per_year": round(residual * 1e8),
                 "apportionment_weight": kind,
                 "source": "国办发〔2013〕2号 附件1 + 2025年中国水资源公报 表9",
                 "basis": "withdrawal (用水量, 新水取用量)",

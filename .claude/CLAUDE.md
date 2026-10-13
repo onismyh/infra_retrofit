@@ -152,7 +152,7 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    （`salvage_credit`）。不得用平准化每吨捕集成本进目标函数**——动态优化自己决定何时建、跑多久，
    平准化数里的资本回收假设与之矛盾。ACCA21 区间只作交叉核对。参数出处：工业见 `docs/工业部门参数溯源.md` §八，煤电与管网见 `docs/方法论.md` 附录 B.2/B.3
    及 `docs/参数来源索引_20260930.md`。
-   `_indtree` 结果按落盘时间分十一段（第五、六段的分界只对有水约束的情景成立），段与段之间不得相减：2026-09-22 之前是平准化旧口径；09-22 起到 PR #2 合入
+   `_indtree` 结果按落盘时间分十四段（第五、六段的分界只对有水约束的情景成立），段与段之间不得相减：2026-09-22 之前是平准化旧口径；09-22 起到 PR #2 合入
    `feature/industrial-sectors` 之前，是上述口径但还没有 PR #2 在 09-23 做的改动（工业 capex 改计在能力存量增量上、删掉 BECCS 重复计费、管道到寿命可在原址重铺、氨价里的合成岛年金按情景贴现率重算、北京煤价 69.4 → 38.6 元/GJ、长流程钢氢路线减排比例 0.85 → 0.95、合成岛年金寿命 20 → 30 年，
    见 README §0.1、§0.2）；PR #2 合入之后到 PR #11 合入（`9133c7b`，09-28）之前，连续 hub 下掺烧份额可以有一部分不落在
    任何档位上（`Σ_l z ≤ s`，实现说明 §9.8）；PR #11 合入之后到改造能力分代的 PR（2026-09-30，引入 `optimization/vintage.py`）
@@ -180,9 +180,14 @@ WA_<水文源>_<SSP>_<季节>_<wd085>_<后缀>
    用的是标错的 CWatM 历史文件（ISIMIP issue #34：标 ipsl 的文件是 GFDL 的运行，mpi 是 IPSL，mri 是 MPI，ukesm 是 MRI）；此后到粗化水节点坐标
    改按径流加权的 PR（2026-10-12，`MODEL_SEGMENT = 13`）合入之前是第十二段：cwatm 的 ipsl / mpi / mri 按实际驱动它的历史文件估计偏差因子
    （`builders/water_bias.HISTORICAL_FILE_GCM`），ukesm 取其余四个 GCM 的均值（此前用的是 MRI 的文件），`water_availability.csv` 多 `bias_source` 列，
-   粗化水节点坐标按校正后的可用量加权随之微移（≤ 0.13 km），所有情景的供水距离与输入摘要都变，其余同第十一段；此后才是现行口径
-   （第十三段：粗化水节点坐标按各细节点模拟径流 `local_runoff_m3_per_year` 的均值加权，偏差因子不再牵动坐标，`water_nodes.csv` 的坐标
-   最多移 4.5 km、供水链路 1 569 → 1 566 条、2 个厂址的最近节点改变，`water_availability.csv` 不变，其余同第十二段）。2026-10-10 起结果文件 `<结果名>.json`（代码与文档里简称 result.json）记 `resolved.model_segment`，出图与 `check_run_provenance.py --pair`
+   粗化水节点坐标按校正后的可用量加权随之微移（≤ 0.13 km），所有情景的供水距离与输入摘要都变，其余同第十一段；此后到数值换算统一的 PR
+   （2026-10-13，`MODEL_SEGMENT = 14`）合入之前是第十三段：粗化水节点坐标按各细节点模拟径流 `local_runoff_m3_per_year` 的均值加权，偏差因子
+   不再牵动坐标，`water_nodes.csv` 的坐标最多移 4.5 km、供水链路 1 569 → 1 566 条、2 个厂址的最近节点改变，`water_availability.csv` 不变，
+   其余同第十二段；ISIMIP 网格面积按 6 371 km 的球面算，`water_basin_caps.csv` 的 `residual_m3_per_year` 不取整，煤电发电量按利用小时折成
+   容量因子再乘 8760；此后才是现行口径（第十四段：网格面积的球面半径改用与 haversine 同一个 6 371.0088 km（`spatial.EARTH_RADIUS_KM`），
+   `water_basin_use.csv` 的生活与灌溉耗水、`water_availability.csv` 的模拟径流放大 2.76 ppm，偏差校正后的可用量不变（只差浮点末位），
+   偏差因子（4 位小数）有 1 384 行末位翻动，关掉偏差校正（`apply_bias_correction = False`）时按它除回的量随之变（相对 ≤ 1.1e-4）；
+   流域余量取整到 m³（最多差 0.46 m³）；发电量直接按利用小时算（末位浮点）；其余同第十三段）。2026-10-10 起结果文件 `<结果名>.json`（代码与文档里简称 result.json）记 `resolved.model_segment`，出图与 `check_run_provenance.py --pair`
    遇到与当前 `MODEL_SEGMENT` 不同（含没有这一项）的结果直接拒绝；此后每次改模型口径都把它加一，并在这里记下新段的边界。
    `<结果名>.json` 有 `resolved.code` 的记了求解时的
    提交号（`commit`，`dirty` 标有无未提交的改动），按提交号判断（`commit` 为空的记不了提交号，同样按落盘时间判断）；

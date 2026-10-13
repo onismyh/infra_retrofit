@@ -771,6 +771,34 @@
 > 验证：合成走廊建网前后两张表逐字节相同（833 节点 / 1 315 边），7 张水表改前改后逐字节相同（其中 6 张与库内
 > 相同，`water_basin_caps.csv` 与库内只差浮点末位，改前就如此），十张图的 38 个文件逐字节相同；477 个测试通过（新增 3 个）；
 > 方法论 87 处 `文件:行` 引用随行号移动，文首基准改为 `81ea6c9`。
+>
+> 2026-10-13 起（同日第二个 PR）重复的数值换算收到一处（**输入表变更，模型分段 13 → 14**；`docs/方法论.md` §4.1、附录 A；CLAUDE.md §二.7
+> 记第十四段边界）：
+> - 地球半径：ISIMIP 网格面积（`builders/water_grid._cell_area_m2`）的球面半径改用 haversine 的 `spatial.EARTH_RADIUS_KM`（6 371.0088 km，
+>   此前另写 6 371 km），`water_grid.EARTH_RADIUS_M` 删去。
+> - 落多边形的判据：落流域（`spatial.nearest_polygon_index`，此前 within）、ISIMIP 网格落省（`builders/water_availability`）、封存汇是否在海上
+>   （`builders/storage._flag_offshore`，此前按省界并集的 contains，压在海岸线上的算海上）与管网节点落省（`optimization/results_regions`）
+>   此前各写一遍，统一走新函数 `spatial.containing_polygon_index`（intersects，压在边界上的取序号小的）。几种判据只对正好压在边界上的点
+>   不同；逐个点集核过：煤电 hub（350）、工业 hub（390）与点源（2 552）、机组（3 623）、水节点（373）、封存汇（89）、管网节点（1 052）、
+>   ISIMIP 网格（15 960）对流域与省界都没有这样的点，合并前 103 个封存体与合并后 89 个汇的海上标记新旧相同（重建的 `storage_hubs.csv` 与库内逐字节相同）。
+>   封存汇标海上与管网节点落省遇 NaN 坐标改为报错（此前记海上）。
+> - 一年的小时数：`constants.HOURS_PER_YEAR`；发电量改为装机 × 分省利用小时（`OptimizationAssumptions.province_hours`），
+>   不再先折成容量因子再乘 8760（`data_prep_plants`、`water_access`、诊断脚本）；此前的中间量 `province_cf`（方法与 `plants` 的同名列）
+>   没有读取方，删去。诊断脚本 `diagnose_official_water_budget.py` 的省名改与模型同样先换成分省表的写法（现有 `plants.csv` 本来就查得到，
+>   输出不变）。
+> - 年金与资本回收系数：`constants.annuity_factor` / `capital_recovery_factor`（后者从 `constants_industry_capture` 搬来），
+>   目标函数的区间年金权重（此前 `optimization/_shared._year_objective_weight`）、工业捕集与氢路线的平准化核对、氨价里的合成岛年金共用，取值不变。
+> - 分箱：`spatial.bin_index`（原 `_bin_index`，int32）由供给节点与粗化水节点共用，节点 id 不变。
+> - `water_basin_caps.csv` 的 `residual_m3_per_year` 取整到 m³：未取整的末位浮点随求和顺序变，改前重建就与库内表差 4e-15。
+> - 图 10 成本构成配色（`plot_style.COST_COLORS`）：此前 7 项与路径色或部门色同值（煤电运行 = 未改造、资源 = 生物质、工业运行与投资 =
+>   电炉钢与长流程钢、封存 = EOR 汇、碳成本 = 合成氨、残值 = 退役），改取同族里别处没用的一档；只在含义相同处同值（煤电改造、管网、松弛惩罚）。
+> - 数字：把半径与取整改回旧值，其余改动下重建的 7 张水表与库内逐字节相同。全部改动下 `water_scenarios.csv`、`water_base.csv`、
+>   `water_supply_links.csv` 不变；`water_basin_use.csv` 的四列耗水与 `water_availability.csv` 的 `local_runoff_m3_per_year` 整体放大 2.76 ppm
+>   （(6 371.0088 / 6 371)² − 1）；偏差校正后的年与枯水期可用量只差浮点末位（相对 ≤ 2.7e-15，因子与面积相消）；`bias_factor`（4 位小数）
+>   1 384 行末位翻动 1e-4，只在关掉偏差校正（`apply_bias_correction = False`）时进模型；`water_nodes.csv` 坐标只差浮点末位（≤ 5.7e-14°）；
+>   流域余量最多差 0.46 m³。十张图的 38 个文件中只有图 10 的 4 个变了。
+> - 模型分段 13 → 14（`src/coal_retrofit/segment.py`）：耗水与可用量的末位都变，此前的所有结果要用当前代码重解。
+> 验证：ruff 0 条；482 个测试通过（新增 5 个：`containing_polygon_index` 的边界与界外、`bin_index`、网格面积之和等于球面积、网格落省压边取小号与界外去掉、封存汇海上标记压边算陆上与 NaN 报错）；mypy src 与 scripts 均 0 条；方法论的 `文件:行` 引用随行号移动，文首基准改为 `1e12126`，§2.3 补网格面积的半径与流域余量取整。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -782,7 +810,7 @@
 |---|---|---|---|
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:198`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:58-79`、`optimization/model_industry.py:175` |
-| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
+| 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`constants.annuity_factor` |
 | 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:129`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:204-209`、`:235-242` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:199` |
@@ -940,7 +968,7 @@
 表外参数表里有两项改了值（作者 2026-09-23 拍板）。两项都改了约束或目标函数的系数，所以与 §0.1 的改动一样，本 PR 合入之前
 落盘的 `ST_` 结果需重解（CLAUDE.md §二.7、`_indtree/README.md` 已同步）：
 
-- 长流程钢的氢路线减排比例 0.85 → 0.95（`constants_industry_h2.py:24-26`）。原仓库根 `inputs/industry_hubs.csv` 的 80 个长流程
+- 长流程钢的氢路线减排比例 0.85 → 0.95（`constants_industry_h2.py:25-27`）。原仓库根 `inputs/industry_hubs.csv` 的 80 个长流程
   hub 共排放 1 690.7 Mt CO₂/yr（2030 年产量指数 1.0），全部转氢时的减排量从 1 437 升到 1 606 Mt/yr，每吨减排分摊的路线成本
   降 10.5%（`_indtree/inputs/` 的 hub 表自 `89f8205` 起入库，与这份逐字节相同）。当时 `scripts/` 与 `_indtree/scripts/` 下的
   `plot_ind_fig1_joint_allocation.py` 也读这个常量，但它画的 `IND_` 情景已不在登记表，脚本在 `_require_registered` 处停下；
@@ -1056,7 +1084,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 > `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
 > `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
 > `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（一个 dataclass 的 76 个字段与出处注释，不再拆）。`scripts/` 下原有的 1 个（`plot_style.py` 592）同日第十三个 PR 拆开后没有了。
+> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（2026-10-13 加 `province_hours`、删 `province_cf` 后 415；一个 dataclass 的 76 个字段与出处注释，不再拆）。`scripts/` 下原有的 1 个（`plot_style.py` 592）同日第十三个 PR 拆开后没有了。
 
 ## 1. 这个项目回答什么问题
 
@@ -1077,7 +1105,7 @@ PR #2 合入时还不清楚的地方（只报告，未改）：
 
 ## 2. 当前实现到了哪一步
 
-截至 2026-10-12（代码基准见方法论文首；模型分段 13）：
+截至 2026-10-13（代码基准见方法论文首；模型分段 14）：
 
 | 部分 | 现状 |
 |---|---|

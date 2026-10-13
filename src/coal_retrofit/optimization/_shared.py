@@ -159,14 +159,6 @@ def _extract_solver_status(model) -> str:
         return "error"
 
 
-def _year_objective_weight(interval_years: int, rate: float = 0.0) -> float:
-    """年金系数：按贴现率计，interval_years 年内每年 1 单位的 NPV。"""
-    n = max(1, interval_years)
-    if rate <= 1e-9:
-        return float(n)
-    return (1.0 - (1.0 + rate) ** (-n)) / rate
-
-
 def _discount_factor(year: int, base_year: int, rate: float) -> float:
     """现值折现因子：1 / (1 + r)^(t - t0)。"""
     return 1.0 / (1.0 + rate) ** max(0, year - base_year)

@@ -13,12 +13,12 @@ from ..constants import (
     SLACK_PENALTY_CNY_PER_GJ_BIOMASS,
     SLACK_PENALTY_CNY_PER_KG_H2,
     SLACK_PENALTY_CNY_PER_M3_WATER,
+    annuity_factor,
 )
 from ._shared import (
     _COST_SCALE,
     PreparedInputs,
     _discount_factor,
-    _year_objective_weight,
     gp,
 )
 from .constraints_rebuilt import rebuilt_dot
@@ -48,7 +48,7 @@ def add_year_costs(
     """
     from .industry import CCS as _IND_CCS, H2 as _IND_H2, industry_capex_expr
 
-    interval_weight = _year_objective_weight(int(payload.interval_years), scenario.discount_rate)
+    interval_weight = annuity_factor(scenario.discount_rate, int(payload.interval_years))
     df = _discount_factor(int(payload.year), scenario.discount_base_year, scenario.discount_rate)
     prev_payload = None if year_position == 0 else year_payloads[year_position - 1]
 

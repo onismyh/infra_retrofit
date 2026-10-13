@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.builders import water_quota
+from coal_retrofit.constants import HOURS_PER_YEAR
 from coal_retrofit.constants_industry_capture import capture_variable_cost_cny_per_t
 from coal_retrofit.constants_province import PROVINCE_COAL_COST_CNY_PER_GJ, PROVINCE_OPERATING_HOURS
 from coal_retrofit.optimization.data_prep_plants import _prepare_plants
@@ -104,8 +105,9 @@ def test_plant_province_names_get_the_same_alias_and_warning(tmp_path, caplog) -
     warnings = _coal_price_warnings(caplog)
     assert len(warnings) == 1 and "Atlantis" in warnings[0]
     hours = assumptions.province_operating_hours["Inner Mongolia"]
-    assert plants.loc[0, "province_cf"] * 8760.0 == pytest.approx(hours, rel=1e-12)
-    assert plants.loc[1, "province_cf"] == pytest.approx(assumptions.capacity_factor, rel=1e-12)
+    # 发电量直接按利用小时乘装机，不经容量因子往返（逐位相等）；表里没有的省按缺省容量因子 × 8760 h。
+    fallback_hours = assumptions.capacity_factor * HOURS_PER_YEAR
+    assert plants["annual_generation_mwh"].tolist() == [1000.0 * hours, 1000.0 * fallback_hours]
 
 
 def test_the_warning_counts_rows_and_names_each_missing_province_once(caplog) -> None:
@@ -119,7 +121,7 @@ def test_the_warning_counts_rows_and_names_each_missing_province_once(caplog) ->
 
 
 def test_withdrawal_calibration_reads_hours_by_the_canonical_province_name(monkeypatch) -> None:
-    """流域取水指标的直流冷却标定按分省利用小时估发电量，与 `province_cf` 一样按换过写法的省名
+    """流域取水指标的直流冷却标定按分省利用小时估发电量，与发电量一样按换过写法的省名
     （`province_name`）查。按原始 `province_mode` 查时，"Neimenggu" 会退回 `capacity_factor` x 8760。"""
     captured: dict[str, np.ndarray] = {}
 

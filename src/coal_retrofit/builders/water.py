@@ -6,14 +6,13 @@ from __future__ import annotations
 
 import re
 
-import numpy as np
 import pandas as pd
 
 from ..artifacts import write_csv
 from ..constants import PLANNING_YEARS, WATER_COARSE_GRID_DEGREES, WATER_MATCH_BUFFER_KM
 from ..frames import iter_rows
 from ..paths import ProjectPaths
-from ..spatial import within_radius
+from ..spatial import bin_index, within_radius
 from .water_availability import build_water_availability_dataframe, build_water_nodes_dataframe
 
 WATER_PATTERN = re.compile(
@@ -103,8 +102,8 @@ def coarsen_water_inputs(
     改写模型本来要检验的那条约束。按流域拆分每个网格，可使粗化前后的流域总量保持一致。
     """
     nodes = fine_nodes.copy()
-    nodes["_ci"] = np.floor(nodes["longitude"].astype(float) / cell_degrees).astype(int)
-    nodes["_cj"] = np.floor(nodes["latitude"].astype(float) / cell_degrees).astype(int)
+    nodes["_ci"] = bin_index(nodes["longitude"].astype(float), cell_degrees)
+    nodes["_cj"] = bin_index(nodes["latitude"].astype(float), cell_degrees)
     nodes["_bid"] = nodes["basin_code"].astype(str) if "basin_code" in nodes.columns else "X"
     nodes["coarse_id"] = [
         f"WC_{ci:04d}_{cj:04d}_{bid}"

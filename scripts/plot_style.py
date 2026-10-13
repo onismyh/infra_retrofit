@@ -133,15 +133,18 @@ AIR_COLOR = "#CC3311"                                # 空冷改造
 OVER_COLOR = "#A50F15"                               # 超上限、超指标（Reds 深端，与空冷的强调红分开）
 NEUTRAL = "#B0B0B0"                                  # 尺寸图例的点：只示大小，不指类别
 BASELINE_COLOR = "#D9D9D9"                           # 冻结技术排放（图 5）
-# 成本构成（图 10）：煤电 Greys、燃料与资源 Greens、工业红族、管网与封存 Blues，同族同色；松弛惩罚用超上限色。
+# 成本构成（图 10）：煤电 Greys、燃料与资源 Greens、工业 Reds、管网与封存 Blues，同族同色。只在含义相同处与别的色表同值
+# （煤电改造 = 部门色的煤电、管网 = PIPE_COLOR、松弛惩罚 = 超上限色）；其余取同族里别处没用的一档，免得与路径色、部门色
+# 撞值（2026-10-13 前煤电运行 = 未改造路径色、资源 = 生物质路径色、工业 = 长流程钢与电炉钢的部门色、封存 = EOR 汇色、
+# 碳成本 = 合成氨部门色、残值 = 退役路径色）。碳成本与残值不属于哪一族，各取一个别处没用的色。
 COST_ORDER = ("coal_operating", "coal_capex", "resources", "industry_operating", "industry_capex", "network",
               "storage", "carbon", "slack", "salvage")
 COST_COLORS = {
-    "coal_operating": "#969696", "coal_capex": "#636363",
-    "resources": "#74C476",
-    "industry_operating": "#F39B7F", "industry_capex": "#E64B35",
-    "network": "#3182BD", "storage": "#9ECAE1",
-    "carbon": "#7E6148", "slack": OVER_COLOR, "salvage": "#D8DCE0",
+    "coal_operating": "#BDBDBD", "coal_capex": "#636363",          # Greys 浅、深
+    "resources": "#A1D99B",                                        # Greens 浅
+    "industry_operating": "#FCBBA1", "industry_capex": "#FB6A4A",  # Reds 浅、中
+    "network": PIPE_COLOR, "storage": "#C6DBEF",                   # Blues 深、最浅
+    "carbon": "#E6AB02", "slack": OVER_COLOR, "salvage": "#E5D8BD",
 }
 # 标记：煤电圆、工业菱形、封存汇方块，各图一致。
 MARKERS = {"coal": "o", "industry": "D", "sink": "s"}

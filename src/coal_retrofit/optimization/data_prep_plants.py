@@ -27,17 +27,15 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         )
     # 省名换成分省煤价表的写法；仍查不到的告警，按缺省煤价与缺省利用小时计。
     plants["province_name"] = assumptions.canonical_provinces(plants["province_mode"], "plants")
-    # 发电量按分省利用小时数计算
-    plants["province_cf"] = plants["province_name"].map(
-        lambda prov: assumptions.province_cf(prov)
-    )
-    plants["annual_generation_mwh"] = plants["total_capacity_mw"].astype(float) * plants["province_cf"] * 8760.0
+    # 发电量按分省利用小时数计算（2026-10-13 前先折成容量因子 `province_cf` 列再乘 8760，末位浮点有出入；该列没有读取方，已删）
+    hours = plants["province_name"].map(assumptions.province_hours).astype(float)
+    plants["annual_generation_mwh"] = plants["total_capacity_mw"].astype(float) * hours
     # 按装机容量加权的当前机组利用小时数，即
     # `scenario.operating_hours_scale` 的分母。每一行都存一份，这样 `_build_year_matrices`
     # 读取时无需重算加权。
     capacity = plants["total_capacity_mw"].astype(float)
     plants["fleet_hours_now"] = float(
-        (capacity * plants["province_cf"] * 8760.0).sum() / max(float(capacity.sum()), 1e-9)
+        (capacity * hours).sum() / max(float(capacity.sum()), 1e-9)
     )
     plants["baseline_emissions_mt"] = (
         plants["annual_generation_mwh"].astype(float) * plants["heat_rate_gj_per_mwh"].astype(float)

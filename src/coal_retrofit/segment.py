@@ -16,7 +16,9 @@ from typing import Any
 # 第 12 段（2026-10-12）：水表重建：cwatm 的 ipsl / mpi / mri 偏差因子按实际驱动的历史文件（ISIMIP issue #34），
 # ukesm 取其余四个 GCM 的均值；粗化水节点坐标随之微移，所有情景的供水距离与输入摘要都变。
 # 第 13 段（2026-10-12）：粗化水节点坐标改按模拟径流（local_runoff）加权（此前按校正后的可用量），水节点与供水链路表重建。
-MODEL_SEGMENT = 13
+# 第 14 段（2026-10-13）：ISIMIP 网格面积的地球半径改用 `spatial.EARTH_RADIUS_KM`（此前 6 371 km），水表重建（耗水与模拟径流
+# 放大 2.76 ppm）；流域余量取整到 m3；煤电发电量直接按利用小时算，不经容量因子往返。
+MODEL_SEGMENT = 14
 
 
 class StaleResultError(RuntimeError):

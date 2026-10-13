@@ -9,8 +9,9 @@ import netCDF4
 import numpy as np
 import pandas as pd
 
-from ..constants import PLANNING_YEARS, TARGET_GEO_CRS
+from ..constants import PLANNING_YEARS
 from ..paths import ProjectPaths
+from ..spatial import containing_polygon_index
 from .water_bias import member_bias_factors
 from .water_grid import (
     WATER_WINDOW_BASIS,
@@ -56,23 +57,14 @@ def _candidate_grid_points(
     )
     frame["longitude"] = lon_values[frame["lon_index"].to_numpy()].astype(np.float64)
     frame["latitude"] = lat_values[frame["lat_index"].to_numpy()].astype(np.float64)
-    points = gpd.GeoDataFrame(
-        frame,
-        geometry=gpd.points_from_xy(frame["longitude"], frame["latitude"]),
-        crs=TARGET_GEO_CRS,
-    )
-    joined = gpd.sjoin(
-        points,
-        provinces[["province_id", "province_name", "geometry"]],
-        how="inner",
-        predicate="intersects",
-    )
-    joined = (
-        joined.sort_values(["lat_index", "lon_index", "province_id"])
-        .drop_duplicates(subset=["lat_index", "lon_index"])
-        .reset_index(drop=True)
-    )
-    return pd.DataFrame(joined.drop(columns=["geometry", "index_right"]))
+    # 网格中心落在省界内（压在省界上的取 province_id 小的省，`provinces` 按 province_id 升序）；落在所有省之外的不作节点。
+    index = containing_polygon_index(frame["longitude"], frame["latitude"], provinces.geometry)
+    inside = ~np.isnan(index)
+    frame = frame.loc[inside].copy()
+    position = index[inside].astype(int)
+    frame["province_id"] = provinces["province_id"].to_numpy()[position]
+    frame["province_name"] = provinces["province_name"].to_numpy()[position]
+    return frame.sort_values(["lat_index", "lon_index"]).reset_index(drop=True)
 
 
 def build_water_nodes_dataframe(paths: ProjectPaths, scenarios: pd.DataFrame) -> pd.DataFrame:

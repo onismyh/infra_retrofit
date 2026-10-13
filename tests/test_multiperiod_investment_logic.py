@@ -50,7 +50,7 @@ def _expected_ccs(
     （为弥补捕集造成的效率损失而多烧的煤，自能耗惩罚排放修正起计入残余排放）。
     toy 电厂从不到期，所以 heat_rate_eff 等于基线热耗。
     """
-    gen = 1000.0 * assumptions.province_cf("Shanxi") * 8760.0
+    gen = 1000.0 * assumptions.province_hours("Shanxi")
     ef_t_per_gj = assumptions.coal_emission_factor_t_per_gj
     e_mt = gen * TOY_HEAT_RATE_GJ_PER_MWH * ef_t_per_gj / 1e6
     boost = scenario.retrofit_cf_boost
@@ -167,7 +167,7 @@ def test_rebuild_capex_charged_once_at_activation(tmp_path) -> None:
         + assumptions.baseline_om_cost_cny_per_mwh
         - scenario.electricity_price_for_year(2050)
     )
-    gen = 1000.0 * assumptions.province_cf("Shanxi") * 8760.0
+    gen = 1000.0 * assumptions.province_hours("Shanxi")
     rate = scenario.discount_rate
     annuity = (1.0 - (1.0 + rate) ** -10.0) / rate
     df = 1.0 / (1.0 + rate) ** (2050 - scenario.discount_base_year)

@@ -44,13 +44,13 @@ def fleet_water_by_basin(paths: ProjectPaths) -> tuple[pd.DataFrame, float]:
     """Current coal fleet water use by basin, 亿 m3/yr, on every basis. Returns (table, factor)."""
     plants = pd.read_csv(paths.inputs_dir / "plants.csv")
     assumptions = OptimizationAssumptions()
-    hours = plants["province_mode"].astype(str).map(assumptions.province_operating_hours)
-    missing = int(hours.isna().sum())
+    # 省名与模型同样先换成分省表的写法（`_prepare_plants`）。
+    provinces = pd.Series(assumptions.canonical_provinces(plants["province_mode"], "plants"), index=plants.index)
+    missing = int((~provinces.isin(list(assumptions.province_operating_hours))).sum())
     if missing:
         logger.warning("%d hubs have no province operating hours; using capacity_factor %.2f",
                        missing, assumptions.capacity_factor)
-    hours = hours.fillna(assumptions.capacity_factor * 8760.0)
-    generation = plants["total_capacity_mw"].astype(float) * hours
+    generation = plants["total_capacity_mw"].astype(float) * provinces.map(assumptions.province_hours).astype(float)
 
     base, _, _, _, factor = calibrated_withdrawal_intensities(plants, generation)
 
