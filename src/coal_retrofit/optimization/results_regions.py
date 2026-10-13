@@ -8,12 +8,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from ..constants import TARGET_GEO_CRS
 from ..constants_province import PROVINCE_NAME_ALIASES
-from ..spatial import load_provinces
+from ..spatial import containing_polygon_index, load_provinces
 from ._shared import PreparedInputs
 
 OFFSHORE = "Offshore"
@@ -63,7 +63,7 @@ def node_provinces(prepared: PreparedInputs, provinces_path: Path) -> dict[str, 
     `offshore` 为真时记海上（与封存成本的海上倍率同一标记，`data_prep._prepare_storages`），否则取
     `storage_hubs.csv` 的省名；`pipeline_nodes.csv` 自带的省名。拼法统一换成 `PROVINCES` 的写法（`PROVINCE_NAME_ALIASES`）。
     都没有的（走廊节点、没填省名的封存汇）按经纬度落在省界图层哪个省，落在所有省之外记海上，与 builders 标记海上封存汇
-    同一判据（`builders.storage._flag_offshore`）；只有这时才读图层。
+    同一判据（`builders.storage._flag_offshore`，都走 `spatial.containing_polygon_index`）；只有这时才读图层。
     """
     network = prepared.network
     plants = dict(zip(prepared.plants["plant_id"].astype(str), prepared.plants["province_name"], strict=True))
@@ -110,15 +110,11 @@ def _given(value: Any) -> str | None:
 
 def _locate(points: pd.DataFrame, provinces_path: Path) -> dict[str, str]:
     """按经纬度（`lon`、`lat` 两列，索引为节点号）把节点落到省界图层的省；压在省界上的取 `province_id` 小的那个，
-    落在所有省之外的记海上。"""
-    layer = load_provinces(provinces_path).to_crs(TARGET_GEO_CRS)
-    located = gpd.GeoDataFrame(
-        index=points.index, geometry=gpd.points_from_xy(points["lon"], points["lat"]), crs=TARGET_GEO_CRS
-    )
-    joined = gpd.sjoin(located, layer[["province_id", "province_name", "geometry"]], how="left", predicate="intersects")
-    joined = joined.sort_values("province_id", na_position="last")
-    first = joined.loc[~joined.index.duplicated(keep="first"), "province_name"]
-    return {str(node): OFFSHORE if pd.isna(name) else _english(str(name)) for node, name in first.items()}
+    落在所有省之外的记海上。坐标含 NaN 或超出经纬度范围时报错（2026-10-13 前 NaN 记海上）。"""
+    layer = load_provinces(provinces_path).to_crs(TARGET_GEO_CRS)   # 按 province_id 升序
+    index = containing_polygon_index(points["lon"], points["lat"], layer.geometry)
+    names = layer["province_name"].to_numpy()
+    return {str(node): OFFSHORE if np.isnan(i) else _english(str(names[int(i)])) for node, i in zip(points.index, index)}
 
 
 def _english(full_name: str) -> str:

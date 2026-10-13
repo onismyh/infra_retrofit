@@ -10,7 +10,7 @@ from scipy import ndimage
 
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
-from ..spatial import load_provinces, pixel_centers
+from ..spatial import containing_polygon_index, load_provinces, pixel_centers
 
 logger = logging.getLogger(__name__)
 
@@ -146,16 +146,13 @@ def _flag_offshore(paths: ProjectPaths, hubs: pd.DataFrame) -> pd.Series:
     DSA 封存栅格约有 46% 位于省级陆地边界之外——即海域盆地（东海、珠江口、渤海、
     北部湾）。这个标记决定封存单价的海上倍率（OptimizationAssumptions.offshore_storage_multiplier）；
     管道的海上倍率 2026-10-10 起按每条边的海上段计（`network_offshore`），运行期新建的支线接海上汇时整条计。
+    落省判据与管网节点落省相同（`spatial.containing_polygon_index`，压在省界上的算陆上）；2026-10-13 前按省界并集的
+    contains 判，压在海岸线上的点算海上，合并前 103 个封存体与合并后 89 个汇上两种判据结果相同；坐标含 NaN 或 inf 报错
+    （此前记海上）。
     """
-    from shapely.geometry import Point
-
     provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp").to_crs("EPSG:4326")
-    land = provinces.union_all()
-    return pd.Series(
-        [not land.contains(Point(float(lon), float(lat))) for lon, lat in zip(hubs["longitude"], hubs["latitude"])],
-        index=hubs.index,
-        dtype=bool,
-    )
+    index = containing_polygon_index(hubs["longitude"], hubs["latitude"], provinces.geometry)
+    return pd.Series(np.isnan(index), index=hubs.index, dtype=bool)
 
 
 def _offshore_basin_labels(

@@ -1,17 +1,21 @@
-"""水输入构建的小工具（`builders/water_grid`、`water_availability`、`water`）在合成数据上：读窗口序列、年化、参照成员与供水链路。"""
+"""水输入构建的小工具（`builders/water_grid`、`water_availability`、`water`）在合成数据上：读窗口序列、年化、网格面积、
+网格落省、参照成员与供水链路。"""
 from __future__ import annotations
 
 import datetime as dt
 
+import geopandas as gpd
 import netCDF4
 import numpy as np
 import pandas as pd
 import pytest
+from shapely.geometry import box
 
 from coal_retrofit.builders.water import build_water_link_dataframe
-from coal_retrofit.builders.water_availability import _reference_scenario_row
-from coal_retrofit.builders.water_grid import SECONDS_PER_YEAR, _annual_m3, _clean_window, _file_years
+from coal_retrofit.builders.water_availability import _candidate_grid_points, _reference_scenario_row
+from coal_retrofit.builders.water_grid import SECONDS_PER_YEAR, _annual_m3, _cell_area_m2, _clean_window, _file_years
 from coal_retrofit.paths import ProjectPaths
+from coal_retrofit.spatial import EARTH_RADIUS_KM
 
 
 @pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning")  # 全填充值的网格，生产代码同样如此
@@ -42,6 +46,29 @@ def test_clean_window_file_years_and_annual_m3(tmp_path) -> None:
     annual = _annual_m3(window, area)
     assert annual[0, 0] == pytest.approx(3.0 * 2.0 * SECONDS_PER_YEAR / 1000.0)
     assert annual[0, 1] == 0.0  # 全 NaN 的网格年水量计 0
+
+
+def test_cell_area_sums_to_the_sphere_with_the_shared_radius() -> None:
+    """全球 0.5° 网格的面积之和等于半径 `EARTH_RADIUS_KM` 的球面积（2026-10-13 前半径另写 6 371 km）。"""
+    lat = np.arange(-89.75, 90.0, 0.5)
+    total = _cell_area_m2(lat).sum() * 720
+    assert total == pytest.approx(4.0 * np.pi * (EARTH_RADIUS_KM * 1000.0) ** 2, rel=1e-12)
+
+
+def test_candidate_grid_points_take_the_lower_province_id_on_a_border_and_drop_points_outside() -> None:
+    """网格中心压在两省公共边上的归 `province_id` 小的省，落在所有省之外的不作节点，按 (lat_index, lon_index) 排序。"""
+    provinces = gpd.GeoDataFrame(
+        {"province_id": [1, 2], "province_name": ["甲", "乙"]},
+        geometry=[box(100.0, 30.0, 101.0, 31.0), box(101.0, 30.0, 102.0, 30.7)],
+        crs="EPSG:4326",
+    )
+    points = _candidate_grid_points(provinces, np.array([100.5, 101.0, 101.5]), np.array([30.5, 30.9]))
+    # (101.0, 30.5) 压在甲乙公共边上 -> 甲；(101.0, 30.9) 压在甲的东边上 -> 甲；(101.5, 30.9) 在两省之外 -> 去掉
+    assert list(zip(points["lon_index"], points["lat_index"], points["province_id"])) == [
+        (0, 0, 1), (1, 0, 1), (2, 0, 2), (0, 1, 1), (1, 1, 1),
+    ]
+    assert points["province_name"].tolist() == ["甲", "甲", "乙", "甲", "甲"]
+    assert points["longitude"].tolist() == [100.5, 101.0, 101.5, 100.5, 101.0]
 
 
 def test_reference_scenario_row_picks_first_ssp126_and_requires_both_ssps() -> None:

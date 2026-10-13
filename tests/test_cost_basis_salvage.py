@@ -18,6 +18,7 @@ import pytest
 from coal_retrofit import constants_industry as ci
 from coal_retrofit import constants_industry_capture as cc
 from coal_retrofit import constants_industry_h2 as ch
+from coal_retrofit.constants import annuity_factor, capital_recovery_factor
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.industry import CCS, H2, UNABATED, IndustryInputs, industry_year_data
 from coal_retrofit.optimization.salvage import horizon_end_year, remaining_fraction
@@ -38,10 +39,11 @@ def test_levelised_capture_cost_sits_near_the_acca21_range(sector: str) -> None:
 
 
 def test_capital_recovery_factor_is_reciprocal_of_annuity() -> None:
-    crf = cc.capital_recovery_factor(0.06, 20)
     annuity = sum(1.0 / 1.06**t for t in range(1, 21))
-    assert crf * annuity == pytest.approx(1.0, rel=1e-12)
-    assert cc.capital_recovery_factor(0.0, 20) == pytest.approx(0.05)
+    assert annuity_factor(0.06, 20) == pytest.approx(annuity, rel=1e-12)
+    assert capital_recovery_factor(0.06, 20) * annuity == pytest.approx(1.0, rel=1e-12)
+    assert capital_recovery_factor(0.0, 20) == pytest.approx(0.05)
+    assert annuity_factor(0.0, 20) == 20.0
 
 
 def _toy_industry() -> IndustryInputs:

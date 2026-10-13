@@ -8,7 +8,7 @@ import rasterio
 from pyproj import Transformer
 from rasterio.transform import Affine
 
-from coal_retrofit.spatial import aggregate_to_cells, pixel_centers, pixel_centers_lonlat, province_lookup
+from coal_retrofit.spatial import aggregate_to_cells, bin_index, pixel_centers, pixel_centers_lonlat, province_lookup
 
 ALBERS = rasterio.crs.CRS.from_proj4("+proj=aea +lat_1=25 +lat_2=47 +lat_0=0 +lon_0=105 +x_0=0 +y_0=0 +ellps=WGS84 +units=m")
 
@@ -62,3 +62,10 @@ def test_aggregate_to_cells_sums_and_weights_coordinates() -> None:
 def test_province_lookup() -> None:
     provinces = pd.DataFrame({"province_id": [3, 1], "province_name": ["Hebei", "Beijing"]})
     assert province_lookup(provinces) == {3: "Hebei", 1: "Beijing"}
+
+
+def test_bin_index_floors_with_an_optional_offset() -> None:
+    # 粗化水节点不移（格号写进节点 id）；供给节点把经度 +180 移成非负。
+    bins = bin_index(np.array([-0.1, 0.0, 0.49, 0.5, 103.7]), 0.5)
+    assert bins.tolist() == [-1, 0, 0, 1, 207] and bins.dtype == np.int32
+    assert bin_index(np.array([-180.0, 179.9]), 0.5, 180.0).tolist() == [0, 719]

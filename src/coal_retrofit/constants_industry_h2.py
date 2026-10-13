@@ -5,8 +5,9 @@ from __future__ import annotations
 
 from typing import Final
 
+from .constants import capital_recovery_factor
 from .constants_industry import SECTOR_AMMONIA, SECTOR_METHANOL, SECTOR_STEEL_BF
-from .constants_industry_capture import _require, capital_recovery_factor
+from .constants_industry_capture import _require
 
 # --- 氢替代路线 -----------------------------------------------------------------------------
 # 氢路线能去除的 hub CO2 比例。没有一处取 1.0：每条路线都留有氢触及不到的残余。

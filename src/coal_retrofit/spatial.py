@@ -17,7 +17,7 @@ from numpy.typing import ArrayLike
 from pyproj import Geod, Transformer
 from rasterio.features import rasterize
 
-EARTH_RADIUS_KM = 6371.0088   # IUGG 平均半径，全仓库 haversine 共用
+EARTH_RADIUS_KM = 6371.0088   # IUGG 平均半径，全仓库共用：haversine 距离与 ISIMIP 网格面积（`builders.water_grid._cell_area_m2`）
 
 
 def haversine_km(lon_a: ArrayLike, lat_a: ArrayLike, lon_b: ArrayLike, lat_b: ArrayLike) -> np.ndarray:
@@ -104,22 +104,34 @@ def distance_to_lines_km(
     return np.array([haversine_km(lon, lat, vertices[:, 0], vertices[:, 1]).min() for lon, lat in zip(lons, lats)])
 
 
-def nearest_polygon_index(
-    lons: ArrayLike, lats: ArrayLike, polygons: gpd.GeoSeries, max_segment_deg: float = 0.01
-) -> np.ndarray:
-    """每个点落在哪个多边形里，返回 *polygons* 的位置序号。
+def containing_polygon_index(lons: ArrayLike, lats: ArrayLike, polygons: gpd.GeoSeries) -> np.ndarray:
+    """每个点落在哪个多边形里（压在边界上的也算），返回 *polygons* 的位置序号；落在所有多边形之外的为 NaN（float 数组）。
 
-    先按包含关系配对，同时落在多个多边形里的点取序号最小的；落在所有多边形之外的点（海岸、多边形之间的
-    缝隙）取边界球面距离最近的多边形，边界按 *max_segment_deg* 加密后量到顶点。*polygons* 须为非空的地理坐标
-    图层；点坐标含 NaN / inf 或超出经纬度范围报错。
+    同时落在多个多边形里的点（压在公共边上）取序号最小的。落流域（`nearest_polygon_index`）、ISIMIP 网格落省
+    （`builders.water_availability`）、封存汇是否在海上（`builders.storage._flag_offshore`）与管网节点落省
+    （`optimization.results_regions`）都走这里，只在"落在所有多边形之外"时各自处理。2026-10-13 前落流域用 within、
+    封存汇用省界并集的 contains、其余两处用 intersects，只对正好压在边界上的点不同；当时全部输入点（煤电、工业 hub
+    与点源、机组、封存体与封存汇、管网节点、ISIMIP 网格）对流域与省界都没有这样的点。*polygons* 须为非空的地理坐标图层；
+    点坐标含 NaN / inf 或超出经纬度范围报错。
     """
     _require_geographic(polygons, "polygons")
     lons, lats = _finite_points(lons, lats)
     frame = gpd.GeoDataFrame({"_polygon": np.arange(len(polygons))}, geometry=polygons.geometry.to_numpy(), crs=polygons.crs)
     points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(lons, lats), crs=polygons.crs)
-    joined = gpd.sjoin(points, frame, how="left", predicate="within")
-    # 落在多个多边形里的点取序号最小的；没落进任何多边形的为 NaN。
-    index = np.array(joined["_polygon"].groupby(level=0).min().reindex(points.index), dtype=np.float64)
+    joined = gpd.sjoin(points, frame, how="left", predicate="intersects")
+    return np.array(joined["_polygon"].groupby(level=0).min().reindex(points.index), dtype=np.float64)
+
+
+def nearest_polygon_index(
+    lons: ArrayLike, lats: ArrayLike, polygons: gpd.GeoSeries, max_segment_deg: float = 0.01
+) -> np.ndarray:
+    """每个点落在哪个多边形里，返回 *polygons* 的位置序号。
+
+    先按包含关系配对（`containing_polygon_index`）；落在所有多边形之外的点（海岸、多边形之间的缝隙）取边界球面
+    距离最近的多边形，边界按 *max_segment_deg* 加密后量到顶点。
+    """
+    lons, lats = _finite_points(lons, lats)
+    index = containing_polygon_index(lons, lats, polygons)
     outside = np.flatnonzero(np.isnan(index))
     if outside.size:
         boundaries = [_densified_vertices([geom.boundary], max_segment_deg) for geom in polygons.geometry]
@@ -197,9 +209,10 @@ def pixel_centers_lonlat(transform, crs, rows: np.ndarray, cols: np.ndarray) -> 
     return np.asarray(lon, dtype=np.float64), np.asarray(lat, dtype=np.float64)
 
 
-def _bin_index(values: np.ndarray, cell_degrees: float, offset: float) -> np.ndarray:
-    """坐标落在第几个 `cell_degrees` 宽的格里（int32）；`offset` 先把经度 +180 / 纬度 +90 移成非负。"""
-    return np.floor((values + offset) / cell_degrees).astype(np.int32)
+def bin_index(values: ArrayLike, cell_degrees: float, offset: float = 0.0) -> np.ndarray:
+    """坐标落在第几个 `cell_degrees` 宽的格里（int32）：floor((values + offset) / cell_degrees)。供给节点（`aggregate_to_cells`）
+    给 `offset` 把经度 +180 / 纬度 +90 移成非负；粗化水节点（`builders.water.coarsen_water_inputs`）不移，格号写进节点 id。"""
+    return np.floor((np.asarray(values) + offset) / cell_degrees).astype(np.int32)
 
 
 def aggregate_to_cells(points: pd.DataFrame, weight: str, cell_degrees: float) -> pd.DataFrame:
@@ -209,8 +222,8 @@ def aggregate_to_cells(points: pd.DataFrame, weight: str, cell_degrees: float) -
     (province_id, lon_bin, lat_bin) 升序的表，保留两列分箱号与加权坐标和 `weighted_lon` / `weighted_lat`。
     """
     frame = points.assign(
-        lon_bin=_bin_index(points["longitude"].to_numpy(), cell_degrees, 180.0),
-        lat_bin=_bin_index(points["latitude"].to_numpy(), cell_degrees, 90.0),
+        lon_bin=bin_index(points["longitude"].to_numpy(), cell_degrees, 180.0),
+        lat_bin=bin_index(points["latitude"].to_numpy(), cell_degrees, 90.0),
         weighted_lon=points["longitude"] * points[weight],
         weighted_lat=points["latitude"] * points[weight],
     ).drop(columns=["longitude", "latitude"])

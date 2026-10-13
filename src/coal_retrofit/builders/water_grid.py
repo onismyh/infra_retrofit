@@ -15,8 +15,8 @@ import pandas as pd
 
 from ..constants import TARGET_GEO_CRS
 from ..paths import ProjectPaths
+from ..spatial import EARTH_RADIUS_KM, nearest_polygon_index
 from ..spatial import load_provinces as load_provinces_layer
-from ..spatial import nearest_polygon_index
 
 WATER_WINDOW_BASIS = {
     2030: (2021, 2030),
@@ -25,7 +25,6 @@ WATER_WINDOW_BASIS = {
     2060: (2051, 2060),
 }
 SECONDS_PER_YEAR = 365.25 * 24.0 * 3600.0
-EARTH_RADIUS_M = 6_371_000.0
 
 
 def _resolve_source_path(paths: ProjectPaths, source: str) -> str:
@@ -72,10 +71,10 @@ def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
 
 
 def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
-    """规则经纬网格上每个纬度带的网格单元面积（m²）。"""
+    """规则经纬网格上每个纬度带的网格单元面积（m²），球面半径取 `spatial.EARTH_RADIUS_KM`（2026-10-13 前用 6 371 km）。"""
     half = cell_degrees / 2.0
     band = (
-        EARTH_RADIUS_M ** 2
+        (EARTH_RADIUS_KM * 1000.0) ** 2
         * np.deg2rad(cell_degrees)
         * np.abs(np.sin(np.deg2rad(lat + half)) - np.sin(np.deg2rad(lat - half)))
     )

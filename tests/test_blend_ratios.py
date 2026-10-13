@@ -17,11 +17,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from coal_retrofit.constants import annuity_factor
 from coal_retrofit.optimization._shared import (
     PATHWAY_INDEX,
     PreparedInputs,
     _discount_factor,
-    _year_objective_weight,
 )
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.results import _build_sanity_checks
@@ -472,8 +472,8 @@ def test_plant_cost_carbon_cost_adds_up_to_the_objective_term(request, solved) -
             (industry.baseline_emissions_mt - (industry.reduction_mt * ys["industry_share"]).sum(axis=1)).sum()
         )
         interval = scenario.interval_years(scenario.planning_years, scenario.planning_years.index(year), assumptions)
-        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
-            interval, scenario.discount_rate
+        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * annuity_factor(
+            scenario.discount_rate, interval
         )
         assert price > 0.0 and plant_carbon != 0.0
         assert plant_carbon + price * 1e6 * industry_residual == pytest.approx(
@@ -510,8 +510,8 @@ def test_plant_cost_ammonia_blend_om_adds_up_to_the_objective_term(ammonia_conti
         incremental_om = costs[(costs["year"] == year) & (costs["entity_type"] == "coal")
                                & (costs["category"] == "incremental_om")]
         interval = scenario.interval_years(scenario.planning_years, scenario.planning_years.index(year), assumptions)
-        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * _year_objective_weight(
-            interval, scenario.discount_rate
+        weight = _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * annuity_factor(
+            scenario.discount_rate, interval
         )
         unit = year_data.capacity_mw * assumptions.ammonia_upgrade_capex_cny_per_mw_per_level
         np.testing.assert_allclose(

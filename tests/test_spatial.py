@@ -9,6 +9,7 @@ from shapely.geometry import LineString, Polygon, box
 from coal_retrofit.spatial import (
     EARTH_RADIUS_KM,
     cluster_labels,
+    containing_polygon_index,
     distance_to_lines_km,
     haversine_km,
     haversine_matrix_km,
@@ -63,6 +64,15 @@ def test_nearest_polygon_index_inside_overlap_and_outside() -> None:
     # 只落在 0 里；同时落在 0 与 2 里取序号最小的 0；1.7 离 2 的东边界 0.2°、离 1 的西边界 0.3°；(5, 5) 离 1 最近。
     assert index.tolist() == [0, 0, 2, 1]
     assert index.dtype.kind == "i"
+
+
+def test_containing_polygon_index_counts_the_boundary_and_leaves_outside_nan() -> None:
+    polygons = _squares()
+    # (1, 0.5) 压在 0 的东边界上、在 2 的内部：两个都算，取序号小的 0；(2, 0.5) 压在 1 的西边界上；(1.7, 0.5) 在所有多边形之外。
+    index = containing_polygon_index([1.0, 2.0, 1.7], [0.5, 0.5, 0.5], polygons)
+    assert index[:2].tolist() == [0.0, 1.0] and np.isnan(index[2])
+    with pytest.raises(ValueError, match="地理坐标"):
+        containing_polygon_index([0.5], [0.5], polygons.to_crs("EPSG:2380"))
 
 
 def test_nearest_polygon_index_measures_on_the_sphere() -> None:

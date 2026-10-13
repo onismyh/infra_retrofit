@@ -24,8 +24,8 @@ from ..constants import (
     NH3_HB_POWER_KWH_PER_KG,
     NH3_STORAGE_ADDER_USD_PER_KG,
     NH3_TRANSPORT_ADDER_USD_PER_KG,
+    capital_recovery_factor,
 )
-from ..constants_industry_capture import capital_recovery_factor
 from ..paths import ProjectPaths
 from ..spatial import aggregate_to_cells, load_provinces, pixel_centers_lonlat, province_lookup, rasterize_provinces_to_match
 

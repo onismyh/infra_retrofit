@@ -18,12 +18,12 @@ from scipy import sparse
 
 gp = pytest.importorskip("gurobipy", reason="gurobipy is required for solver integration tests")
 
+from coal_retrofit.constants import annuity_factor  # noqa: E402
 from coal_retrofit.optimization._shared import (  # noqa: E402
     PATHWAY_INDEX,
     SolveState,
     _discount_factor,
     _expr_value,
-    _year_objective_weight,
 )
 from coal_retrofit.optimization.data_prep import prepare_inputs  # noqa: E402
 from coal_retrofit.optimization.industry import (  # noqa: E402
@@ -75,7 +75,7 @@ def _solve(
     ccs, _ = add_industry_capacity(model, years, payloads)
     capex = [industry_capex_expr(payload, routes=(route,)) for payload in payloads]
     om = [gp.quicksum(stock.fixed_om) for stock in ccs]
-    annuity = _year_objective_weight(10, scenario.discount_rate)
+    annuity = annuity_factor(scenario.discount_rate, 10)
     model.setObjective(gp.quicksum(
         _discount_factor(year, scenario.discount_base_year, scenario.discount_rate) * (c + annuity * o)
         for year, c, o in zip(years, capex, om)
@@ -160,7 +160,7 @@ def test_solver_books_capture_fixed_om_and_reports_alive_capacity(tmp_path) -> N
     assert solution["status"] == "optimal"
     ys = solution["year_solutions"]
     costs = build_costs_table(prepared, solution, scenario, assumptions)
-    weight = _year_objective_weight(10, scenario.discount_rate)
+    weight = annuity_factor(scenario.discount_rate, 10)
     for year in years:
         industry_cost = costs[(costs["year"] == year) & (costs["entity_type"] == "industry")
                               & (costs["category"] == "industry_cost")]
