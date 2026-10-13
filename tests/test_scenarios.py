@@ -236,6 +236,14 @@ def test_seed_and_mip_focus_fields(tmp_path, registered, expected) -> None:
     assert {"solver_seed": scenario.solver_seed, "mip_focus": scenario.mip_focus} == expected
 
 
+@pytest.mark.parametrize("key", ["COAL_RETROFIT_GUROBI_SEED", "COAL_RETROFIT_LP_RELAX"])
+def test_removed_solver_env_vars_are_refused(tmp_path, monkeypatch, capsys, key: str) -> None:
+    """不再读的求解环境变量设了就退出 1，不静默按缺省求解（`resolved.env` 会记下它们）。"""
+    monkeypatch.setenv(key, "3")
+    assert cli.main(["--registry", str(_registry_dir(tmp_path, FAMILY)), "show", "CHILD"]) == 1
+    assert f"{key} 2026-10-13 起不再读" in capsys.readouterr().err
+
+
 def test_mip_focus_out_of_range_is_refused(tmp_path, capsys) -> None:
     """MIPFocus 超出取值：求解之前就退出 1（`show` 与 `run` 同一道校验）。"""
     text = FAMILY + "\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\nmip_focus = 5\n"

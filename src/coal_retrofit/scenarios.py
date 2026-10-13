@@ -3,7 +3,7 @@
 每个情景是一张 TOML 表 `[名]`，可写的键：
 
 - `extends`：父情景名，可以多层。`scenario`、`assumptions` 两节按字段合并，子情景的字段覆盖父情景的。
-- `abstract = true`：只作基底，不能求解，不出现在 `list` 与 `EXPERIMENTS` 里。
+- `abstract = true`：只作基底，不能求解，不出现在 `list` 里。
 - `tree`：求解树，相对登记目录的上一级（缺省登记目录是仓库根的 `scenarios/`，即相对仓库根；也可写绝对路径）。
   求解读 `<tree>/inputs`、`<tree>/data`，写 `<tree>/results`。随 `extends` 继承；能求解的情景必须有。
 - `note`：说明文字，只给 `list`、`show` 显示。不继承，不进 dataclass。

@@ -7,7 +7,7 @@
   既有走廊容量 existing_corridor_capacity_mtpa 缺省为 0，设了正值时没用上的走廊也画成这一类）。两年用同一尺度，左上角是
   当年封存总量。
 读图注意：蓝线画的是年流量，不是建成的管道能力；在役管道按 network.csv 的 total_capacity_mtpa（既有走廊容量 + 寿命内的
-  建成容量）判断。管段按候选管网的 WKT 折线画，运行期补的短连接（runtime_*，不在候选表里）按两端直线画。
+  建成容量）判断。管段按候选管网的 WKT 折线画，没有 WKT 的按两端直线画。
 数据：results/solved/<情景>/network.csv、sources.csv（煤电、工业取 source_type 为 coal、industry 的行）、sinks.csv，
   _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；

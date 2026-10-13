@@ -61,11 +61,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_THREADS = 8
 DEFAULT_TIME_LIMIT = 36000
 
+# 2026-10-13 之前读的求解环境变量（seed、MIPFocus、手工热启动两步、逐个可行解日志），现在不读。设了就报错：
+# 否则照缺省求解，`resolved.env` 却记着它们，seed 族会静默落到同一个种子上（CLAUDE.md 二.2）。
+REMOVED_ENV = (
+    "COAL_RETROFIT_GUROBI_SEED", "COAL_RETROFIT_MIPFOCUS", "COAL_RETROFIT_LP_RELAX",
+    "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_WRITE_SOL", "COAL_RETROFIT_LOG_INCUMBENTS",
+)
+
+
 def build_parameters(
     spec: ScenarioSpec, name: str, threads: int = DEFAULT_THREADS, time_limit: int = DEFAULT_TIME_LIMIT,
     mip_gap: float | None = None,
 ) -> tuple[OptimizationScenario, OptimizationAssumptions]:
-    """按登记的覆盖项与运行选项构造两个参数 dataclass；
+    """按登记的覆盖项与运行选项构造两个参数 dataclass；`REMOVED_ENV` 里的环境变量设了就报错。
     *name* 是结果名，写进 `experiment_id`。
 
     *mip_gap* 只对这一次求解覆盖登记的 MIPGap。它让一批求解能拿容差换时间，而不必去改（从而永久改变）
@@ -73,6 +81,12 @@ def build_parameters(
     `solver_seed` 重解）则直接毁掉测量：各次求解一旦允许单凭容差停在相距那么远的地方，
     seed 族测的就不再是求解器的简并度。seed 复现保持登记的 gap。
     """
+    stale = [key for key in REMOVED_ENV if os.environ.get(key)]
+    if stale:
+        raise ScenarioRegistryError(
+            f"环境变量 {'、'.join(stale)} 2026-10-13 起不再读，先 unset：seed 与 MIPFocus 用"
+            " --set scenario.solver_seed=N / scenario.mip_focus=N（配 --as），热启动用情景 warm_start = \"lp_relax\""
+        )
     scenario_kw, assumption_kw = dict(spec.scenario), dict(spec.assumptions)
     if mip_gap is not None:
         scenario_kw = {**scenario_kw, "mip_gap": float(mip_gap)}

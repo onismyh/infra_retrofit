@@ -624,7 +624,7 @@
 >
 > 2026-10-13 起删去不是现行口径或没有读取方的代码与文件（作者批准 2026-10-13），缺省参数下模型不变，模型分段不变（仍为 14）：
 > - 兼容入口：`scripts/run_single.py` 薄壳（用 `python -m coal_retrofit run`）；环境变量 `COAL_RETROFIT_GUROBI_SEED`、`MIPFOCUS`、
->   `LP_RELAX`、`START_SOL`、`WRITE_SOL`、`LOG_INCUMBENTS` 不再读（seed 与 MIPFocus 用情景字段，热启动用情景 `warm_start`；
+>   `LP_RELAX`、`START_SOL`、`WRITE_SOL`、`LOG_INCUMBENTS` 不再读，设了就报错（`runner.REMOVED_ENV`；seed 与 MIPFocus 用情景字段，热启动用情景 `warm_start`；
 >   逐个可行解的缺口与松弛日志随之删去），`check_run_provenance.py` 不再按它们判 LP 松弛或热启动（`resolved.env` 照旧记下全部
 >   `COAL_RETROFIT_*`，只列差）；`render_version.py` 的 `--freeze-tag`；v9.1 口径的诊断脚本 `diagnose_official_water_budget.py`。
 > - 运行期支线：`build_runtime_network` 遇到管网节点表里没有的源或汇直接报错，不再补一条接最近节点的支线（v9.2 输入从未触发；
@@ -690,6 +690,15 @@
 > 验证：ruff（全仓）0 条；470 个测试通过；`mypy src scripts` 本机缺 pandas 等的类型桩，99 条全是 import-untyped，本提交前后相同；
 > 钩子在临时仓库与临时 home 下逐个实跑，输出除上述删去的段落与两处改正外逐字相同；方法论 7 处 `文件:行` 引用随行号移动（含上一条），
 > 另两份文档的 `builders/industry.py:52` 改为 `49`，文首基准改为 `7ae9174`。
+>
+> 2026-10-13 合入前审查改的遗漏（作者批准 2026-10-13），缺省参数下模型不变，模型分段不变（仍为 14）：
+> - 第一批删去的 6 个求解环境变量（`COAL_RETROFIT_GUROBI_SEED` 等）设了只是静默不读，`resolved.env` 却照记，seed 族会落到同一个种子上；
+>   改为设了就报错（`runner.REMOVED_ENV`，在 `build_parameters` 里查，`run`、`show`、`diff` 都在求解之前退出 1），加 2 个测试。
+> - `.gitignore` 恢复 `_archive_20260906/` 与 `_v91tree/results/`、`_v91tree/data` 三条：这些目录从未入库，作者本机可能还在，去掉规则后
+>   `git add .` 会把它们整个收进来。
+> - 文字遗漏：方法论 §9.3 删去检查器判 LP 松弛的说法（第一批已从 `check_run_provenance.py` 删去）；`scenarios.py` 文首、图 6 脚本、README
+>   目录树、`docs/官方指标口径水预算.md` 里仍按现行写的已删内容（`EXPERIMENTS`、运行期支线、兼容环境变量、诊断脚本）改正。
+> 验证：ruff 0 条；472 个测试通过；方法论 12 处 `cr/runner.py` 引用随行号移动，文首基准改为 `6c16c43`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -949,7 +958,7 @@ infra_retrofit/
 │  ├─ cli.py                命令行 python -m coal_retrofit
 │  ├─ scenarios.py          读情景登记表 scenarios/*.toml
 │  ├─ runner.py             求解一个情景并落盘
-│  ├─ run_controls.py       热启动第 1 步、兼容的 COAL_RETROFIT_* 环境变量、求解时的提交号
+│  ├─ run_controls.py       热启动第 1 步与 .sol 的位置、求解时的提交号
 │  ├─ hydrology.py          水文成员（--water）与逐成员数据核对
 │  ├─ segment.py            模型分段号 MODEL_SEGMENT
 │  ├─ constants*.py         常量及其出处注释
