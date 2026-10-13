@@ -22,7 +22,6 @@ def main() -> None:
             排放Mt=("co2_mt_per_year", "sum"),
             需氢Mt=("h2_demand_kt_per_year", lambda s: s.sum() / 1000.0),
             取水亿m3=("water_m3_per_year", lambda s: s.sum() / 1e8),
-            投产年实测占比=("commission_year_observed", "mean"),
         )
         .round(2)
     )

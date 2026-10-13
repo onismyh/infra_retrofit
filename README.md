@@ -668,6 +668,28 @@
 > 验证：ruff 0 条；470 个测试通过（新增 `tests/test_isimip_fetch.py` 5 个：本机 HTTP 服务模拟断线续传、416、不理 Range、截断的 200 与
 > 一直出错）；`ST_WA_cwatm_126_dry_oq` 四个规划年的水链路矩阵、链路成本与节点可用量在本提交前后逐位相同；方法论 38 处 `文件:行` 引用
 > 随行号移动，删去"冷却方式统一耗水"一行，文首基准改为 `7a073d3`。
+>
+> 2026-10-13 第三批：第二批报告的计划外问题（作者批准 2026-10-13"全改"），缺省参数下模型不变，模型分段不变（仍为 14）：
+> - 工业投产年：builder 补齐缺失的投产年（水泥、钢铁按本部门实测年份的经验分位，合成氨、甲醇按 30 年寿命均匀铺开）并写出
+>   `commission_year`、`commission_year_observed`、`asset_life_years` 与 hub 的 `mean_commission_year`、`share_year_observed`，优化器与出图
+>   都不读（工业产量按部门产量指数缩放，不按厂龄退役），连同 `ASSET_LIFETIME_YEARS`、`SECTORS_WITH_UNIFORM_RETIREMENT` 删去；
+>   方法论附录 B.5 删"原始资产寿命"一行及其表注，其后的表注顺移（三处"B.5 表注 10"改为 9）。
+> - 其余没有读取方的列：`industry_sources.csv`、`industry_hubs.csv` 删 `has_h2_route`（模型读 `SECTOR_HAS_H2_ROUTE`）与
+>   `water_intensity_m3_per_t`（模型读 `water_m3_per_year`）；`plants.csv` 删 `quota_ccs_intensity_m3_per_mwh`（捕集增量的水费按基准比计，
+>   `data_prep_plants`）。点源库不在库内，工业两表直接删列，另行核对：新 `aggregate_hubs` 由库内点源表重聚的 390 个 hub 与 hub 表相对差
+>   ≤ 7e-16，新 `_apply_water` 复现点源表的取水量（≤ 5e-16）；`plants.csv` 用新代码重建，与删列结果逐字节相同。`plants`、`industry_hubs`、
+>   `industry_sources` 的文件摘要因此改变，`check_run_provenance.py --pair` 不把本提交前后求的结果配成一对；`ST_BASE`、
+>   `ST_WA_cwatm_126_dry_oq` 的 `prepare_inputs` 在本提交前后除删去的列与这三个摘要外逐项相同。
+> - `.claude/`：钩子里不绑定就不会触发的 Obsidian / 项目记忆分支、时间戳无处写入的 CLAUDE.md 同步提醒、与本项目无关的 JS 包管理器检测
+>   （`.claude/scripts/lib/` 两个文件），以及 `hook-common.js` 里随之或本就无人调用的 11 个函数删去；顺带改两个原有错误：`git status`
+>   首行的前导空格被 trim 掉，首个改动文件名少一个字符；待办计数的正则缺 `m` 标志，只数文件第一行。`analyze-results` 命令与
+>   `results-report` 技能删去写回 Obsidian 知识库的段落。`/verify` 与 `rules/coding-style.md` 的检查项按 CLAUDE.md §〇.8 改：ruff 查
+>   `src scripts tests`，mypy 装了才跑、只作参考，覆盖率与 pip-audit 不作门槛；`pyproject.toml` 的 ruff 排除 `reference/`（作者的参考
+>   笔记本），`ruff check .` 由 115 条变为 0 条。
+> - 文档：方法论的 `bld/water_quota.py:151-159` 改为 `149-159`（`basin_caps` 从 149 行起）。
+> 验证：ruff（全仓）0 条；470 个测试通过；`mypy src scripts` 本机缺 pandas 等的类型桩，99 条全是 import-untyped，本提交前后相同；
+> 钩子在临时仓库与临时 home 下逐个实跑，输出除上述删去的段落与两处改正外逐字相同；方法论 7 处 `文件:行` 引用随行号移动（含上一条），
+> 另两份文档的 `builders/industry.py:52` 改为 `49`，文首基准改为 `7ae9174`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 

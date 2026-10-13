@@ -82,20 +82,12 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
 
     海水凝汽器不取河水：按取水口径，这就是 241 GW 装机上 ~100 m3/MWh 的虚构取水量
     与完全不取水之间的差别。
-
-    带捕集的定额是基准定额加上捕集装置额外的耗水性补给水。定额表早于 CCS，没有对应的
-    行，但它本应计量的增量，恰好就是电厂必须额外购入的水量，即 Wang (2023) 表中的
-    耗水增量。
     """
     plants = plants.copy()
     seawater = plants["seawater_cooled"].astype(bool)
     for key in WATER_KEYS:
         column = f"{key}_intensity_m3_per_mwh"
         plants[column] = plants[f"{key}_intensity_all"].where(~seawater, plants[f"{key}_intensity_fresh"])
-    plants["quota_ccs_intensity_m3_per_mwh"] = (
-        plants["quota_intensity_m3_per_mwh"]
-        + (plants["consumption_ccs_intensity_m3_per_mwh"] - plants["consumption_intensity_m3_per_mwh"]).clip(lower=0.0)
-    ).round(4)
     # 单独拆出淡水直流冷却的凝汽器水量。`_intensity_all` 对所有冷却类别求和，
     # `_intensity_fresh` 对除直流冷却外的所有类别求和，所以二者之差正是直流冷却这一项——
     # 逐机组、按各机组自己的蒸汽参数，精确成立。海水 hub 取零，因为它们对外发布的列

@@ -9,7 +9,6 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const common = require('./hook-common');
 
 // Read stdin input
 let input = {};
@@ -23,7 +22,6 @@ try {
 }
 
 const userPrompt = input.user_prompt || '';
-const cwd = input.cwd || process.cwd();
 
 // Check if it is a slash command (escape)
 if (userPrompt.startsWith('/')) {
@@ -165,24 +163,6 @@ function suggestSkills(prompt) {
 const SKILL_LIST = collectSkills();
 const SKILL_GROUPS = categorizeSkills(SKILL_LIST);
 const suggestedSkills = suggestSkills(userPrompt);
-const binding = common.getProjectMemoryBinding(cwd);
-const isResearchPrompt = common.promptLooksResearchRelated(userPrompt);
-
-if (binding.bound && isResearchPrompt) {
-  if (SKILL_LIST.includes('obsidian-project-memory')) {
-    suggestedSkills.push('obsidian-project-memory');
-  }
-  if (/\b(zotero|collection|doi|arxiv|citation)\b|zotero|文献|参考文献|collection/i.test(userPrompt) &&
-      SKILL_LIST.includes('zotero-obsidian-bridge')) {
-    suggestedSkills.push('zotero-obsidian-bridge');
-  }
-  if (/\b(paper|papers|literature|review|claim|method|evidence)\b|论文|综述|paper/i.test(userPrompt) &&
-      SKILL_LIST.includes('obsidian-literature-workflow')) {
-    suggestedSkills.push('obsidian-literature-workflow');
-  }
-}
-
-const dedupedSuggestedSkills = [...new Set(suggestedSkills)];
 
 // Format grouped skills (skip empty groups)
 const groupedDisplay = Object.entries(SKILL_GROUPS)
@@ -191,12 +171,8 @@ const groupedDisplay = Object.entries(SKILL_GROUPS)
   .join('\n');
 
 // Build suggested skills hint
-const suggestedHint = dedupedSuggestedSkills.length > 0
-  ? `\n**Pre-matched skills (MUST activate these)**: ${dedupedSuggestedSkills.join(', ')}\nThese skills matched keywords in the user's prompt. You MUST activate them via Skill tool.\n`
-  : '';
-
-const boundRepoHint = binding.bound && isResearchPrompt
-  ? `\n**Bound Obsidian repo detected**: ${binding.projectId || 'unknown-project'}\nUse lightweight curator behavior by default: keep \`Daily/YYYY-MM-DD.md\` and \`.claude/project-memory/<project_id>.md\` in sync when this turn changes research state, and touch \`00-Hub.md\` only when top-level project status really changes. Consider the \`research-knowledge-curator-obsidian\` agent when the task spans plans, papers, experiments, results, or writing.\n`
+const suggestedHint = suggestedSkills.length > 0
+  ? `\n**Pre-matched skills (MUST activate these)**: ${suggestedSkills.join(', ')}\nThese skills matched keywords in the user's prompt. You MUST activate them via Skill tool.\n`
   : '';
 
 // Generate output
@@ -206,7 +182,7 @@ Silently scan the user's request against available skills. Do NOT list every ski
 
 Available skills:
 ${groupedDisplay}
-${suggestedHint}${boundRepoHint}
+${suggestedHint}
 **Action**:
 - If any skill matches → Activate via Skill tool, then output: "Activating: [skill-name] — [reason]"
 - If no skill matches → Output: "No skills needed"

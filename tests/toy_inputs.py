@@ -154,11 +154,7 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "co2_mt_per_year": [0.8],
             "process_co2_mt_per_year": [0.5],
             "h2_demand_kt_per_year": [0.0],
-            "has_h2_route": [False],
-            "water_intensity_m3_per_t": [1.0],
             "water_m3_per_year": [1.0e6],
-            "mean_commission_year": [2010.0],
-            "share_year_observed": [1.0],
         }
     ).to_csv(inputs / "industry_hubs.csv", index=False)
     pd.DataFrame(

@@ -20,8 +20,6 @@ try {
 }
 
 const cwd = input.cwd || process.cwd();
-const reason = input.reason || 'task_complete';
-const binding = common.getProjectMemoryBinding(cwd);
 
 // Build message
 function buildMessage() {
@@ -75,15 +73,6 @@ function buildMessage() {
     }
   } else {
     msg += '✅ No temp files\n';
-  }
-
-  if (binding.bound) {
-    msg += '\n🧠 Bound Obsidian KB\n';
-    msg += `  Project: ${binding.projectId || 'unknown'}\n`;
-    msg += '  Minimum maintenance after research-state turns:\n';
-    msg += '    • Daily/YYYY-MM-DD.md\n';
-    msg += `    • ${binding.memoryPath || '.claude/project-memory/<project_id>.md'}\n`;
-    msg += '    • 00-Hub.md (only when top-level project status changes)\n';
   }
 
   msg += '---';

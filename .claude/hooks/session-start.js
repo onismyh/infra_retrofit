@@ -13,9 +13,6 @@ const fs = require('fs');
 // Import shared utility library
 const common = require('./hook-common');
 
-// Import package manager detection
-const { getPackageManager, getSelectionPrompt } = require('../scripts/lib/package-manager');
-
 // Read stdin input
 let input = {};
 try {
@@ -30,7 +27,6 @@ try {
 const cwd = input.cwd || process.cwd();
 const projectName = path.basename(cwd);
 const homeDir = os.homedir();
-const binding = common.getProjectMemoryBinding(cwd);
 
 // Build output
 let output = '';
@@ -77,27 +73,6 @@ if (gitInfo.is_repo) {
 } else {
   output += `▸ Git: Not a repository\n\n`;
 }
-
-if (binding.bound) {
-  output += '🧠 Obsidian project memory: bound\n';
-  output += `  - Project: ${binding.projectId || 'unknown'}\n`;
-  output += `  - Status: ${binding.status || 'unknown'}\n`;
-  output += `  - Auto-sync: ${binding.autoSync ? 'on' : 'off'}\n`;
-  if (binding.vaultRoot) {
-    output += `  - Vault root: ${binding.vaultRoot}\n`;
-  }
-  output += '\n';
-}
-
-// Package manager detection
-try {
-  const pm = getPackageManager();
-  output += `📦 Package manager: ${pm.name} (${pm.source})\n`;
-} catch (err) {
-  // Package manager detection failed, silently ignore
-}
-
-output += '\n';
 
 // Todos
 output += `📋 Todos:\n`;

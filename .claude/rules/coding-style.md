@@ -200,15 +200,15 @@ src/
 Before committing code, ensure:
 
 ```bash
-# Type checking
-mypy src/
-
-# Code style
-ruff check .
+# Code style (rules in pyproject.toml)
+ruff check src scripts tests
 
 # Tests
-pytest
+python -m pytest
 ```
+
+No type checker or coverage threshold is required for this project (CLAUDE.md §〇.8). `mypy src scripts` may be run as an
+informational check where mypy is installed; otherwise report it as not run, and do not install tools for it.
 
 Violations of these rules will be flagged by the code-reviewer agent.
 

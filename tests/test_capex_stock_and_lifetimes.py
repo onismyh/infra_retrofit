@@ -161,8 +161,7 @@ def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
     hubs = pd.read_csv(inputs / "industry_hubs.csv")
     steel = hubs.iloc[[0]].assign(
         hub_id="ST1", sector="steel_bf_bof", sector_zh="长流程钢", longitude=112.3,
-        co2_mt_per_year=2.0, process_co2_mt_per_year=0.2, h2_demand_kt_per_year=81.0,
-        has_h2_route=True, water_m3_per_year=3.0e6,
+        co2_mt_per_year=2.0, process_co2_mt_per_year=0.2, h2_demand_kt_per_year=81.0, water_m3_per_year=3.0e6,
     )
     pd.concat([hubs, steel], ignore_index=True).to_csv(inputs / "industry_hubs.csv", index=False)
     _attach_industry_hubs(paths)
