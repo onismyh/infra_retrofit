@@ -93,11 +93,11 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     # 节点所在的流域归属，因为取水许可就是这样核发的。只在这里算一次：它是一次空间连接
     # （spatial join），若按每个规划年、每个情景重做，耗时会超过其余全部准备工作之和。
     if scenario.water_mode != "no_water":
-        from ..builders.water_grid import _assign_basin_codes
+        from ..builders.water_grid import assign_basin_codes
 
         located = plants.rename(columns={"centroid_latitude": "latitude",
                                          "centroid_longitude": "longitude"})
-        plants["basin_code"] = _assign_basin_codes(paths, located)
+        plants["basin_code"] = assign_basin_codes(paths, located)
     return plants
 
 

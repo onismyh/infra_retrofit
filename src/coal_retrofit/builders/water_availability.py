@@ -15,13 +15,13 @@ from .water_bias import member_bias_factors
 from .water_grid import (
     WATER_WINDOW_BASIS,
     _annual_and_seasonal,
-    _assign_basin_codes,
     _basin_dry_window,
     _basin_zone_grid,
     _cell_area_m2,
     _clean_window,
     _file_years,
     _resolve_source_path,
+    assign_basin_codes,
     load_provinces,
 )
 
@@ -84,7 +84,7 @@ def build_water_nodes_dataframe(paths: ProjectPaths, scenarios: pd.DataFrame) ->
         lat_values = np.asarray(ds.variables["lat"][:], dtype=np.float64)
 
     nodes = _candidate_grid_points(provinces, lon_values, lat_values)
-    nodes["basin_code"] = _assign_basin_codes(paths, nodes)
+    nodes["basin_code"] = assign_basin_codes(paths, nodes)
     lon_step = float(np.median(np.abs(np.diff(lon_values)))) if len(lon_values) > 1 else 0.5
     lat_step = float(np.median(np.abs(np.diff(lat_values)))) if len(lat_values) > 1 else 0.5
     nodes["water_node_id"] = [f"W{index:05d}" for index in range(1, len(nodes) + 1)]

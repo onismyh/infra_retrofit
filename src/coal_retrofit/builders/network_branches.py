@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 
 from ..constants import NETWORK_EDGE_CLASS_PLANT_BRANCH, NETWORK_EDGE_CLASS_STORAGE_BRANCH, TARGET_GEO_CRS
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 from .network_edges import make_edge_record
@@ -190,7 +191,7 @@ def load_industry_hubs(paths: ProjectPaths) -> pd.DataFrame:
 
 def _build_corridor_type_lookup(main_edges: pd.DataFrame) -> dict[str, str]:
     counts: dict[str, Counter[str]] = defaultdict(Counter)
-    for row in main_edges.itertuples(index=False):
+    for row in iter_rows(main_edges):
         counts[row.from_node_id][str(row.corridor_type)] += 1
         counts[row.to_node_id][str(row.corridor_type)] += 1
 
@@ -208,7 +209,7 @@ def _nearest_corridor_node(
     best_node_id = ""
     best_distance = float("inf")
     origin = (float(lon), float(lat))
-    for row in corridor_nodes.itertuples(index=False):
+    for row in iter_rows(corridor_nodes):
         distance = geodesic_length_km([origin, (float(row.lon), float(row.lat))])
         if distance < best_distance:
             best_distance = distance
@@ -220,8 +221,8 @@ def build_attachment_tables(
     paths: ProjectPaths,
     corridor_nodes: pd.DataFrame,
     main_edges: pd.DataFrame,
-    next_node_index: int,
-    next_edge_index: int,
+    first_node_index: int,
+    first_edge_index: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
     corridor_type_lookup = _build_corridor_type_lookup(main_edges)
     corridor_nodes = corridor_nodes[["node_id", "lon", "lat"]].reset_index(drop=True).copy()
@@ -232,6 +233,7 @@ def build_attachment_tables(
     branch_node_rows: list[dict[str, object]] = []
     branch_edge_rows: list[dict[str, object]] = []
     corridor_degree_additions: dict[str, int] = defaultdict(int)
+    node_index, edge_index = first_node_index, first_edge_index
 
     def add_branch_node_and_edge(
         *,
@@ -243,11 +245,11 @@ def build_attachment_tables(
         year_basis: str,
         index_column: str,
     ) -> None:
-        nonlocal next_node_index, next_edge_index
+        nonlocal node_index, edge_index
 
         row_data = attachment_row._asdict()
-        node_id = f"node_{next_node_index:05d}"
-        next_node_index += 1
+        node_id = f"node_{node_index:05d}"
+        node_index += 1
         attachment_lon = float(row_data["lon"])
         attachment_lat = float(row_data["lat"])
         corridor_node_id, distance_km = _nearest_corridor_node(attachment_lon, attachment_lat, corridor_nodes)
@@ -277,7 +279,7 @@ def build_attachment_tables(
         # 支线不存几何，`network_repair.build_edge_geometry` 按两端坐标补直线。
         branch_edge_rows.append(
             make_edge_record(
-                f"edge_{next_edge_index:05d}",
+                f"edge_{edge_index:05d}",
                 int(row_data[index_column]) if pd.notna(row_data[index_column]) else 0,
                 corridor_node_id if from_corridor_to_attachment else node_id,
                 node_id if from_corridor_to_attachment else corridor_node_id,
@@ -289,9 +291,9 @@ def build_attachment_tables(
                 year_basis=year_basis,
             )
         )
-        next_edge_index += 1
+        edge_index += 1
 
-    for row in plant_hubs.sort_values("plant_index").itertuples(index=False):
+    for row in iter_rows(plant_hubs.sort_values("plant_index")):
         add_branch_node_and_edge(
             attachment_row=row,
             node_type="plant",
@@ -302,7 +304,7 @@ def build_attachment_tables(
             index_column="plant_index",
         )
 
-    for row in storage_hubs.sort_values("storage_hub_index").itertuples(index=False):
+    for row in iter_rows(storage_hubs.sort_values("storage_hub_index")):
         add_branch_node_and_edge(
             attachment_row=row,
             node_type="storage_hub",
@@ -313,7 +315,7 @@ def build_attachment_tables(
             index_column="storage_hub_index",
         )
 
-    for row in load_industry_hubs(paths).sort_values("industry_index").itertuples(index=False):
+    for row in iter_rows(load_industry_hubs(paths).sort_values("industry_index")):
         add_branch_node_and_edge(
             attachment_row=row,
             node_type="industry_hub",

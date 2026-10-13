@@ -68,7 +68,7 @@ def _file_years(ds: netCDF4.Dataset) -> np.ndarray:
     """逐个时间步的公历年份。"""
     time_var = ds.variables["time"]
     dates = netCDF4.num2date(time_var[:], time_var.units, getattr(time_var, "calendar", "standard"))
-    return np.array([int(dt.year) for dt in dates])
+    return np.array([int(dt.year) for dt in np.asarray(dates)])
 
 
 def _cell_area_m2(lat: np.ndarray, cell_degrees: float = 0.5) -> np.ndarray:
@@ -132,7 +132,7 @@ def load_basins(paths: ProjectPaths) -> gpd.GeoDataFrame:
     return gpd.read_file(path).to_crs(TARGET_GEO_CRS)
 
 
-def _assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
+def assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.ndarray:
     """按所在（或最近的）多边形，给每个点（`longitude` / `latitude` 列）分配一级流域代码。
 
     先按包含关系配对；落在所有多边形之外的点（海岸、多边形之间的缝隙）取边界最近的流域，否则这些网格会被

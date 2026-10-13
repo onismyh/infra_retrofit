@@ -45,10 +45,12 @@ Output index (production, Mt product):
 """
 from __future__ import annotations
 
+import io
 import logging
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -85,7 +87,7 @@ def _sheet_rows(sheet: str) -> dict[str, dict[int, float]]:
         if pd.isna(name):
             continue
         rows[str(name)] = {
-            year: (float(raw.iat[r, col]) if pd.notna(raw.iat[r, col]) else 0.0)
+            year: (float(cast(float, raw.iat[r, col])) if pd.notna(raw.iat[r, col]) else 0.0)
             for year, col in year_cols.items()
         }
     return rows
@@ -169,7 +171,7 @@ def build() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    cast(io.TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8", errors="replace")
     if not TIMES_XLSX.exists():
         raise FileNotFoundError(TIMES_XLSX)
     targets, index = build()

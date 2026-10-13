@@ -6,6 +6,7 @@ import pandas as pd
 
 from ..constants import AMMONIA_FLOW_SCALE
 from ..constants_industry import INDUSTRY_ROUTES
+from ..frames import iter_rows
 from ._shared import PreparedInputs
 from .industry import CCS as _CCS, H2 as _H2, UNABATED as _UNABATED, IndustryYearData
 from .year_types import YearData
@@ -73,7 +74,7 @@ def _build_industry_detail_table(
         h2_kg_by_hub = np.asarray(incidence @ flows).ravel()
         h2_cost_by_hub = np.asarray(incidence @ (flows * unit_cost)).ravel()
     rows: list[dict[str, object]] = []
-    for hub_idx, hub in enumerate(hubs.itertuples(index=False)):
+    for hub_idx, hub in enumerate(iter_rows(hubs)):
         share = share_values[hub_idx]
         cap = capacity_mt[hub_idx]
         new = new_capacity_mt[hub_idx]

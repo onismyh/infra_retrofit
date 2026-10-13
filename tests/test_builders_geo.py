@@ -1,4 +1,4 @@
-"""建输入时的两处地理归属按真实函数（不打桩）走一遍：点归一级流域（`builders.water_grid._assign_basin_codes`）与海水冷却判定
+"""建输入时的两处地理归属按真实函数（不打桩）走一遍：点归一级流域（`builders.water_grid.assign_basin_codes`）与海水冷却判定
 （`builders.plants_water.add_seawater_classification`），toy 图层写进临时 data/ 目录。"""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 from shapely.geometry import LineString, box
 
 from coal_retrofit.builders.plants_water import SEAWATER_COAST_DISTANCE_KM, add_seawater_classification
-from coal_retrofit.builders.water_grid import _assign_basin_codes, load_basins
+from coal_retrofit.builders.water_grid import assign_basin_codes, load_basins
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.spatial import haversine_km
 
@@ -30,7 +30,7 @@ def test_assign_basin_codes_maps_points_inside_and_in_gaps_to_codes(tmp_path) ->
     paths = _paths_with_basins(tmp_path)
     nodes = pd.DataFrame({"longitude": [100.5, 102.5, 101.2, 103.9], "latitude": [30.5, 30.5, 30.5, 30.5]})
     # 前两点各在一个多边形内；101.2 在缝隙里、离 A 的东边界 0.2°、离 B 的西边界 0.8°；103.9 在 B 以东
-    assert _assign_basin_codes(paths, nodes).tolist() == ["A", "B", "A", "B"]
+    assert assign_basin_codes(paths, nodes).tolist() == ["A", "B", "A", "B"]
     assert load_basins(paths).crs.is_geographic
 
 

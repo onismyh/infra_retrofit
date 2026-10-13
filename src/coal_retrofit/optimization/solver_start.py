@@ -5,6 +5,7 @@ import logging
 import re
 from itertools import combinations_with_replacement
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -51,8 +52,8 @@ def _apply_rounded_start(model, sol_path: Path, assumptions: OptimizationAssumpt
         for line in handle:
             if line.startswith("#") or not line.strip():
                 continue
-            name, _, value = line.partition(" ")
-            values[name.strip()] = float(value)
+            name, _, text = line.partition(" ")
+            values[name.strip()] = float(text)
     model.update()
     by_name = {var.VarName: var for var in model.getVars() if var.VType != GRB.CONTINUOUS}
     tiers = tuple(float(t) for t in assumptions.pipe_capacity_tiers_mtpa)
@@ -78,7 +79,7 @@ def _apply_rounded_start(model, sol_path: Path, assumptions: OptimizationAssumpt
             by_name[f"add_cap_{year}[{e}]"].Start = 1.0 if added > 0 else 0.0
             by_name[f"build_edge_{year}[{e}]"].Start = 1.0 if built else 0.0
             n_set += len(counts) + 2
-    selector_rows: dict[str, list[tuple[int, object, float]]] = {}
+    selector_rows: dict[str, list[tuple[int, Any, float]]] = {}
     for name, var in by_name.items():
         if name.startswith(("pipe_count_", "add_cap_", "build_edge_")):
             continue

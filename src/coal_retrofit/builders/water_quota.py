@@ -273,10 +273,10 @@ def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
     if not path.exists():
         logger.info("industry_sources.csv absent; no industrial carve-out from the reservation")
         return {}
-    from .water_grid import _assign_basin_codes
+    from .water_grid import assign_basin_codes
 
     sources = pd.read_csv(path)
-    sources["basin_code"] = _assign_basin_codes(paths, sources)
+    sources["basin_code"] = assign_basin_codes(paths, sources)
     by_basin = sources.groupby("basin_code")["water_m3_per_year"].sum() / 1e8
     return {str(code): float(value) for code, value in by_basin.items()}
 

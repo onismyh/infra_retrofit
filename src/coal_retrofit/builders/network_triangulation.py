@@ -24,6 +24,7 @@ from ..constants import (
     NETWORK_TRIANGULATION_MAX_STRETCH,
     TARGET_GEO_CRS,
 )
+from ..frames import iter_rows
 from ..spatial import geodesic_length_km, haversine_km
 from .network_edges import make_edge_record, next_edge_index, unordered_edge_key
 from .network_repair import edge_geometries, node_coordinates
@@ -50,7 +51,8 @@ def _knn_candidate_pairs(points_xy: np.ndarray, k: int = 3) -> set[tuple[int, in
         distance_sq = np.einsum("ij,ij->i", deltas, deltas)
         ranked = np.argsort(distance_sq)
         for neighbor_idx in ranked[1 : min(point_count, k + 1)]:
-            candidate_pairs.add(tuple(sorted((idx, int(neighbor_idx)))))
+            other = int(neighbor_idx)
+            candidate_pairs.add((min(idx, other), max(idx, other)))
     return candidate_pairs
 
 
@@ -75,9 +77,9 @@ def _triangulation_candidate_pairs(points_xy: np.ndarray) -> set[tuple[int, int]
 
 def _build_length_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
     graph = nx.Graph()
-    for row in nodes.itertuples(index=False):
+    for row in iter_rows(nodes):
         graph.add_node(str(row.node_id))
-    for row in edges.itertuples(index=False):
+    for row in iter_rows(edges):
         graph.add_edge(
             str(row.from_node_id),
             str(row.to_node_id),
@@ -100,7 +102,7 @@ def build_triangulation_candidate_edges(nodes: pd.DataFrame, edges: pd.DataFrame
         return pd.DataFrame(columns=list(edges.columns))
 
     graph = _build_length_graph(nodes, edges)
-    existing_edge_keys = {unordered_edge_key(row.from_node_id, row.to_node_id) for row in edges.itertuples(index=False)}
+    existing_edge_keys = {unordered_edge_key(row.from_node_id, row.to_node_id) for row in iter_rows(edges)}
 
     edge_rows: list[dict[str, object]] = []
     edge_index = next_edge_index(edges)
@@ -168,13 +170,13 @@ def build_direct_sink_edges(
 
     coords = node_coordinates(nodes)
     kept_geoms = edge_geometries(edges, coords)
-    existing = {unordered_edge_key(r.from_node_id, r.to_node_id) for r in edges.itertuples(index=False)}
+    existing = {unordered_edge_key(r.from_node_id, r.to_node_id) for r in iter_rows(edges)}
     sink_lon = sinks["lon"].to_numpy(dtype=np.float64)
     sink_lat = sinks["lat"].to_numpy(dtype=np.float64)
     sink_ids = sinks["node_id"].astype(str).to_numpy()
 
     order = []
-    for row in sources.itertuples(index=False):
+    for row in iter_rows(sources):
         dist = haversine_km(float(row.lon), float(row.lat), sink_lon, sink_lat)
         for position in np.argsort(dist)[:top_k]:
             order.append((float(dist[position]), str(row.node_id), str(sink_ids[position])))

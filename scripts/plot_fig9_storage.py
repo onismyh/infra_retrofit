@@ -53,7 +53,7 @@ def key(kind: str, offshore: bool) -> str:
 
 def summary(sinks: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """年 × 汇型陆海类的年注入量（Mt/yr）与区间末累计封存量（Gt），列按 CLASSES 的顺序。"""
-    classes = sinks["storage_type"].astype(str) + "_" + np.where(sinks["offshore"].astype(bool), "offshore", "onshore")
+    classes: pd.Series = sinks["storage_type"].astype(str) + "_" + np.where(sinks["offshore"].astype(bool), "offshore", "onshore")
     columns = [key(kind, offshore) for kind, offshore in CLASSES]
     out = {}
     for name, column, scale in (("annual", "injected_mtpa", 1.0), ("cumulative", "cumulative_injected_mt", 1e-3)):

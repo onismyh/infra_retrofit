@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Protocol, Sequence
 try:
     import gurobipy as gp
 except ImportError:  # pragma: no cover
-    gp = None
+    gp = None  # type: ignore[assignment]
 
 from ._shared import _discount_factor
 

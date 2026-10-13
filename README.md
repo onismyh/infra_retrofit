@@ -753,6 +753,25 @@
 > 免得每次改文首都要同步两处。四个文件去掉文档串、统一新名后 AST 与改前相同；方法论的 419 处 `文件:行` 引用无一需要改；
 > 474 个测试通过，mypy 错误 89 不变。
 
+> 2026-10-13 起六处小修，行为不变，模型分段不变（仍为 13）：
+> ① `builders/water_grid._assign_basin_codes` 被五个模块、两个脚本与测试导入，改名 `assign_basin_codes`；
+> ② `builders/plants_water` 的海岸线注释与 `.claude/CLAUDE.md` §4.2 的 `boundary.shp` GBCODE 表按实测更正：61010 是陆地国界与九段线
+> （此前写成"国界 + 海岸线"），26100 是南海诸岛等岛屿的岸线段（此前写成"九段线"），26010 含大陆海岸 54 段，注释里的 26 085 km
+> 只是 26010 在 EPSG:2380 下的长度（26* 大地线合计 28 467 km）；海岸线距离取 26* 本来就对，代码不变；
+> ③ `network_branches.build_attachment_tables` 的两个编号参数改名 `first_node_index` / `first_edge_index`（原名与
+> `network_edges.next_edge_index` 同名），边号起点改用 `next_edge_index(main_edges)`（走廊边从 1 连续编号，与原来的表长加一相同）；
+> ④ 粗化水节点的 `basin_code` 是分组所用的流域，373 个节点中 5 个的加权坐标落在相邻流域，写进 `builders/water.py` 注释与方法论 §2.3；
+> ⑤ 新增 `scripts/crop_isimip_china.py`，把下载的 ISIMIP 全球文件裁到中国框（`data/water/` 的文件早就是裁过的，但没有脚本；
+> 写临时文件、逐月与原文件比对相同才换名，失败时删临时文件），
+> `attribute_isimip_forcing.py` 改用它的框常量；重新下载一个全球文件（WaterGAP2-2e、gfdl-esm4、ssp126、pdomuse）裁出后，与 `data/water/`
+> 的同名文件数值与全部属性相同，只是压缩参数不同；
+> ⑥ mypy 清零（src 89 → 0，scripts 22 → 0）：多数是 pandas-stubs 把 `itertuples` 的字段一律标成 Scalar 联合，src 的 45 处
+> `itertuples(index=False)` 统一改用 `frames.iter_rows`（运行时相同）；其余是类型标注、`cast`、变量改名与一处等价写法（`network_triangulation`
+> 的近邻对改用 `min` / `max` 排序），`model_industry` 的氢采购表达式不再先存进列表。
+> 验证：合成走廊建网前后两张表逐字节相同（833 节点 / 1 315 边），7 张水表改前改后逐字节相同（其中 6 张与库内
+> 相同，`water_basin_caps.csv` 与库内只差浮点末位，改前就如此），十张图的 38 个文件逐字节相同；477 个测试通过（新增 3 个）；
+> 方法论 87 处 `文件:行` 引用随行号移动，文首基准改为 `81ea6c9`。
+
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
 **计价框架一样**：两侧都按 CLAUDE.md §二.7 计价（一次性 capex + 固定运维 + 按模型自己价格计的能耗 + 期末残值），
@@ -764,10 +783,10 @@
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:198`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:58-79`、`optimization/model_industry.py:175` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`_year_objective_weight` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:128`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:129`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:204-209`、`:235-242` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:199` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:128`、`optimization/industry_matrices.py:238`、`:291` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:129`、`optimization/industry_matrices.py:238`、`:291` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:65`、`optimization/model_costs.py:67-104`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
@@ -1140,7 +1159,7 @@ python -m ruff check src tests scripts
 | Fan et al. 2025 封存潜力与注入能力栅格 | `data/封存汇图层-Fan/`（出处与许可见该目录 README） | 是 | 封存汇 |
 | Wang et al. 2023 生物质栅格 `bioenergy_s4_AF_max.tif`（情景 4，figshare 文件 39594598） | `data/` 下，按文件名查找（本次下载放在 `data/中国生物质潜力/`） | 否 | 生物质供给 |
 | 绿氢产量与 LCOH 栅格 | `data/H2/<年份>/` | 否 | 绿氢节点 |
-| ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`、`download_isimip_extra_gcms.py` | 否 | 水节点、偏差校正、生活与灌溉耗水 |
+| ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`、`download_isimip_extra_gcms.py`，下完用 `crop_isimip_china.py` 裁到中国框 | 否 | 水节点、偏差校正、生活与灌溉耗水 |
 | 水资源一级区 | `data/ChinaBasins/basin_l1.gpkg` | 是 | 厂址归流域、流域指标 |
 | 省界与海岸线 | `data/ChinaMap/` | 是 | 定省、剔除西藏、海岸线距离 |
 | Natural Earth 1:10m 陆地 | `data/NaturalEarth/` | 是 | 管道海上段长度 |

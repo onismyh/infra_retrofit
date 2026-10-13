@@ -18,6 +18,8 @@
 """
 from __future__ import annotations
 
+from typing import Any, cast
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -45,7 +47,7 @@ GROUPS = {
     "salvage": ("salvage_credit",),
 }
 CATEGORY_GROUP = {category: group for group, categories in GROUPS.items() for category in categories}
-TEXT = {
+TEXT: dict[str, dict[str, Any]] = {
     "zh": {"a": "年度费用（$10^9$ 元/年）", "b": "一次性投资（$10^9$ 元）", "c": "折现值合计（$10^9$ 元）",
            "total": "合计 {v}",
            "groups": {"coal_operating": "煤电运行（相对不改造）", "coal_capex": "煤电改造、重建与搁浅",
@@ -99,7 +101,7 @@ def draw(data: dict, lang: str):
     fig = plt.figure(figsize=(FULL_WIDTH_MM * MM, 70 * MM))
     axes = [fig.add_axes(box) for box in ((0.07, 0.12, 0.22, 0.8), (0.37, 0.12, 0.16, 0.8), (0.79, 0.12, 0.2, 0.8))]
     for ax, kind, letter in ((axes[0], "annual", "a"), (axes[1], "one_off", "b")):
-        table = tables[kind]
+        table = cast(pd.DataFrame, tables[kind])
         x = np.arange(len(table))
         stacked_bars(ax, x, table, COST_COLORS, width=0.6)
         net = table.sum(axis=1).to_numpy()
@@ -114,7 +116,7 @@ def draw(data: dict, lang: str):
         ax.tick_params(axis="x", length=0)
         ax.set_ylabel(text[letter])
         panel_label(ax, letter)
-    present = tables["present"]
+    present = cast(pd.Series, tables["present"])
     cx = axes[2]
     y = np.arange(len(present))[::-1]
     cx.barh(y, present.to_numpy(), height=0.62, color=[COST_COLORS[g] for g in present.index],

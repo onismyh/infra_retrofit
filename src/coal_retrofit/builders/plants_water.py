@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from typing import cast
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -46,7 +48,8 @@ def hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[st
     combustion = units["combustion"].map(combustion_class)
     cooling = units["cooling_technology"].map(cooling_class)
     capacity = units["capacity_mw"].astype(float)
-    for (comb, cool), index in units.groupby([combustion, cooling]).groups.items():
+    for group_key, index in units.groupby([combustion, cooling]).groups.items():
+        comb, cool = cast(tuple[str, str], group_key)
         entry = WATER_INTENSITY_BY_TECH_M3_PER_MWH.get((comb, cool))
         if entry is None:
             continue
@@ -55,18 +58,18 @@ def hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[st
             out[f"{key}_intensity_all"] += share * entry[key]
             if cool != "once-through":
                 out[f"{key}_intensity_fresh"] += share * entry[key]
-    for cool, index in units.groupby(cooling).groups.items():
+    for cooling_key, index in units.groupby(cooling).groups.items():
         unit_caps = capacity.loc[index]
         for unit_capacity in unit_caps:
-            quota = CHINA_WATER_QUOTA_M3_PER_MWH.get((cool, quota_capacity_band(float(unit_capacity))))
+            quota = CHINA_WATER_QUOTA_M3_PER_MWH.get((str(cooling_key), quota_capacity_band(float(unit_capacity))))
             if quota is not None:
                 out["quota_intensity_m3_per_mwh"] += (float(unit_capacity) / total_capacity) * quota
     # 若该 hub 的凝汽器改为空冷，其用水强度会是多少。蒸汽参数不变，取同一张表的
     # 空冷行，因此差值只归因于冷却方式。四种口径都算，并按每台机组自己的蒸汽参数
     # 加权——若在下游以 `air_consumption x ratio(dominant_combustion)` 推出取水那一对，
     # 得到的不是同一个数，而且曾把五个本已空冷的 hub 推到其自身基准取水量之上。
-    for comb, index in units.groupby(combustion).groups.items():
-        entry = WATER_INTENSITY_BY_TECH_M3_PER_MWH.get((comb, "air"))
+    for combustion_key, index in units.groupby(combustion).groups.items():
+        entry = WATER_INTENSITY_BY_TECH_M3_PER_MWH.get((str(combustion_key), "air"))
         if entry is None:
             continue
         share = float(capacity.loc[index].sum()) / total_capacity
@@ -119,10 +122,11 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
 # 完全不同：沿海机组一点也不争用淡水，内陆机组则要引走 ~85-115 m3/MWh。二者的划分
 # 由到海岸线的距离推断。
 #
-# 海岸线取自 data/ChinaMap/boundary.shp，其 GBCODE 字段把海岸（26010 开阔海岸，
-# 26080/26100 岛屿海岸，合计 26 085 km）与陆地国界（61010）区分开。早先的版本量的是
-# 到整条国界的距离，把鸭绿江与中越陆地边界也混同为海，只好再加一张沿海省份白名单
-# 来弥补。
+# 海岸线取自 data/ChinaMap/boundary.shp 的 GBCODE 26* 要素：26010 是大陆海岸（54 段，18 137 km）与沿海岛屿
+# 轮廓（889 个闭合环，7 416 km），26100 是南海诸岛等岛屿的岸线段（261 段，2 068 km），26080 是南海岛礁
+# （92 段，846 km），合计 28 467 km（大地线长，2026-10-13 实测；此前写的 26 085 km 只是 26010 在 EPSG:2380 下的长度）。
+# 陆地国界与九段线同在 61010，不算海岸。早先的版本量的是到整条国界的距离，把鸭绿江与中越陆地边界也混同为海，
+# 只好再加一张沿海省份白名单来弥补。
 #
 # 按到真实海岸的距离，直流冷却机组被分成两群，中间几乎是空带：0-20 km 有 240.2 GW，
 # 20-50 km 有 2.0 GW，50 km 以外有 222.9 GW。阈值取在这段空档的中间，因此分类结果

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Hashable
 
 import geopandas as gpd
 import networkx as nx
@@ -21,6 +22,7 @@ from ..constants import (
     NETWORK_EDGE_CLASS_STORAGE_BRANCH,
     NETWORK_EDGE_CLASS_TRIANGULATION,
 )
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, haversine_km
 from .network_edges import make_edge_record
@@ -53,7 +55,7 @@ def build_edge_geometry(row: pd.Series, node_coords: dict[str, tuple[float, floa
 
 def node_coordinates(nodes: pd.DataFrame) -> dict[str, tuple[float, float]]:
     """节点 id 到 (经度, 纬度)。"""
-    return {str(r.node_id): (float(r.lon), float(r.lat)) for r in nodes.itertuples(index=False)}
+    return {str(r.node_id): (float(r.lon), float(r.lat)) for r in iter_rows(nodes)}
 
 
 def edge_geometries(edges: pd.DataFrame, node_coords: dict[str, tuple[float, float]]) -> list[LineString]:
@@ -75,7 +77,7 @@ def _unreached_terminals(nodes: pd.DataFrame, edges: pd.DataFrame) -> set[str]:
     plants, sinks = _terminal_ids(nodes)
     graph = nx.Graph()
     graph.add_nodes_from(plants | sinks)
-    for row in edges.itertuples(index=False):
+    for row in iter_rows(edges):
         graph.add_edge(str(row.from_node_id), str(row.to_node_id))
     component = {node: idx for idx, part in enumerate(nx.connected_components(graph)) for node in part}
     sink_components = {component[s] for s in sinks if s in component}
@@ -105,7 +107,7 @@ def _repair_connectivity(
     def _components(frame: pd.DataFrame) -> dict[str, int]:
         graph = nx.Graph()
         graph.add_nodes_from(coords)
-        for row in frame.itertuples(index=False):
+        for row in iter_rows(frame):
             graph.add_edge(str(row.from_node_id), str(row.to_node_id))
         return {n: i for i, part in enumerate(nx.connected_components(graph)) for n in part}
 
@@ -167,7 +169,7 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
     node_coords = node_coordinates(nodes)
 
     # 构建几何并按优先级排序
-    records: list[tuple[int, int, LineString]] = []  # (priority, df_index, geom)
+    records: list[tuple[int, Hashable, LineString]] = []  # (priority, df_index, geom)
     for idx, row in edges.iterrows():
         geom = build_edge_geometry(row, node_coords)
         if geom is not None and not geom.is_empty:
@@ -179,7 +181,7 @@ def _remove_crossing_edges(nodes: pd.DataFrame, edges: pd.DataFrame) -> pd.DataF
     # 保留边 1224 -> 1269，连通片 173 -> 157，每个源平均可选汇 32 -> 56。
     records.sort(key=lambda x: (x[0], x[2].length))
 
-    kept_indices: list[int] = []
+    kept_indices: list[Hashable] = []
     kept_geoms: list[LineString] = []
 
     for priority, idx, geom in records:
@@ -226,7 +228,7 @@ def _drop_edges_over_excluded_region(paths: ProjectPaths, nodes: pd.DataFrame, e
         return edges
     coords = node_coordinates(nodes)
     drop = []
-    for row in edges.itertuples(index=False):
+    for row in iter_rows(edges):
         if str(row.edge_class) not in (NETWORK_EDGE_CLASS_TRIANGULATION, NETWORK_EDGE_CLASS_DIRECT):
             continue
         a, b = coords.get(str(row.from_node_id)), coords.get(str(row.to_node_id))
@@ -256,7 +258,7 @@ def _merge_components(paths: ProjectPaths, nodes: pd.DataFrame, edges: pd.DataFr
     lat = np.array([coords[n][1] for n in ids], dtype=np.float64)
     graph = nx.Graph()
     graph.add_nodes_from(ids)
-    for row in edges.itertuples(index=False):
+    for row in iter_rows(edges):
         graph.add_edge(str(row.from_node_id), str(row.to_node_id))
 
     added: list[dict[str, object]] = []

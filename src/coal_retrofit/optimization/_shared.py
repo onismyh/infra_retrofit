@@ -9,8 +9,8 @@ try:
     import gurobipy as gp
     from gurobipy import GRB
 except ImportError:  # pragma: no cover
-    gp = None
-    GRB = None
+    gp = None  # type: ignore[assignment]
+    GRB = None  # type: ignore[assignment, misc]
 
 from .network import RuntimeNetwork
 from .scenario import PATHWAYS

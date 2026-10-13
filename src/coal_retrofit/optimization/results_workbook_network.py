@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 
+from ..frames import iter_rows
 from ..spatial import haversine_km
 from ._shared import PreparedInputs
 from .results_regions import CROSS_REGION, REGIONS, edge_region, province_region
@@ -58,24 +59,23 @@ def pipe_sheets(
     labels = [f"{tier:g}" for tier in tiers]
     by = edges.set_index(["edge_id", "year"])
     used = set(edges.loc[(edges["pipes"] > 0) | (edges["net"].abs() > FLOW_TOL), "edge_id"])
-    nodes = prepared.network.nodes.set_index(prepared.network.nodes["node_id"].astype(str))
+    node_xy = {str(r.node_id): (float(r.lon), float(r.lat)) for r in iter_rows(prepared.network.nodes)}
     static = prepared.network.edges.assign(edge_id=prepared.network.edges["edge_id"].astype(str))
     region: dict[str, int] = {}
     info: dict[str, list[Any]] = {}
-    for row in static.itertuples(index=False):
+    for row in iter_rows(static):
         edge, start, end = str(row.edge_id), str(row.from_node_id), str(row.to_node_id)
         regions = (province_region(node_province[start]), province_region(node_province[end]))
         region[edge] = edge_region(*regions)
         if edge in used:
-            lon0, lat0 = float(nodes.at[start, "lon"]), float(nodes.at[start, "lat"])
-            lon1, lat1 = float(nodes.at[end, "lon"]), float(nodes.at[end, "lat"])
+            (lon0, lat0), (lon1, lat1) = node_xy[start], node_xy[end]
             distance = float(haversine_km(lon0, lat0, lon1, lat1))
             info[edge] = [start, end, distance, float(row.length_km), node_province[start], node_province[end],
                           *regions, region[edge], lon0, lat0, lon1, lat1]
     order = [edge for edge in static["edge_id"] if edge in used]
 
     def series(edge: str, column: str) -> list[float]:
-        return [float(by.at[(edge, y), column]) for y in years]
+        return [float(cast(float, by.at[(edge, y), column])) for y in years]
 
     stock: list[list[Any]] = [["edge_id", "Node1", "Node2", "档（Mtpa）", *years, "Length_Weighted(km)",
                                *(f"{y}长度" for y in years)]]

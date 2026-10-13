@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..frames import iter_rows
 from ._shared import PATHWAY_INDEX, PreparedInputs
 from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
@@ -238,7 +239,7 @@ def _water_access_data(
         else np.ones(len(prepared.plants), dtype=np.float64)
     )
     link_cost_cny_per_m3 = np.zeros(link_count, dtype=np.float64)
-    for link_idx, link in enumerate(links.itertuples(index=False)):
+    for link_idx, link in enumerate(iter_rows(links)):
         if str(link.plant_id) not in plant_index or str(link.water_node_id) not in node_index:
             continue
         plant_idx = plant_index[str(link.plant_id)]

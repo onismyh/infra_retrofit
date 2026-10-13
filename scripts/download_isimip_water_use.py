@@ -52,7 +52,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from _bootstrap import REPO_ROOT
 
-# 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。
+# 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。下的是全球文件，下完用
+# `python scripts/crop_isimip_china.py data/water` 原地裁到中国框；已有同名文件的不重下，裁过的也算。
 DEST = str(REPO_ROOT / "data" / "water")
 BASE = "https://files.isimip.org/ISIMIP3b/OutputData/water_global"
 # Every GCM in `inputs/water_scenarios.csv`: each member's deduction comes from its own run.

@@ -11,6 +11,7 @@ import pandas as pd
 
 from ..artifacts import write_csv
 from ..constants import PLANNING_YEARS, WATER_COARSE_GRID_DEGREES, WATER_MATCH_BUFFER_KM
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import within_radius
 from .water_availability import build_water_availability_dataframe, build_water_nodes_dataframe
@@ -118,6 +119,8 @@ def coarsen_water_inputs(
     nodes = nodes.merge(weight, left_on="water_node_id", right_index=True, how="left")
     nodes["_w"] = nodes["_w"].fillna(0.0)
 
+    # 粗节点的 `basin_code` 是分组用的流域，可用量就在这个流域的预算里分；节点余量扣生活与灌溉耗水时也按这一列
+    # （可用量表的同名列）归流域。加权坐标可能落在相邻流域的多边形里（2026-10-13 的 373 个节点中有 5 个），不按坐标重新归属。
     rows: list[dict[str, object]] = []
     for coarse_id, group in nodes.groupby("coarse_id"):
         total = float(group["_w"].sum())
@@ -170,7 +173,7 @@ def build_water_link_dataframe(paths: ProjectPaths, water_nodes: pd.DataFrame) -
     node_lats = water_nodes["latitude"].astype(float).to_numpy()
     rows: list[dict[str, object]] = []
 
-    for plant in plants.itertuples(index=False):
+    for plant in iter_rows(plants):
         matched, distances_km = within_radius(
             float(plant.centroid_longitude), float(plant.centroid_latitude), node_lons, node_lats,
             WATER_MATCH_BUFFER_KM, ranked=True,

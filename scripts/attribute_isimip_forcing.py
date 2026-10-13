@@ -30,9 +30,9 @@ from pathlib import Path
 import netCDF4
 import numpy as np
 from _bootstrap import REPO_ROOT
+from crop_isimip_china import GLOBAL_SHAPE, LAT, LON
 
 WATER_DIR = REPO_ROOT / "data" / "water"
-LAT, LON = slice(66, 180), slice(500, 640)   # 0.5° 全球网格上的中国框
 DEFAULT_YEARS = {"historical": (2011, 2014)}  # 其余（ssp*）取 2015–2020
 MATCH_THRESHOLD = 0.5
 _GCM_OF_QTOT = re.compile(r"(?:cwatm|watergap2-2e)_([a-z0-9-]+)_w5e5_")
@@ -50,7 +50,7 @@ def _gcm_in_name(pattern: re.Pattern[str], name: str) -> str:
 def _year_month(ds: netCDF4.Dataset) -> list[tuple[int, int]]:
     time = ds.variables["time"]
     dates = netCDF4.num2date(time[:], time.units, getattr(time, "calendar", "standard"))
-    return [(int(d.year), int(d.month)) for d in dates]
+    return [(int(d.year), int(d.month)) for d in np.asarray(dates)]
 
 
 def monthly_precipitation(path: Path, keys: list[tuple[int, int]]) -> np.ndarray:
@@ -77,7 +77,7 @@ def monthly_runoff(path: Path, keys: list[tuple[int, int]]) -> np.ndarray:
         rows = [year_month.index(key) for key in keys]
         var = ds.variables["qtot"]
         var.set_auto_maskandscale(False)
-        box = (LAT, LON) if var.shape[1:] == (360, 720) else ()
+        box = (LAT, LON) if var.shape[1:] == GLOBAL_SHAPE else ()
         data = np.asarray(var[(slice(rows[0], rows[-1] + 1), *box)], dtype=np.float64)
     data[data > 1e19] = np.nan
     return data

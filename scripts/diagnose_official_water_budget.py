@@ -20,7 +20,7 @@ import sys
 import pandas as pd
 from _bootstrap import ROOT
 
-from coal_retrofit.builders.water_grid import _assign_basin_codes
+from coal_retrofit.builders.water_grid import assign_basin_codes
 from coal_retrofit.builders.water_quota import (
     basin_caps,
     basin_reserved_withdrawal,
@@ -56,7 +56,7 @@ def fleet_water_by_basin(paths: ProjectPaths) -> tuple[pd.DataFrame, float]:
 
     located = plants.rename(columns={"centroid_latitude": "latitude",
                                      "centroid_longitude": "longitude"})
-    plants["basin_code"] = _assign_basin_codes(paths, located)
+    plants["basin_code"] = assign_basin_codes(paths, located)
     plants["withdrawal_calibrated"] = generation * base / 1e8
     plants["withdrawal_raw"] = generation * plants["withdrawal_intensity_m3_per_mwh"].astype(float) / 1e8
     plants["quota"] = generation * plants["quota_intensity_m3_per_mwh"].astype(float) / 1e8
@@ -65,7 +65,7 @@ def fleet_water_by_basin(paths: ProjectPaths) -> tuple[pd.DataFrame, float]:
     return plants.groupby("basin_code")[columns].sum(), factor
 
 
-def main() -> None:
+def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     paths = ProjectPaths(ROOT)
 
@@ -136,6 +136,7 @@ def main() -> None:
     _, unassigned = province_basin_shares(paths)
     print(f"落在流域多边形外的省内权重最大份额 {max(unassigned) * 100:.1f}%（上海，已按比例"
           f"重分配；该省 100% 属长江区，无实质影响）")
+    return 0
 
 
 if __name__ == "__main__":
