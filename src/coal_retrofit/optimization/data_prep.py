@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
 
 from ..constants import WATER_MATCH_BUFFER_KM
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import within_radius
 from ._shared import PreparedInputs
@@ -77,7 +79,7 @@ def _prepare_output_index(paths: ProjectPaths, scenario: OptimizationScenario) -
     )
     return {
         (str(row.sector), int(row.planning_year)): float(row.output_index)
-        for row in table.itertuples(index=False)
+        for row in iter_rows(table)
     }
 
 
@@ -121,7 +123,7 @@ def _prepare_biomass(paths: ProjectPaths, scenario: OptimizationScenario, assump
     node_lons = biomass["longitude"].astype(float).to_numpy()
     node_lats = biomass["latitude"].astype(float).to_numpy()
     link_rows = []
-    for plant in plants.itertuples(index=False):
+    for plant in iter_rows(plants):
         matched, distances_km = within_radius(
             float(plant.centroid_longitude), float(plant.centroid_latitude),
             node_lons, node_lats, assumptions.resource_match_radius_km,
@@ -164,7 +166,7 @@ def _prepare_ammonia_supply(
         year_nodes = year_nodes.reset_index(drop=True)
         node_lons = year_nodes["longitude"].astype(float).to_numpy()
         node_lats = year_nodes["latitude"].astype(float).to_numpy()
-        for plant in plants.itertuples(index=False):
+        for plant in iter_rows(plants):
             matched, distances_km = within_radius(
                 float(plant.centroid_longitude), float(plant.centroid_latitude),
                 node_lons, node_lats, assumptions.resource_match_radius_km,
@@ -172,7 +174,7 @@ def _prepare_ammonia_supply(
             for node_idx, distance_km in zip(matched, distances_km, strict=True):
                 node = year_nodes.iloc[int(node_idx)]
                 link_rows.append({
-                    "year": int(year),
+                    "year": int(cast(int, year)),
                     "plant_id": str(plant.plant_id),
                     "ammonia_node_id": str(node["ammonia_node_id"]),
                     "distance_km": round(float(distance_km), 3),
@@ -192,7 +194,7 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     node_lons = water_nodes["longitude"].astype(float).to_numpy()
     node_lats = water_nodes["latitude"].astype(float).to_numpy()
     link_rows = []
-    for plant in plants.itertuples(index=False):
+    for plant in iter_rows(plants):
         # 按距离排名（`distance_rank`），最近的节点另有用处（`water_access`）。
         ranked, distances_km = within_radius(
             float(plant.centroid_longitude), float(plant.centroid_latitude),

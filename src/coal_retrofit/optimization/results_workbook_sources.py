@@ -16,6 +16,7 @@ from ..constants_industry import (
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
 )
+from ..frames import iter_rows
 from ._shared import PreparedInputs
 from .results_regions import CROSS_REGION, OFFSHORE, PROVINCES, REGIONS, province_region
 from .results_tracing import FLOW_TOL, trace_sources_to_sinks
@@ -111,7 +112,7 @@ def sinks_frame(
 def source_results(sources: pd.DataFrame) -> list[Block]:
     """Source_Results_<年>：左边每个源一行（成本为百万元），右边分区与分省的捕集量。*sources* 只含这一年。"""
     left: list[list[Any]] = [SOURCE_HEADER]
-    for row in sources.itertuples(index=False):
+    for row in iter_rows(sources):
         left.append([
             row.id, row.emit_mt, row.capex_cny / MILLION,
             *(row.opex_cny / MILLION if row.sector == sector else None for sector in OPEX_ORDER),
@@ -164,7 +165,7 @@ def transmission_matrix(
     *sinks* 也只含这一年。按节点充分混合把各汇的封存量分回各源（`results_tracing`），源与汇再按所在节点的省归并。
     """
     arcs: dict[tuple[str, str], float] = defaultdict(float)
-    for row in flows.itertuples(index=False):
+    for row in iter_rows(flows):
         arcs[(str(row.flow_from_node_id), str(row.flow_to_node_id))] += float(row.net_flow_mtpa)
     supply = {str(node): float(mt) for node, mt in sources.groupby("node")["captured_mt"].sum().items()}
     demand = {str(node): float(mt) for node, mt in sinks.groupby("node")["use_mt"].sum().items()}

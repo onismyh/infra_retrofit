@@ -10,6 +10,7 @@ import geopandas as gpd
 import pandas as pd
 
 from ..constants import NETWORK_COORD_DECIMALS, NETWORK_EDGE_CLASS_MAIN, STATIC_LAYER_YEAR_BASIS, TARGET_GEO_CRS
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km, geometry_parts
 from .network_edges import make_edge_record
@@ -59,7 +60,7 @@ def build_corridor_tables(paths: ProjectPaths, layers: list[tuple[gpd.GeoDataFra
     for gdf, path in layers:
         source = paths.rel(path)
         corridor_type = str(gdf["corridor_type"].iloc[0])
-        for feature_index, row in enumerate(gdf.itertuples(index=False), start=1):
+        for feature_index, row in enumerate(iter_rows(gdf), start=1):
             for part_index, part in enumerate(geometry_parts(row.geometry), start=1):
                 coords = list(part.coords)
                 if len(coords) < 2:

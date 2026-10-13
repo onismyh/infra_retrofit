@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..constants_industry import POWER_TARGET_GROUP
+from ..frames import iter_rows
 from ._shared import PATHWAY_INDEX, PreparedInputs
 from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
@@ -41,7 +42,7 @@ def build_model_index(
     n_nodes = len(prepared.network.nodes)
     node_idx_dict = {
         str(row.node_id): i
-        for i, row in enumerate(prepared.network.nodes.itertuples(index=False))
+        for i, row in enumerate(iter_rows(prepared.network.nodes))
     }
     plant_ids = prepared.plants["plant_id"].astype(str).tolist()
     storage_ids = prepared.storages["storage_hub_id"].astype(str).tolist()

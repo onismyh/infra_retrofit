@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -91,7 +91,8 @@ def draw(data: dict, lang: str):
                              gridspec_kw={"wspace": 0.38})
     fig.subplots_adjust(left=0.07, right=0.99, bottom=0.12, top=0.8)
     for i, (ax, (sector, parts)) in enumerate(zip(axes[0], sectors.items())):
-        reduction, captured = parts["reduction"], parts["captured"].reindex(parts["reduction"].index)
+        reduction = cast(pd.DataFrame, parts["reduction"])
+        captured = cast(pd.Series, parts["captured"]).reindex(reduction.index)
         x = np.arange(len(reduction))
         stacked_bars(ax, x, reduction, ROUTE_COLORS, width=0.6)
         ax.hlines(captured.to_numpy(), x - 0.36, x + 0.36, colors="black", linewidth=1.0, zorder=4)

@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..frames import iter_rows
 from ._shared import PreparedInputs, _nearest_year
 from .assumptions import OptimizationAssumptions
 
@@ -48,7 +49,7 @@ def _biomass_access_matrices(prepared: PreparedInputs, assumptions: Optimization
     node_rows: list[int] = []
     node_cols: list[int] = []
     link_costs = np.zeros(link_count, dtype=np.float64)
-    for link_idx, link in enumerate(prepared.biomass_links.itertuples(index=False)):
+    for link_idx, link in enumerate(iter_rows(prepared.biomass_links)):
         if str(link.plant_id) not in plant_index or str(link.biomass_node_id) not in node_index:
             continue
         hub_rows.append(plant_index[str(link.plant_id)])
@@ -99,7 +100,7 @@ def _ammonia_access_data(
     node_rows: list[int] = []
     link_costs = np.zeros(link_count, dtype=np.float64)
     keep = np.zeros(link_count, dtype=bool)
-    for link_idx, link in enumerate(links.itertuples(index=False)):
+    for link_idx, link in enumerate(iter_rows(links)):
         if str(link.ammonia_node_id) not in node_index or str(link.plant_id) not in plant_index:
             # 丢弃的链路不能留零列，否则求解器会把它读成不受约束的自由流量。
             continue
@@ -162,7 +163,7 @@ def _industry_h2_access_data(
     hub_rows: list[int] = []
     node_rows: list[int] = []
     costs = np.zeros(len(links), dtype=np.float64)
-    for link_idx, link in enumerate(links.itertuples(index=False)):
+    for link_idx, link in enumerate(iter_rows(links)):
         if str(link.ammonia_node_id) not in node_index or str(link.hub_id) not in hub_index:
             continue
         keep[link_idx] = True

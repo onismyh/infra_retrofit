@@ -12,7 +12,7 @@ from ..artifacts import write_csv
 from ..paths import ProjectPaths
 from .network_branches import build_attachment_tables
 from .network_corridors import build_corridor_tables, load_corridor_layer
-from .network_edges import EDGE_COLUMNS, NODE_COLUMNS
+from .network_edges import EDGE_COLUMNS, NODE_COLUMNS, next_edge_index
 from .network_offshore import offshore_length_km
 from .network_repair import (
     _drop_edges_over_excluded_region,
@@ -76,8 +76,8 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
             paths=paths,
             corridor_nodes=corridor_nodes,
             main_edges=main_edges,
-            next_node_index=len(main_nodes) + 1,
-            next_edge_index=len(main_edges) + 1,
+            first_node_index=len(main_nodes) + 1,
+            first_edge_index=next_edge_index(main_edges),
         )
         nodes, edges = _merge_network_tables(main_nodes, main_edges, branch_nodes, branch_edges, corridor_degree_additions)
     else:

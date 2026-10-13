@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..constants import NETWORK_EDGE_CLASS_DIRECT, NETWORK_EDGE_CLASS_MAIN, NETWORK_EDGE_CLASS_TRIANGULATION
+from ..frames import iter_rows
 from ._shared import PATHWAY_INDEX, PreparedInputs, SolveState
 from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _water_intensity_matrices
 from .resource_access import BiomassAccess, _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
@@ -117,7 +118,7 @@ def _build_year_matrices(
     if rows.empty:
         raise ValueError(f"sector_targets_{scenario.sector_target_source}.csv has no rows for {year}")
     sector_cap_fraction: dict[str, float] = {
-        str(row.sector_group): float(row.cap_fraction_of_2030) for row in rows.itertuples(index=False)
+        str(row.sector_group): float(row.cap_fraction_of_2030) for row in iter_rows(rows)
     }
     # 本年建成的捕集岛的系数，(plant_count, 1)：只有一列，按 CCS capex 计（见 `model_year`）。
     # 固定运维 = ccs_om_fraction x 学习后 capex（含成本乘子，随 capex 走），每年按改造容量计（An et al. 2025 SI

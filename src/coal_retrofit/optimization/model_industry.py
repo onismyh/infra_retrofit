@@ -9,7 +9,7 @@ import numpy as np
 try:
     import gurobipy as gp
 except ImportError:  # pragma: no cover
-    gp = None
+    gp = None  # type: ignore[assignment]
 
 from ..constants import AMMONIA_FLOW_SCALE, WATER_FLOW_SCALE
 from ..constants_industry import INDUSTRY_ROUTES
@@ -119,8 +119,8 @@ def add_industry_year(
     h2_flow_kg = model.addMVar(link_count, lb=0.0, name=f"ind_h2_flow_kg_{year_suffix}")
     h2_route_cost = model.addMVar(n, lb=0.0, name=f"ind_h2_cost_{year_suffix}")
     if link_count:
+        assert h2_link_cost is not None   # link_count > 0 即有链路
         hub_draw = h2_hub_membership @ h2_flow_kg
-        purchase_by_hub = [None] * n
         # 先按 hub 把链路成本归组一次，这样每个 hub 的采购只是一个短表达式。
         coo = h2_hub_membership.tocoo()
         links_of_hub: dict[int, list[int]] = {}
@@ -128,7 +128,7 @@ def add_industry_year(
             links_of_hub.setdefault(int(hub_idx), []).append(int(link_idx))
         for hub in range(n):
             hub_links = links_of_hub.get(hub, [])
-            purchase_by_hub[hub] = gp.quicksum(
+            purchase = gp.quicksum(
                 float(h2_link_cost[link]) * h2_flow_kg[link] for link in hub_links
             ) if hub_links else gp.LinExpr()
             model.addConstr(
@@ -137,7 +137,7 @@ def add_industry_year(
             )
             if float(h2_demand[hub]) > 0.0:
                 model.addConstr(
-                    h2_route_cost[hub] >= float(opex[hub, H2]) * share[hub, H2] + purchase_by_hub[hub],
+                    h2_route_cost[hub] >= float(opex[hub, H2]) * share[hub, H2] + purchase,
                     name=f"ind_h2_cost_lb_{hub}_{year_suffix}",
                 )
     else:

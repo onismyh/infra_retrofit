@@ -42,8 +42,10 @@ Usage:  python scripts/validate_basin_runoff.py
 
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
+from typing import cast
 
 import netCDF4
 import numpy as np
@@ -54,13 +56,13 @@ from coal_retrofit.constants import BIAS_BASELINE_WINDOW, OFFICIAL_BASIN_WATER_1
 from coal_retrofit.builders.water_bias import _historical_source, has_genuine_history
 from coal_retrofit.builders.water_grid import (
     _annual_and_seasonal,
-    _assign_basin_codes,
     _basin_dry_window,
     _basin_zone_grid,
     _cell_area_m2,
     _clean_window,
     _file_years,
     _nc_path,
+    assign_basin_codes,
     load_basins,
 )
 from coal_retrofit.paths import ProjectPaths
@@ -162,10 +164,10 @@ def _frames_by_member(files: list[Path], window: tuple[int, int]) -> dict[str, p
 
 
 def coal_capacity_by_basin() -> pd.Series:
-    """各一级流域的煤电装机（GW），hub 按所在或最近的流域多边形归属（`builders.water_grid._assign_basin_codes`）。"""
+    """各一级流域的煤电装机（GW），hub 按所在或最近的流域多边形归属（`builders.water_grid.assign_basin_codes`）。"""
     plants = pd.read_csv(PATHS.inputs_dir / "plants.csv")
     points = plants.rename(columns={"centroid_longitude": "longitude", "centroid_latitude": "latitude"})
-    plants["code"] = _assign_basin_codes(PATHS, points)
+    plants["code"] = assign_basin_codes(PATHS, points)
     return plants.groupby("code")["total_capacity_mw"].sum() / 1000.0
 
 
@@ -186,7 +188,7 @@ def _report(title: str, frames: dict[str, pd.DataFrame], official: pd.Series, co
 
 
 def main() -> None:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    cast(io.TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8", errors="replace")
     baseline = pd.Series(OFFICIAL_BASIN_WATER_1E8_M3)
     recent = pd.Series(BULLETIN_2015_2024_1E8_M3)
     coal_gw = coal_capacity_by_basin().round(0)

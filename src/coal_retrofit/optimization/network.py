@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ..constants import NETWORK_DETOUR_FACTOR
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import geodesic_length_km
 
@@ -53,9 +54,9 @@ class RuntimeNetwork:
 
 def _build_base_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
     graph = nx.Graph()
-    for row in nodes.itertuples(index=False):
+    for row in iter_rows(nodes):
         graph.add_node(str(row.node_id), lon=float(row.lon), lat=float(row.lat), node_type=str(row.node_type))
-    for row in edges.itertuples(index=False):
+    for row in iter_rows(edges):
         edge_id = str(row.edge_id)
         length_km = float(row.length_km)
         existing_flag = int(row.existing_corridor_flag)
@@ -77,7 +78,7 @@ def _build_base_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
 def _nearest_corridor_node(nodes: pd.DataFrame, lon: float, lat: float) -> tuple[str, float]:
     best_id = ""
     best_distance = float("inf")
-    for row in nodes.itertuples(index=False):
+    for row in iter_rows(nodes):
         distance = geodesic_length_km([(lon, lat), (float(row.lon), float(row.lat))])
         if distance < best_distance:
             best_id = str(row.node_id)
@@ -181,15 +182,15 @@ def build_runtime_network(
     if "plant_id" in base_nodes.columns:
         existing_plant_nodes = {
             str(row.plant_id): str(row.node_id)
-            for row in base_nodes.loc[base_nodes["plant_id"].notna()].itertuples(index=False)
+            for row in iter_rows(base_nodes.loc[base_nodes["plant_id"].notna()])
         }
     if "storage_hub_id" in base_nodes.columns:
         existing_storage_nodes = {
             str(row.storage_hub_id): str(row.node_id)
-            for row in base_nodes.loc[base_nodes["storage_hub_id"].notna()].itertuples(index=False)
+            for row in iter_rows(base_nodes.loc[base_nodes["storage_hub_id"].notna()])
         }
 
-    for row in plants.itertuples(index=False):
+    for row in iter_rows(plants):
         if str(row.plant_id) in existing_plant_nodes:
             continue
         runtime_node_id = f"plant::{row.plant_id}"
@@ -214,7 +215,7 @@ def build_runtime_network(
         existing_plant_nodes[str(row.plant_id)] = runtime_node_id
 
     storage_nodes = storages
-    for row in storage_nodes.itertuples(index=False):
+    for row in iter_rows(storage_nodes):
         if str(row.storage_hub_id) in existing_storage_nodes:
             continue
         runtime_node_id = f"storage::{row.storage_hub_id}"
@@ -251,13 +252,13 @@ def build_runtime_network(
     if "industry_hub_id" in base_nodes.columns:
         existing_industry_nodes = {
             str(row.industry_hub_id): str(row.node_id)
-            for row in base_nodes.loc[base_nodes["industry_hub_id"].notna()].itertuples(index=False)
+            for row in iter_rows(base_nodes.loc[base_nodes["industry_hub_id"].notna()])
         }
     if industry_hubs is not None and len(industry_hubs):
         # 工业点源已作为 industry_hub 节点进入 inputs/pipeline_*.csv，并与煤电、封存汇
         # 一起做过联合三角剖分与去交叉；到汇的可达性由 builders 的缝合步骤保证。因此这里
         # 不再追加 `runtime_direct_fallback` 直连弧——那是图上唯一还会穿越管网的一类边。
-        for row in industry_hubs.itertuples(index=False):
+        for row in iter_rows(industry_hubs):
             if str(row.hub_id) in existing_industry_nodes:
                 continue
             runtime_node_id = f"industry::{row.hub_id}"
@@ -318,11 +319,11 @@ def build_runtime_network(
     # incidence[n, e] = -1 若边 e 到达节点 n
     final_edges = edges.reset_index(drop=True)
     final_nodes = nodes.reset_index(drop=True)
-    node_idx_map = {str(row.node_id): i for i, row in enumerate(final_nodes.itertuples(index=False))}
+    node_idx_map = {str(row.node_id): i for i, row in enumerate(iter_rows(final_nodes))}
     n_nodes = len(final_nodes)
     n_edges = len(final_edges)
     incidence = np.zeros((n_nodes, n_edges), dtype=np.float64)
-    for e_idx, edge in enumerate(final_edges.itertuples(index=False)):
+    for e_idx, edge in enumerate(iter_rows(final_edges)):
         from_id = str(edge.from_node_id)
         to_id = str(edge.to_node_id)
         if from_id not in node_idx_map:

@@ -6,6 +6,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ..frames import iter_rows
 from ._shared import PATHWAY_INDEX, PreparedInputs
 from .scenario import PATHWAYS, OptimizationScenario
 from .year_types import YearData
@@ -143,7 +144,7 @@ def _build_pathway_table(
         rebuilt_share, rebuilt_blend_x_share,
     )
     rows: list[dict[str, object]] = []
-    for plant_idx, plant in enumerate(prepared.plants.itertuples(index=False)):
+    for plant_idx, plant in enumerate(iter_rows(prepared.plants)):
         for path_idx, pathway in enumerate(PATHWAYS):
             share = float(share_values[plant_idx, path_idx])
             baseline_mt = float(em_year[plant_idx]) * share
@@ -168,7 +169,7 @@ def _build_province_table(pathways: pd.DataFrame) -> pd.DataFrame:
     grouped = pathways.groupby(["year", "province_name", "pathway"], as_index=False)[
         ["annual_generation_mwh", "baseline_emissions_mt", "abatement_mt", "captured_mt"]
     ].sum()
-    totals = grouped.groupby(["year", "province_name"], as_index=False)["annual_generation_mwh"].sum().rename(
+    totals = grouped.groupby(["year", "province_name"], as_index=False)[["annual_generation_mwh"]].sum().rename(
         columns={"annual_generation_mwh": "province_generation_mwh"}
     )
     merged = grouped.merge(totals, on=["year", "province_name"], how="left")

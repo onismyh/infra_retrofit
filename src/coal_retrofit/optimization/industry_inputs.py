@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ from ..constants_industry_capture import (
     INDUSTRY_CCS_CAPEX_CNY_PER_T_CO2_YR,
     capturable_share,
 )
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from ..spatial import within_radius
 
@@ -169,11 +171,11 @@ def prepare_industry(
     # 按 hub 自身所在位置归流域，与 `_prepare_plants` 对煤电 hub 的归属方式一致：
     # 取水许可跟着厂址走，而不是跟着取水口走。只有流域上限需要它。
     if assign_basins:
-        from ..builders.water_grid import _assign_basin_codes
+        from ..builders.water_grid import assign_basin_codes
 
-        # industry_hubs.csv 的列名本来就是 `latitude`/`longitude`，正是 `_assign_basin_codes`
+        # industry_hubs.csv 的列名本来就是 `latitude`/`longitude`，正是 `assign_basin_codes`
         # 所要的；无需改名（plants.csv 需要改名，这里不需要）。
-        hubs["basin_code"] = _assign_basin_codes(paths, hubs)
+        hubs["basin_code"] = assign_basin_codes(paths, hubs)
 
     prices = _national_h2_price(paths, float(assumptions.usd_to_cny))
     index = dict(output_index or {})
@@ -222,11 +224,11 @@ def prepare_industry_h2_links(
         lats = nodes["latitude"].astype(float).to_numpy()
         node_ids = nodes["ammonia_node_id"].astype(str).to_numpy()
         lcoh = nodes["weighted_lcoh_usd_per_kg_h2"].astype(float).to_numpy()
-        for hub in eligible.itertuples(index=False):
+        for hub in iter_rows(eligible):
             matched, distances = within_radius(float(hub.longitude), float(hub.latitude), lons, lats, radius_km)
             for node_idx, distance in zip(matched, distances, strict=True):
                 rows.append({
-                    "year": int(year),
+                    "year": int(cast(int, year)),
                     "hub_id": str(hub.hub_id),
                     "ammonia_node_id": node_ids[node_idx],
                     "distance_km": round(float(distance), 3),

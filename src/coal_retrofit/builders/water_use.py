@@ -30,6 +30,7 @@ import pandas as pd
 
 from ..artifacts import write_csv
 from ..constants import PLANNING_YEARS
+from ..frames import iter_rows
 from ..paths import ProjectPaths
 from .water_grid import (
     WATER_WINDOW_BASIS,
@@ -82,7 +83,7 @@ def build_water_use_dataframe(paths: ProjectPaths, scenarios: pd.DataFrame) -> p
     不拿别的 GCM 顶替。
     """
     rows: list[dict[str, object]] = []
-    for member in scenarios.itertuples(index=False):
+    for member in iter_rows(scenarios):
         hydrology = str(member.hydrology_model)
         if hydrology not in WATER_USE_VARIABLES:
             raise ValueError(f"no water-use variables known for hydrology model {hydrology!r}")
