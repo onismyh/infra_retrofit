@@ -1,5 +1,6 @@
 """建输入时的两处地理归属按真实函数（不打桩）走一遍：点归一级流域（`builders.water_grid.assign_basin_codes`）与海水冷却判定
-（`builders.plants_water.add_seawater_classification`），toy 图层写进临时 data/ 目录。"""
+（`builders.plants_water.add_seawater_classification`），toy 图层写进临时 data/ 目录；另有交给 netCDF4 的路径写法
+（`builders.water_grid._nc_path`）。"""
 from __future__ import annotations
 
 import geopandas as gpd
@@ -9,7 +10,7 @@ import pytest
 from shapely.geometry import LineString, box
 
 from coal_retrofit.builders.plants_water import SEAWATER_COAST_DISTANCE_KM, add_seawater_classification
-from coal_retrofit.builders.water_grid import assign_basin_codes, load_basins
+from coal_retrofit.builders.water_grid import _nc_path, assign_basin_codes, load_basins
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.spatial import haversine_km
 
@@ -62,3 +63,17 @@ def test_seawater_classification_by_spherical_coast_distance(tmp_path) -> None:
     # 10° 开外：球面上到经线的垂足偏向高纬，最近顶点比同纬度的 (120, 31) 还近一点（约 1 km）
     assert 900.0 < float(out["coast_distance_km"][2]) <= expected[2]
     assert out["seawater_cooled"].tolist() == [True, False, False]
+
+
+def test_nc_path_keeps_ascii_absolute_paths_and_relativises_others(tmp_path, monkeypatch) -> None:
+    # ASCII 的绝对路径原样用：Windows 上文件（C 盘临时目录）与当前目录（D 盘仓库）不在同一个盘时写不成相对路径，
+    # 此前 os.path.relpath 在那里报 ValueError；含中文的才改写成相对当前目录的路径。
+    if not str(tmp_path).isascii():
+        pytest.skip("临时目录本身含非 ASCII 字符")
+    elsewhere, chinese = tmp_path / "elsewhere", tmp_path / "中文"
+    elsewhere.mkdir()
+    chinese.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert _nc_path(tmp_path / "ascii" / "a.nc") == str((tmp_path / "ascii" / "a.nc").absolute())
+    monkeypatch.chdir(chinese)
+    assert _nc_path(chinese / "a.nc") == "a.nc"

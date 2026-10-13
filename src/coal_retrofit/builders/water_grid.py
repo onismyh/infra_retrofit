@@ -41,7 +41,10 @@ def _resolve_source_path(paths: ProjectPaths, source: str) -> str:
 
 
 def _nc_path(path: Path) -> str:
-    """netCDF4 能打开的路径：其 C 层在 Windows 上拒绝含非 ASCII 字符的绝对路径。"""
+    """netCDF4 能打开的路径：其 C 层在 Windows 上拒绝含非 ASCII 字符的绝对路径，只有这时才改写成相对当前目录的路径
+    （ASCII 的绝对路径直接用：文件在 C 盘临时目录、当前目录在 D 盘时写不成相对路径）。"""
+    if str(path.absolute()).isascii():
+        return str(path.absolute())
     try:
         return str(path.relative_to(Path.cwd()))
     except ValueError:
