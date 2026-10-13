@@ -46,7 +46,6 @@ def parse_water_file(paths: ProjectPaths, filename: str) -> dict[str, object]:
         "frequency": "monthly",
         "start_year": int(match.group("start_year")),
         "end_year": int(match.group("end_year")),
-        "is_base_candidate": match.group("ssp") == "ssp126",
         "source": paths.rel(path),
         "year_basis": f"{match.group('start_year')}-{match.group('end_year')}",
     }

@@ -1,8 +1,9 @@
 """逐流域核算节点余量：径流 x 0.20 − 生活耗水 − 灌溉耗水。诊断脚本，只读 inputs/，不写。
 
 径流取 `water_availability.csv`（偏差订正后、按流域预算分到节点，节点合计即流域合计），耗水取
-`water_basin_use.csv`（`scripts/build_water_use.py`）。余量为负的流域，求解时节点可用量取归到该节点的
-煤电不改造同年耗水（存量不增，`optimization/water_access._water_available_by_node`）；这里只列余量本身。
+`water_basin_use.csv`（`scripts/build_water_use.py`）。余量按求解同一个函数逐节点算、再按流域相加
+（`optimization/water_access.ecological_residual`）。余量为负的流域，求解时节点可用量取归到该节点的煤电不改造同年耗水
+（存量不增，`water_access._water_available_by_node`）；这里只列余量本身。
 
 用法：python scripts/diagnose_basin_water_budget.py [--member cwatm|gfdl-esm4|ssp126] [--year 2050] [--season annual|dry]
 """
@@ -16,6 +17,7 @@ from _bootstrap import ROOT
 
 from coal_retrofit.constants import WATER_EXTRACTABLE_FRACTION
 from coal_retrofit.constants_water_quota import BASIN_NAMES_ZH
+from coal_retrofit.optimization.water_access import ecological_residual
 
 
 def basin_budget(member: str, year: int, season: str) -> pd.DataFrame:
@@ -23,18 +25,26 @@ def basin_budget(member: str, year: int, season: str) -> pd.DataFrame:
     dry = season == "dry"
     availability = pd.read_csv(ROOT / "inputs" / "water_availability.csv")
     use = pd.read_csv(ROOT / "inputs" / "water_basin_use.csv")
-    runoff = availability[(availability["scenario_id"] == member) & (availability["planning_year"] == year)]
-    use = use[(use["scenario_id"] == member) & (use["planning_year"] == year)].set_index("basin_code")
-    if runoff.empty or use.empty:
+    rows = availability[(availability["scenario_id"] == member) & (availability["planning_year"] == year)]
+    use = use[(use["scenario_id"] == member) & (use["planning_year"] == year)]
+    if rows.empty or use.empty:
         raise SystemExit(f"{member} {year} 不在 water_availability.csv 或 water_basin_use.csv 里")
+    use = use.set_index(use["basin_code"].astype(str))
     prefix = "dry_season_" if dry else ""
+    runoff = rows.set_index("water_node_id")["dry_season_water_m3_per_year" if dry else "available_water_m3_per_year"]
+    basins = rows["basin_code"].astype(str).to_numpy()
+    absent = sorted(set(basins) - set(use.index))
+    if absent:
+        raise SystemExit(f"water_basin_use.csv 没有 {member} {year} 流域 {absent} 的行")
+    domestic, irrigation = use[f"{prefix}domestic_m3_per_year"], use[f"{prefix}irrigation_m3_per_year"]
+    residual = ecological_residual(runoff.astype(float), basins, domestic + irrigation)
     frame = pd.DataFrame({
-        "径流": runoff.groupby("basin_code")["dry_season_water_m3_per_year" if dry else "available_water_m3_per_year"].sum(),
-        "生活": use[f"{prefix}domestic_m3_per_year"],
-        "灌溉": use[f"{prefix}irrigation_m3_per_year"],
+        "径流": runoff.groupby(basins).sum(),
+        "生活": domestic,
+        "灌溉": irrigation,
+        "余量": residual.groupby(basins).sum(),
     }).dropna() / 1e8
     frame["x0.20"] = frame["径流"] * WATER_EXTRACTABLE_FRACTION
-    frame["余量"] = frame["x0.20"] - frame["生活"] - frame["灌溉"]
     frame["占可提取"] = (frame["生活"] + frame["灌溉"]) / frame["x0.20"]
     frame.index = [f"{code} {BASIN_NAMES_ZH.get(code, '')}" for code in frame.index]
     return frame[["径流", "x0.20", "生活", "灌溉", "余量", "占可提取"]]

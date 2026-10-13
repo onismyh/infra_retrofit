@@ -23,8 +23,9 @@ from coal_retrofit.builders.plants import (
 from coal_retrofit.builders.plants_water import combustion_class
 from coal_retrofit.constants import (
     COAL_STATION_SERVICE_RATE,
-    COOLING_WATER_INTENSITY_M3_PER_MWH,
+    COOLING_CLASSES,
     STANDARD_COAL_GJ_PER_KG,
+    WATER_INTENSITY_BY_TECH_M3_PER_MWH,
     cooling_class,
 )
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState
@@ -84,12 +85,12 @@ def test_named_cfb_units_get_a_cfb_mark_and_keep_their_steam_class() -> None:
     assert [combustion_class(label) for label in marked] == [combustion_class(label) for label in units["combustion"]]
 
 
-def test_cooling_class_and_water_intensity_constants() -> None:
-    """冷却标签归类：含 once 为直流，含 air / dry 为空冷，其余（含空与缺失）为循环冷却；建输入按冷却方式取的耗水值。"""
+def test_cooling_class() -> None:
+    """冷却标签归类：含 once 为直流，含 air / dry 为空冷，其余（含空与缺失）为循环冷却；三类都是用水强度表的冷却键。"""
     labels = ["Once-through", "Once-through air", " Dry cooling ", "Air-cooled", "recirculating", "cooling tower", "", None]
     classes = ["once-through", "once-through", "air", "air", "recirculating", "recirculating", "recirculating", "recirculating"]
     assert [cooling_class(label) for label in labels] == classes
-    assert COOLING_WATER_INTENSITY_M3_PER_MWH == {"once-through": 0.35, "air": 0.37, "recirculating": 1.85}
+    assert set(COOLING_CLASSES) == {cool for _, cool in WATER_INTENSITY_BY_TECH_M3_PER_MWH}
 
 
 def test_unknown_combustion_label_raises() -> None:

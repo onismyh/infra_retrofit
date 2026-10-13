@@ -59,6 +59,23 @@ def _baseline_use_by_node(prepared: PreparedInputs, baseline_use_m3: np.ndarray,
     return existing
 
 
+def ecological_residual(runoff: pd.Series, basins: np.ndarray, basin_use: pd.Series) -> pd.Series:
+    """各节点的生态余量（m3/yr）：径流_n x `WATER_EXTRACTABLE_FRACTION` − 耗水_b x 径流_n / 径流_b。
+
+    `runoff` 以节点为索引，`basins` 是各节点所属的流域（与 `runoff` 同序），`basin_use` 以流域为索引，是该流域的生活与
+    灌溉耗水之和。一个流域的节点相加即 径流 x 0.20 − 耗水（流域径流为 0 时不扣）。求解（`_water_available_by_node`）
+    与逐流域诊断（`scripts/diagnose_basin_water_budget.py`）共用。
+    """
+    from ..constants import WATER_EXTRACTABLE_FRACTION
+
+    total = runoff.groupby(basins).sum().reindex(basins).to_numpy()
+    share = np.divide(runoff.to_numpy(), total, out=np.zeros(len(runoff)), where=total > 0)
+    return pd.Series(
+        runoff.to_numpy() * WATER_EXTRACTABLE_FRACTION - basin_use.reindex(basins).to_numpy() * share,
+        index=runoff.index,
+    )
+
+
 def _water_available_by_node(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
@@ -81,8 +98,6 @@ def _water_available_by_node(
     `water_season` 同时决定径流列与耗水列（枯水期两者是同一个三个月窗口）。偏差校正已烘进径流列，关掉时只把径流
     除回（耗水本就未校正）。v9 的 runoff 口径曾在这里乘 (1 - 存量取水占比)，与可提取比例无法分别识别，已删除。
     """
-    from ..constants import WATER_EXTRACTABLE_FRACTION
-
     frame = _water_member_rows(prepared, scenario, year)
     member = str(frame["scenario_id"].iloc[0])
     prefix = "dry_season_" if str(scenario.water_season).lower() == "dry" else ""
@@ -98,23 +113,17 @@ def _water_available_by_node(
         bias = rows["bias_factor"].astype(float)
         runoff = (runoff / bias.where(bias > 0)).fillna(0.0)
     basins = rows["basin_code"].astype(str).to_numpy()
-    basin_runoff = runoff.groupby(basins).sum()
 
     use = prepared.water_basin_use
     use = use[(use["scenario_id"].astype(str) == member) & (use["planning_year"].astype(int) == int(year))]
     use_columns = [f"{prefix}domestic_m3_per_year", f"{prefix}irrigation_m3_per_year"]
     basin_use = use.set_index(use["basin_code"].astype(str))[use_columns].astype(float).sum(axis=1)
-    absent = sorted(set(basin_runoff.index) - set(basin_use.index))
+    absent = sorted(set(basins) - set(basin_use.index))
     if absent:
         raise ValueError(
             f"water_basin_use.csv has no {member} {year} rows for basins {absent}; run scripts/build_water_use.py"
         )
-    total = basin_runoff.reindex(basins).to_numpy()
-    share = np.divide(runoff.to_numpy(), total, out=np.zeros(len(runoff)), where=total > 0)
-    residual = pd.Series(
-        runoff.to_numpy() * WATER_EXTRACTABLE_FRACTION - basin_use.reindex(basins).to_numpy() * share,
-        index=runoff.index,
-    )
+    residual = ecological_residual(runoff, basins, basin_use)
     node_ids = nodes["water_node_id"].astype(str)
     residual_by_node = residual.reindex(node_ids).fillna(0.0).to_numpy()
     existing = _baseline_use_by_node(prepared, baseline_use_m3, node_ids)

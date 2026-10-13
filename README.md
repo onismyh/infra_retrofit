@@ -643,6 +643,31 @@
 >   会话日志、命令、技能与 agent 模板。
 > 验证：ruff 0 条；465 个测试通过（删去只测已删开关与运行期支线的用例，toy 的数值期望不变）；`ST_BASE`、`ST_WA_cwatm_126_dry_oq`
 > 用库内输入读入通过（350 个煤电 hub、386 个工业 hub、1 052 节点 / 1 559 边）；方法论 82 处 `文件:行` 引用随行号移动，文首基准改为 `2e818b2`。
+>
+> 2026-10-13 第二批：上一批报告的计划外问题（作者批准 2026-10-13"全改"），缺省参数下模型不变，模型分段不变（仍为 14）：
+> - `references.bib`：文首"All DOIs verified"不属实，逐条用 Crossref 复核。`wang2023waterintensity`（`constants.py` 用水强度表的出处）的
+>   题名与作者改成 DOI 对应的原文（Wang, Wang & Xu 2023, *Sustainable or Not for Water Consumption after Implementing CCS in China's
+>   Coal-Fired Power Plants…*，数值仍取其 Table 1）；Crossref 查无其文、也没有被引用的 10 条删去；13 条未被引用的条目按 Crossref
+>   改正年、卷、期、页或作者，其中三条键名随年份改（`he2020renewables`、`middleton2020simccs`、`bogs2026regret`）。
+> - 输入表里没有读取方的列：`plants.csv` 删 `weighted_water_intensity_m3_per_mwh`、`freshwater_intensity_m3_per_mwh`、
+>   `requires_water_supply`（由冷却方式统一耗水 0.35 / 1.85 / 0.37 算出，常量 `COOLING_WATER_INTENSITY_M3_PER_MWH` 随之删去，冷却方式
+>   三类改为 `constants.COOLING_CLASSES`），用新代码重建，其余列与 `plants_unit_hub.csv` 逐格相同；`biomass_supply_curve.csv`、
+>   `ammonia_supply_curve.csv` 删恒为 150 的 `buffer_km`（链路半径是 `resource_match_radius_km` 200 km，常量 `BIOMASS_MATCH_BUFFER_KM`
+>   删去）；`water_scenarios.csv` 删 `is_base_candidate`。`plants.csv` 与两张供给表的文件摘要（`digest_*`）因此改变，
+>   `check_run_provenance.py --pair` 不把本提交前后求的结果配成一对。`ST_BASE`、`ST_WA_cwatm_126_dry_oq` 的 `prepare_inputs` 在本提交前后
+>   除删去的列与这三个摘要外逐项相同。
+> - 出处：直流取水强度在 `docs/官方指标口径水预算.md`、`constants_water_quota`、`builders/plants_water`、`builders/water_quota` 里写成
+>   Macknick (2011) 的美国值，实为 Wang (2023) Table 1（原表转引 Ali & Kumar 2015、Merschmann et al. 2013、Zhang et al. 2016），
+>   Macknick 只作交叉核对，取水相差 3–15%（此前写 5–14%）。数值不变。
+> - 脚本：两个 ISIMIP 下载脚本各自的 `fetch()` 并入 `scripts/isimip_fetch.py`（耗水那份对 HTTP 200 不核对长度，连接提前断开而
+>   没被当成错误时（urllib3 1.x 缺省不核对 Content-Length）会把截断的 `.part` 当作完整文件；现在都按本地字节数等于服务器给的总长判完成）；`download_isimip_extra_gcms.py` 改名 `download_isimip_qtot.py`，补上头部情景所用
+>   gfdl-esm4 的四个未来 qtot 文件（此前没有下载脚本）；`diagnose_basin_water_budget.py` 改用求解所用的节点余量函数
+>   （`water_access.ecological_residual`，从 `_water_available_by_node` 拆出），160 个成员 × 规划年 × 季节上与原式相差 < 1e-12 亿 m³。
+> - 文档：`工业联合减排实现说明.md` 四处旧结果表名注明 2026-10-10 起的去处；上一批删 `.claude/rules/experiment-reproducibility.md`
+>   后留下的两处引用删去；上一批删行后漂移的 6 处 `文件:行` 引用（本文 3 处、`工业联合减排实现说明.md` 2 处、`工业部门参数溯源.md` 1 处）改正。
+> 验证：ruff 0 条；470 个测试通过（新增 `tests/test_isimip_fetch.py` 5 个：本机 HTTP 服务模拟断线续传、416、不理 Range、截断的 200 与
+> 一直出错）；`ST_WA_cwatm_126_dry_oq` 四个规划年的水链路矩阵、链路成本与节点可用量在本提交前后逐位相同；方法论 38 处 `文件:行` 引用
+> 随行号移动，删去"冷却方式统一耗水"一行，文首基准改为 `7a073d3`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -670,7 +695,7 @@
 | (b) BECCS 的生物质改造 | 捕集岛之上另收 +1 000 元/kW 的"生物质改造增量"（`beccs_retrofit_capex_cny_per_kw` = 4 500），又按掺烧档位收升级 capex，付了两次 | 删掉 +1 000；BECCS 捕集岛的 capex 与固定运维同 CCS，生物质改造只走档位 capex |
 | (c) 管道到寿命 | 每条边的累计新增上限把到寿命的管也算进去：2030 年铺满的边，2060 年管退出后不能再铺 | 累计新增上限、LP 热启动取整、结果表的"铺前存量"都只数在役的管 |
 | (d) 成本乘子 | 煤电乘 capex 与每 MWh 附加项（BECCS 的 30 元/MWh 掺烧运维随之变动），不乘固定运维；工业还乘能耗与耗材；工业 H2 路线的乘子同时乘 capex 与锚点溢价（含反推的非氢运行差额） | 两侧都只乘 capex 与随 capex 的固定运维；H2 路线反推的非氢运行差额固定在乘子为 1 时的值，所以锚点氢价下 m = 2 只让 H2 溢价增加 ν 倍的路线年资本项（ν 为铭牌系数），ν = 1 的 hub 为钢铁 25%、合成氨 14%、甲醇 2%（原来 +100%） |
-| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply_ammonia.py:110-147` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元；这是按原来的 20 年寿命算的，寿命改为 30 年后合计低 0.0256 USD，见 §0.2）。氨价里的 LCOH 是外生数据（仓库根氨供给曲线的 2030–2060 四个规划年，按供给量加权的总额算占氨价的 77%–86%，合成岛年金按 6%、30 年算），内含的资本成本率不随情景变 |
+| (e) 贴现率 | 绿氨合成岛年金按 8%（`constants.NH3_HB_CAPEX_DISCOUNT_RATE`，烘进 `inputs/ammonia_supply_curve.csv`），模型其余处为 6% | 删掉 8% 常量：模型自己折现与折年金的地方都用情景的 `discount_rate`（缺省 `constants.DEFAULT_DISCOUNT_RATE` = 6%）；读入氨供给曲线时把 CSV 里的合成岛年金换成按它算的（`builders/supply_ammonia.py:108-145` `reprice_hb_capex`），不重建输入。6% 时氨价每 kg 低 0.0128 USD（≈ 0.09 元；这是按原来的 20 年寿命算的，寿命改为 30 年后合计低 0.0256 USD，见 §0.2）。氨价里的 LCOH 是外生数据（仓库根氨供给曲线的 2030–2060 四个规划年，按供给量加权的总额算占氨价的 77%–86%，合成岛年金按 6%、30 年算），内含的资本成本率不随情景变 |
 
 对已有结果：(a)(b)(c)(e) 改了目标函数或约束，`_indtree/results/` 里在本 PR 合入之前落盘的 `ST_` 结果（含 09-22 到合入之间求的）
 与新代码的求解**不得相减**，需重解（CLAUDE.md §二.7、`_indtree/README.md` 已同步）；
@@ -692,7 +717,7 @@
 
 **仍不一样的地方**（未改，大致按对结果的影响排序）：
 
-1. **煤电有几项运维不是"capex 的比例"。** 基线燃煤运维按发电量收 110 元/MWh（`optimization/assumptions.py:121`，Wang & Cai 的
+1. **煤电有几项运维不是"capex 的比例"。** 基线燃煤运维按发电量收 110 元/MWh（`optimization/assumptions.py:117`，Wang & Cai 的
    固定与可变运维按其全国平均利用小时折算）；掺烧能力 2026-10-10 起都按掺烧 capex 的 3%/年（生物质与 BECCS 的掺烧部分 2026-10-02 起，
    此前各 30 元/MWh；掺氨此前按发电量收 80 元/MWh，无出处）；空冷改造只有 capex（300 元/kW）和背压能耗，没有固定运维项。工业 CCS 另有 15 或 5 元/t 的耗材，
    煤电 CCS 没有单列。
@@ -773,7 +798,7 @@
 | 海上封存倍率 | × 2.2（2026-10-02 起；此前海上、陆上同价） | REMIND carbon management 表：海上、陆上注入投资 525 / 350，固定运维占投资 0.12 / 0.06 每年，寿命 40 年；按 6% 年化后之比 2.21（只按投资比为 1.5） | 推导（REMIND 的注入成本之比，套用到 An 的封存单价上；按模型贴现率 6% 年化，5%–8% 为 2.13–2.26；单位按表头推断，比值与单位无关） |
 | EOR 抵扣 | 12 元/t | — | ⚠ 假设（无出处） |
 | 管道寿命 | 30 年 | — | ⚠ 假设（设定值） |
-| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply_ammonia.py:65-147`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
+| 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply_ammonia.py:63-145`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
 | 工业用氢运费 | 0.03 元/(kg·km) | 注释称取中国氢能联盟白皮书 2019 的量级，未核到原文 | ⚠ 假设（临时值） |
 
 **表外参数**（不属投资，但进目标函数或约束。PR #2 审查时列出的这 20 项原来既无出处又没标 ⚠，2026-09-23 逐项查过；
@@ -961,7 +986,7 @@ python -m ruff check src tests scripts
 | Fan et al. 2025 封存潜力与注入能力栅格 | `data/封存汇图层-Fan/`（出处与许可见该目录 README） | 是 | 封存汇 |
 | Wang et al. 2023 生物质栅格 `bioenergy_s4_AF_max.tif`（情景 4，figshare 文件 39594598） | `data/` 下，按文件名查找（本次下载放在 `data/中国生物质潜力/`） | 否 | 生物质供给 |
 | 绿氢产量与 LCOH 栅格 | `data/H2/<年份>/` | 否 | 绿氢节点 |
-| ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`、`download_isimip_extra_gcms.py`，下完用 `crop_isimip_china.py` 裁到中国框 | 否 | 水节点、偏差校正、生活与灌溉耗水 |
+| ISIMIP3b 逐月 qtot 与潜在耗水（netCDF） | `data/water/`，下载脚本 `scripts/download_isimip_water_use.py`（耗水）、`download_isimip_qtot.py`（qtot，五个 GCM 的未来与历史），下完用 `crop_isimip_china.py` 裁到中国框 | 否 | 水节点、偏差校正、生活与灌溉耗水 |
 | 水资源一级区 | `data/ChinaBasins/basin_l1.gpkg` | 是 | 厂址归流域、流域指标 |
 | 省界与海岸线 | `data/ChinaMap/` | 是 | 定省、剔除西藏、海岸线距离 |
 | Natural Earth 1:10m 陆地 | `data/NaturalEarth/` | 是 | 管道海上段长度 |

@@ -16,7 +16,7 @@ Two windows are compared, because they answer different questions:
   BASELINE     model 1956-2014 (historical run) vs the Third National Water Resources
                Survey and Evaluation, 1956-2016. Pure model bias, no forcing signal.
                Needs the `historical` qtot run of each (hydrology model, GCM) pair:
-               `download_isimip_extra_gcms.py` fetches all ten. data/water is not tracked,
+               `download_isimip_qtot.py` fetches all ten. data/water is not tracked,
                so a checkout without them skips this block; the bias factors in
                `_indtree/inputs/water_availability.csv` (all != 1) show the build machine had
                them. Columns are keyed by MEMBER, and each member's file is the one

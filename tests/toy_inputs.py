@@ -22,7 +22,7 @@ TOY_HEAT_RATE_GJ_PER_MWH = 8.5714
 # toy 机组的机型与冷却方式（映射表的两列）：600MW 级亚临界湿冷，逐台毛热耗 314 x 0.95 x 0.0293076 = 8.742 GJ/MWh，
 # 比重建的 3.6 / 0.45 = 8.0 高，全部到期时重建热耗为 8.0，与按 hub 毛热耗取 min 相同。
 TOY_UNIT_TYPE = {"combustion": ["subcritical"], "cooling_technology": ["recirculating"]}
-TOY_WATER_M3_PER_MWH = 1.85  # 循环冷却的耗水强度，`constants.COOLING_WATER_INTENSITY_M3_PER_MWH`
+TOY_WATER_M3_PER_MWH = 1.85  # toy 电厂的耗水强度（m3/MWh），落在查表的循环冷却耗水 1.26–2.01 之间
 
 
 def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:

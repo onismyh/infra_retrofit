@@ -33,7 +33,6 @@ BIOMASS_GJ_PER_TONNE = 15.0
 BIOMASS_COST_BASE = 20.0
 BIOMASS_COST_LOW = 18.0
 BIOMASS_COST_HIGH = 26.0
-BIOMASS_MATCH_BUFFER_KM = 150.0  # 只写进供给曲线的 buffer_km 列，模型不读；资源链路半径是 resource_match_radius_km（200 km）
 BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 
 # 合成氨的氢耗，kg H2/kg NH3：DEA 可再生燃料技术数据表 98 Ammonia from hydrogen（[R09]）的工程值 0.18，含合成回路损耗；
@@ -94,19 +93,14 @@ BIOMASS_FLOW_SCALE = 1e6   # 求解器流量变量用 PJ 而非 GJ（÷1e6）
 AMMONIA_FLOW_SCALE = 1e6   # 求解器流量变量用 kt 而非 kg（÷1e6）
 WATER_FLOW_SCALE = 1e6     # 求解器流量变量用 Mm³ 而非 m³（÷1e6）
 
-# 参考文献键：ndrc2015no9。
-COOLING_WATER_INTENSITY_M3_PER_MWH = {
-    "once-through": 0.35,   # 耗水口径，NDRC 2015 No.9：0.29-0.41
-    "recirculating": 1.85,
-    "air": 0.37,
-}
+# 冷却方式三类，也是 `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的冷却键；hub 按它分列装机 `capacity_mw_*`（键名里的 - 换成 _）。
+COOLING_CLASSES = ("once-through", "recirculating", "air")
 
 
 def cooling_class(label: object) -> str:
-    """GEM 的冷却方式标签（或已归类的名字）→ 上表与 `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的三个冷却键：含 `once` 为直流
-    （once-through），含 `air` 或 `dry` 为空冷（air），其余（含缺失）为循环冷却（recirculating）。逐台毛热耗与 hub 用水强度
-    都按它归类。hub 各冷却方式的装机份额
-    （`builders.plants.build_plant_dataframe`）按上表键名做子串匹配，不走这里。"""
+    """GEM 的冷却方式标签（或已归类的名字）→ `COOLING_CLASSES` 之一：含 `once` 为直流（once-through），含 `air` 或 `dry`
+    为空冷（air），其余（含缺失）为循环冷却（recirculating）。逐台毛热耗与 hub 用水强度都按它归类。hub 各冷却方式的装机
+    （`builders.plants.build_plant_dataframe`）按 `COOLING_CLASSES` 的键名做子串匹配，不走这里。"""
     text = str(label).strip().lower()
     if "once" in text:
         return "once-through"
@@ -130,7 +124,7 @@ def cooling_class(label: object) -> str:
 #     冷却塔 亚临界          取水 2.01 (US) vs 2.31 (CN);  耗水 1.78 vs 2.01
 #     冷却塔 超临界+CCS           4.25      vs 4.14;            3.20 vs 3.06
 #     直流冷却 亚临界           102.54      vs 116.48
-# 两个独立来源、不同国家，取水量相差 5-14%。
+# 两个独立来源、不同国家，取水量相差 3-15%（以美国值为基：+14.9%、-2.6%、+13.6%）。
 #
 # 注意直流冷却的两种口径相差多远：取水约 100 m3/MWh，而耗水约
 # 1 m3/MWh，因为凝汽器冷却水回到了河里。中国自己的

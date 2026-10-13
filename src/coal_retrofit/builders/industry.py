@@ -194,7 +194,7 @@ def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
     部门（`SECTORS_WITH_UNIFORM_RETIREMENT`）把年龄均匀铺在 [0, life] 上。
 
     两种补法都是按 `source_id` 排序的确定性分位数阶梯——不是抽样——所以两次运行结果
-    逐位相同（`.claude/rules/experiment-reproducibility.md`）。
+    逐位相同。
     所有被补的行 `commission_year_observed` 都保持 False，因此任何读取厂龄的图都能把
     它们排除，而不是把合成的年份当成数据。
     """

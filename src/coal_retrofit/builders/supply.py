@@ -12,7 +12,6 @@ from ..constants import (
     BIOMASS_COST_HIGH,
     BIOMASS_COST_LOW,
     BIOMASS_GJ_PER_TONNE,
-    BIOMASS_MATCH_BUFFER_KM,
     BIOMASS_NODE_AGGREGATION_DEGREES,
 )
 from ..paths import ProjectPaths
@@ -42,7 +41,6 @@ BIOMASS_COLUMNS = (
     "high_cost_cny_per_gj",
     "match_rule",
     "competition_scope",
-    "buffer_km",
     "aggregation_cell_deg",
     "land_competition_included",
     "source",
@@ -89,7 +87,6 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     grouped["high_cost_cny_per_gj"] = BIOMASS_COST_HIGH
     grouped["match_rule"] = "buffered_point_source_competition"
     grouped["competition_scope"] = "shared_biomass_node"
-    grouped["buffer_km"] = BIOMASS_MATCH_BUFFER_KM
     grouped["aggregation_cell_deg"] = BIOMASS_NODE_AGGREGATION_DEGREES
     grouped["land_competition_included"] = False
     grouped["source"] = paths.rel(biomass_tif)
