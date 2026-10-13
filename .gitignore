@@ -28,6 +28,8 @@ __pycache__/
 # 机器本地 / 按 .claude/rules/security.md 不入库
 .claude/settings.json
 .claude/settings.local.json
+# 会话结束钩子（.claude/hooks/session-summary.js）写的会话日志
+.claude/logs/
 # 密钥、凭据与本地数据库（.claude/rules/security.md 的清单），以及 Gurobi 许可证（AGENTS.md）
 .env
 .env.*

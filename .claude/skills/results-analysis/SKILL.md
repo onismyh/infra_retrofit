@@ -15,7 +15,7 @@ Use this skill to produce a **strict analysis bundle**:
 - `figure-catalog.md`
 - `figures/`
 
-Do **not** use this skill to draft a paper `Results` section or a full experiment wrap-up report. Those belong to `ml-paper-writing` or `results-report`.
+Do **not** use this skill to draft a paper `Results` section or a full experiment wrap-up report. The wrap-up report belongs to `results-report`.
 
 ## Core contract
 

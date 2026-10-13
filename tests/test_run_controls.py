@@ -10,7 +10,6 @@ import logging
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -23,9 +22,6 @@ from coal_retrofit.optimization.solver import SolveControls
 from coal_retrofit.paths import ProjectPaths
 from coal_retrofit.run_controls import RunError, WarmStartFailed
 from coal_retrofit.scenarios import ScenarioSpec
-
-# `run_controls.env_controls` 读的四个兼容开关；每个测试开始前 conftest 已把它们清掉。
-ENV = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_WRITE_SOL", "COAL_RETROFIT_LOG_INCUMBENTS")
 
 REGISTRY = """
 [WARM]
@@ -131,30 +127,6 @@ def test_code_state_on_a_real_repository(tmp_path, monkeypatch) -> None:
     assert run_controls.code_state() == {"commit": None, "dirty": None}
 
 
-# --- 兼容的环境变量 --------------------------------------------------------------------------------------------
-
-
-def test_env_controls_reads_the_compatible_switches(monkeypatch) -> None:
-    assert run_controls.env_controls() == SolveControls()
-    monkeypatch.setenv("COAL_RETROFIT_LP_RELAX", "1")
-    monkeypatch.setenv("COAL_RETROFIT_START_SOL", "a.sol")
-    monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", "b.sol")
-    monkeypatch.setenv("COAL_RETROFIT_LOG_INCUMBENTS", "1")
-    assert run_controls.env_controls() == SolveControls(True, Path("a.sol"), Path("b.sol"), True)
-    for key in ENV:
-        monkeypatch.setenv(key, "")  # 空值与未设相同
-    assert run_controls.env_controls() == SolveControls()
-
-
-@pytest.mark.parametrize("key", ["COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL"])
-def test_warm_start_scenarios_refuse_the_manual_switches(monkeypatch, key: str) -> None:
-    monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", "b.sol")  # 只决定第 2 步写不写 .sol，可以设
-    run_controls.check_warm_start_env()
-    monkeypatch.setenv(key, "x")
-    with pytest.raises(RunError, match=f"不能再设 {key}"):
-        run_controls.check_warm_start_env()
-
-
 # --- 热启动第 1 步 ---------------------------------------------------------------------------------------------
 
 
@@ -244,17 +216,14 @@ def cli_run(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.usefixtures("ascii_tmp_path")
-def test_warm_start_runs_both_steps_and_records_step_one(cli_run, monkeypatch, tmp_path) -> None:
+def test_warm_start_runs_both_steps_and_records_step_one(cli_run, monkeypatch) -> None:
     run, calls, _, results = cli_run
-    monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", str(tmp_path / "w.sol"))  # 兼容开关照旧作用于第 2 步
-    monkeypatch.setenv("COAL_RETROFIT_LOG_INCUMBENTS", "1")
     monkeypatch.setattr(runner, "code_state", lambda: {"commit": "f" * 40, "dirty": True})
     code, err = run("WARM")
     assert code == 0
     assert [line for line in err.splitlines() if not line.startswith("INFO ")] == []   # stderr 只许有 INFO 日志
     sol = results / "WARM.lp.sol"
-    assert calls == [("step1", sol), ("solve", SolveControls(start_sol=sol, write_sol=tmp_path / "w.sol",
-                                                                log_incumbents=True))]
+    assert calls == [("step1", sol), ("solve", SolveControls(start_sol=sol))]
     resolved = json.loads((results / "WARM.json").read_text(encoding="utf-8"))["resolved"]
     assert resolved["warm_start"] == {"method": "lp_relax", "status": "optimal"}
     assert resolved["scenario"]["warm_start"] == "lp_relax" and resolved["scenario"]["warm_start_time_limit"] == 77
@@ -291,17 +260,13 @@ def test_existing_result_is_refused_before_solving_unless_forced(cli_run) -> Non
 
 
 @pytest.mark.parametrize(
-    ("argv", "env", "message"),
+    ("argv", "message"),
     [
-        (("WARM",), {"COAL_RETROFIT_START_SOL": "a.sol"}, "不能再设 COAL_RETROFIT_START_SOL"),
-        (("WARM",), {"COAL_RETROFIT_LP_RELAX": "1"}, "不能再设 COAL_RETROFIT_LP_RELAX"),
-        (("PLAIN", "--sol-dir", "sols"), {}, "--sol-dir 只配 warm_start = \"lp_relax\" 的情景"),
+        (("PLAIN", "--sol-dir", "sols"), "--sol-dir 只配 warm_start = \"lp_relax\" 的情景"),
     ],
 )
-def test_conflicting_warm_start_options_are_refused(cli_run, monkeypatch, argv, env, message) -> None:
+def test_conflicting_warm_start_options_are_refused(cli_run, argv, message) -> None:
     run, calls, _, results = cli_run
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
     code, err = run(*argv)
     assert code == 1 and message in err and calls == [] and not results.exists()
 
@@ -315,15 +280,6 @@ def test_runner_refuses_an_unknown_warm_start(cli_run, tmp_path) -> None:
     with pytest.raises(RunError, match="warm_start = 'lp'：只能是"):
         runner.run(spec, threads=1, time_limit=60)
     assert calls == [] and not results.exists()
-
-
-def test_manual_warm_start_still_works_without_the_field(cli_run, monkeypatch) -> None:
-    """情景不热启动时手工设 START_SOL 照旧：只跑第 2 步，`resolved.warm_start` 记 None。"""
-    run, calls, _, results = cli_run
-    monkeypatch.setenv("COAL_RETROFIT_START_SOL", "a.sol")
-    assert run("PLAIN")[0] == 0
-    assert calls == [("solve", SolveControls(start_sol=Path("a.sol")))]
-    assert json.loads((results / "PLAIN.json").read_text(encoding="utf-8"))["resolved"]["warm_start"] is None
 
 
 @pytest.mark.usefixtures("ascii_tmp_path")

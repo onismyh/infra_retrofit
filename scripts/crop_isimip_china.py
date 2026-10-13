@@ -2,7 +2,7 @@
 """把 ISIMIP3b 全球 0.5° 逐月文件裁到中国框：lat[66:180]、lon[500:640]（56.75–0.25°N、70.25–139.75°E，114 × 140 格）。
 
 `data/water/` 里的文件都是这样裁过的（文件属性 `history_crop`），两个下载脚本（`download_isimip_water_use.py`、
-`download_isimip_extra_gcms.py`）下的是全球文件，下载后用本脚本裁。不改数值：数据变量按原 dtype 与 `_FillValue`
+`download_isimip_qtot.py`）下的是全球文件，下载后用本脚本裁。不改数值：数据变量按原 dtype 与 `_FillValue`
 原样拷，全局与变量属性照抄，另加 `history_crop`；容器为 NETCDF4_CLASSIC，zlib 5 + shuffle，一个月一块。写到临时文件、
 逐月与原文件逐格比对相同后才换成正式文件名，中途出错就删掉临时文件，所以缺省的原地裁剪（输出目录即输入所在目录）
 失败时原文件还在。已裁过的文件（网格已是 114 × 140）跳过，给了 `--dest` 也不拷过去。

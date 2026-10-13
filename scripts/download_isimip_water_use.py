@@ -38,23 +38,20 @@ Caveat to carry into the Methods: these are `2015soc-from-histsoc` runs, i.e. so
 drivers are frozen at 2015. Domestic demand is therefore effectively constant through 2100;
 irrigation demand still varies because crop water requirement responds to climate.
 
-Downloading follows `download_isimip_extra_gcms.py`: requests+OpenSSL (this box's mingw curl
-fails the files.isimip.org handshake), 2 workers, resume by byte range, retry budget spent on
-stalls rather than attempts.
+Downloading is shared with `download_isimip_qtot.py` (`isimip_fetch.py`): requests+OpenSSL (this box's
+mingw curl fails the files.isimip.org handshake), 2 workers, resume by byte range, retry budget spent on
+stalls rather than attempts, and a file counts as complete only when its size equals the server's length.
 """
 from __future__ import annotations
 
-import os
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
 from _bootstrap import REPO_ROOT
+from isimip_fetch import download_all
 
 # 落到仓库根 data/water/，与工作目录无关（builders 从 REPO_ROOT/data 读）。下的是全球文件，下完用
 # `python scripts/crop_isimip_china.py data/water` 原地裁到中国框；已有同名文件的不重下，裁过的也算。
-DEST = str(REPO_ROOT / "data" / "water")
+DEST = REPO_ROOT / "data" / "water"
 BASE = "https://files.isimip.org/ISIMIP3b/OutputData/water_global"
 # Every GCM in `inputs/water_scenarios.csv`: each member's deduction comes from its own run.
 GCMS = ("gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll")
@@ -63,12 +60,6 @@ NEEDED: dict[str, tuple[str, tuple[str, ...]]] = {
     "cwatm": ("CWatM", ("pdomuse", "pinduse", "pliveuse", "ptotuse")),
     "watergap2-2e": ("WaterGAP2-2e", ("pdomuse", "pirruse")),
 }
-
-MAX_STALLS = 6
-ATTEMPT_CAP = 200
-MAX_WORKERS = 2
-CONNECT_TIMEOUT = 30
-READ_TIMEOUT = 180
 
 
 def _basename(hydro: str, gcm: str, ssp: str, var: str) -> str:
@@ -85,74 +76,8 @@ URLS: list[tuple[str, str]] = [
 ]
 
 
-def _local_size(path: str) -> int:
-    return os.path.getsize(path) if os.path.exists(path) else 0
-
-
-def fetch(url: str, fname: str) -> tuple[str, int]:
-    final = os.path.join(DEST, fname)
-    partial = final + ".part"
-    if os.path.exists(final):
-        return fname, _local_size(final)
-    stalls = 0
-    for _ in range(ATTEMPT_CAP):
-        offset = _local_size(partial)
-        headers = {"Range": f"bytes={offset}-"} if offset else {}
-        try:
-            with requests.get(url, stream=True, headers=headers,
-                              timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)) as response:
-                if response.status_code == 416 and offset:
-                    # Range starts at the server's file length: the .part already holds every byte
-                    # (same handling as download_isimip_extra_gcms.py).
-                    os.replace(partial, final)
-                    return fname, _local_size(final)
-                if response.status_code not in (200, 206):
-                    raise OSError(f"HTTP {response.status_code}")
-                mode = "ab" if offset and response.status_code == 206 else "wb"
-                if mode == "wb":
-                    offset = 0
-                with open(partial, mode) as handle:
-                    for chunk in response.iter_content(chunk_size=1 << 20):
-                        handle.write(chunk)
-            total = int(response.headers.get("content-range", "/0").split("/")[-1] or 0)
-            if total and _local_size(partial) >= total:
-                os.replace(partial, final)
-                return fname, _local_size(final)
-            if response.status_code == 200:
-                os.replace(partial, final)
-                return fname, _local_size(final)
-        except Exception as exc:  # noqa: BLE001 - any transport error is a retry candidate
-            print(f"  {fname}: {type(exc).__name__} {exc}", file=sys.stderr)
-        # An attempt that moved the byte counter forward is progress and costs no budget.
-        if _local_size(partial) > offset:
-            stalls = 0
-        else:
-            stalls += 1
-            if stalls >= MAX_STALLS:
-                raise RuntimeError(f"{fname}: {MAX_STALLS} consecutive stalls")
-            time.sleep(5)
-    raise RuntimeError(f"{fname}: attempt cap reached")
-
-
 def main() -> None:
-    os.makedirs(DEST, exist_ok=True)
-    todo = [(f, u) for f, u in URLS if not os.path.exists(os.path.join(DEST, f))]
-    print(f"{len(URLS)} files needed, {len(todo)} missing")
-    started = time.time()
-    failures: list[str] = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(fetch, url, fname): fname for fname, url in todo}
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                _, size = future.result()
-                print(f"  done {name} ({size/1e6:.1f} MB)")
-            except Exception as exc:  # noqa: BLE001 - report and continue with the rest
-                failures.append(name)
-                print(f"  FAIL {name}: {exc}", file=sys.stderr)
-    print(f"finished in {(time.time()-started)/60:.1f} min, ok={len(todo) - len(failures)} failed={len(failures)}")
-    if failures:
-        print("failed:", *failures, sep="\n  ", file=sys.stderr)
+    if download_all(URLS, DEST):
         sys.exit(1)
 
 

@@ -1,15 +1,14 @@
 """从厂级点源库构建工业点源清单。
 
 来源：点源库目录 `POINT_SOURCE_DIR`（环境变量 `COAL_RETROFIT_POINT_SOURCE_DIR`，缺省为作者本机的
-`D:\\6. Transfer\\PhD_tht\\point_source\\`）——六个工作簿，覆盖七个部门，各自都带
+`D:\\6. Transfer\\PhD_tht\\point_source\\`）——读其中钢铁、水泥、合成氨与甲醇三个工作簿，覆盖五个部门，各自都带
 WGS84 坐标、产能、产量、CO2，以及（EAF 除外）一列氢需求。
 
 该库中的单位并不统一，一旦弄错，整个工业部门会被悄无声息地按比例放缩。编写本模块前
 已对照全国总量核验：
 
     钢铁      产量以 kt 计      CO2 以 Mt 计   H2_DMD 以 kt 计   （939 Mt 粗钢）
-    其他      产量以万吨计      CO2 以 Mt 计   H2_DMD 以万吨计   （52 Mt NH3，678 Mt 原油，
-                                                                   1 269 Mt 熟料）
+    其他      产量以万吨计      CO2 以 Mt 计   H2_DMD 以万吨计   （52 Mt NH3，1 269 Mt 熟料）
     水泥      产能以 t/d 计（不是万吨）——9 000 t/d x 300 d = 2.7 Mt/yr，与它自己的
               产量列吻合，单位正是靠这项核对确定下来的。
 
@@ -25,22 +24,16 @@ import numpy as np
 import pandas as pd
 
 from ..artifacts import write_csv
-from ..constants import PLANT_YEAR_BASIS
 from ..constants_industry import (
-    ASSET_LIFETIME_YEARS,
     DEFAULT_SECTOR_HUB_COUNTS,
     INDUSTRY_CONSUMPTION_SHARE,
     SECTOR_AMMONIA,
     SECTOR_CEMENT,
-    SECTOR_COAL_CHEM,
     SECTOR_HAS_H2_ROUTE,
     SECTOR_LABELS_ZH,
     SECTOR_METHANOL,
-    SECTOR_REFINERY,
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
-    SECTORS_OUT_OF_SCOPE,
-    SECTORS_WITH_UNIFORM_RETIREMENT,
     water_quota,
 )
 from ..paths import ProjectPaths
@@ -59,8 +52,7 @@ CANONICAL_COLUMNS = [
     "source_id", "sector", "sector_zh", "plant_name", "province",
     "longitude", "latitude", "capacity_kt_per_year", "production_kt_per_year",
     "co2_mt_per_year", "process_co2_mt_per_year", "h2_demand_kt_per_year",
-    "has_h2_route", "feedstock", "commission_year", "commission_year_observed",
-    "asset_life_years", "water_intensity_m3_per_t", "water_m3_per_year", "status",
+    "feedstock", "water_m3_per_year", "status",
 ]
 
 
@@ -80,15 +72,6 @@ def _text(frame: pd.DataFrame, column: str, default: str) -> pd.Series:
     if column not in frame.columns:
         return pd.Series(default, index=frame.index, dtype=object)
     return frame[column].astype(str).fillna(default)
-
-
-def _year(frame: pd.DataFrame, column: str) -> pd.Series:
-    """投运年份，转为可空整数；'unknown' 与空白变为 NA。"""
-    if column not in frame.columns:
-        return pd.Series(pd.NA, index=frame.index, dtype="Int64")
-    raw = pd.to_numeric(frame[column], errors="coerce")
-    raw = raw.where((raw >= 1900) & (raw <= 2100))
-    return raw.astype("Int64")
 
 
 def _read(sheet_file: str, sheet: str) -> pd.DataFrame:
@@ -121,7 +104,6 @@ def _load_steel() -> pd.DataFrame:
         "process_co2_mt_per_year": 0.0,
         "h2_demand_kt_per_year": _num(bof, "H2_DMD"),
         "feedstock": "default",
-        "commission_year": _year(bof, "Start Date"),
         "status": _text(bof, "Unit Status", "operating"),
     }))
     eaf = _read("steel_all.xlsx", "China_ope_cons_EAF")
@@ -139,7 +121,6 @@ def _load_steel() -> pd.DataFrame:
         # 电弧炉没有可被替代的化石还原剂。
         "h2_demand_kt_per_year": 0.0,
         "feedstock": "default",
-        "commission_year": _year(eaf, "Start Date"),
         "status": _text(eaf, "Unit Status", "operating"),
     }))
     return pd.concat(frames, ignore_index=True)
@@ -162,7 +143,6 @@ def _load_cement() -> pd.DataFrame:
         "process_co2_mt_per_year": _num(df, "CO2 Emission") * 0.63,
         "h2_demand_kt_per_year": 0.0,   # 无氢路线；源数据中该列只涉及燃料供热
         "feedstock": "default",
-        "commission_year": _year(df, "Time"),
         "status": "operating",
     })
 
@@ -184,98 +164,13 @@ def _load_ammonia_methanol() -> pd.DataFrame:
             "process_co2_mt_per_year": 0.0,
             "h2_demand_kt_per_year": _num(df, "H2_DMD") * WAN_TO_KT,
             "feedstock": _text(df, "Feedstock", "Coal"),
-            "commission_year": pd.Series(pd.NA, index=df.index, dtype="Int64"),
             "status": "operating",
         }))
     return pd.concat(frames, ignore_index=True)
-
-
-def _load_refinery() -> pd.DataFrame:
-    df = _read("Refinery_all.xlsx", "China")
-    return pd.DataFrame({
-        "source_id": "REF_" + df["ID"].astype(str),
-        "sector": SECTOR_REFINERY,
-        "plant_name": df["Name"].astype(str),
-        "province": df["Province"].astype(str),
-        "longitude": _num(df, "lon"), "latitude": _num(df, "lat"),
-        "capacity_kt_per_year": _num(df, "Crude cap") * WAN_TO_KT,
-        "production_kt_per_year": _num(df, "Crude input") * WAN_TO_KT,
-        "co2_mt_per_year": _num(df, "Emission"),
-        "process_co2_mt_per_year": 0.0,
-        "h2_demand_kt_per_year": _num(df, "H2_dmd") * WAN_TO_KT,
-        "feedstock": "default",
-        "commission_year": pd.Series(pd.NA, index=df.index, dtype="Int64"),
-        "status": "operating",
-    })
-
-
-def _load_coal_chemical() -> pd.DataFrame:
-    """现代煤化工。读四张分工艺表，而不是 `All` 汇总表。
-
-    `All` 丢掉了产能与产量，而用水计算需要它们；分工艺表还把过程 CO2 与燃料 CO2 分开，
-    这一点很重要，因为掺氢只能替代燃料那部分。
-    """
-    frames = []
-    for sheet in ("煤制天然气", "煤制烯烃", "煤制油", "煤制乙二醇"):
-        df = _read("Coal-to-chemicals.xlsx", sheet)
-        frames.append(pd.DataFrame({
-            "source_id": f"CTC_{sheet}_" + df["ID"].astype(str),
-            "sector": SECTOR_COAL_CHEM,
-            "plant_name": df["Project"].astype(str),
-            "province": df["Province"].astype(str),
-            "longitude": _num(df, "Longtitude"), "latitude": _num(df, "Latitude"),
-            "capacity_kt_per_year": _num(df, "Capacity") * WAN_TO_KT,
-            "production_kt_per_year": _num(df, "Production") * WAN_TO_KT,
-            "co2_mt_per_year": _num(df, "Total Direct Emission"),
-            "process_co2_mt_per_year": _num(df, "CO2 Emission-Process"),
-            "h2_demand_kt_per_year": _num(df, "H2_DMD") * WAN_TO_KT,
-            "feedstock": _text(df, "Feedstock", "Coal"),
-            "commission_year": pd.Series(pd.NA, index=df.index, dtype="Int64"),
-            "status": "operating",
-        }))
-    return pd.concat(frames, ignore_index=True)
-
-
-def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
-    """补齐缺失的投运年份，补法取决于该部门掌握了多少信息。
-
-    部分有观测的部门（水泥、钢铁）从它们自己的已观测年份分布中取值补缺：补出的值复现
-    观测到的经验分位数，因此该部门的年龄结构得以保留，而不是被抹平。完全没有观测年份的
-    部门（`SECTORS_WITH_UNIFORM_RETIREMENT`）把年龄均匀铺在 [0, life] 上。
-
-    两种补法都是按 `source_id` 排序的确定性分位数阶梯——不是抽样——所以两次运行结果
-    逐位相同（`.claude/rules/experiment-reproducibility.md`）。
-    所有被补的行 `commission_year_observed` 都保持 False，因此任何读取厂龄的图都能把
-    它们排除，而不是把合成的年份当成数据。
-    """
-    frame = frame.copy()
-    frame["commission_year_observed"] = frame["commission_year"].notna()
-    for sector, group in frame.groupby("sector", sort=True):
-        life = ASSET_LIFETIME_YEARS[str(sector)]
-        missing = group.index[group["commission_year"].isna()]
-        if len(missing) == 0:
-            continue
-        ordered = frame.loc[missing].sort_values("source_id").index
-        fractions = (np.linspace(0.0, 1.0, num=len(ordered)) if len(ordered) > 1
-                     else np.array([0.5]))
-        observed = group.loc[group["commission_year"].notna(), "commission_year"]
-        if str(sector) in SECTORS_WITH_UNIFORM_RETIREMENT or observed.empty:
-            years = base_year - np.rint(fractions * life)
-            how = "uniform over %d-year life" % life
-        else:
-            # 经验分位数补法：复现该部门的观测分布。
-            years = np.rint(np.quantile(observed.astype(float).to_numpy(), fractions))
-            how = "empirical quantiles of %d observed years" % len(observed)
-        frame.loc[ordered, "commission_year"] = years.astype("int64")
-        logger.info("%s: filled %d/%d commissioning years by %s",
-                    sector, len(missing), len(group), how)
-    frame["commission_year"] = frame["commission_year"].astype("Int64")
-    frame["asset_life_years"] = frame["sector"].map(ASSET_LIFETIME_YEARS).astype(int)
-    return frame
 
 
 def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
-    """附上 GB/T 18916 的单位产品取水量，以及由此得到的年取水量。"""
+    """按 GB/T 18916 的单位产品取水量附上年取水量。"""
     frame = frame.copy()
     intensities = []
     for sector, feedstock in zip(frame["sector"], frame["feedstock"], strict=True):
@@ -283,30 +178,27 @@ def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
             intensities.append(water_quota(str(sector), str(feedstock)))
         except ValueError:
             intensities.append(np.nan)
-    frame["water_intensity_m3_per_t"] = intensities
+    intensity = pd.Series(intensities, index=frame.index, dtype=float)
     # 产量单位为 kt/yr；kt -> t 要 x1000。
     frame["water_m3_per_year"] = (
-        frame["water_intensity_m3_per_t"] * frame["production_kt_per_year"] * 1000.0
-        * INDUSTRY_CONSUMPTION_SHARE
+        intensity * frame["production_kt_per_year"] * 1000.0 * INDUSTRY_CONSUMPTION_SHARE
     )
-    unsourced = sorted(frame.loc[frame["water_intensity_m3_per_t"].isna(), "sector"].unique())
+    unsourced = sorted(frame.loc[intensity.isna(), "sector"].unique())
     if unsourced:
         logger.warning(
             "no water intake quota sourced for %s — %d plants carry NaN water use. "
             "Fill WATER_INTAKE_QUOTA_M3_PER_T from GB/T 18916 before solving.",
-            unsourced, int(frame["water_intensity_m3_per_t"].isna().sum()),
+            unsourced, int(intensity.isna().sum()),
         )
     return frame
 
 
-def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFrame:
-    """全部七个部门的厂级工业点源，单位已统一。"""
+def build_industry_sources() -> pd.DataFrame:
+    """五个部门的厂级工业点源，单位已统一。"""
     frame = pd.concat(
-        [_load_steel(), _load_cement(), _load_ammonia_methanol(),
-         _load_refinery(), _load_coal_chemical()],
+        [_load_steel(), _load_cement(), _load_ammonia_methanol()],
         ignore_index=True,
     )
-    frame = frame[~frame["sector"].isin(SECTORS_OUT_OF_SCOPE)].reset_index(drop=True)
     before = len(frame)
     frame = frame[
         frame["latitude"].between(3.0, 54.0) & frame["longitude"].between(73.0, 136.0)
@@ -315,9 +207,7 @@ def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFra
         logger.warning("dropped %d rows with missing or out-of-China coordinates",
                        before - len(frame))
     frame["sector_zh"] = frame["sector"].map(SECTOR_LABELS_ZH)
-    frame["has_h2_route"] = frame["sector"].map(SECTOR_HAS_H2_ROUTE)
-    frame.loc[~frame["has_h2_route"], "h2_demand_kt_per_year"] = 0.0
-    frame = _assign_missing_years(frame, base_year)
+    frame.loc[~frame["sector"].map(SECTOR_HAS_H2_ROUTE), "h2_demand_kt_per_year"] = 0.0
     frame = _apply_water(frame)
     return frame[CANONICAL_COLUMNS]
 
@@ -347,17 +237,13 @@ def cluster_sector_hubs(
 
 
 def aggregate_hubs(labelled: pd.DataFrame) -> pd.DataFrame:
-    """把已打标签的点源合并为 hub 行，强度按产量加权。"""
+    """把已打标签的点源合并为 hub 行，坐标按产量加权，其余量相加。"""
     rows = []
     for hub_id, group in labelled.groupby("hub_id", sort=True):
         output = float(group["production_kt_per_year"].sum())
         weights = group["production_kt_per_year"].to_numpy(dtype=float)
-        weight_sum = weights.sum()
-        if weight_sum <= 0:
+        if weights.sum() <= 0:
             weights = np.ones(len(group))
-            weight_sum = float(len(group))
-        intensity = group["water_intensity_m3_per_t"].to_numpy(dtype=float)
-        finite = np.isfinite(intensity)
         rows.append({
             "hub_id": str(hub_id),
             "sector": str(group["sector"].iloc[0]),
@@ -371,14 +257,7 @@ def aggregate_hubs(labelled: pd.DataFrame) -> pd.DataFrame:
             "co2_mt_per_year": float(group["co2_mt_per_year"].sum()),
             "process_co2_mt_per_year": float(group["process_co2_mt_per_year"].sum()),
             "h2_demand_kt_per_year": float(group["h2_demand_kt_per_year"].sum()),
-            "has_h2_route": bool(group["has_h2_route"].iloc[0]),
-            "water_intensity_m3_per_t": (
-                float(np.average(intensity[finite], weights=weights[finite]))
-                if finite.any() else np.nan
-            ),
             "water_m3_per_year": float(group["water_m3_per_year"].sum(min_count=1)),
-            "mean_commission_year": float(group["commission_year"].astype(float).mean()),
-            "share_year_observed": float(group["commission_year_observed"].mean()),
         })
     return pd.DataFrame(rows)
 

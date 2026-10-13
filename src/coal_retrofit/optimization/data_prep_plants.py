@@ -41,15 +41,10 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
         plants["annual_generation_mwh"].astype(float) * plants["heat_rate_gj_per_mwh"].astype(float)
         * assumptions.coal_emission_factor_t_per_gj / 1_000_000.0
     )
-    plants["effective_cooling_technology"] = (
-        str(scenario.forced_cooling_technology)
-        if scenario.forced_cooling_technology
-        else plants["dominant_cooling_technology"].astype(str)
-    )
     # 必须来自淡水系统的水量。
     # `builders/plants_water.py` 依据 Wang (2023) 表为每个厂址写出四个按装机容量加权的强度：
-    # 逐机组按蒸汽参数（steam cycle）与冷却方式查表，沿海的海水凝汽器已置零。没有这些列
-    # 的旧输入退回到按冷却方式取的统一耗水值。
+    # 逐机组按蒸汽参数（steam cycle）与冷却方式查表，沿海的海水凝汽器已置零。没有这些列就报错
+    # （2026-10-13 前退回按冷却方式取的统一耗水值，另有强制统一冷却方式的开关 `forced_cooling_technology`）。
     # 三种口径，三种用途。它们不可互换，模型三种都用：
     #
     #   consumption  流域实际损失的水量               -> 节点可用水量（生态流量）约束
@@ -63,16 +58,11 @@ def _prepare_plants(paths: ProjectPaths, scenario: OptimizationScenario, assumpt
     # 指标约束：那条分配规则本身按取水计量（`water_access._withdrawal_matrices`）。
     base_column = "consumption_intensity_m3_per_mwh"
     ccs_column = "consumption_ccs_intensity_m3_per_mwh"
-    has_table = base_column in plants.columns and ccs_column in plants.columns
-    if has_table and not scenario.forced_cooling_technology:
-        plants["baseline_water_intensity_m3_per_mwh"] = plants[base_column].astype(float)
-        plants["capture_water_intensity_m3_per_mwh"] = plants[ccs_column].astype(float)
-    else:
-        if not has_table:
-            logger.warning("plants.csv lacks the per-technology water table; using flat cooling values")
-        flat = plants["effective_cooling_technology"].map(assumptions.cooling_baseline_water_intensity)
-        plants["baseline_water_intensity_m3_per_mwh"] = flat
-        plants["capture_water_intensity_m3_per_mwh"] = flat * assumptions.ccs_water_multiplier
+    missing = [column for column in (base_column, ccs_column) if column not in plants.columns]
+    if missing:
+        raise ValueError(f"plants.csv 没有逐机组用水表的列 {missing}：重新运行 scripts/build_plant_inputs.py")
+    plants["baseline_water_intensity_m3_per_mwh"] = plants[base_column].astype(float)
+    plants["capture_water_intensity_m3_per_mwh"] = plants[ccs_column].astype(float)
     # 计费比：水价按计量的定额水量征收，但求解器跟踪的变量是耗水量，所以到厂水价要逐厂
     # 乘以 quota/consumption。捕集带来的增量按基准比计费——这是对一个占系统成本 ~5% 的项
     # 所做的 <=25% 的近似。凡没有定额列之处，退回 1.0。

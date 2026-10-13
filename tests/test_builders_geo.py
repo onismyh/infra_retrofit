@@ -62,6 +62,3 @@ def test_seawater_classification_by_spherical_coast_distance(tmp_path) -> None:
     # 10° 开外：球面上到经线的垂足偏向高纬，最近顶点比同纬度的 (120, 31) 还近一点（约 1 km）
     assert 900.0 < float(out["coast_distance_km"][2]) <= expected[2]
     assert out["seawater_cooled"].tolist() == [True, False, False]
-    # 海水直流不计淡水强度；淡水直流按 0.35 m3/MWh
-    assert out["freshwater_intensity_m3_per_mwh"].tolist() == [0.0, 0.35, 0.35]
-    assert out["requires_water_supply"].tolist() == [False, True, True]

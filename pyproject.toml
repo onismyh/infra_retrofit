@@ -36,6 +36,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff]
+# reference/ 是作者的参考笔记本（CLAUDE.md §三、§四的风格来源），不是本仓库的代码，不查。
+extend-exclude = ["reference"]
+
 [tool.ruff.lint]
 # 固定为 ruff 0.15 的缺省规则集。0.16 起缺省规则换了一套：多了 I001、RUF100、UP 等，
 # 也不再含 E402、E741、F403 等。不写明时两个版本报的条目不同。

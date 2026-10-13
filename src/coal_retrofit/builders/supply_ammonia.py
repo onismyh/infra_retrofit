@@ -15,7 +15,6 @@ import rasterio
 
 from ..constants import (
     AMMONIA_NODE_AGGREGATION_DEGREES,
-    BIOMASS_MATCH_BUFFER_KM,
     DEFAULT_DISCOUNT_RATE,
     NH3_ELECTROLYSIS_TECHS,
     NH3_H2_RATIO,
@@ -56,7 +55,6 @@ AMMONIA_COLUMNS = (
     "match_rule",
     "competition_scope",
     "aggregation_cell_deg",
-    "buffer_km",
     "source",
     "year_basis",
 )
@@ -266,5 +264,4 @@ def build_ammonia_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
     ammonia["match_rule"] = "point_source_competition"
     ammonia["competition_scope"] = "shared_ammonia_node"
     ammonia["aggregation_cell_deg"] = AMMONIA_NODE_AGGREGATION_DEGREES
-    ammonia["buffer_km"] = BIOMASS_MATCH_BUFFER_KM
     return ammonia[list(AMMONIA_COLUMNS)].reset_index(drop=True)

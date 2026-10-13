@@ -46,7 +46,7 @@ function getGitInfo(cwd) {
       changes = '';
     }
 
-    const changeList = changes.trim().split('\n').filter(Boolean);
+    const changeList = changes.split('\n').filter(line => line.trim());
     const hasChanges = changeList.length > 0;
 
     return {
@@ -85,10 +85,10 @@ function getTodoInfo(cwd) {
     if (fs.existsSync(file)) {
       try {
         const content = fs.readFileSync(file, 'utf8');
-        const totalMatches = content.match(/^[\-\*] \[[ x]\]/gi) || [];
+        const totalMatches = content.match(/^[\-\*] \[[ x]\]/gim) || [];
         const total = totalMatches.length;
 
-        const doneMatches = content.match(/^[\-\*] \[x\]/gi) || [];
+        const doneMatches = content.match(/^[\-\*] \[x\]/gim) || [];
         const done = doneMatches.length;
 
         const pending = total - done;
@@ -117,124 +117,6 @@ function getTodoInfo(cwd) {
   };
 }
 
-
-/**
- * Resolve repository root when available
- * @param {string} cwd - Current working directory
- * @returns {string} Repository root or cwd fallback
- */
-function getRepoRoot(cwd) {
-  try {
-    return execSync('git rev-parse --show-toplevel', {
-      cwd,
-      encoding: 'utf8',
-      stdio: 'pipe'
-    }).trim();
-  } catch {
-    return cwd;
-  }
-}
-
-/**
- * Detect whether the current repository is bound to Obsidian project memory
- * @param {string} cwd - Current working directory
- * @returns {Object} Binding info
- */
-function getProjectMemoryBinding(cwd) {
-  const repoRoot = getRepoRoot(cwd);
-  const projectMemoryDir = path.join(repoRoot, '.claude', 'project-memory');
-  const registryPath = path.join(projectMemoryDir, 'registry.yaml');
-
-  if (!fs.existsSync(registryPath)) {
-    return {
-      bound: false,
-      repoRoot,
-      registryPath,
-      projectId: null,
-      status: null,
-      autoSync: false,
-      vaultRoot: null,
-      hubNote: null,
-      memoryPath: null
-    };
-  }
-
-  let registry = null;
-  try {
-    registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  } catch {
-    registry = null;
-  }
-
-  let project = null;
-  if (registry && registry.projects && typeof registry.projects === 'object') {
-    const projects = Object.values(registry.projects);
-    project = projects.find(item =>
-      Array.isArray(item.repo_roots) &&
-      item.repo_roots.some(root => repoRoot === root || cwd.startsWith(root))
-    ) || projects[0] || null;
-  }
-
-  let memoryPath = null;
-  if (project && project.project_id) {
-    memoryPath = path.join(projectMemoryDir, `${project.project_id}.md`);
-  } else if (fs.existsSync(projectMemoryDir)) {
-    const memoryFiles = fs.readdirSync(projectMemoryDir).filter(name => name.endsWith('.md'));
-    if (memoryFiles.length > 0) {
-      memoryPath = path.join(projectMemoryDir, memoryFiles[0]);
-    }
-  }
-
-  return {
-    bound: true,
-    repoRoot,
-    registryPath,
-    projectId: project ? project.project_id || null : null,
-    status: project ? project.status || null : null,
-    autoSync: Boolean(project && project.auto_sync),
-    vaultRoot: project ? project.vault_root || null : null,
-    hubNote: project ? project.hub_note || null : null,
-    memoryPath
-  };
-}
-
-/**
- * Heuristically detect whether a directory looks like a research repo
- * @param {string} cwd - Current working directory
- * @returns {Object} Detection result
- */
-function detectResearchProject(cwd) {
-  const repoRoot = getRepoRoot(cwd);
-  const markers = [
-    '.git',
-    'README.md',
-    'docs',
-    'notes',
-    'plan',
-    'results',
-    'outputs',
-    'src',
-    'scripts'
-  ];
-
-  const hits = markers.filter(marker => fs.existsSync(path.join(repoRoot, marker)));
-  const candidate = hits.length >= 3 || (hits.includes('.git') && hits.includes('README.md') && hits.length >= 2);
-
-  return {
-    repoRoot,
-    candidate,
-    markers: hits
-  };
-}
-
-/**
- * Detect whether a user prompt looks research-related
- * @param {string} prompt - User prompt
- * @returns {boolean} Whether the prompt looks research-related
- */
-function promptLooksResearchRelated(prompt) {
-  return /\b(obsidian|zotero|paper|papers|literature|review|experiment|results?|finding|analysis|research|plan|todo|daily|meeting|writing|draft|proposal|rebuttal|claim|method)\b|文献|实验|结果|研究|计划|待办|知识库|论文|综述|笔记|项目记忆|obsidian|zotero/i.test(prompt);
-}
 
 /**
  * Get Git change details
@@ -287,56 +169,6 @@ function getChangesDetails(cwd) {
   } catch {
     return { added: 0, modified: 0, deleted: 0 };
   }
-}
-
-/**
- * Analyze changes by file type
- * @param {string} cwd - Current working directory
- * @returns {Object} File type statistics
- */
-function analyzeChangesByType(cwd) {
-  const gitInfo = getGitInfo(cwd);
-
-  if (!gitInfo.is_repo || !gitInfo.has_changes) {
-    return {
-      test_files: 0,
-      docs_files: 0,
-      sql_files: 0,
-      config_files: 0,
-      service_files: 0
-    };
-  }
-
-  // 逐行匹配文件路径（git status --porcelain 格式: "XY filename"）
-  const files = gitInfo.changes.map(line => line.substring(3).trim());
-
-  const testRegex = /(?:^|[\/\\])tests?[\/\\]|[\/\\._]test[_.]|\.test\.|_test\./i;
-  const docsRegex = /\.(md|txt|rst)$/i;
-  const sqlRegex = /\.sql$/i;
-  const configRegex = /\.(json|yaml|yml|toml|ini|conf)$/i;
-  const serviceRegex = /(service|controller)/i;
-
-  let testFiles = 0;
-  let docsFiles = 0;
-  let sqlFiles = 0;
-  let configFiles = 0;
-  let serviceFiles = 0;
-
-  for (const file of files) {
-    if (testRegex.test(file)) testFiles++;
-    if (docsRegex.test(file)) docsFiles++;
-    if (sqlRegex.test(file)) sqlFiles++;
-    if (configRegex.test(file)) configFiles++;
-    if (serviceRegex.test(file)) serviceFiles++;
-  }
-
-  return {
-    test_files: testFiles,
-    docs_files: docsFiles,
-    sql_files: sqlFiles,
-    config_files: configFiles,
-    service_files: serviceFiles
-  };
 }
 
 /**
@@ -403,54 +235,6 @@ function getAllFiles(dirPath) {
   }
 
   return files;
-}
-
-/**
- * Generate smart recommendations
- * @param {string} cwd - Current working directory
- * @param {Object} gitInfo - Git information
- * @returns {Array<string>} List of recommendations
- */
-function generateRecommendations(cwd, gitInfo) {
-  const recommendations = [];
-
-  if (gitInfo.is_repo && gitInfo.has_changes) {
-    const changesDetails = getChangesDetails(cwd);
-    const typeAnalysis = analyzeChangesByType(cwd);
-
-    if (changesDetails.added > 0 || changesDetails.modified > 0) {
-      recommendations.push('git add . && git commit -m "feat: xxx"');
-    }
-
-    if (typeAnalysis.test_files > 0) {
-      recommendations.push('Run test suite to verify changes');
-    }
-    if (typeAnalysis.docs_files > 0) {
-      recommendations.push('Check documentation is in sync with code');
-    }
-    if (typeAnalysis.sql_files > 0) {
-      recommendations.push('Update all related database scripts');
-    }
-    if (typeAnalysis.config_files > 0) {
-      recommendations.push('Check if environment variables need updating');
-    }
-    if (typeAnalysis.service_files > 0) {
-      recommendations.push('Update API documentation');
-    }
-  }
-
-  // Todo reminder
-  const todoInfo = getTodoInfo(cwd);
-  if (todoInfo.found && todoInfo.pending > 0) {
-    recommendations.push(`Check todos: ${todoInfo.file} (${todoInfo.pending} items remaining)`);
-  }
-
-  // Non-repo environment reminder
-  if (!gitInfo.is_repo) {
-    recommendations.push('Remember to back up important files to a git repo or cloud storage');
-  }
-
-  return recommendations;
 }
 
 /**
@@ -558,109 +342,6 @@ function getCommandDescription(cmdPath) {
 }
 
 /**
- * Collect local skills
- * @param {string} homeDir - User home directory
- * @returns {Array<Object>} Skill list
- */
-function collectLocalSkills(homeDir) {
-  const skills = [];
-  const skillsDir = path.join(homeDir, '.claude', 'skills');
-
-  if (!fs.existsSync(skillsDir)) {
-    return skills;
-  }
-
-  const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
-
-  for (const skillName of skillDirs) {
-    const skillFile = path.join(skillsDir, skillName, 'SKILL.md');
-    let description = '';
-
-    if (fs.existsSync(skillFile)) {
-      try {
-        const content = fs.readFileSync(skillFile, 'utf8');
-        const match = content.match(/description:\s*(.+)$/im);
-        if (match) {
-          description = match[1].trim();
-        }
-      } catch {
-        // Ignore
-      }
-    }
-
-    skills.push({
-      name: skillName,
-      description,
-      type: 'local'
-    });
-  }
-
-  return skills;
-}
-
-/**
- * Collect plugin skills
- * @param {string} homeDir - User home directory
- * @returns {Array<Object>} Skill list
- */
-function collectPluginSkills(homeDir) {
-  const skills = [];
-  const pluginsCache = path.join(homeDir, '.claude', 'plugins', 'cache');
-
-  if (!fs.existsSync(pluginsCache)) {
-    return skills;
-  }
-
-  const marketplaces = fs.readdirSync(pluginsCache, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
-
-  for (const marketplace of marketplaces) {
-    // Skip ai-research-skills
-    if (marketplace === 'ai-research-skills') continue;
-
-    const marketplacePath = path.join(pluginsCache, marketplace);
-    const plugins = fs.readdirSync(marketplacePath, { withFileTypes: true })
-      .filter(d => d.isDirectory() && !d.name.startsWith('.'))
-      .map(d => d.name);
-
-    for (const plugin of plugins) {
-      const pluginPath = path.join(marketplacePath, plugin);
-      const versions = fs.readdirSync(pluginPath, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-        .map(d => d.name)
-        .sort()
-        .reverse();
-
-      if (versions.length === 0) continue;
-
-      const latestVersion = versions[0];
-      const pluginRoot = path.join(pluginPath, latestVersion);
-      const skillsDir = path.join(pluginRoot, 'skills');
-
-      if (fs.existsSync(skillsDir)) {
-        const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true })
-          .filter(d => d.isDirectory())
-          .map(d => d.name);
-
-        for (const skillName of skillDirs) {
-          skills.push({
-            name: `${plugin}:${skillName}`,
-            plugin,
-            skill: skillName,
-            type: 'plugin'
-          });
-        }
-      }
-    }
-  }
-
-  return skills;
-}
-
-/**
  * Format date and time
  * @param {Date} date - Date object
  * @returns {string} Formatted date-time string
@@ -676,139 +357,14 @@ function formatDateTime(date = new Date()) {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
-/**
- * Check if CLAUDE.md needs updating
- * @param {string} homeDir - User home directory
- * @returns {Object} Check result
- */
-function checkClaudeMdUpdate(homeDir) {
-  const claudeMdPath = path.join(homeDir, '.claude', 'CLAUDE.md');
-  const lastSyncPath = path.join(homeDir, '.claude', '.last-memory-sync');
-
-  // If CLAUDE.md does not exist, return immediately
-  if (!fs.existsSync(claudeMdPath)) {
-    return { needsUpdate: false, reason: 'CLAUDE.md not found' };
-  }
-
-  // Get CLAUDE.md modification time
-  const claudeMdMtime = fs.statSync(claudeMdPath).mtimeMs;
-
-  // Get last sync time (use CLAUDE.md creation time if not available)
-  let lastSyncMtime = claudeMdMtime;
-  if (fs.existsSync(lastSyncPath)) {
-    try {
-      lastSyncMtime = parseInt(fs.readFileSync(lastSyncPath, 'utf8').trim(), 10);
-    } catch {
-      lastSyncMtime = claudeMdMtime;
-    }
-  }
-
-  const referenceTime = Math.max(claudeMdMtime, lastSyncMtime);
-
-  // Define source file directories to monitor
-  const sourceDirs = [
-    { dir: path.join(homeDir, '.claude', 'skills'), pattern: /SKILL\.md$/, type: 'skill' },
-    { dir: path.join(homeDir, '.claude', 'commands'), pattern: /\.md$/, type: 'command' },
-    { dir: path.join(homeDir, '.claude', 'agents'), pattern: /\.md$/, type: 'agent' },
-    { dir: path.join(homeDir, '.claude', 'hooks'), pattern: /\.(js|json)$/, type: 'hook' }
-  ];
-
-  const changedFiles = [];
-  let totalSkills = 0;
-  let totalCommands = 0;
-  let totalAgents = 0;
-  let totalHooks = 0;
-
-  // Scan each source directory
-  for (const { dir, pattern, type } of sourceDirs) {
-    if (!fs.existsSync(dir)) continue;
-
-    const files = getAllFiles(dir).filter(f => pattern.test(f));
-
-    for (const file of files) {
-      try {
-        const mtime = fs.statSync(file).mtimeMs;
-
-        // Count totals
-        if (type === 'skill') totalSkills++;
-        else if (type === 'command') totalCommands++;
-        else if (type === 'agent') totalAgents++;
-        else if (type === 'hook') totalHooks++;
-
-        // Check if newer than reference time
-        if (mtime > referenceTime) {
-          changedFiles.push({
-            path: file,
-            type,
-            relativePath: path.relative(homeDir, file),
-            mtime: new Date(mtime).toLocaleString('en-US')
-          });
-        }
-      } catch {
-        // Ignore inaccessible files
-      }
-    }
-  }
-
-  return {
-    needsUpdate: changedFiles.length > 0,
-    changedFiles,
-    stats: {
-      skills: totalSkills,
-      commands: totalCommands,
-      agents: totalAgents,
-      hooks: totalHooks
-    },
-    claudeMdMtime: new Date(claudeMdMtime).toLocaleString('en-US'),
-    lastSyncMtime: new Date(lastSyncMtime).toLocaleString('en-US')
-  };
-}
-
-/**
- * Update sync timestamp
- * @param {string} homeDir - User home directory
- */
-function updateSyncTimestamp(homeDir) {
-  const lastSyncPath = path.join(homeDir, '.claude', '.last-memory-sync');
-  try {
-    fs.writeFileSync(lastSyncPath, Date.now().toString(), 'utf8');
-  } catch {
-    // Ignore write errors
-  }
-}
-
-/**
- * Create a temporary file
- * @param {string} prefix - Filename prefix
- * @returns {string} Temporary file path
- */
-function createTempFile(prefix = 'claude-temp') {
-  const os = require('os');
-  const tmpDir = os.tmpdir();
-  const randomSuffix = Math.random().toString(36).substring(2, 8);
-  return path.join(tmpDir, `${prefix}-${randomSuffix}.tmp`);
-}
-
 // Export all functions
 module.exports = {
   getGitInfo,
   getTodoInfo,
-  getRepoRoot,
-  getProjectMemoryBinding,
-  detectResearchProject,
-  promptLooksResearchRelated,
   getChangesDetails,
-  analyzeChangesByType,
   detectTempFiles,
-  generateRecommendations,
   getEnabledPlugins,
   getAvailableCommands,
   getCommandDescription,
-  collectLocalSkills,
-  collectPluginSkills,
-  formatDateTime,
-  createTempFile,
-  getAllFiles,
-  checkClaudeMdUpdate,
-  updateSyncTimestamp
+  formatDateTime
 };

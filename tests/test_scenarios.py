@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import importlib.util
-import sys
 from dataclasses import asdict
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from coal_retrofit.scenarios import (
     ScenarioRegistryError,
     apply_sets,
     diff_resolved,
-    experiments_dict,
     load_registry,
     parse_set,
     shown_path,
@@ -57,7 +55,6 @@ def test_repo_registry_builds_every_runnable_scenario() -> None:
     registry = load_registry()
     names = registry.runnable()
     assert names and "ST_COMMON" not in names
-    assert list(experiments_dict(registry)) == names
     for name in names:
         spec = registry.get(name)
         assert spec.tree is not None
@@ -123,7 +120,7 @@ def test_inheritance_merges_sections_and_keeps_note_local(tmp_path) -> None:
         # 取值有限的字段（CHOICES）在登记表这一层拦：water_season、water_mode 模型按值比较，拼错不报错而是静默走另一支；
         # warm_start、mip_focus 本来要到运行器或 Gurobi 才报错，这里提前。
         ('[X]\ntree = "t"\n[X.scenario]\nwater_season = "dyr"\n', "只能是 'annual'、'dry'，写的是 'dyr'；是不是 dry"),
-        ('[X]\ntree = "t"\n[X.scenario]\nwater_mode = "grid"\n', "只能是 'no_water'、'base_water'、'grid_supply'"),
+        ('[X]\ntree = "t"\n[X.scenario]\nwater_mode = "grid"\n', "只能是 'no_water'、'grid_supply'、'high_water_stress'"),
         ('[X]\ntree = "t"\n[X.scenario]\nwarm_start = "lp"\n', "只能是 'none'、'lp_relax'，写的是 'lp'"),
         ('[X]\ntree = "t"\n[X.scenario]\nmip_focus = 4\n', "只能是 0、1、2、3，写的是 4"),
         ('[X]\ntree = "t"\n[X.assumptions]\nprovince_operating_hours = [1.0]\n', "应为 dict"),
@@ -224,19 +221,14 @@ def test_set_values_are_checked_against_choices(tmp_path, capsys) -> None:
 
 
 @pytest.mark.parametrize(
-    ("env", "registered", "expected"),
+    ("registered", "expected"),
     [
-        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "", {"solver_seed": 3, "mip_focus": 1}),
-        ({"COAL_RETROFIT_MIPFOCUS": "2"}, "", {"solver_seed": 0, "mip_focus": 2}),
-        ({"COAL_RETROFIT_GUROBI_SEED": ""}, "", {"solver_seed": 0, "mip_focus": 1}),  # 空值与未设相同
-        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "solver_seed = 3\n", {"solver_seed": 3, "mip_focus": 1}),  # 两处一致可以
-        ({}, "solver_seed = 5\nmip_focus = 0\n", {"solver_seed": 5, "mip_focus": 0}),
+        ("", {"solver_seed": 0, "mip_focus": 1}),
+        ("solver_seed = 5\nmip_focus = 0\n", {"solver_seed": 5, "mip_focus": 0}),
     ],
 )
-def test_seed_and_mip_focus_fields_and_compatible_env(tmp_path, monkeypatch, env, registered, expected) -> None:
-    """seed 与 MIPFocus 是情景字段；兼容的环境变量读进同一个字段，`resolved` 与溯源里记的都是实际生效的值。"""
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
+def test_seed_and_mip_focus_fields(tmp_path, registered, expected) -> None:
+    """seed 与 MIPFocus 是情景字段（2026-10-13 起不再读同名的兼容环境变量）。"""
     text = FAMILY + (f"\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\n{registered}" if registered else "")
     registry = load_registry(_registry_dir(tmp_path, text))
     name = "SEEDED" if registered else "CHILD"
@@ -244,32 +236,19 @@ def test_seed_and_mip_focus_fields_and_compatible_env(tmp_path, monkeypatch, env
     assert {"solver_seed": scenario.solver_seed, "mip_focus": scenario.mip_focus} == expected
 
 
-@pytest.mark.parametrize(
-    ("env", "registered", "message"),
-    [
-        ({"COAL_RETROFIT_GUROBI_SEED": "3"}, "solver_seed = 2\n", "与登记表或 --set 给的 solver_seed = 2 不一致"),
-        ({"COAL_RETROFIT_GUROBI_SEED": "abc"}, "", "应为整数"),
-        ({"COAL_RETROFIT_MIPFOCUS": "5"}, "", "只能是 0、1、2、3，写的是 5"),
-        # 登记表写的正是缺省值也算给了值：环境变量不能静默盖掉。
-        ({"COAL_RETROFIT_MIPFOCUS": "2"}, "mip_focus = 1\n", "与登记表或 --set 给的 mip_focus = 1 不一致"),
-    ],
-)
-def test_seed_and_mip_focus_env_mistakes(tmp_path, monkeypatch, capsys, env, registered, message) -> None:
-    """环境变量与登记表各给一个不同的值、不是整数、超出取值：求解之前就退出 1（`show` 与 `run` 同一道校验）。"""
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-    text = FAMILY + (f"\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\n{registered}" if registered else "")
-    name = "SEEDED" if registered else "CHILD"
-    assert cli.main(["--registry", str(_registry_dir(tmp_path, text)), "show", name]) == 1
-    assert message in capsys.readouterr().err
+@pytest.mark.parametrize("key", ["COAL_RETROFIT_GUROBI_SEED", "COAL_RETROFIT_LP_RELAX"])
+def test_removed_solver_env_vars_are_refused(tmp_path, monkeypatch, capsys, key: str) -> None:
+    """不再读的求解环境变量设了就退出 1，不静默按缺省求解（`resolved.env` 会记下它们）。"""
+    monkeypatch.setenv(key, "3")
+    assert cli.main(["--registry", str(_registry_dir(tmp_path, FAMILY)), "show", "CHILD"]) == 1
+    assert f"{key} 2026-10-13 起不再读" in capsys.readouterr().err
 
 
-def test_cli_show_names_the_compatible_env(tmp_path, monkeypatch, capsys) -> None:
-    monkeypatch.setenv("COAL_RETROFIT_GUROBI_SEED", "3")
-    assert cli.main(["--registry", str(_registry_dir(tmp_path, FAMILY)), "show", "CHILD"]) == 0
-    shown = capsys.readouterr().out
-    assert "环境变量 COAL_RETROFIT_GUROBI_SEED=3 → scenario.solver_seed" in shown
-    assert "* solver_seed = 3    （缺省 0）" in shown
+def test_mip_focus_out_of_range_is_refused(tmp_path, capsys) -> None:
+    """MIPFocus 超出取值：求解之前就退出 1（`show` 与 `run` 同一道校验）。"""
+    text = FAMILY + "\n[SEEDED]\nextends = \"CHILD\"\n\n[SEEDED.scenario]\nmip_focus = 5\n"
+    assert cli.main(["--registry", str(_registry_dir(tmp_path, text)), "show", "SEEDED"]) == 1
+    assert "只能是 0、1、2、3，写的是 5" in capsys.readouterr().err
 
 
 def test_cli_list_show_diff(tmp_path, capsys) -> None:
@@ -313,36 +292,6 @@ def test_cli_run_stops_before_solving_when_tree_has_no_inputs(tmp_path, capsys) 
     assert "是不是 CHILD" in capsys.readouterr().err
     assert cli.main(["--registry", directory, "run", "child"]) == 1
     assert "是不是 CHILD？（情景名区分大小写）" in capsys.readouterr().err
-
-
-def test_run_single_wrapper(monkeypatch, capsys) -> None:
-    """薄壳：`EXPERIMENTS` 的形状（出图脚本已不读它，只剩本测试），原命令行的改写，`--list` 的原格式。"""
-    directory = REPO / "scripts"
-    monkeypatch.syspath_prepend(str(directory))
-    alias = "run_single_under_test"
-    spec = importlib.util.spec_from_file_location(alias, directory / "run_single.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, alias, module)
-    spec.loader.exec_module(module)
-    assert module.EXPERIMENTS == experiments_dict(load_registry())
-    scenario_kw, assumption_kw = module.EXPERIMENTS["ST_BASE"]
-    assert isinstance(scenario_kw, dict) and isinstance(assumption_kw, dict)
-
-    calls: list[list[str]] = []
-
-    def fake_cli(argv: list[str]) -> int:
-        calls.append(list(argv))
-        return 3 if argv[1] == "ST_CP_BASE" else 0
-
-    monkeypatch.setattr(module, "cli_main", fake_cli)
-    for argv, code in (([], 0), (["--threads", "8"], 0), (["ST_CP_BASE", "--threads", "1"], 3)):
-        assert module.main(argv) == code  # 退出码照传（3 = 没有可用的解）
-    assert calls == [["run", "ST_BASE"], ["run", "ST_BASE", "--threads", "8"],
-                     ["run", "ST_CP_BASE", "--threads", "1"]]  # 不写情景名时跑原来的缺省 ST_BASE
-    capsys.readouterr()
-    assert module.main(["--list"]) == 0 and len(calls) == 3
-    assert capsys.readouterr().out.splitlines() == list(module.EXPERIMENTS)  # 原格式：每行一个名字
 
 
 def test_bootstrap_root_is_the_registered_tree(monkeypatch) -> None:

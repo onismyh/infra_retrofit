@@ -3,7 +3,7 @@
 每个情景是一张 TOML 表 `[名]`，可写的键：
 
 - `extends`：父情景名，可以多层。`scenario`、`assumptions` 两节按字段合并，子情景的字段覆盖父情景的。
-- `abstract = true`：只作基底，不能求解，不出现在 `list` 与 `EXPERIMENTS` 里。
+- `abstract = true`：只作基底，不能求解，不出现在 `list` 里。
 - `tree`：求解树，相对登记目录的上一级（缺省登记目录是仓库根的 `scenarios/`，即相对仓库根；也可写绝对路径）。
   求解读 `<tree>/inputs`、`<tree>/data`，写 `<tree>/results`。随 `extends` 继承；能求解的情景必须有。
 - `note`：说明文字，只给 `list`、`show` 显示。不继承，不进 dataclass。
@@ -53,12 +53,12 @@ RESERVED_FIELDS: dict[str, str] = {
     "solver_time_limit": "用命令行 --time-limit",
 }
 
-# scenario 节里只认这几个值的字段，读登记表、`--set` 与兼容环境变量时就查。`water_season`、`water_mode` 模型按值比较，
+# scenario 节里只认这几个值的字段，读登记表与 `--set` 时就查。`water_season`、`water_mode` 模型按值比较，
 # 写错不报错，而是静默走另一支：`water_season = "dyr"` 按全年算，`water_mode` 拼错就按有水约束的 baseline 族算。
 # `warm_start` 运行器另有兜底检查，`mip_focus`（Gurobi 的取值范围）越界时 Gurobi 设参数才报错，`sector_target_mode` 写错
 # 要到读完输入、建模型时才报（`model_year._add_sector_targets`），这里都提前报错。
 CHOICES: dict[str, tuple[Any, ...]] = {
-    "water_mode": ("no_water", "base_water", "grid_supply", "high_water_stress"),
+    "water_mode": ("no_water", "grid_supply", "high_water_stress"),
     "water_season": ("annual", "dry"),
     "sector_target_mode": ("sector", "total"),
     "warm_start": ("none", "lp_relax"),
@@ -285,14 +285,6 @@ def apply_sets(spec: ScenarioSpec, sets: Sequence[str]) -> tuple[ScenarioSpec, d
         (scenario if section == "scenario" else assumptions)[name] = value
         applied[f"{section}.{name}"] = value
     return replace(spec, scenario=scenario, assumptions=assumptions), applied
-
-
-def experiments_dict(registry: Registry) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
-    """原 `scripts/run_single.py` 的 `EXPERIMENTS` 形状：{名: (scenario 覆盖, assumptions 覆盖)}，只含能求解的。"""
-    return {
-        name: (dict(registry.specs[name].scenario), dict(registry.specs[name].assumptions))
-        for name in registry.runnable()
-    }
 
 
 def shown_path(path: Path) -> str:

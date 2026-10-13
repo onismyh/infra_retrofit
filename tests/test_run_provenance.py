@@ -47,12 +47,9 @@ def _result(env: dict[str, str] | None, objective: float = 4.0e12, mip_gap: floa
 
 RESULTS = {
     "MIP": _result({}),
-    "MIP_WRITE": _result({"COAL_RETROFIT_WRITE_SOL": "/s/x.sol"}),
-    "WARM": _result({"COAL_RETROFIT_START_SOL": "/s/a.sol"}),
-    "WARM_DRY": _result({"COAL_RETROFIT_START_SOL": "/s/b.sol"}, objective=4.5e12, water_season="dry"),
-    "AUTO": _result({}, warm_start="lp_relax"),  # 运行器自动两步：与手工设 START_SOL 是同一套流程
-    "LP": _result({"COAL_RETROFIT_LP_RELAX": "1"}, objective=3.7e12, mip_gap=None),
-    "LP_DRY": _result({"COAL_RETROFIT_LP_RELAX": "1"}, objective=3.9e12, mip_gap=None, water_season="dry"),
+    "MIP_ENV": _result({"COAL_RETROFIT_POINT_SOURCE_DIR": "/d/point_source"}),
+    "WARM": _result({}, warm_start="lp_relax"),  # 运行器自动两步
+    "WARM_DRY": _result({}, objective=4.5e12, water_season="dry", warm_start="lp_relax"),
     "NOSOL": _result({}, objective=float("nan"), mip_gap=None),  # 求解状态不可接受：目标函数写成 NaN，结果表补零
     "OLD": _result(None),
     "OLD2": _result(None),
@@ -120,9 +117,8 @@ def check(monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, str]]:
 @pytest.mark.parametrize(
     ("a", "b", "message"),
     [
-        ("MIP", "MIP_WRITE", "求解相关的环境变量相同"),  # WRITE_SOL 只决定写不写 .sol，不比
-        ("WARM", "WARM_DRY", "参数差 1 项"),  # 都热启动：.sol 路径按情景不同，只看设没设
-        ("AUTO", "WARM", "参数差 1 项"),  # 自动两步与手工 START_SOL 是同一套流程，算都热启动了
+        ("MIP", "MIP_ENV", "环境变量差 1 项"),  # 环境变量只列差，不判
+        ("WARM", "WARM_DRY", "参数差 1 项"),  # 都热启动
         ("DIG", "DIG_OTHER_FILE", "两边读的文件不同"),  # 部门目标换了来源：文件不同，摘要不比
         ("DIG", "DIG_WATER", "只有 DIG_WATER 读了"),  # 无水约束的一边不读水的文件
         ("DIG_WATER", "DIG", "只有 DIG_WATER 读了"),  # 两边换位置，点名的仍是读了水文件的那一边
@@ -137,13 +133,11 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
 @pytest.mark.parametrize(
     ("a", "b", "message"),
     [
-        ("MIP", "LP", "COAL_RETROFIT_LP_RELAX 两边不同"),
         ("MIP", "WARM", "只有 WARM 热启动了"),
-        ("AUTO", "MIP", "只有 AUTO 热启动了"),
-        ("OLD", "LP", "OLD 没有 resolved 段"),  # 旧结果核不了参数与环境变量：不放行
+        ("WARM", "MIP", "只有 WARM 热启动了"),
+        ("OLD", "WARM", "OLD 没有 resolved 段"),  # 旧结果核不了参数与环境变量：不放行
         ("MIP", "OLD", "OLD 没有 resolved 段"),  # 两个位置都要查
         ("OLD", "OLD2", "OLD、OLD2 没有 resolved 段"),  # 两边都缺：一条 failure 点名两边
-        ("LP", "LP_DRY", "两边都是 LP 松弛"),  # 热启动第 1 步都没接上第 2 步：环境变量相同，也不能相减
         ("MIP", "NOSOL", "NOSOL 没有可用的解"),
         ("NOSOL", "MIP", "NOSOL 没有可用的解"),
         ("MIP", "NOPE", "下没有 NOPE 的结果"),
@@ -172,9 +166,9 @@ def test_pair_refuses_the_same_result_twice(check, capsys) -> None:
     assert "--pair 的两边是同一个结果 'OLD'" in capsys.readouterr().err
 
 
-def test_pair_mip_lp_is_exactly_one_failure(check) -> None:
-    """只一边是 LP 松弛：只记环境变量那一条，不因两边同为 LP、没有可用的解之类的判定重复记。"""
-    code, out = check("--pair", "MIP", "LP")
+def test_pair_one_side_warm_is_exactly_one_failure(check) -> None:
+    """只一边热启动：只记这一条，不重复记。"""
+    code, out = check("--pair", "MIP", "WARM")
     assert code == 1 and "FAILURES (1)" in out
 
 

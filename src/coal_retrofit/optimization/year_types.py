@@ -357,5 +357,4 @@ class SolveResult(TypedDict):
     status: str
     objective_cny: float
     solver_quality: dict[str, float | int | str | None]
-    capex_pathway_indices: tuple[int, ...]
     year_solutions: dict[int, YearSolution]

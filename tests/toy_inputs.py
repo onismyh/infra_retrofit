@@ -1,4 +1,4 @@
-"""toy 输入：1 座电厂 - 1 条边 - 1 个封存汇，外加一个水泥 hub；多个测试模块共用。
+"""toy 输入：1 座电厂 - 1 条边 - 1 个封存汇，外加一个水泥 hub（一条支线接到电厂节点）；多个测试模块共用。
 
 从 `test_multiperiod_investment_logic.py` 挪来。那个文件在模块级 `importorskip("gurobipy")`，
 从它导入这些辅助函数的测试文件，在没有 Gurobi 的环境里会连同不求解的测试整体跳过（见
@@ -9,9 +9,10 @@ from __future__ import annotations
 import pandas as pd
 
 from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
-from coal_retrofit.constants import COAL_DESIGN_LIFE_YEARS
+from coal_retrofit.constants import COAL_DESIGN_LIFE_YEARS, NETWORK_DETOUR_FACTOR, NETWORK_EDGE_CLASS_PLANT_BRANCH
 from coal_retrofit.optimization.assumptions import OptimizationAssumptions
 from coal_retrofit.paths import ProjectPaths
+from coal_retrofit.spatial import geodesic_length_km
 
 YEARS = (2050, 2060)
 TOY_TARGET_YEARS = (2030, 2040, 2050, 2060)
@@ -21,6 +22,7 @@ TOY_HEAT_RATE_GJ_PER_MWH = 8.5714
 # toy 机组的机型与冷却方式（映射表的两列）：600MW 级亚临界湿冷，逐台毛热耗 314 x 0.95 x 0.0293076 = 8.742 GJ/MWh，
 # 比重建的 3.6 / 0.45 = 8.0 高，全部到期时重建热耗为 8.0，与按 hub 毛热耗取 min 相同。
 TOY_UNIT_TYPE = {"combustion": ["subcritical"], "cooling_technology": ["recirculating"]}
+TOY_WATER_M3_PER_MWH = 1.85  # toy 电厂的耗水强度（m3/MWh），落在查表的循环冷却耗水 1.26–2.01 之间
 
 
 def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
@@ -38,6 +40,9 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "total_capacity_mw": [1000.0],
             "retirement_year": [retirement_year],
             "dominant_cooling_technology": ["recirculating"],
+            # 循环冷却的耗水强度与捕集时的强度（1.85 x 1.82）：2026-10-13 前缺用水表时的统一值，toy 照用以免结果变
+            "consumption_intensity_m3_per_mwh": [TOY_WATER_M3_PER_MWH],
+            "consumption_ccs_intensity_m3_per_mwh": [TOY_WATER_M3_PER_MWH * 1.82],
             "heat_rate_gj_per_mwh": [TOY_HEAT_RATE_GJ_PER_MWH],
             "centroid_longitude": [112.0],
             "centroid_latitude": [37.0],
@@ -149,11 +154,7 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
             "co2_mt_per_year": [0.8],
             "process_co2_mt_per_year": [0.5],
             "h2_demand_kt_per_year": [0.0],
-            "has_h2_route": [False],
-            "water_intensity_m3_per_t": [1.0],
             "water_m3_per_year": [1.0e6],
-            "mean_commission_year": [2010.0],
-            "share_year_observed": [1.0],
         }
     ).to_csv(inputs / "industry_hubs.csv", index=False)
     pd.DataFrame(
@@ -161,7 +162,43 @@ def _write_toy_inputs(root, retirement_year: int) -> ProjectPaths:
     ).to_csv(inputs / "industry_output_index_toy.csv", index=False)
     paths = ProjectPaths(root=root)
     _write_targets(paths, {y: 1.0 for y in TOY_TARGET_YEARS})
+    _attach_industry_hubs(paths)
     return paths
+
+
+def _attach_industry_hubs(paths: ProjectPaths) -> None:
+    """把 `industry_hubs.csv` 里还不在管网里的 hub 接进 `pipeline_nodes.csv` / `pipeline_candidate_edges.csv`。
+
+    求解要求每个源都已是管网节点（`optimization.network.build_runtime_network`）。接法与 2026-10-13 前运行期补支线
+    相同：按表的顺序，接到当时最近的节点（含先接上的 hub），管长为大地线 x 1.136、最短 1 km，按支线类计价，
+    所以 toy 模型与那时逐项相同。往表里加了 hub 的测试要再调一次；重复调用不会重复接。
+    """
+    inputs = paths.inputs_dir
+    hubs = pd.read_csv(inputs / "industry_hubs.csv")
+    nodes = pd.read_csv(inputs / "pipeline_nodes.csv")
+    edges = pd.read_csv(inputs / "pipeline_candidate_edges.csv")
+    if "industry_hub_id" not in nodes.columns:
+        nodes["industry_hub_id"] = pd.NA
+    attached = set(nodes["industry_hub_id"].dropna().astype(str))
+    for hub in hubs.itertuples(index=False):
+        if str(hub.hub_id) in attached:
+            continue
+        lon, lat = float(hub.longitude), float(hub.latitude)
+        distances = [geodesic_length_km([(lon, lat), (float(n.lon), float(n.lat))]) for n in nodes.itertuples(index=False)]
+        nearest = min(range(len(distances)), key=distances.__getitem__)
+        node_id = f"I_{hub.hub_id}"
+        nodes = pd.concat([nodes, pd.DataFrame([{
+            "node_id": node_id, "lon": lon, "lat": lat, "node_type": "industry_hub", "industry_hub_id": str(hub.hub_id),
+        }])], ignore_index=True)
+        edges = pd.concat([edges, pd.DataFrame([{
+            "edge_id": f"E_{hub.hub_id}", "from_node_id": node_id, "to_node_id": str(nodes.loc[nearest, "node_id"]),
+            "length_km": round(max(distances[nearest] * NETWORK_DETOUR_FACTOR, 1.0), 3), "offshore_length_km": 0.0,
+            "existing_corridor_flag": 0, "edge_class": NETWORK_EDGE_CLASS_PLANT_BRANCH, "corridor_type": "branch",
+            "source": "toy", "year_basis": "toy",
+        }])], ignore_index=True)
+        attached.add(str(hub.hub_id))
+    nodes.to_csv(inputs / "pipeline_nodes.csv", index=False)
+    edges.to_csv(inputs / "pipeline_candidate_edges.csv", index=False)
 
 
 def _write_toy_units(paths: ProjectPaths, units: pd.DataFrame) -> None:

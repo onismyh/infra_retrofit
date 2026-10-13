@@ -13,7 +13,7 @@ from ..constants import (
     AIR_COOLED_SUPPLY_COAL_RATE_ADDER_G_PER_KWH,
     COAL_DESIGN_LIFE_YEARS,
     COAL_STATION_SERVICE_RATE,
-    COOLING_WATER_INTENSITY_M3_PER_MWH,
+    COOLING_CLASSES,
     GEM_NAMED_CFB_UNIT_IDS,
     GJ_PER_MWH,
     PLANT_YEAR_BASIS,
@@ -159,20 +159,11 @@ def build_plant_dataframe(
         total_cap = capacity.sum()
 
         cooling_capacities = {
-            f"capacity_mw_{tech_key.replace('-', '_')}": 0.0
-            for tech_key in COOLING_WATER_INTENSITY_M3_PER_MWH.keys()
+            f"capacity_mw_{tech_key.replace('-', '_')}": float(
+                capacity[cooling_tech.str.contains(tech_key, case=False, na=False)].sum()
+            )
+            for tech_key in COOLING_CLASSES
         }
-        weighted_intensity = 0.0
-        has_water_cooling = False
-
-        if total_cap > 0:
-            for tech_key, intensity in COOLING_WATER_INTENSITY_M3_PER_MWH.items():
-                tech_mask = cooling_tech.str.contains(tech_key, case=False, na=False)
-                tech_capacity = capacity[tech_mask].sum()
-                cooling_capacities[f"capacity_mw_{tech_key.replace('-', '_')}"] = float(tech_capacity)
-                weighted_intensity += (tech_capacity / total_cap) * intensity
-                if tech_key in ["once-through", "recirculating"] and tech_capacity > 0:
-                    has_water_cooling = True
 
         mean_commission = float(frame["commission_year"].mean())
         # 整个 hub 在平均投产年 + 设计寿命那年一起到期：整数 hub 用它；连续 hub 按机组逐台到期（`data_prep`）。
@@ -203,9 +194,7 @@ def build_plant_dataframe(
                 "combustion_mix": mix_string(frame["combustion"]),
                 "heat_rate_gj_per_mwh": round(heat_rate, 4),
                 **cooling_capacities,
-                "weighted_water_intensity_m3_per_mwh": round(weighted_intensity, 4),
                 **water_intensities,
-                "requires_water_supply": has_water_cooling,
                 "centroid_latitude": centroid_lat,
                 "centroid_longitude": centroid_lon,
                 "source": source_label,

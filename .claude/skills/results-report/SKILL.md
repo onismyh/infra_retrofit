@@ -2,7 +2,7 @@
 name: results-report
 description: This skill should be used when the user asks to "write an experiment report", "summarize experimental results", "do experiment retrospection", "write a results report", "写实验总结报告", "写实验复盘", or mentions turning completed experiment artifacts into a structured, decision-oriented research report. It assumes strict analysis should come from `results-analysis` first.
 version: 0.1.0
-tags: [Research, Reporting, Experiments, Obsidian]
+tags: [Research, Reporting, Experiments]
 ---
 
 # Results Report
@@ -23,8 +23,7 @@ This skill is for the stage **after** `results-analysis`.
 - complete experiment wrap-up report,
 - decision-oriented narrative,
 - figure-by-figure interpretation inside a coherent structure,
-- limitations, failure cases, and next actions,
-- Obsidian write-back into `Results/Reports/`.
+- limitations, failure cases, and next actions.
 
 Do not replace strict analysis with confident prose. If the analysis bundle is missing, first identify the blocker and request or produce the missing bundle.
 
@@ -136,21 +135,10 @@ For each main figure:
 
 Read `references/figure-interpretation.md` and `references/statistical-completeness.md` as needed.
 
-### 5. Choose the write target explicitly
+### 5. Write target
 
-If the current repo is bound to an Obsidian project knowledge base:
-- create or update `Results/Reports/{report-name}.md`,
-- link back to the relevant `Experiments/` note,
-- update the matching canonical `Results/` note when a durable conclusion is now supported,
-- append a short trace to today's `Daily/` note,
-- update `.claude/project-memory/<project_id>.md`.
-
-If the repo is **not** bound:
-- write the report as a local markdown artifact in the requested output location or next to the analysis bundle,
-- keep the same filename contract,
-- explicitly say that no Obsidian write-back was attempted.
-
-Use `obsidian-project-memory` conventions only for bound repos. Internal experiment reports belong in `Results/Reports/`, not `Writing/`.
+Write the report as a local markdown artifact in the requested output location or next to the analysis bundle,
+keeping the same filename contract.
 
 ### 6. End with explicit next actions
 

@@ -178,11 +178,11 @@ def _once_through_component(plants: pd.DataFrame, capture: bool) -> pd.Series:
 
 
 def once_through_withdrawal(plants: pd.DataFrame, generation_mwh: pd.Series) -> pd.Series:
-    """每个 hub 的淡水直流冷却取水量，m3/yr，按模型原始（美国）强度计。
+    """每个 hub 的淡水直流冷却取水量，m3/yr，按模型原始强度（Wang 2023 Table 1）计。
 
     从 hub 的综合取水中单独拆出来，是因为只有直流冷却部分需要重新标定：
-    `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的循环冷却与空冷行已与 Macknick 交叉核对，吻合到
-    5-14% 以内，并与中国实际相符；与水资源公报相差两倍的正是直流冷却行。
+    `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的循环冷却行已与 Macknick 交叉核对，相差
+    3-15%（空冷行 Macknick 没有煤电的值，不带 CCS 时取水只有 0.15-0.23 m3/MWh）；与水资源公报相差两倍的正是直流冷却行。
 
     海水冷却 hub 返回零：公报不含海水直接利用量，`builders/plants_water.py` 也已把它们的凝汽器
     过流置零，所以标定两侧排除的是同一批机组。
@@ -225,7 +225,7 @@ def once_through_calibration(plants: pd.DataFrame, generation_mwh: pd.Series) ->
     """把模拟的直流冷却取水重新缩放到水资源公报基准上的因子。
 
     构造与 `water_bias.basin_bias_factors` 相同：官方总量除以模拟总量，以乘法施加。用一个全国
-    因子而不是九个流域因子——这一差异是强度表（一个美国凝汽器设计假设）的属性，而不是任何
+    因子而不是九个流域因子——这一差异是强度表（文献里的凝汽器设计取水强度）的属性，而不是任何
     流域的属性；并且公报按区域公布直流火(核)电，但不按燃料公布，所以逐流域因子拟合的将是
     各区域煤电相对于核电与燃气机队的份额，而这是观测不到的。
     """

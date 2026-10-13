@@ -52,7 +52,7 @@
 | 源类型 | 说明 |
 |---|---|
 | 煤电机组 | 逐机组数据聚类为 350 个厂址级 hub（`AgglomerativeClustering`, `linkage="average"`, `metric="precomputed"`） |
-| 高耗能工业 | 钢铁（长流程 / 电炉）、水泥、合成氨、甲醇，共 390 个 hub。**乙二醇、烯烃、炼化不在模型内**（缺取水定额与路线参数，`SECTORS_OUT_OF_SCOPE`） |
+| 高耗能工业 | 钢铁（长流程 / 电炉）、水泥、合成氨、甲醇，共 390 个 hub。**乙二醇、烯烃、炼化不在模型内**（缺取水定额与路线参数；读取器 2026-10-13 删除） |
 
 ### 1.2 改造路径（decision）
 
@@ -75,7 +75,7 @@
   管长一律 `haversine × 1.136`，**不使用投影坐标算长度**（原因见 §4.1）。
 
 > **现状（2026-09-26 核对）**：直线距离的算法不统一，但差别可以忽略。直连弧（`edge_direct_`）与缝合边（`edge_stitch_`）
-> 用球面 haversine（R = 6371.0088 km），其余直线边（三角化、连通片合并、支线、运行期支线）用 WGS84 大地线
+> 用球面 haversine（R = 6371.0088 km），其余直线边（三角化、连通片合并、支线；2026-10-13 删去的运行期支线同样）用 WGS84 大地线
 > （`spatial.geodesic_length_km`），都乘 1.136；既有干线走廊用折线路由长，不乘。v9 的 2 589 条非走廊边上 haversine 相对大地线差
 > −0.30% ~ +0.43%（中位 −0.01%，按长度加权 +0.04%），远小于干线绕行比自身的离散（中位 1.036、p90 1.306），
 > 不为此改代码（改了要重建管网、重解）。上面的"直线 21,418 km"是 haversine 算的（大地线 21,423 km）。
@@ -508,5 +508,4 @@ save_fig(fig, "fig2_candidate_network", lang)
 
 ### 6.2 其他规则文件
 
-`.claude/rules/` 下的 `coding-style.md`、`security.md`、
-`experiment-reproducibility.md`、`agents.md` 同样有效，与本文件冲突时以本文件为准。
+`.claude/rules/` 下的 `coding-style.md`、`security.md`、`agents.md` 同样有效，与本文件冲突时以本文件为准。

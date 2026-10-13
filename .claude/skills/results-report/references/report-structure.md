@@ -59,5 +59,4 @@ Answer:
 List:
 - source artifacts,
 - figure paths,
-- scripts/logs,
-- linked Obsidian notes.
+- scripts/logs.

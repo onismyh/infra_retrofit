@@ -7,13 +7,11 @@ from __future__ import annotations
 from typing import cast
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 
 from ..constants import (
     CHINA_WATER_QUOTA_M3_PER_MWH,
     COMBUSTION_CLASS_MAP,
-    COOLING_WATER_INTENSITY_M3_PER_MWH,
     TARGET_GEO_CRS,
     WATER_INTENSITY_BY_TECH_M3_PER_MWH,
     cooling_class,
@@ -84,28 +82,20 @@ def finalize_water_intensities(plants: pd.DataFrame) -> pd.DataFrame:
 
     海水凝汽器不取河水：按取水口径，这就是 241 GW 装机上 ~100 m3/MWh 的虚构取水量
     与完全不取水之间的差别。
-
-    带捕集的定额是基准定额加上捕集装置额外的耗水性补给水。定额表早于 CCS，没有对应的
-    行，但它本应计量的增量，恰好就是电厂必须额外购入的水量，即 Wang (2023) 表中的
-    耗水增量。
     """
     plants = plants.copy()
     seawater = plants["seawater_cooled"].astype(bool)
     for key in WATER_KEYS:
         column = f"{key}_intensity_m3_per_mwh"
         plants[column] = plants[f"{key}_intensity_all"].where(~seawater, plants[f"{key}_intensity_fresh"])
-    plants["quota_ccs_intensity_m3_per_mwh"] = (
-        plants["quota_intensity_m3_per_mwh"]
-        + (plants["consumption_ccs_intensity_m3_per_mwh"] - plants["consumption_intensity_m3_per_mwh"]).clip(lower=0.0)
-    ).round(4)
     # 单独拆出淡水直流冷却的凝汽器水量。`_intensity_all` 对所有冷却类别求和，
     # `_intensity_fresh` 对除直流冷却外的所有类别求和，所以二者之差正是直流冷却这一项——
     # 逐机组、按各机组自己的蒸汽参数，精确成立。海水 hub 取零，因为它们对外发布的列
     # 本来就是 fresh 变体。
     #
     # 保留这一项，是因为它是取水列中唯一需要重新标定的部分：WATER_INTENSITY_BY_TECH_M3_PER_MWH
-    # 的直流冷却行是 Macknick (2011) 的美国数值，与水资源公报约成 2 倍关系，而循环冷却与空冷行
-    # 吻合到 5-14%。见 `builders/water_quota`。在下游由 `dominant_combustion` x
+    # 的直流冷却行（Wang 2023 Table 1）与水资源公报约成 2 倍关系，而循环冷却行与 Macknick (2011)
+    # 的美国值相差 3-15%。见 `builders/water_quota`。在下游由 `dominant_combustion` x
     # `capacity_mw_once_through` 重建它并不等价，曾在全机队合计上差了 24%：hub 的主导
     # 蒸汽参数往往不是其直流冷却机组的蒸汽参数。
     for key in ("withdrawal", "withdrawal_ccs"):
@@ -135,7 +125,8 @@ SEAWATER_COAST_DISTANCE_KM = 30.0
 
 
 def add_seawater_classification(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFrame:
-    """按到海岸的距离，把直流冷却装机拆分为海水与淡水两部分。
+    """按到海岸的距离标出取海水的直流冷却 hub（`seawater_cooled`），并记下到海岸的距离（`coast_distance_km`）；
+    海水 hub 的淡水变体在 `finalize_water_intensities` 里选。
 
     海岸线取 `boundary.shp` 的 GBCODE 26* 要素，距离按球面算（`spatial.distance_to_lines_km`；
     2026-10-11 前在 EPSG:2380 下算，该投影的长度比例在岸线顶点处最大 1.045–1.049、离岸 100 km 内的 hub 处最大 1.034，
@@ -153,17 +144,4 @@ def add_seawater_classification(paths: ProjectPaths, plants: pd.DataFrame) -> pd
     plants = plants.copy()
     plants["coast_distance_km"] = distance_km.round(2)
     plants["seawater_cooled"] = (once_through > 0) & (distance_km <= SEAWATER_COAST_DISTANCE_KM)
-
-    total = plants["total_capacity_mw"].astype(float).replace(0.0, np.nan)
-    freshwater = pd.Series(0.0, index=plants.index)
-    for tech_key, intensity in COOLING_WATER_INTENSITY_M3_PER_MWH.items():
-        column = f"capacity_mw_{tech_key.replace('-', '_')}"
-        if column not in plants.columns:
-            continue
-        capacity = plants[column].astype(float)
-        if tech_key == "once-through":
-            capacity = capacity.where(~plants["seawater_cooled"], 0.0)
-        freshwater += capacity / total * intensity
-    plants["freshwater_intensity_m3_per_mwh"] = freshwater.fillna(0.0).round(4)
-    plants["requires_water_supply"] = plants["freshwater_intensity_m3_per_mwh"] > 0
     return plants

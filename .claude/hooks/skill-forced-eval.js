@@ -9,7 +9,6 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const common = require('./hook-common');
 
 // Read stdin input
 let input = {};
@@ -23,7 +22,6 @@ try {
 }
 
 const userPrompt = input.user_prompt || '';
-const cwd = input.cwd || process.cwd();
 
 // Check if it is a slash command (escape)
 if (userPrompt.startsWith('/')) {
@@ -105,9 +103,9 @@ function collectSkills() {
 // Categorize skills into groups
 function categorizeSkills(skills) {
   const categories = {
-    'Research & Writing': /research|paper|writing|citation|review-response|rebuttal|post-acceptance|doc-coauthoring|latex|daily-paper|ml-paper|results-analysis|results-report|brainstorm/,
-    'Development': /coding|git|code-review|bug|architecture|verification|tdd|uv-package|webapp-testing|kaggle|driven-development|development-branch|planning|dispatching|executing|using-superpowers/,
-    'Plugin Dev': /skill-|command-|hook-|mcp-|agent-identifier|plugin-structure/,
+    'Research & Writing': /research|paper|writing|citation|rebuttal|doc-coauthoring|latex|results-analysis|results-report|brainstorm/,
+    'Development': /coding|git|code-review|bug|architecture|verification|tdd|driven-development|development-branch|planning|dispatching|executing|using-superpowers/,
+    'Plugin Dev': /skill-|command-|hook-|mcp-/,
     'Design & UI': /frontend|ui-ux|web-design|canvas|brand|theme|algorithmic-art|slack-gif|figma/,
     'Documents': /docx|xlsx|pptx|pdf|internal-comms|web-artifacts/,
   };
@@ -143,27 +141,10 @@ const KEYWORD_SKILL_MAP = [
   { keywords: /\b(debug|bug|error|broken|failing|traceback|exception)\b|排查|调试|报错|出错|不工作/i, skills: ['bug-detective'] },
   { keywords: /\b(tdd|test.?driven)\b|写测试|测试驱动/i, skills: ['superpowers:test-driven-development'] },
   { keywords: /\b(code.?review|review code)\b|审查代码|代码审查/i, skills: ['code-review-excellence'] },
-  { keywords: /\b(paper|manuscript|draft)\b|论文|写作|投稿/i, skills: ['ml-paper-writing'] },
-  { keywords: /\b(research|idea|brainstorm)\b|研究|构思|文献/i, skills: ['research-ideation'] },
-  { keywords: /\b(rebuttal|reviewer|response to reviewer)\b|审稿|回复审稿/i, skills: ['review-response'] },
-  { keywords: /\b(frontend|landing.?page|dashboard)\b|前端|界面|网页设计/i, skills: ['frontend-design'] },
-  { keywords: /\b(create|write|develop|improve).*skill|skill.*(开发|创建|写|改进)|开发.*skill|写.*skill|改进.*skill/i, skills: ['skill-development'] },
-  { keywords: /\b(create|write|develop).*hook|hook.*(开发|创建|写)|开发.*hook|写.*hook/i, skills: ['hook-development'] },
-  { keywords: /\b(create|write|develop).*command|slash.*command|command.*(开发|创建|写)|开发.*command|写.*命令/i, skills: ['command-development'] },
-  { keywords: /\b(create|write|develop).*agent|agent.*(开发|创建|写)|开发.*agent|写.*agent/i, skills: ['agent-identifier'] },
-  { keywords: /\b(mcp)\b|mcp.*server|mcp.*集成/i, skills: ['mcp-integration'] },
-  { keywords: /\b(architecture|factory|registry)\b|架构|设计模式/i, skills: ['architecture-design'] },
-  { keywords: /\b(uv|pip|package.*manager|venv)\b|包管理|虚拟环境/i, skills: ['uv-package-manager'] },
-  { keywords: /\b(kaggle|competition)\b|竞赛/i, skills: ['kaggle-learner'] },
-  { keywords: /\b(citation|reference.*check)\b|引用|引文|参考文献/i, skills: ['citation-verification'] },
-  { keywords: /\b(latex.*template|overleaf)\b|模板整理/i, skills: ['latex-conference-template-organizer'] },
   { keywords: /\b(ablation)\b|实验结果|results.*analysis|统计检验|消融实验|科学绘图|实验统计/i, skills: ['results-analysis'] },
   { keywords: /\b(experiment.?report|results.?report|retrospective|wrap.?up)\b|实验报告|实验总结|实验复盘|结果总结/i, skills: ['results-report'] },
-  { keywords: /\b(poster|presentation|promote)\b|海报|演讲|推广/i, skills: ['post-acceptance'] },
   { keywords: /\b(plan|planning)\b|规划|计划/i, skills: ['planning-with-files'] },
   { keywords: /\b(verify|verification)\b|验证/i, skills: ['verification-loop'] },
-  { keywords: /\b(self.?review)\b|自审|论文检查/i, skills: ['paper-self-review'] },
-  { keywords: /\b(anti.?ai|humanize)\b|去.*ai.*痕迹|AI写作/i, skills: ['writing-anti-ai'] },
   { keywords: /\b(implement|write code|add feature|modify|refactor)\b|写代码|改代码|实现|添加功能|修改|重构/i, skills: ['daily-coding'] },
 ];
 
@@ -182,24 +163,6 @@ function suggestSkills(prompt) {
 const SKILL_LIST = collectSkills();
 const SKILL_GROUPS = categorizeSkills(SKILL_LIST);
 const suggestedSkills = suggestSkills(userPrompt);
-const binding = common.getProjectMemoryBinding(cwd);
-const isResearchPrompt = common.promptLooksResearchRelated(userPrompt);
-
-if (binding.bound && isResearchPrompt) {
-  if (SKILL_LIST.includes('obsidian-project-memory')) {
-    suggestedSkills.push('obsidian-project-memory');
-  }
-  if (/\b(zotero|collection|doi|arxiv|citation)\b|zotero|文献|参考文献|collection/i.test(userPrompt) &&
-      SKILL_LIST.includes('zotero-obsidian-bridge')) {
-    suggestedSkills.push('zotero-obsidian-bridge');
-  }
-  if (/\b(paper|papers|literature|review|claim|method|evidence)\b|论文|综述|paper/i.test(userPrompt) &&
-      SKILL_LIST.includes('obsidian-literature-workflow')) {
-    suggestedSkills.push('obsidian-literature-workflow');
-  }
-}
-
-const dedupedSuggestedSkills = [...new Set(suggestedSkills)];
 
 // Format grouped skills (skip empty groups)
 const groupedDisplay = Object.entries(SKILL_GROUPS)
@@ -208,12 +171,8 @@ const groupedDisplay = Object.entries(SKILL_GROUPS)
   .join('\n');
 
 // Build suggested skills hint
-const suggestedHint = dedupedSuggestedSkills.length > 0
-  ? `\n**Pre-matched skills (MUST activate these)**: ${dedupedSuggestedSkills.join(', ')}\nThese skills matched keywords in the user's prompt. You MUST activate them via Skill tool.\n`
-  : '';
-
-const boundRepoHint = binding.bound && isResearchPrompt
-  ? `\n**Bound Obsidian repo detected**: ${binding.projectId || 'unknown-project'}\nUse lightweight curator behavior by default: keep \`Daily/YYYY-MM-DD.md\` and \`.claude/project-memory/<project_id>.md\` in sync when this turn changes research state, and touch \`00-Hub.md\` only when top-level project status really changes. Consider the \`research-knowledge-curator-obsidian\` agent when the task spans plans, papers, experiments, results, or writing.\n`
+const suggestedHint = suggestedSkills.length > 0
+  ? `\n**Pre-matched skills (MUST activate these)**: ${suggestedSkills.join(', ')}\nThese skills matched keywords in the user's prompt. You MUST activate them via Skill tool.\n`
   : '';
 
 // Generate output
@@ -223,7 +182,7 @@ Silently scan the user's request against available skills. Do NOT list every ski
 
 Available skills:
 ${groupedDisplay}
-${suggestedHint}${boundRepoHint}
+${suggestedHint}
 **Action**:
 - If any skill matches → Activate via Skill tool, then output: "Activating: [skill-name] — [reason]"
 - If no skill matches → Output: "No skills needed"

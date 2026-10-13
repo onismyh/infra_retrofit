@@ -28,13 +28,9 @@ SECTOR_STEEL_EAF: Final = "steel_eaf"
 SECTOR_CEMENT: Final = "cement"
 SECTOR_AMMONIA: Final = "ammonia"
 SECTOR_METHANOL: Final = "methanol"
-SECTOR_REFINERY: Final = "refinery"
-SECTOR_COAL_CHEM: Final = "coal_chemical"
 
-# 炼化与现代煤化工暂不在建模范围内（作者决定，2026-09-06）。
-# 决定性的原因是数据：GB/T 18916.3-2022（石油炼制）与煤化工定额表都未能取得，
-# 因此它们的用水强度只能靠猜——而水正是本研究的紧约束。它们的读取器与键仍然
-# 保留，这样只要补上这两项定额，就能把它们重新启用。
+# 炼化与现代煤化工不在建模范围内（作者决定，2026-09-06）：GB/T 18916.3-2022（石油炼制）与煤化工的取水定额
+# 都未能取得，用水强度只能靠猜，而水正是本研究的紧约束。它们的读取器与键 2026-10-13 删除（在 `2e818b2` 里）。
 INDUSTRY_SECTORS: Final[tuple[str, ...]] = (
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
@@ -42,8 +38,6 @@ INDUSTRY_SECTORS: Final[tuple[str, ...]] = (
     SECTOR_AMMONIA,
     SECTOR_METHANOL,
 )
-
-SECTORS_OUT_OF_SCOPE: Final[frozenset[str]] = frozenset({SECTOR_REFINERY, SECTOR_COAL_CHEM})
 
 # 部门 -> 目标组。部门上限（scripts/build_sector_targets.py）从 China TIMES 读取，
 # 所取层级就是 TIMES 核算 CO2 的层级：钢铁、建材、化工。煤电是第四组 "power"，
@@ -63,8 +57,6 @@ SECTOR_LABELS_ZH: Final[dict[str, str]] = {
     SECTOR_CEMENT: "水泥",
     SECTOR_AMMONIA: "合成氨",
     SECTOR_METHANOL: "甲醇",
-    SECTOR_REFINERY: "炼化",
-    SECTOR_COAL_CHEM: "现代煤化工",
 }
 
 
@@ -104,11 +96,6 @@ WATER_INTAKE_QUOTA_M3_PER_T: Final[dict[tuple[str, str], tuple[float, float] | N
     (SECTOR_METHANOL, "矿热炉尾气"): (9.03, 6.34),
     (SECTOR_METHANOL, "电石炉尾气"): (9.03, 6.34),
     (SECTOR_METHANOL, "default"): (15.0, 11.0),      # 回退：煤路线，占 221 家中的 148 家
-    # 未找到出处。GB/T 18916.3-2022《取水定额 第3部分：石油炼制》确实存在，也是对应的
-    # 标准，但没能取得其数值表；煤制烯烃/煤制油/煤制乙二醇各行同样如此
-    # （GB/T 18916 有一个第36部分：煤制乙二醇）。这些值不要猜。
-    (SECTOR_REFINERY, "default"): None,
-    (SECTOR_COAL_CHEM, "default"): None,
 }
 
 # 工业点源用水计入流域取水上限时乘的系数（`builders/industry.py` 用它乘定额 x 产量）。1.0 = 按取水计，
@@ -133,36 +120,7 @@ SECTOR_HAS_H2_ROUTE: Final[dict[str, bool]] = {
     SECTOR_CEMENT: False,       # 见上文
     SECTOR_AMMONIA: True,       # 绿氢替代灰氢原料，按化学计量
     SECTOR_METHANOL: True,      # 绿氢调节煤制甲醇的 H/C 比
-    SECTOR_REFINERY: True,      # 绿氢替代厂内 SMR/副产氢
-    SECTOR_COAL_CHEM: True,     # 绿氢替代合成气变换所制的氢
 }
-
-
-# --- 资产寿命，用于退役 --------------------------------------------------------------------
-# 寿命取值：⚠ 假设（无出处）。缺投产年份时分两种情形填补，因为各部门已知的信息不同：
-#
-#   部分观测（水泥 99.6%，钢铁 BOF 55% / EAF 35%）-> 缺口按该部门自身的观测年份分布、
-#     以确定性分位数取值来填补。已观测的那一半是关于该部门年龄结构的真实信息，
-#     平铺阶梯会把它扔掉，使存量偏老或偏新。
-#   完全无观测（合成氨、甲醇）-> 年龄在 [0, life] 上均匀铺开，于是每年恒有 1/life
-#     的产能到寿。这是没有年龄数据时的最大熵选择；它不是对真实年龄结构的断言，
-#     也不得被这样解读。
-#
-# 两种填补都是确定性的，从不随机抽样，所以两次运行逐位一致。
-ASSET_LIFETIME_YEARS: Final[dict[str, int]] = {
-    SECTOR_STEEL_BF: 30,
-    SECTOR_STEEL_EAF: 30,
-    SECTOR_CEMENT: 35,
-    SECTOR_AMMONIA: 30,
-    SECTOR_METHANOL: 30,
-    SECTOR_REFINERY: 40,
-    SECTOR_COAL_CHEM: 30,
-}
-
-# 退役时间表基于均匀年龄假设、而非观测年份的部门。
-SECTORS_WITH_UNIFORM_RETIREMENT: Final[frozenset[str]] = frozenset(
-    {SECTOR_AMMONIA, SECTOR_METHANOL}
-)
 
 
 # --- 各部门 hub 数 --------------------------------------------------------------------------
@@ -176,8 +134,6 @@ DEFAULT_SECTOR_HUB_COUNTS: Final[dict[str, int]] = {
     SECTOR_CEMENT: 150,
     SECTOR_AMMONIA: 60,
     SECTOR_METHANOL: 60,
-    SECTOR_REFINERY: 50,
-    SECTOR_COAL_CHEM: 30,
 }
 
 

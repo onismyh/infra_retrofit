@@ -64,7 +64,9 @@ def test_edge_capex_prices_only_the_offshore_segment(tmp_path) -> None:
     """100 km 的边有 40 km 在海上：倍率 1.5 时按 100 + 0.5 x 40 = 120 km 计，倍率 1 时按 100 km 计。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     edges_path = paths.inputs_dir / "pipeline_candidate_edges.csv"
-    pd.read_csv(edges_path).assign(offshore_length_km=40.0).to_csv(edges_path, index=False)
+    edges = pd.read_csv(edges_path)
+    edges.loc[edges["edge_id"] == "E1", "offshore_length_km"] = 40.0  # 电厂到汇的那条；水泥 hub 的支线仍在陆上
+    edges.to_csv(edges_path, index=False)
     _write_targets(paths, {2030: 1.0})
     scenario = OptimizationScenario(experiment_id="T", description="toy", sector_target_source="toy")
     for multiplier, priced_km in ((1.5, 120.0), (1.0, 100.0)):

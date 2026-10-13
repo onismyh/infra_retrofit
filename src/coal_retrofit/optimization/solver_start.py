@@ -11,7 +11,6 @@ import numpy as np
 
 from ._shared import GRB
 from .assumptions import OptimizationAssumptions
-from .year_types import YearPayload
 
 logger = logging.getLogger(__name__)
 
@@ -100,31 +99,3 @@ def _apply_rounded_start(model, sol_path: Path, assumptions: OptimizationAssumpt
             var.Start = 1.0 if level == chosen else 0.0
             n_set += 1
     logger.warning("MIP start: %d integer variables seeded from %s", n_set, sol_path)
-
-
-def _incumbent_logger(year_payloads: list[YearPayload]):
-    """MIPSOL 回调：打印每个新增量解的各组目标缺口与物理松弛量。只读，不改搜索。"""
-    slack_keys = ("injectivity_slack_mtpa", "storage_slack_mt", "edge_slack_mtpa", "biomass_slack_gj")
-
-    def _callback(model, where) -> None:
-        if where != GRB.Callback.MIPSOL:
-            return
-        obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
-        bound = model.cbGet(GRB.Callback.MIPSOL_OBJBND)
-        parts: list[str] = []
-        for payload in year_payloads:
-            groups = {
-                str(group): float(model.cbGetSolution(var))
-                for group, var in payload.target_shortfall_by_group.items()
-            }
-            slacks = {
-                key: float(np.sum(model.cbGetSolution(getattr(payload, key).tolist())))
-                for key in slack_keys
-                if getattr(payload, key) is not None and int(getattr(payload, key).shape[0]) > 0
-            }
-            short_txt = " ".join(f"{g}={v:.1f}" for g, v in groups.items() if v > 1e-6) or "none"
-            slack_txt = " ".join(f"{k.split('_')[0]}={v:.2f}" for k, v in slacks.items() if v > 1e-6) or "none"
-            parts.append(f"{payload.year}: shortfall[{short_txt}] slack[{slack_txt}]")
-        logger.info("INCUMBENT obj=%.1f bound=%.1f | %s", obj, bound, " ; ".join(parts))
-
-    return _callback

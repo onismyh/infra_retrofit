@@ -21,7 +21,7 @@ Use this skill for:
 
 Do not use this skill for:
 - Pure reading or understanding tasks with no modification intent
-- Work already covered by specialized skills such as `bug-detective`, `architecture-design`, or `tdd-guide`
+- Work already covered by specialized skills such as `bug-detective` or `tdd-guide`
 - Configuration-only changes
 - Documentation-only writing
 

@@ -24,9 +24,10 @@ the physics.
 Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 
 2026-09-27 起 result.json 带 `resolved` 段（全部参数、求解树、运行选项、`COAL_RETROFIT_*` 环境变量），每组对照
-另列两边的参数差与环境变量差；LP 松弛或热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
+另列两边的参数差与环境变量差；热启动两边不一致记 failure。记了 failure 的对照不再给相减的判断。
 `--pair A B` 核这两次求解：缺一边、任一边没有 `resolved` 段（2026-09-27 之前落盘，参数与环境变量都核不了）、
-两边都是 LP 松弛、任一边没有可用的解（目标函数不是有限值），也记 failure。
+任一边没有可用的解（目标函数不是有限值），也记 failure。2026-10-13 起运行器不再读求解相关的 COAL_RETROFIT_*
+环境变量（手工 LP 松弛与热启动），本脚本也不再按它们判 LP 松弛或热启动：此前的结果都在更早的模型分段里，本来就判不过。
 本脚本读 `_indtree/results/`（`_bootstrap.ROOT`，`ST_` 系的结果在这里）；`--results` 可换目录（如入库的 `results/solved/`）。
 2026-10-10 起 `--pair` 还核模型分段号（`resolved.model_segment`，`coal_retrofit.segment`）：任一边不是当前代码的分段
 （没有记分段号的都早于第 9 段）记 failure，两段之间不得相减（CLAUDE.md 二.7）。
@@ -34,8 +35,7 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
 2026-09-28 起（求解流程进情景定义）又加了几条：
 - 可证区间按 CLAUDE.md 二.3，下界用 result.json 记的 ObjBound（`objective_bound_cny`）；没有这个键（旧结果）或记的
   是空值时按 gap 反推。对照（c，`--pair` 的第一个结果）的目标函数或下界不是正数时只给绝对区间（元）。
-- 热启动看两处：情景 `warm_start = "lp_relax"`（运行器自动两步）或手工设 COAL_RETROFIT_START_SOL，两边一个热启动
-  一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
+- 热启动看情景 `warm_start = "lp_relax"`（运行器自动两步），两边一个热启动一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
   2026-10-02 起贴现率（`discount_rate`）、煤电容量电价（`coal_capacity_price_cny_per_kw_yr`，此前落盘的结果没有这一项，
   按 0 比）两边不同同样记 failure。
 - `--pair` 另比两边都有的输入摘要（`digest_*`），不同就记 failure（CLAUDE.md 二.6）；两边读的不是同一个文件的
@@ -66,15 +66,6 @@ RESULTS = ROOT / "results"
 FIELDS = ("fingerprint", "num_vars", "num_constrs", "num_nonzeros",
           "threads_param", "threads_pinned", "seed", "mip_focus")
 
-# `resolved.env` 记下求解时所有 COAL_RETROFIT_* 环境变量。运行器的三个兼容开关只看设没设（按非空判断；热启动的
-# .sol 路径按情景不同）；WRITE_SOL 只决定写不写 .sol，不比；其余（MIPFOCUS、GUROBI_SEED 等）按原值列差，
-# 它们实际生效的值记在情景字段 `mip_focus`、`solver_seed` 里，MIPFocus 不同另由 solver_quality 的 mip_focus 判 failure。
-ENV_SWITCHES = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL", "COAL_RETROFIT_LOG_INCUMBENTS")
-ENV_SKIPPED = ("COAL_RETROFIT_WRITE_SOL",)
-# 两边不一致就不能相减。热启动的两种来源（情景字段与 START_SOL）合起来由 `_warm_started` 判。
-ENV_BLOCKING = {
-    "COAL_RETROFIT_LP_RELAX": "一边解的是 LP 松弛（整数变量改成了连续变量）",
-}
 # 这些参数两边不同，目标函数的口径就不同，目标函数不能相减。
 OBJECTIVE_BASIS = {
     "scenario.carbon_price_cny_per_t_by_year": "目标函数含的碳价支出不同，只能比路径结构",
@@ -100,28 +91,19 @@ def load(name, results=RESULTS):
     return out
 
 
-def _lp_relaxed(row):
-    return bool(((row["resolved"] or {}).get("env") or {}).get("COAL_RETROFIT_LP_RELAX"))
-
-
 def _warm_started(resolved):
-    """热启动了没有：情景 `warm_start = "lp_relax"`（运行器自动两步），或手工设了 COAL_RETROFIT_START_SOL。
-    两者是同一套流程（实现说明 §9.7），只看有没有。"""
+    """热启动了没有：情景 `warm_start = "lp_relax"`（运行器自动两步，实现说明 §9.7），只看有没有。"""
     scenario = resolved.get("scenario") or {}
-    env = resolved.get("env") or {}
-    return scenario.get("warm_start", "none") != "none" or bool(env.get("COAL_RETROFIT_START_SOL"))
+    return scenario.get("warm_start", "none") != "none"
 
 
 def _env_view(resolved):
-    env = resolved.get("env") or {}
-    view = {key: ("已设" if env.get(key) else "未设") for key in ENV_SWITCHES}
-    view.update({key: value for key, value in sorted(env.items())
-                 if key not in ENV_SWITCHES and key not in ENV_SKIPPED})
-    return view
+    """`resolved.env` 记的求解时全部 COAL_RETROFIT_* 环境变量（如点源库目录），只列差，不判。"""
+    return dict(sorted((resolved.get("env") or {}).items()))
 
 
 def describe_params(label, names, a, b, failures, warnings):
-    """两次求解的参数差与环境变量差（`resolved` 段）。LP 松弛或热启动两边不一致、碳价、贴现率或容量电价不同（`OBJECTIVE_BASIS`）
+    """两次求解的参数差与环境变量差（`resolved` 段）。热启动两边不一致、碳价、贴现率或容量电价不同（`OBJECTIVE_BASIS`）
     记进 *failures*；提交号不同、有未提交的改动、记不了提交号记进 *warnings*（`resolved.code`，旧结果没有这一项）。
 
     任一边没有 `resolved`（2026-09-27 之前落盘）就说明比不了。
@@ -138,11 +120,8 @@ def describe_params(label, names, a, b, failures, warnings):
     ea, eb = _env_view(a["resolved"]), _env_view(b["resolved"])
     env_diffs = [(key, ea.get(key), eb.get(key)) for key in [*ea, *(k for k in eb if k not in ea)]
                  if ea.get(key) != eb.get(key)]
-    lines.append(f"    -> 环境变量差 {len(env_diffs)} 项：" if env_diffs else "    -> 求解相关的环境变量相同")
+    lines.append(f"    -> 环境变量差 {len(env_diffs)} 项：" if env_diffs else "    -> 环境变量相同")
     lines += [f"         {key}: {va!r} -> {vb!r}" for key, va, vb in env_diffs]
-    for key, va, vb in env_diffs:
-        if key in ENV_BLOCKING:
-            failures.append(f"{label}: {key} 两边不同（{va} vs {vb}）-- {ENV_BLOCKING[key]}，这两次求解不能相减")
     warm = [_warm_started(a["resolved"]), _warm_started(b["resolved"])]
     if warm[0] != warm[1]:
         which = "、".join(name for name, flag in zip(names, warm) if flag)
@@ -219,7 +198,7 @@ def describe_digests(label, names, a, b, failures):
 
 
 def check_contrasts(failures, warnings, strict, contrasts, results=RESULTS):
-    """缺一边、任一边没有 `resolved` 或 `resolved.code`、两边都是 LP 松弛、任一边没有可用的解、输入摘要不同，都记 failure。"""
+    """缺一边、任一边没有 `resolved` 或 `resolved.code`、任一边没有可用的解、输入摘要不同，都记 failure。"""
     print()
     print("=" * 96)
     print("--pair contrast -- fingerprints may differ, the thread pin may not")
@@ -254,10 +233,6 @@ def check_contrasts(failures, warnings, strict, contrasts, results=RESULTS):
         if uncoded:
             failures.append(f"{label}: {'、'.join(uncoded)} 的 resolved 段没有 code（加这一项之前落盘）："
                             f"是不是在 PR #11（连续 hub 掺烧等式，模型改动）之后求解的核不了，重解后再比")
-        # 只有一边是 LP 松弛的，上面的环境变量差已记 failure；两边都是时环境变量相同，要另记。
-        if _lp_relaxed(a) and _lp_relaxed(b):
-            failures.append(f"{label}: 两边都是 LP 松弛的解（整数变量改成了连续变量），"
-                            f"只是下界，不能拿来相减")
         for name, row in ((base, a), (variant, b)):
             objective = row["objective"]
             if not isinstance(objective, (int, float)) or not math.isfinite(objective):
@@ -302,7 +277,7 @@ def main():
                         help="also fail when a compared run left Threads at 0 (auto)")
     parser.add_argument("--pair", nargs=2, metavar=("A", "B"), required=True,
                         help="核这两次求解（结果名）；缺一边、模型分段号不是当前代码的、没有 resolved 段或"
-                             " resolved.code、一边 LP 松弛或热启动而另一边不是、两边都是 LP 松弛、没有可用的解、碳价、贴现率或煤电容量电价不同、"
+                             " resolved.code、一边热启动而另一边不是、没有可用的解、碳价、贴现率或煤电容量电价不同、"
                              "同一个输入文件的摘要不同、线程数或 MIPFocus 不同，都记 failure；提交号不同、记不了提交号、有未提交的改动只告警；"
                              "两边同名直接报错退出")
     parser.add_argument("--results", type=Path, default=None,

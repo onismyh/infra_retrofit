@@ -173,11 +173,11 @@ def test_cli_boundary_options(tmp_path, monkeypatch, capsys) -> None:
     assert kwargs["applied_sets"] == {"scenario.mip_gap": 0.05, "scenario.water_mode": "grid_supply",
                                       "scenario.water_scenario_id": "cwatm|gfdl-esm4|ssp126"}
     # --set 先给了水模式：按并过 --set 的值判断，不再另设 water_mode
-    assert cli.main([*base, "BASE", "--set", "scenario.water_mode=base_water", "--water", "cwatm/gfdl-esm4/ssp126",
+    assert cli.main([*base, "BASE", "--set", "scenario.water_mode=high_water_stress", "--water", "cwatm/gfdl-esm4/ssp126",
                      "--as", "MINE2"]) == 0
     spec, kwargs = calls[-1]
-    assert spec.scenario["water_mode"] == "base_water"
-    assert kwargs["applied_sets"] == {"scenario.water_mode": "base_water",
+    assert spec.scenario["water_mode"] == "high_water_stress"
+    assert kwargs["applied_sets"] == {"scenario.water_mode": "high_water_stress",
                                       "scenario.water_scenario_id": "cwatm|gfdl-esm4|ssp126"}
     # 只用 --targets：结果名是基底名加 _total
     assert cli.main([*base, "BASE", "--targets", "total"]) == 0

@@ -1,7 +1,7 @@
 """`python -m coal_retrofit run` 在 toy 上走通：九张结果表、result.json 与 `resolved` 段；
 `--set` 配 `--as` 另起结果名、不动登记情景的结果；`--tree` 换求解树；已有结果时拒绝，`--force` 才覆盖；
-情景字段 `solver_seed`、`mip_focus` 设到模型上；情景 `warm_start = "lp_relax"` 的一次 run 与手工的两次 run
-逐字节相同。需要 Gurobi。"""
+情景字段 `solver_seed`、`mip_focus` 设到模型上；情景 `warm_start = "lp_relax"` 的一次 run 先解 LP 松弛、
+再按它的 .sol 设 MIP start。需要 Gurobi。"""
 from __future__ import annotations
 
 import json
@@ -122,10 +122,9 @@ def test_seed_and_mip_focus_reach_the_model(tmp_path) -> None:
 
 
 @pytest.mark.usefixtures("ascii_tmp_path")
-def test_warm_start_matches_the_manual_two_steps(tmp_path, monkeypatch) -> None:
-    """情景 `warm_start = "lp_relax"` 的一次 run 与此前手工的两次 run（第 1 步设 LP_RELAX 与 WRITE_SOL，第 2 步设
-    START_SOL）是同一对求解：第 1 步的 .sol、第 2 步的目标函数与九张表逐字节相同。两边走的是同一段代码，所以另核
-    第 1 步确实解的是 LP 松弛、第 2 步确实按这份 .sol 设了 MIP start。"""
+def test_warm_start_solves_lp_then_starts_the_mip_from_it(tmp_path, monkeypatch) -> None:
+    """情景 `warm_start = "lp_relax"` 的一次 run 做两步：第 1 步解 LP 松弛、写 .sol（目标函数是 MIP 的下界），第 2 步按这份
+    .sol 设 MIP start。"""
     starts: list[Path] = []
     apply_start = solver._apply_rounded_start
 
@@ -139,23 +138,7 @@ def test_warm_start_matches_the_manual_two_steps(tmp_path, monkeypatch) -> None:
     assert cli.main(argv) == 0
     results = tmp_path / "toy" / "results"
     assert starts == [results / "TOY_WARM.lp.sol"]
-    sol = tmp_path / "manual.lp.sol"
-    manual = [*argv, "--set", "scenario.warm_start=none", "--as"]
-    monkeypatch.setenv("COAL_RETROFIT_LP_RELAX", "1")
-    monkeypatch.setenv("COAL_RETROFIT_WRITE_SOL", str(sol))
-    assert cli.main([*manual, "MANUAL_LP"]) == 0
-    monkeypatch.delenv("COAL_RETROFIT_LP_RELAX")
-    monkeypatch.delenv("COAL_RETROFIT_WRITE_SOL")
-    monkeypatch.setenv("COAL_RETROFIT_START_SOL", str(sol))
-    assert cli.main([*manual, "MANUAL"]) == 0
-    assert starts[1:] == [sol]
-
-    assert (results / "TOY_WARM.lp.sol").read_bytes() == sol.read_bytes()
     auto = _load(results / "TOY_WARM.json")
-    assert auto["global_objective_cny"] == _load(results / "MANUAL.json")["global_objective_cny"]
-    for table in sorted(TABLES):
-        assert (results / "TOY_WARM" / table).read_bytes() == (results / "MANUAL" / table).read_bytes(), table
     step_one = auto["resolved"]["warm_start"]
     assert step_one["method"] == "lp_relax" and step_one["time_limit"] == 60 and step_one["sol_sha256"]
-    assert step_one["objective_cny"] == _load(results / "MANUAL_LP.json")["global_objective_cny"]
     assert step_one["objective_cny"] < auto["global_objective_cny"]  # LP 松弛是 MIP 的下界，toy 上严格低
