@@ -699,6 +699,13 @@
 > - 文字遗漏：方法论 §9.3 删去检查器判 LP 松弛的说法（第一批已从 `check_run_provenance.py` 删去）；`scenarios.py` 文首、图 6 脚本、README
 >   目录树、`docs/官方指标口径水预算.md` 里仍按现行写的已删内容（`EXPERIMENTS`、运行期支线、兼容环境变量、诊断脚本）改正。
 > 验证：ruff 0 条；472 个测试通过；方法论 12 处 `cr/runner.py` 引用随行号移动，文首基准改为 `6c16c43`。
+>
+> 2026-10-13 起交给 netCDF4 的路径（`builders.water_grid._nc_path`）是 ASCII 的绝对路径就原样用，只有含非 ASCII 字符时才改写成相对当前目录
+> 的路径（作者批准 2026-10-13）。此前一律改写成相对路径：Windows 上文件与当前目录不在同一个盘时（测试的临时目录在 C 盘、仓库在 D 盘）
+> `os.path.relpath` 报 ValueError，在仓库目录跑 `python -m pytest` 有 6 个用例（`test_water_bias_alias.py` 3 个、`test_water_use_builder.py` 3 个）
+> 因此失败。输入表与模型都不变，模型分段不变（仍为 14）。
+> 验证：ruff 0 条；473 个测试通过（新增 1 个，旧代码上失败）；跨盘的情形本仓库的 Linux 环境复现不了，待作者在仓库目录重跑；方法论 2 处
+> `bld/water_grid.py` 引用随行号移动，文首基准改为 `548547a`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
