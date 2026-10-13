@@ -7,7 +7,7 @@ result.json 末尾多一段 `resolved`，记全部参数、求解树、`--set` �
 其余各键不变。
 
 2026-09-28 另加（求解流程进情景定义，不改模型）：情景 `warm_start = "lp_relax"` 时在同一进程里做热启动两步
-（`run_controls`）；Gurobi 的 seed 与 MIPFocus 是情景字段，环境变量仍兼容（`build_parameters`）；已有同名结果时
+（`run_controls`）；Gurobi 的 seed 与 MIPFocus 是情景字段（2026-10-13 起不再读同名的兼容环境变量）；已有同名结果时
 求解之前就拒绝，`force` 才覆盖；`resolved` 另记热启动第 1 步（`warm_start`）、读了哪些输入文件（`input_files`）
 与求解时的提交号（`code`）。
 
@@ -46,14 +46,12 @@ from .optimization.solver import SolveControls, _solve_joint_multi_period
 from .paths import ProjectPaths
 from .run_controls import (
     RunError,
-    check_warm_start_env,
     code_state,
-    env_controls,
     initial_state,
     lp_relaxation_start,
     sol_path,
 )
-from .scenarios import ScenarioRegistryError, ScenarioSpec, convert_field, shown_path
+from .scenarios import ScenarioRegistryError, ScenarioSpec, shown_path
 from .segment import MODEL_SEGMENT
 
 logger = logging.getLogger(__name__)
@@ -63,19 +61,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_THREADS = 8
 DEFAULT_TIME_LIMIT = 36000
 
-# 2026-09-28 之前设 seed 与 MIPFocus 的唯一办法，保留兼容：非空时读进这两个情景字段（`resolved` 里记的是实际
-# 生效的值）；登记表或 `--set` 已给该字段而值不同，就报错。求解器只读字段。
-SOLVER_ENV_FIELDS: dict[str, str] = {
-    "COAL_RETROFIT_GUROBI_SEED": "solver_seed",
-    "COAL_RETROFIT_MIPFOCUS": "mip_focus",
-}
-
-
 def build_parameters(
     spec: ScenarioSpec, name: str, threads: int = DEFAULT_THREADS, time_limit: int = DEFAULT_TIME_LIMIT,
     mip_gap: float | None = None,
 ) -> tuple[OptimizationScenario, OptimizationAssumptions]:
-    """按登记的覆盖项、运行选项与兼容的环境变量（`SOLVER_ENV_FIELDS`）构造两个参数 dataclass；
+    """按登记的覆盖项与运行选项构造两个参数 dataclass；
     *name* 是结果名，写进 `experiment_id`。
 
     *mip_gap* 只对这一次求解覆盖登记的 MIPGap。它让一批求解能拿容差换时间，而不必去改（从而永久改变）
@@ -86,21 +76,6 @@ def build_parameters(
     scenario_kw, assumption_kw = dict(spec.scenario), dict(spec.assumptions)
     if mip_gap is not None:
         scenario_kw = {**scenario_kw, "mip_gap": float(mip_gap)}
-    for key, field_name in SOLVER_ENV_FIELDS.items():
-        raw = os.environ.get(key)
-        if not raw:
-            continue
-        try:
-            number = int(raw)
-        except ValueError:
-            raise ScenarioRegistryError(f"环境变量 {key}={raw!r} 应为整数") from None
-        value = convert_field("scenario", field_name, number, f"环境变量 {key}")
-        if field_name in scenario_kw and scenario_kw[field_name] != value:
-            raise ScenarioRegistryError(
-                f"环境变量 {key}={raw} 与登记表或 --set 给的 {field_name} = {scenario_kw[field_name]!r} 不一致；"
-                f"只留一处（{field_name} 是情景字段，环境变量只为兼容）"
-            )
-        scenario_kw = {**scenario_kw, field_name: value}
     assumptions = replace(OptimizationAssumptions(), **assumption_kw) if assumption_kw else OptimizationAssumptions()
     base_kw: dict[str, Any] = {
         "experiment_id": name,
@@ -251,9 +226,8 @@ def run(
         if problems:
             raise RunError(f"水文成员 {scenario.water_scenario_id} 的数据不全（python -m coal_retrofit water-members"
                            f" 查全部）：{'；'.join(problems)}")
-    controls, sol = env_controls(), None
+    controls, sol = SolveControls(), None
     if scenario.warm_start == "lp_relax":
-        check_warm_start_env()
         sol = sol_path(tree, name, sol_dir)
     elif scenario.warm_start != "none":
         raise RunError(f"warm_start = {scenario.warm_start!r}：只能是 \"none\" 或 \"lp_relax\"")

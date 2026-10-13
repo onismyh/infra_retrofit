@@ -20,9 +20,11 @@
 > 标"未改"的地方要不要统一，由作者决定。
 > 下面的 §1–§11 于 2026-10-11 按当时的代码重写（此前停在 2026-09-06 的 v9 基线），说明当前版本；`ST_` 系求解树的
 > 现状见 [`_indtree/README.md`](_indtree/README.md)。
+> 2026-10-13 起本节删去只搬代码的拆分与小修、旧版本移出仓库的条目，以及原 §0.3（注释中文化）、§0.4（重构后的代码结构）
+> 两问的回答，原文在 `2e818b2` 里；留下的是改模型口径、输入表、结果表与出图的条目。
+> **旧版本（v7 / v9 / v9.1 / `IND_`）的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，当前版本不再维护复现步骤。**
 > 2026-09-26 起 `src/` 删去了旧实验链（`experiments/`、`optimization/model.py`、`optimization/bundle.py`、`reporting/`）
-> 与 runoff 水口径：§0.3、§0.4 里指向这些模块的命令和链接都已失效，v9 / v9.1 结果按 CLAUDE.md §1.5
-> 在 `892c877^` 里复现。
+> 与 runoff 水口径。
 > 同日起结果表的掺烧比例按约束里的 Σβ·z ÷ 路径份额换算（`plant_detail.csv` 新增 `biomass_blend_ratio`、`beccs_blend_ratio`、
 > `ammonia_blend_ratio`），`plant_cost.csv` 的碳成本改与目标函数同式。此前连续 hub 下的档位下标（`*_blend_level`，档位下标的加权和）
 > 被当作掺烧比例换算，`pathway_shares.csv`、`province_pathways.csv` 的逐路径减排拆分失真；`ST_CP_BASE`（唯一有碳价的 `ST_` 情景）
@@ -42,7 +44,7 @@
 > 2026-09-27 起情景登记在仓库根 `scenarios/*.toml`（`ST_` 系在 `scenarios/st.toml`，格式见 `src/coal_retrofit/scenarios.py`），
 > 入口是 `python -m coal_retrofit`（`list` / `show` / `diff` / `run`，要先 `pip install -e .`），求解与写结果在
 > `src/coal_retrofit/runner.py`。`scripts/run_single.py` 留作薄壳，原命令照用，
-> `from run_single import EXPERIMENTS` 照旧读得到登记表。求解树写在情景里（`ST_` 系是 `tree = "_indtree"`），
+> `from run_single import EXPERIMENTS` 照旧读得到登记表（薄壳 2026-10-13 删除）。求解树写在情景里（`ST_` 系是 `tree = "_indtree"`），
 > 从哪个目录启动都读同一套输入，树下没有 `inputs/` 就报错，`--tree` 可换树。`run --set 节.字段=值` 必须配 `--as 结果名`，
 > 结果名不许与登记情景同名（不分大小写）。result.json 末尾新增 `resolved` 段（全部参数、求解树、`--set` 覆盖项、运行选项与
 > `COAL_RETROFIT_*` 环境变量），其余键不变；`python scripts/check_run_provenance.py --pair A B` 列出两次求解的
@@ -60,58 +62,14 @@
 >
 > 2026-09-28 起求解流程进情景定义（不改模型）：情景 `warm_start = "lp_relax"`（`ST_COMMON` 已设）时 `run` 自动做
 > 热启动两步（实现说明 §9.7），不再手工设 `COAL_RETROFIT_LP_RELAX` / `WRITE_SOL` / `START_SOL`；Gurobi 的 seed 与 MIPFocus
-> 改为情景字段 `solver_seed`、`mip_focus`（环境变量 `COAL_RETROFIT_GUROBI_SEED`、`COAL_RETROFIT_MIPFOCUS` 仍兼容，与
-> 登记表或 `--set` 给的值不一致就报错）。已有同名结果时求解之前就拒绝，`--force` 才覆盖；没有可用的解时退出码 3；
+> 改为情景字段 `solver_seed`、`mip_focus`（环境变量 `COAL_RETROFIT_GUROBI_SEED`、`COAL_RETROFIT_MIPFOCUS` 当时仍兼容，与
+> 登记表或 `--set` 给的值不一致就报错；2026-10-13 起不再读）。已有同名结果时求解之前就拒绝，`--force` 才覆盖；没有可用的解时退出码 3；
 > `water_mode`、`water_season`、`warm_start`、`mip_focus` 只许写模型认的值，写错时求解之前就报错（此前 `water_mode`、
 > `water_season` 拼错不报错，静默走另一支）。
 > result.json 的 `resolved` 另记热启动第 1 步（`warm_start`）、读了哪些输入文件（`input_files`）与求解时的提交号
 > （`code`：`commit`、`dirty`）。`check_run_provenance.py` 的可证区间里，目标函数下界 LB 改用记下的 ObjBound（没有这一项的
 > 旧结果照旧按 gap 反推），`hi` 的分母按 CLAUDE.md §二.3 由 INC_c 改为 LB_c；`--pair` 下碳价不同、读的同一个输入文件摘要
 > 不同、有一边没有 `resolved.code` 都判不过，提交号不同、记不了提交号或求解时有未提交的改动只告警。模型与结果表不变（toy 12 个变体逐字节一致）。
->
-> 2026-09-28 起脚本只有仓库根 `scripts/` 一份：`_indtree/scripts/` 并入后删除。两份不同的 7 个文件里，5 个取 `_indtree`
-> 那份（它带 2026-09-10、09-12 之后的改动，仓库根那份没有），`plot_ed_sensitivity.py` 取仓库根那份，`_bootstrap.py` 重写；
-> 3 个 `ST_` 幻灯片脚本挪到仓库根。脚本读写的数据树固定是 `_indtree/`（`scripts/_bootstrap.py` 的 `ROOT`，测试核对它就是
-> 登记情景的 `tree`），图幅归档写仓库根 `results/figures/`（`REPO_ROOT`）。仓库根 `scripts/` 原先读写仓库根的 v7 `inputs/`
-> 与 `results/`，现在除 `render_version.py`（照仓库根那份）外，读写的路径与原 `_indtree/scripts/` 那份相同。
-> v9.1 幻灯片 `slide_matching_anim.py` 经 `plot_ed_water_abatement` 读管网，改后读到的是 v9.2 管网，与它画的 v9.1 结果
-> 对不上，所以直接停下（同日删除，见下文）。
-> 模型、求解与结果表不变。
->
-> 2026-09-28 起仓库根不再有 `inputs/`：那是 v7 输入（35 汇 / 923 边），没有登记情景读它，要用就到 `a303f05` 里取。
-> `ST_CP_BASE` 要读的 `sector_targets_none.csv` 此前只在那里入了库；同日 `_indtree/inputs/` 整个入库（提交 `89f8205`），
-> 里面那份与它逐字节相同。
->
-> 2026-09-28 起冻结树 `_v9tree/`、`_v91tree/` 也移出当前版本（436 个入库文件，约 470 MB，含 v9 的求解结果）。
-> `_v91tree/results/` 不在库里，本机那份拉取后原处不动（`.gitignore` 的规则保留）。`scripts/render_version.py` 去掉 `--tree`
-> （出图脚本只读 `_indtree`），`--version` 改为必填（原缺省 `v9`，
-> 会把 `_indtree` 的图拷进 v9 的归档）；只拷这次画出的图（`plot_ind_*` 也往 `_indtree/results/figures/` 存图，那些旧图
-> 不拷；`--skip-plots` 时不画图，目录里的图全拷，它们也会进去；2026-09-29 起只拷根目录，子目录里的这些旧图不再进去），
-> `--freeze-tag` 缺省不挪旧图。
->
-> 2026-09-28 起 `scripts/` 只留 `ST_` 一条线用得上的 29 个脚本，删掉只服务 v9 / v9.1 / `IND_` 的 27 个（删之前的版本都在
-> `6917c9c` 的 `scripts/` 里）：
-> - 读 v9 / v9.1 情景的 17 个：`plot_fig2_constraint_response`、`plot_fig3_attribution`、`plot_fig3_mechanism`、
->   `plot_fig4_network_reconfiguration`、`plot_fig5_pathway_succession`、`plot_extended`、`build_numbers_ledger` 与
->   10 个 `plot_ed_*`（`water_on_off`、`water_abatement`、`source_sink_matching`、`source_sink_matching_years`、
->   `multihop_matching`、`basin_closeup`、`biomass_sourcing`、`province_transition`、`reversion`、`who_converts`）；
-> - 已在守卫处停下、提示去旧提交画的 5 个：`slide_matching_anim`、`plot_ed_sensitivity`、`plot_ed_sink_network`、
->   `plot_ind_ed1_target_level`、`plot_ind_fig1_joint_allocation`；
-> - 另外 5 个：读 `IND_` 的 `plot_ind_fig2_storage_allocation`、`plot_ind_fig3_water_coupling`，缺省读旧情景的
->   `validate_baseline_year`（`BASE`）、`summarize_industry_runs`（`IND_`），一次性的 `_check_figure_widths`
->   （`save_fig` 的宽度守卫已覆盖）。
->
-> 留下的出图脚本是 3 个 `ST_` 幻灯片脚本和主要画输入的 6 个（`plot_candidate_network`、`plot_fig1_water_footprint`、
-> `plot_ed_fleet_atlas`、`plot_ed_water_basis`、`plot_ed_source_atlas`、`plot_ed_variance_decomposition`）。随之：
-> `plot_ed_source_atlas` 的煤电基准排放不再读结果表（原读 `BASE` 的 2030 年），改用模型的 `_prepare_plants` 从 `plants.csv`
-> 现算，同为未缩放的现状值，不用先求解；`plot_ed_fleet_atlas` 把从 `plot_extended` 借的 `_reproj` 挪进来，样式改为自己调
-> `apply_style()`（原先是导入 `plot_extended` 时顺带套上的）；`plot_style` 删掉 v9.1 情景族（`BASE_SCENARIO`、`ARMS`、`treat_of`、`seeds_of` 等）
-> 与 `BASE_DIR`；`ed_plant_data` 删掉读结果表的 `outcomes`、`pair`；`check_run_provenance.py` 删掉写死 v9 seed 族与对照表
-> 的缺省模式，`--pair` 改为必填。模型、求解与结果表不变。
->
-> 2026-09-28 起图幅版本目录 `results/figures/v9/`（88 个文件，其中 PDF / PNG 62 个，即 31 张图）与 `results/figures/v9.1/`
-> （README 与 `docs/官方指标口径水预算.md` 的一份旧快照）也移出当前版本，原先写在上文两段里的 v9 / v9.1 重画做法随之删去。
-> **旧版本（v7 / v9 / v9.1 / `IND_`）的输入、求解与出图在 `a303f05`、`892c877^`、`cf073be` 的历史里，当前版本不再维护复现步骤。**
 >
 > 2026-09-28 起 `.gitignore` 放开仓库根 `data/` 下求解与出图要读的三样：`ChinaMapTHT/`、`ChinaMap/`、`ChinaBasins/basin_l1.gpkg`
 > （2026-10-10 又放开 `封存汇图层-Fan/`、`NaturalEarth/`，现为五样，见 `.gitignore` 文首）。
@@ -188,7 +146,7 @@
 > "没用"），与图 7 的"无余量"同一规则；没有用量，或无水约束时可用量为空，仍记 0。模型、求解与其余各列不变，旧结果不重算；
 > 新旧表按 `resolved.code` 的提交号区分。
 >
-> 2026-10-02 起煤电热耗、到期、自愿退役核算与 CCS 额外燃料按机组细化（**模型改动**，作者批准 2026-10-01；`docs/参数调研_20261001.md`
+> 2026-10-02 起煤电热耗、到期、自愿退役核算与 CCS 额外燃料按机组细化（**模型改动**，作者批准 2026-10-01；`docs/archive/参数调研_20261001.md`
 > §3 乙，`docs/方法论.md` §3.4、§4.1、§4.2、§4.6）：
 > - 逐 hub 毛热耗：每台机组按机型、容量等级与冷却方式取发改运行〔2022〕559 号的供电煤耗基准值（超超临界 ≥ 900 MW 为 1000MW 级，
 >   超临界与亚临界 ≥ 450 MW 为 600MW 级，空冷 +15；CFB 290、IGCC 270 取 Wang et al. 2025 SI Table 1 的转述值；
@@ -297,7 +255,7 @@
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 >
 > 2026-10-02 起掺生物质改为三档并按炉型设上限，掺烧升级 capex 按 Fan et al. 2023 重定，掺烧运维改按 capex 的比例计（**模型改动**，
-> 作者批准 2026-10-02；`docs/参数调研_20261001.md` §2.1"掺烧按炉型"，`docs/方法论.md` §4.3、附录 B）：
+> 作者批准 2026-10-02；`docs/archive/参数调研_20261001.md` §2.1"掺烧按炉型"，`docs/方法论.md` §4.3、附录 B）：
 > - 档位：0.10 / 0.15 / 0.20（`OptimizationScenario.biomass_blend_levels`），此前 0.10 / 0.25 / 0.50 / 0.75 / 1.00。煤粉炉直燃
 >   10%–15% 有工程证据（Fan 基准 15%），0.25 以上没有，0.75、1.00 实为改烧。BECCS 用同一组档位。
 > - 炉型上限：煤粉炉 0.15、CFB 0.30（`biomass_blend_max_pulverized`、`biomass_blend_max_cfb`；CFB 的 20%–30% 是调研稿 B 级，原文
@@ -334,7 +292,7 @@
 > 与改前的 Gurobi 指纹、规模逐个相同。
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 >
-> 2026-10-02 起管道按在役管道的投资计固定运维，封存按汇型定价（**模型改动**，作者批准 2026-10-02；`docs/参数调研_20261001.md`
+> 2026-10-02 起管道按在役管道的投资计固定运维，封存按汇型定价（**模型改动**，作者批准 2026-10-02；`docs/archive/参数调研_20261001.md`
 > §2.2 第 2 条、§2.1"封存按汇型"，`docs/方法论.md` §6.2、§6.3、§9.4、附录 B.3、D.3）：
 > - 管道运维：每年按在役管道投资的 4% 计（`pipe_fixed_om_fraction`；Fan et al. 2023 SI p.12（PDF 第 13 页）式 (S29) 后：单位管长运维 =
 >   单位管长建造成本（式 S26）× 4%，Fan 引其文献 18，原文未核；DEA 陆上 0.9% 作敏感性）。投资取建设年的单价，含边类别与海上倍率；在役与流量上限同一判据（建成不满 30 年），
@@ -363,7 +321,7 @@
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 >
 > 2026-10-02 起工业 CCS 只捕集可捕集的份额、电炉钢不开放 CCS、合成氨与甲醇的氢路线减排比例取可捕集份额、长流程钢需氢
-> 63 kg/t，再生蒸汽可按部门设余热份额（**模型改动**，作者批准 2026-10-02；`docs/参数调研_20261001.md` §2.2 第 4、5、8 条，
+> 63 kg/t，再生蒸汽可按部门设余热份额（**模型改动**，作者批准 2026-10-02；`docs/archive/参数调研_20261001.md` §2.2 第 4、5、8 条，
 > `docs/方法论.md` §5.1、§5.2（式 22a）、附录 B.5）：
 > - 可捕集份额（`constants_industry_capture.INDUSTRY_CAPTURABLE_SHARE`）按（部门，原料）给：长流程钢、水泥 1；合成氨、甲醇只捕集原料
 >   制氢（气化 + 变换）脱出的高浓度流股，煤头合成氨 0.75、气头 0.67、煤制甲醇 0.57（B 级，检索摘要，待核；IEA 2021 原文未取得，
@@ -415,7 +373,7 @@
 > 按它只把改造的产量计入 CCS 与氢路线，混合 hub 里不改造的产量计入未改造（此前的结果没有这一列，按 1 取）。
 > 改前改后的结果不得相减，此前落盘的 `ST_` 结果都要重解（CLAUDE.md §二.7）。
 >
-> 2026-10-02 起情景多三个敏感性开关，缺省都不改模型（作者批准 2026-10-02；`docs/参数调研_20261001.md` §2.3，`docs/方法论.md`
+> 2026-10-02 起情景多三个敏感性开关，缺省都不改模型（作者批准 2026-10-02；`docs/archive/参数调研_20261001.md` §2.3，`docs/方法论.md`
 > §3.2、§4.1、§7.4、§8.1、§9.3、附录 B.2、D.1、D.3）：
 > - 部分负荷修正 `scenario.coal_part_load_online_hours`（缺省 0 即关）：设为机组全年在线小时后，各规划年全国一个系数 κ，取生态环境部
 >   2025、2026 年度配额方案征求意见稿表 2 的常规燃煤机组调峰修正系数（转录件，`constants.part_load_heat_rate_factor`）：负荷系数
@@ -568,7 +526,7 @@
 > 2026-10-11 起生物质供给表改读 Wang et al. 2023（Sci Data 10:384）情景 4 的栅格 `bioenergy_s4_AF_max.tif`（农林残余物，不含能源作物；
 > **模型改动**：输入表重建，模型分段 10；`docs/方法论.md` §2.2、§3.1、附录 A、B.1、B.4）：
 > - 此前读情景 3（`bioenergy_s3_AFE_abandon.tif`，另含废弃耕地上的能源作物），而采购单价 20 元/GJ 取自只覆盖残余物的 Wang 2025，
->   供给与价格不同口径（`docs/参数调研_20261001.md`）。
+>   供给与价格不同口径（`docs/archive/参数调研_20261001.md`）。
 > - 栅格取自 figshare（数据集 doi:10.6084/m9.figshare.c.6468319.v1 的文件 39594598，MD5 `30e484a16f2c194c1846aaeb3a312556`），
 >   放在 `data/中国生物质潜力/`（不入库，构建按文件名查找）。构建函数只换了文件名：同一函数读情景 3 栅格重建的表与改前库里的表节点、
 >   省份与来源列逐行相同，可用量最大相对差 3e-12（浮点求和次序）。
@@ -636,142 +594,6 @@
 > - 模型分段 12 → 13（`src/coal_retrofit/segment.py`）：输入表变了，此前的所有结果（含同日第十二段里的）都要用当前代码重解，
 >   出图与 `check_run_provenance.py --pair` 会拒绝旧结果。
 
-> 2026-10-12 起（同日第三个 PR）`builders/water.py`（799 行，贴着 800 行上限）拆成三个模块，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `water.py`（521 行）留构建流程（成员表与基准表、0.5° 网格节点、按流域预算并偏差校正的节点可用量、粗化、供水链路、`write_water_inputs`）；
-> `water_grid.py`（169 行）放网格与流域的共用工具（枯水期窗口、单元面积、省界与流域图层、流域归属），`water_use.py`、`water_quota.py`、
-> `optimization/data_prep.py`、`optimization/industry_inputs.py` 的共用函数改从这里取；`water_bias.py`（147 行）放偏差校正
-> （`HISTORICAL_FILE_GCM`、`basin_bias_factors`、`member_bias_factors`）。拆分后按 HEAD 重建五张水表逐字节不变。
->
-> 2026-10-12 起（同日第四个 PR）`constants_industry.py`（643 行）与 `optimization/scenario.py`（624 行）也拆开，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `constants_industry.py`（219 行）留部门键、取水定额、氢路线有无、资产寿命、hub 数与路线集合 `INDUSTRY_ROUTES`；`constants_industry_capture.py`（283 行）
-> 放工业 CCS 的可捕集份额、捕集 capex / 运维 / 蒸汽 / 电耗 / 耗材、余热少发电、捕集岛寿命与成本函数（`capital_recovery_factor`、`capture_*`、
-> `levelised_capture_cost_cny_per_t`）；`constants_industry_h2.py`（165 行）放氢路线的减排比例、氢耗、溢价、capex 与成本函数（`h2_route_*`）。
-> `optimization/assumptions.py`（445 行）放 `OptimizationAssumptions` 与省名别名表 `PROVINCE_NAME_ALIASES`；`scenario.py`（189 行）留 `PATHWAYS`
-> 与 `OptimizationScenario`。引用方按名字的新家改导入。拆分前后三个常量模块的 38 个常量与 159 个函数取值、四个登记情景的 `show` 输出与
-> `diff ST_BASE ST_CP_BASE` 逐字节相同（工业输入表的重建要作者本机的点源工作簿，这里没跑）。
->
-> 2026-10-12 起（同日第五个 PR）`optimization/data_prep.py`（529 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `data_prep.py`（300 行）留封存、生物质、氨、水、流域指标与耗水、部门目标与产量指数的读入，以及 `_input_files` 与 `prepare_inputs`；
-> `data_prep_plants.py`（213 行）放机组表的加工（`_prepare_plants`、`_read_unit_hub_map`、`_with_expiry`）。新建 `optimization/input_tables.read_input_csv`
-> 统一五处"文件存在 + 必需列"检查（报错文字不变）；`spatial.within_radius` 统一厂址到生物质 / 氨 / 水节点与工业 hub 到氢节点的四处半径配对
-> （水链路按距离排名）；`industry_inputs.py` 删掉 `usecols` 读表后到不了的缺列检查；读入后多余的 `.copy()` 去掉。拆分前后四个登记情景的 `show`
-> 输出与 `diff ST_BASE ST_CP_BASE` 逐字节相同，460 个测试通过，mypy 错误数不变（135）。
->
-> 2026-10-12 起（同日第六个 PR）`builders/water.py`（521 行）再拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `water.py`（249 行）留成员表与基准表、粗化、供水链路与 `write_water_inputs`；`water_availability.py`（269 行）放 0.5° 网格节点与按流域预算并
-> 偏差校正的节点可用量（`build_water_nodes_dataframe`、`build_water_availability_dataframe`）。`water_grid` 新增 `_clean_window`（读时间窗内的
-> 序列并换填充值）与 `_annual_m3`（逐月序列年化成 m3/yr），替掉 `water_bias`、`water_quota`、`water_use`、可用量构建与 `scripts/validate_basin_runoff.py`
-> 里的五处同样写法，`water_bias` 与 `water_quota` 里两处手写的逐时间步年份改用 `water_grid._file_years`；供水链路改走 `spatial.within_radius`；
-> 节点网格的参照成员只取 ssp126 的第一个（成员表须同时有 ssp126 与 ssp370 的检查保留），不再挑选未使用的 ssp370 行；流域模拟径流只求和一次。
-> 拆分前后在同一份 `data/` 上重建七张水表（`water_scenarios` / `water_base` / `water_nodes` / `water_availability` / `water_supply_links` /
-> `water_basin_use` / `water_basin_caps`）逐字节相同，前六张与 `_indtree/inputs/` 的也相同（`water_basin_caps.csv` 在库里的那份 2026-09-28 在作者本机写出，
-> 36 行里 20 行的 `residual_m3_per_year` 只差第 16 位有效数字，四舍五入过的各列全同，是平台浮点差，不是口径差）；463 个测试通过（新增 3 个），
-> mypy 错误 135 → 133（`water_bias`、`water_quota` 两处手写年份循环上的 `union-attr` 随之消失）。
->
-> 2026-10-12 起（同日第七个 PR）`builders/supply.py`（472 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `supply.py`（106 行）留生物质供给曲线与 `write_supply_inputs`；`supply_ammonia.py`（270 行）放绿氨供给曲线（`build_ammonia_supply_dataframe`，
-> 拆成读像元 `_h2_pixels` 与定价 `_price_nodes`）及求解时的重定价 `reprice_h2_component` / `reprice_hb_capex`（`optimization/data_prep` 与
-> `tests/test_discount_rate.py` 的导入随之改指；缺 LCOE 栅格与重定价的两条 warning 的 logger 名随模块改为 `builders.supply_ammonia`）。`spatial` 新增像元中心 `pixel_centers` / `pixel_centers_lonlat`（投影栅格转经纬度，Transformer 按 CRS
-> 缓存）、`province_lookup` 与按省-网格聚合 `aggregate_to_cells`（分箱、求和、按权重加权坐标），生物质与绿氨两处同样的聚合写法合成一处，
-> `builders/storage.py` 的像元中心也改走 `pixel_centers`。绿氨表的 25 个列名只写一遍（`AMMONIA_COLUMNS`），删掉 `h2_supply.size == 0` 的不可达分支、
-> 循环里随后被覆盖的 `buffer_km` 赋值，电解路线的过滤写成 `tech not in NH3_ELECTROLYSIS_TECHS`（此前多一个"元组为空则全收"的分支，
-> 常量为 `("AE",)`，不受影响）。拆分前后重建 `biomass_supply_curve.csv`、`storage_hubs.csv` 逐字节相同，与 `_indtree/inputs/` 的也相同；
-> `data/H2/` 不在本机，绿氨表用合成栅格（Albers 与 EPSG:4326 两种 CRS、缺 LCOE、缺 LCOH、PEM、非年份目录）拆分前后逐字节相同，一张可用栅格
-> 都没有时的空表也相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；466 个测试通过（新增 3 个），mypy 错误 133 不变。
-
-> 2026-10-12 起（同日第八个 PR）`builders/plants.py`（457 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `plants.py`（293 行）留机组表读入、聚类、hub 汇总与逐台毛热耗；`plants_water.py`（165 行）放用水强度（`hub_water_intensities`、
-> `finalize_water_intensities`、`combustion_class`，此前为 `_hub_water_intensities` / `_combustion_class`）与海水冷却分类
-> （`add_seawater_classification`、`SEAWATER_COAST_DISTANCE_KM`），原先函数内的 `import geopandas` 提到模块顶部。冷却方式归类（含 once 为直流、
-> 含 air / dry 为空冷、其余为循环）此前在 `builders/plants._cooling_class` 与 `OptimizationAssumptions.cooling_baseline_water_intensity`
-> 各写一遍，合成 `constants.cooling_class`，后者改为按归类查三个缺省值，三个缺省值（0.35 / 1.85 / 0.37）改为引用
-> `constants.COOLING_WATER_INTENSITY_M3_PER_MWH` 的同一组数；煤电机组与工业点源的聚类（haversine 距离矩阵 +
-> `AgglomerativeClustering(precomputed, average)`）此前在 `plants.py` 与 `industry.py` 各写一遍，合成 `spatial.cluster_labels`，标签格式与
-> "点数不多于簇数"的处理仍在各自调用处，sklearn 只有它用、在函数内导入，`show` / `diff` 等不建表的命令不加载它（此前只在建表路径按需导入）。拆分前后用库内 `plants_unit.csv` 重建 `plants.csv`、`plants_unit_hub.csv` 逐字节相同（与
-> `_indtree/inputs/` 的也相同）；用库内 `industry_sources.csv` 重聚类并汇总的 `industry_sources.csv`、`industry_hubs.csv` 逐字节相同
-> （390 个 hub 标签与库内逐行一致，数值列与 2026-09-28 写出的库内文件只有 CSV 往返带来的浮点末位差）；`constants` 全部常量与
-> `OptimizationAssumptions()` 的 76 个缺省值快照相同，13 种冷却标签的统一耗水值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；
-> 468 个测试通过（新增 2 个：冷却归类与统一耗水值、聚类分簇），mypy 错误 133 不变（`plants.py` 的 6 条随代码搬到 `plants_water.py`）。
-
-> 2026-10-12 起（同日第九个 PR）`builders/network.py`（559 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `network.py`（174 行）留构建流程 `build_network_tables`、走廊表与支线表的合并、只含端点的节点表与写盘；`network_corridors.py`（100 行）放
-> 既有干线走廊的读图层与建表（`load_corridor_layer`、`build_corridor_tables`）；`network_triangulation.py`（207 行）放等积投影、k 近邻、
-> Delaunay、长度图、三角剖分候选边与源到汇的专线（`build_triangulation_candidate_edges`、`build_direct_sink_edges`）；`network_edges.py`
-> （105 行）放两张表的列序 `NODE_COLUMNS` / `EDGE_COLUMNS`、边记录工厂 `make_edge_record`、无向边键 `unordered_edge_key` 与下一个边号
-> `next_edge_index`（原 `_unordered_edge_key` / `_next_edge_index`）。六处写边记录的字典（走廊、支线、三角剖分、缝合、并片、专线）都改走
-> `make_edge_record`（`length_km = direct_length_km × tortuosity`，保留三位小数；走廊边 `tortuosity` 1、`existing_corridor_flag` 1），支线行的
-> `geometry_wkt` 在内存里由 NaN 变为 `pd.NA`（合表后这一列的 dtype 由 str 变 object；读它的地方都按是否为字串判断），写出的 CSV 逐字节相同；
-> `network_repair` 新增 `node_coordinates` / `edge_geometries`，替掉去交叉、缝合、并片、剔除西藏、专线与海上段六处重复的节点坐标字典与几何列表；
-> 三角剖分与专线判断"这对节点已有边"的键统一为 `unordered_edge_key`（此前一处排序元组、一处 frozenset）；`network_repair._EDGE_CLASS_PRIORITY` 与 `optimization/year_matrices._edge_capex_multiplier` 写死的 edge_class 字面量改引
-> `constants.NETWORK_EDGE_CLASS_*`（新增 `NETWORK_EDGE_CLASS_PLANT_BRANCH` / `NETWORK_EDGE_CLASS_STORAGE_BRANCH`，值不变，`network_branches`
-> 的 `PLANT_BRANCH_EDGE_CLASS` / `STORAGE_BRANCH_EDGE_CLASS` 随之删去）；`_drop_edges_over_excluded_region` 改走已有的 `_excluded_region`，去掉
-> 函数内重复的导入与读图层；走廊节点的度数与来源统计改用 `Counter` / `defaultdict`。Delaunay 回退的 warning 与 "kept … direct source-sink
-> arcs" 的 logger 名随代码改为 `coal_retrofit.builders.network_triangulation`。拆分前后用库内 `plants.csv`、`storage_hubs.csv` 重建
-> `--no-corridors` 的候选网络（439 节点 / 1 260 边）逐字节相同；`data/corridors/` 不在本机，用两个合成走廊图层（含多部件要素）加库内三张
-> 点表重建带走廊的网络（833 节点 / 1 315 边：走廊 5、支线 823、三角剖分 359、专线 128；去交叉删 878、缝合 1）逐字节相同，日志只差 logger 名；
-> 玩具图上的缝合边与并片边相同；`constants` 快照只多两个新常量，`OptimizationAssumptions()` 的 76 个缺省值相同；四个登记情景的 `show` 输出与
-> `diff` 逐字节相同；473 个测试通过（新增 5 个：边记录的键序与长度、走廊与支线两种变体、无向边键、下一个边号、走廊表的端点去重与度数），
-> mypy 错误 133 → 93，减少的 40 条全在网络构建模块（`record.update({...})` 的 26 条 dict-item 随边记录工厂消失，走廊节点统计改用 `Counter` /
-> `defaultdict` 后 `object` 相关的 9 条消失，坐标与几何收进两个函数、边记录标注 `dict[str, object]` 后少 5 条 arg-type），其余文件不变。
-
-> 2026-10-12 起（同日第十个 PR）`optimization/constraints.py`（556 行）拆开并收拢重复代码，只搬代码、不改口径，模型分段不变（仍为 13）：
-> `constraints.py`（203 行）留逐厂路径约束 `_add_plant_path_constraints`（空冷份额与新建、耗水、物理捕集量与残余排放）；`constraints_blend.py`
-> （304 行）放掺烧档位 `add_blend_level_constraints`（原 `_add_blend_level_constraints`）与 McCormick 线性化；`constraints_rebuilt.py`（72 行）放
-> 原址重建部分的拆分 `add_rebuilt_split`、点积 `rebuilt_dot` 与运行路径列 `RUNNING`（原 `_add_rebuilt_split` / `_rebuilt_dot`）。生物质（含 BECCS）
-> 与掺氨两组档位此前各写一遍的 z / rz 变量、`Σ_l z = 份额` 的分摊约束、Σβ·z 与在用掺烧能力的累加和分层，合成 `_LevelShares` 类（一组共用档位的
-> 路径一个实例：`add_level`、`add_partition`、`layers`），两组只剩各自的用量、减排与惩罚项；两个函数此前返回 18 个、21 个元素的元组，改为同名字段的
-> `BlendTerms` / `PlantPathTerms`（NamedTuple），`model_year` 按字段名取用；路径系数矩阵乘份额的逐列求和（CCS 额外燃料与空冷背压的捕集和排放）
-> 改走 `_path_dot`；gurobipy 的导入回退改用 `_shared` 已有的那一份。变量与约束的名字和创建顺序不变：8 个单 hub 玩具情形（一台与两台机组、连续与整数 hub、
-> 部分到期与全部到期的两类重建、关空冷、加宽生物质档位使 `cfb_max_b` 生效）拆分前后写出的 LP 文件与求解结果逐字节相同，5 个 hub（无到期、部分到期、
-> 全部到期的一类与两类、含零份额的类）的合成数据直接调 `_add_plant_path_constraints` 的 12 种组合写出的 LP 与返回的表达式逐字节相同；`constants` 快照与
-> `OptimizationAssumptions()` 的 76 个缺省值相同；四个登记情景的 `show` 输出与 `diff` 逐字节相同；473 个测试通过（4 个测试文件的导入与字段名随之改），
-> mypy 错误 93 → 89（`constraints.py` 自写导入回退的 3 条与 `quicksum(list[object])` 的 1 条消失），其余文件不变。
-
-> 2026-10-12 起（同日第十一个 PR）`optimization/assumptions.py`（445 行）里的三张分省表搬到新模块 `constants_province.py`（44 行），
-> 只搬代码、不改口径，模型分段不变（仍为 13）：省名别名表 `PROVINCE_NAME_ALIASES`、分省煤价 `PROVINCE_COAL_COST_CNY_PER_GJ` 与分省煤电利用小时
-> `PROVINCE_OPERATING_HOURS`，出处注释随表搬走、数值逐字不变。`OptimizationAssumptions` 的 `province_coal_cost_cny_per_gj`、
-> `province_operating_hours` 缺省改为这两张表的副本（`default_factory=<表>.copy`，每个实例一份，情景仍可整张替换）；结果表的省名归一
-> （`optimization/results_regions`）改从 `constants_province` 导入别名表。`assumptions.py` 降到 416 行：剩下的是一个 dataclass 的 76 个字段与各自的出处注释、
-> 查表方法，不再拆。`constants` 快照与 `OptimizationAssumptions()` 的 76 个缺省值（含两张表的键序）相同；四个登记情景的 `show` 输出与
-> `diff` 逐字节相同；474 个测试通过（新增 1 个：两张表的缺省值与模块常量同序、各实例互不相干），mypy 错误 89 不变。
-
-> 2026-10-12 起（同日第十三个 PR；第十二个只同步 §2 的代码基准号）`scripts/plot_style.py`（592 行）拆成三个模块，只搬代码、不改口径，
-> 模型分段不变（仍为 13）：`plot_style.py`（348 行）留字体与版式（`apply_style`）、配色、中英对照、常用画法（面板标号、堆叠柱、尺寸图例）与
-> 存图 `save_fig` 的四道检查；`plot_map.py`（175 行）放中国底图（`MAP_CRS`、`map_layer`、`draw_china_basemap`、`mainland_extent`、`add_scs_inset`、
-> `check_off_land`、`to_map_xy`）、管段折线 `edge_lines` 与地图图例样式 `MAP_LEGEND`；`plot_io.py`（90 行）放命令行（`figure_cli`、`langs`）、
-> 读输入表与求解结果（`read_input`、`read_result`、`read_result_json`、`SOLVED_DIR`）与对账自检 `check_close`，不依赖 matplotlib。十个出图脚本按模块
-> 分开导入，CLAUDE.md §四的底图函数位置与示例导入改指 `plot_map`；`render_version.py` 原先为不导入 matplotlib 另写了一份 `SOLVED_DIR`，改为从
-> `plot_io` 导入，核对两份相同的测试用例随之删去，另加一个用例查 `plot_io` 不导入 matplotlib。拆分前的 77 个顶层定义（函数与常量，含文档串）
-> 各在一个模块里、AST 与拆分前相同；图 1–10 中英两版
-> （图 1、2 用库里的输入，图 3–10 用合成数据；本机没有 SimHei、Arial，换成 WenQuanYi Zen Hei 与 DejaVu Sans）拆分前后写出的 38 个 PDF 与 PNG
-> 逐字节相同，图 7 英文版两边都因替代字体偏宽（183.2 mm）被宽度检查拒绝；474 个测试通过（删 1 个、加 1 个），出图脚本的 mypy 错误 17 条不变。
-
-> 2026-10-12 起（同日第十四个 PR）三处小修，行为不变，模型分段不变（仍为 13）：`builders/network_repair` 的 `_build_edge_geometry`
-> 被 `network_offshore` 导入，改名 `build_edge_geometry`（提到它的一处注释、两处文档串随之改），文档串补上没有 WKT 时连两端节点的直线、
-> 端点不全时返回 None；`network_edges.next_edge_index` 的文档串补上两种回退情形（表空或没有 `edge_id` 列返回 1；没有一个 `edge_id` 以数字结尾时
-> 返回表长加一，新 id 形如 `edge_{n:05d}`，不会与已有 id 重复）；§2 不再抄方法论文首的代码基准号，改为"见方法论文首"，
-> 免得每次改文首都要同步两处。四个文件去掉文档串、统一新名后 AST 与改前相同；方法论的 419 处 `文件:行` 引用无一需要改；
-> 474 个测试通过，mypy 错误 89 不变。
-
-> 2026-10-13 起六处小修，行为不变，模型分段不变（仍为 13）：
-> ① `builders/water_grid._assign_basin_codes` 被五个模块、两个脚本与测试导入，改名 `assign_basin_codes`；
-> ② `builders/plants_water` 的海岸线注释与 `.claude/CLAUDE.md` §4.2 的 `boundary.shp` GBCODE 表按实测更正：61010 是陆地国界与九段线
-> （此前写成"国界 + 海岸线"），26100 是南海诸岛等岛屿的岸线段（此前写成"九段线"），26010 含大陆海岸 54 段，注释里的 26 085 km
-> 只是 26010 在 EPSG:2380 下的长度（26* 大地线合计 28 467 km）；海岸线距离取 26* 本来就对，代码不变；
-> ③ `network_branches.build_attachment_tables` 的两个编号参数改名 `first_node_index` / `first_edge_index`（原名与
-> `network_edges.next_edge_index` 同名），边号起点改用 `next_edge_index(main_edges)`（走廊边从 1 连续编号，与原来的表长加一相同）；
-> ④ 粗化水节点的 `basin_code` 是分组所用的流域，373 个节点中 5 个的加权坐标落在相邻流域，写进 `builders/water.py` 注释与方法论 §2.3；
-> ⑤ 新增 `scripts/crop_isimip_china.py`，把下载的 ISIMIP 全球文件裁到中国框（`data/water/` 的文件早就是裁过的，但没有脚本；
-> 写临时文件、逐月与原文件比对相同才换名，失败时删临时文件），
-> `attribute_isimip_forcing.py` 改用它的框常量；重新下载一个全球文件（WaterGAP2-2e、gfdl-esm4、ssp126、pdomuse）裁出后，与 `data/water/`
-> 的同名文件数值与全部属性相同，只是压缩参数不同；
-> ⑥ mypy 清零（src 89 → 0，scripts 22 → 0）：多数是 pandas-stubs 把 `itertuples` 的字段一律标成 Scalar 联合，src 的 45 处
-> `itertuples(index=False)` 统一改用 `frames.iter_rows`（运行时相同）；其余是类型标注、`cast`、变量改名与一处等价写法（`network_triangulation`
-> 的近邻对改用 `min` / `max` 排序），`model_industry` 的氢采购表达式不再先存进列表。
-> 验证：合成走廊建网前后两张表逐字节相同（833 节点 / 1 315 边），7 张水表改前改后逐字节相同（其中 6 张与库内
-> 相同，`water_basin_caps.csv` 与库内只差浮点末位，改前就如此），十张图的 38 个文件逐字节相同；477 个测试通过（新增 3 个）；
-> 方法论 87 处 `文件:行` 引用随行号移动，文首基准改为 `81ea6c9`。
->
 > 2026-10-13 起（同日第二个 PR）重复的数值换算收到一处（**输入表变更，模型分段 13 → 14**；`docs/方法论.md` §4.1、附录 A；CLAUDE.md §二.7
 > 记第十四段边界）：
 > - 地球半径：ISIMIP 网格面积（`builders/water_grid._cell_area_m2`）的球面半径改用 haversine 的 `spatial.EARTH_RADIUS_KM`（6 371.0088 km，
@@ -799,6 +621,28 @@
 >   流域余量最多差 0.46 m³。十张图的 38 个文件中只有图 10 的 4 个变了。
 > - 模型分段 13 → 14（`src/coal_retrofit/segment.py`）：耗水与可用量的末位都变，此前的所有结果要用当前代码重解。
 > 验证：ruff 0 条；482 个测试通过（新增 5 个：`containing_polygon_index` 的边界与界外、`bin_index`、网格面积之和等于球面积、网格落省压边取小号与界外去掉、封存汇海上标记压边算陆上与 NaN 报错）；mypy src 与 scripts 均 0 条；方法论的 `文件:行` 引用随行号移动，文首基准改为 `1e12126`，§2.3 补网格面积的半径与流域余量取整。
+>
+> 2026-10-13 起删去不是现行口径或没有读取方的代码与文件（作者批准 2026-10-13），缺省参数下模型不变，模型分段不变（仍为 14）：
+> - 兼容入口：`scripts/run_single.py` 薄壳（用 `python -m coal_retrofit run`）；环境变量 `COAL_RETROFIT_GUROBI_SEED`、`MIPFOCUS`、
+>   `LP_RELAX`、`START_SOL`、`WRITE_SOL`、`LOG_INCUMBENTS` 不再读（seed 与 MIPFocus 用情景字段，热启动用情景 `warm_start`；
+>   逐个可行解的缺口与松弛日志随之删去），`check_run_provenance.py` 不再按它们判 LP 松弛或热启动（`resolved.env` 照旧记下全部
+>   `COAL_RETROFIT_*`，只列差）；`render_version.py` 的 `--freeze-tag`；v9.1 口径的诊断脚本 `diagnose_official_water_budget.py`。
+> - 运行期支线：`build_runtime_network` 遇到管网节点表里没有的源或汇直接报错，不再补一条接最近节点的支线（v9.2 输入从未触发；
+>   toy 测试的工业 hub 改在测试输入里接进节点表）。
+> - 不在范围或恒为缺省的开关：炼化与现代煤化工的读取器、部门键与 `SECTORS_OUT_OF_SCOPE`；`OptimizationScenario` 的
+>   `forced_cooling_technology`、`ccs_water_multiplier_adjustment`、`beccs_water_multiplier_adjustment`；`OptimizationAssumptions`
+>   的三个冷却方式统一耗水值、`ccs_water_multiplier` 与 `cooling_baseline_water_intensity`（`plants.csv` 缺逐机组耗水列时改为报错，
+>   不再退回统一值），四个恒为 0 的 `ccs` / `biomass` / `beccs` / `ammonia_fixed_cost_cny_per_mwh`；与 `grid_supply` 同义的
+>   `water_mode = "base_water"`；`constants_water_quota.YELLOW_RIVER_CONSUMPTION_CAP_1E8_M3`；`scenarios.experiments_dict`；
+>   `SolveResult` 的 `capex_pathway_indices`。
+> - 输入表：`build_water_inputs.py` 不再写求解不读的 `water_base.csv`、`water_supply_links.csv`，库里两份删去（供水链路照旧在读入时
+>   按 200 km 现建，ST 输入仍是 1 566 条）。
+> - 文档：§0 删去只搬代码的拆分与旧版本移出的条目及原 §0.3、§0.4；`_indtree/README.md` 删去 v7 / v9 缺陷史与 `IND_` 系的命令和
+>   求解表；一次性的审查与调研文档挪到 `docs/archive/`；`docs/架构与清理审查_20260920.md`、`docs/参数审查_代码清单_20260930.csv`
+>   与两份审查中间 JSON 删去（指向代码清单的地方改指方法论的 `文件:行`）；重复的 Tang 2023 PDF 删去；`.claude/` 删去与本项目无关的
+>   会话日志、命令、技能与 agent 模板。
+> 验证：ruff 0 条；465 个测试通过（删去只测已删开关与运行期支线的用例，toy 的数值期望不变）；`ST_BASE`、`ST_WA_cwatm_126_dry_oq`
+> 用库内输入读入通过（350 个煤电 hub、386 个工业 hub、1 052 节点 / 1 559 边）；方法论 82 处 `文件:行` 引用随行号移动，文首基准改为 `2e818b2`。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -889,7 +733,7 @@
 | | 学习曲线 | 15%/倍增，5.6 年倍增 | 学习率：Li et al. 2012、DNV/Gassnova 2020（原文未核）；模型实际用的年降幅按 An et al. 2025 SI Table 7 的 capex 轨迹拟合；Fan et al. 2023 SI Table 15 的改造学习率为 7.25% | 推导（年降幅拟合 An et al. 2025；15% 的出处原文未核） |
 | | 能耗惩罚（额外燃料比） | 2030–2060 年 0.2853 / 0.1848 / 0.1534 / 0.1249 | An et al. 2025 SI Table 7 的出力损失 22.2 / 15.6 / 13.3 / 11.1% 按 p/(1 − p) 换算（固定产出近似；2026-10-02 起，此前 2030 年取 15%，无出处，之后按该表的相对下降缩放） | 推导（原表 09-30 核过） |
 | BECCS | capex | 捕集岛同 CCS；生物质改造走掺烧档位 capex | 2026-09-23 起删掉原 +1 000 元/kW 增量，见 §0.1 (b) | 同 CCS 与掺生物质两行 |
-| 掺生物质 | 掺烧档位与炉型上限 | 0.10 / 0.15 / 0.20；煤粉炉 ≤ 0.15、CFB ≤ 0.30（按 hub 的 CFB 装机份额，2026-10-07 起含厂名写明 CFB 的 5 台；2026-10-02 起，此前 0.10–1.00 五档、不分炉型） | 煤粉炉直燃 10%–15%（Fan et al. 2023 基准 15%）；CFB 20%–30% 见调研稿（`docs/参数调研_20261001.md` §2.1） | 煤粉炉有出处；CFB 上限 ⚠ 假设（B 级，原文未取得） |
+| 掺生物质 | 掺烧档位与炉型上限 | 0.10 / 0.15 / 0.20；煤粉炉 ≤ 0.15、CFB ≤ 0.30（按 hub 的 CFB 装机份额，2026-10-07 起含厂名写明 CFB 的 5 台；2026-10-02 起，此前 0.10–1.00 五档、不分炉型） | 煤粉炉直燃 10%–15%（Fan et al. 2023 基准 15%）；CFB 20%–30% 见调研稿（`docs/archive/参数调研_20261001.md` §2.1） | 煤粉炉有出处；CFB 上限 ⚠ 假设（B 级，原文未取得） |
 | | 掺烧升级 capex | 17.5 万元/MW/档（三档 175 / 350 / 525 元/kW；2026-10-02 前 50 万元/MW/档、5 档，第 2 档（0.25）1 000 元/kW） | Fan et al. 2023 SI 式 (S56) 的 500 MW 锅炉 15% 掺烧 350 元/kW（Fan 转引 IEA 2019，未核），定在 0.15 档。对照：Yuan et al. 2022 的 10% / 15% / 20% 为 573 / 790 / 991 元/kW（未核）；Wang et al. 2025 SI Table 3 的改造 capex 区间代表值 2 290（985–3 596）元/kW，掺烧比例与工程边界不同 | 水平有出处（原文未核）；逐档线性的形状 ⚠ 假设（无出处） |
 | | 运维 | 掺烧 capex 的 3%/年，按在用的掺烧能力计（0.10 / 0.15 / 0.20 档 5.25 / 10.5 / 15.75 元/(kW·a)；2026-10-02 起） | Fan et al. 2023 SI 式 (S57)（3%，不含燃料）。对照：Wang et al. 2025 SI Table 3 的固定运维 γ2 = 18.85（5.5–32.2）$/(kW·a) ≈ 132 元/(kW·a)，高一个量级。2026-10-02 前为 30 元/MWh：γ2 按约 4 400 h（无出处）折成每 MWh，按改造后发电量逐 MWh 收，`ST_` 系约合 124 / 107 / 69 / 52 元/(kW·a)（2030–2060 年） | 有出处 |
 | 掺氨 | 掺烧升级 capex | 2.5 万元/MW/档（满档 50% 掺烧 125 元/kW） | CNERI 2025（90 元/kW，100% 改造另加储存）、Deng et al. 2024（163 元/kW，供应系统）、Li & Li 2022（121.6 元/kW，只算燃烧器，未核实）；三个值口径各异，都不是 50% 掺烧；中位数 121.6，取 125（每档 25 元/kW 的整数倍） | 水平有出处（原文未核）；逐档线性的形状 ⚠ 假设（无出处） |
@@ -995,7 +839,7 @@
 - 工业 CCS 的 capex：水泥、长流程钢有中国项目数据；化工的 450 由全成本反推，但按注释给的输入扣耗材后只得约 368，改标假设；
   电炉钢是假设。
 - 煤电的 CCS 捕集岛、掺氨升级、搁浅资产基数、40 年设计寿命有文献（前两项原文未核），掺生物质升级只有水平有文献；**空冷、
-  退役成本、搁浅会计寿命、原址重建这几项投资参数与掺生物质、掺氨的逐档形状没有可查出处**，其中多数在 `docs/算法实现审查_20260910.md` §四已列出。
+  退役成本、搁浅会计寿命、原址重建这几项投资参数与掺生物质、掺氨的逐档形状没有可查出处**，其中多数在 `docs/archive/算法实现审查_20260910.md` §四已列出。
 - 表外、同样进目标函数的参数：PR #2 审查时列出的 20 项见上面的"表外参数"表；基线非燃料运维 110 元/MWh（2026-10-10 起，Wang & Cai SI Table 3 固定 + 可变运维 73.0 $/(kW·a) 按 4 611.83 h 折算；此前 80，无出处）、电价的逐年上涨路径
   440 / 490 / 550 元/MWh（2030 年的 400 元/MWh 对照 Wang et al. 2025 SI Table 3 的 420（336–504）元/MWh，已补出处；这个对照只对应
   煤电售电价，同一电价也用作工业捕集压缩与辅机的购电价，那一用途没有对照）、
@@ -1015,77 +859,6 @@
 上一版列出的 5 处文档与代码不一致已在批 1 修正：实现说明 §3.3、§四.3（工业按链路买氢）、§9.4（再沸器蒸汽 CO₂ 计入残余）
 加了"已被取代"注记并保留原文，§9.3 I8 改指 §9.9，`docs/工业部门参数溯源.md` §8.3 的锚点引用改为"实现说明 §3.3"，
 `optimization/scenario.py` 的生物质收购价注释改为与 `constants.BIOMASS_COST_BASE`（20 元/GJ）一致。
-
-### 0.3 注释有没有改成中文
-
-**已全部改成中文**（批 1）。只动注释与 docstring：代码、变量名、日志与异常字符串、文献题名与原文引文保持原样；翻译前后 toy 上
-15 个变体的模型与解逐字节一致。审查时又查出批 1 漏掉的 4 处，已在修复提交里改掉：`optimization/data_prep.py` 一条整句英文的
-docstring（夹着"用水总量控制指标"几个汉字，统计时被记成中文行）、`constants_industry.py` 一行英文书目键、
-`optimization/salvage.py` 两处反引号里的英文短语。终审又查出 6 处 1–3 个词的英文短语，也已改掉：`constants_water_quota.py`
-的文号、`scenario.py` 的英文节名、`constants_industry.py` 两处、`optimization/results.py` 与 `tests/test_capex_stock_no_solver.py`
-各一处。复核又查出 7 处单词或短语，也已改掉：`optimization/` 下的 `industry.py`、`industry_matrices.py`、`_shared.py`、`scenario.py`，
-`builders/` 下的 `storage.py`、`supply.py`，以及 `constants_industry.py`，各一处。
-
-统计口径：注释与 docstring 行（不计 `noqa` / `pragma` / `type:` 行），含汉字记中文，否则含 3 个以上连续字母记英文；一个文件
-中文行 ≥ 70% 记"中文为主"，≤ 30% 记"英文为主"。含汉字的行一律记中文，夹在里面的英文句子统计不出来，所以另按"连续 4 个以上
-英文单词"逐行筛过一遍，终审又按"连续 2 个以上"筛了一遍：剩下的是文献作者、刊名与机构名、题名、原文引文、标识符列表、公式与单位，
-以及英文术语与缩写（括注的如"（steam cycle）""（firm yield）"，未括注的如 CCS、capex、vs），保留。
-
-| `src/coal_retrofit/` | 本轮前（0f8d999） | PR #2 合入时（b5cd28c） |
-|---|---|---|
-| 文件数 | 55 | 58（工业侧拆出 3 个） |
-| 中文行 / 英文行 | 449 / 1 610（22%） | 1 924 / 80（96%） |
-| 中文为主 / 混合 / 英文为主 / 无注释 | 15 / 3 / 24 / 13 | 45 / 0 / 0 / 13 |
-
-- 剩下的 80 行不含汉字，都是公式、Google 风格段名（Args / Returns / Raises）、标识符、网址与文献题名，没有英文叙述。
-- `tests/`：中文 26 / 英文 105（20%）→ PR #2 合入时 196 / 5（98%）。
-- 13 个无注释文件（`experiments/` 全部、`reporting/core.py`、`paths.py`、`spatial.py` 等）没有补注释；
-  `scripts/` 与 `_indtree/scripts/` 不在本轮范围，仍约 26–27% 中文。
-
-### 0.4 重构后的代码清楚了吗
-
-**求解主干与工业侧都清楚了，外围还没动。**
-
-- `optimization/solver.py` 只管顺序与求解参数，按 `model_index` → `model_year`（资源平衡在 `model_resources`）
-  → `model_linking`（2026-09-30 起分代能力在 `vintage`）→ `model_costs` → `salvage` → `solver_extract` 一步一个文件。
-- 逐年系数与变量都是 dataclass：煤电 `YearData`、工业（批 1）`IndustryYearData` / `IndustryPayload` 冻结；煤电
-  `YearPayload`（`optimization/year_types.py`）不冻结，因为成本表达式由 `add_year_costs` 事后写入，`_add_salvage_credit`
-  还要再补残值项。原来工业侧的 `dict[str, Any]` 和两处含义不同的 `annual_cost_cny` 键已去掉。
-- 原 `optimization/industry.py`（664 行）按职责拆为 `industry_inputs.py`（输入与氢链路，183 行）、
-  `industry_matrices.py`（逐年系数，263 行）、`model_industry.py`（变量、约束与 capex 表达式，235 行），
-  `industry.py` 只留模块说明与再导出（104 行）；行数均为 PR #2 合入时。
-- 结果按表拆为 `results_plant` / `results_network` / `results_resources` / `results_industry`。
-- 批 1 前后，toy 上 15 个变体的模型与解逐字节一致。
-
-| 指标 | 09-22 拆分前（ba967c1） | 上一轮重构前（a5cb31a） | 本轮前（0f8d999） | PR #2 合入时（b5cd28c） |
-|---|---|---|---|---|
-| 超 800 行的文件 | 4 | 2 | 0 | 0 |
-| 超 400 行的文件 | 13 | 11 | 10 | 7 |
-| 最长函数 | 1 198 行（`_solve_joint_multi_period`） | 357 行（`add_year_block`） | 202 行（`build_ammonia_supply_dataframe`） | 202 行（同左） |
-| ≥ 80 行的函数 | 25 / 320 | 30 / 332 | 30 / 341 | 29 / 343 |
-| mypy 错误（`--ignore-missing-imports`） | 397 | 406 | 175 | 173 |
-| ruff 0.15.8（默认规则 E4/E7/E9/F，`src/`） | — | — | 7 | 0 |
-
-PR #2 合入时还不清楚的地方（只报告，未改）：
-
-1. **仍超 400 行的 7 个文件**：`builders/water.py` 736、`constants_industry.py` 609、`optimization/scenario.py` 602、
-   `builders/supply.py` 600、`builders/network.py` 559、`reporting/core.py` 501、`optimization/constraints.py` 449。
-2. **≥ 80 行的函数还有 29 个**：最长的是 `build_ammonia_supply_dataframe` 202 行、`build_runtime_network` 188 行、
-   `build_water_availability_dataframe` 163 行；`industry_year_data` 140 行、`_one_off_capex` 111 行也没有拆。
-3. **mypy 剩 173 个错误**，集中在 `builders/network_repair.py`（32）、`optimization/network.py`（19）、
-   `optimization/model.py`（14）、`builders/network.py`（13），多为 pandas / gurobipy 存根的标注问题。
-4. **ruff**：`src/` 0 条；`tests/` 19 条 E402（先 `importorskip` 再导入的固定写法）；两棵 `scripts/` 合计 329 条，未动。
-
-> 现状（2026-10-11，`19671b7` 加本次改动）：上表与这四条是 PR #2 合入时的快照，此后只改过局部，没有再做整体重构。现在 `src/coal_retrofit/`
-> 66 个文件、438 个函数：超 400 行的文件 8 个（`builders/water.py` 730、`constants_industry.py` 643、`optimization/scenario.py` 624、
-> `builders/network.py` 559、`optimization/constraints.py` 555、`optimization/data_prep.py` 528、`builders/supply.py` 472、
-> `builders/plants.py` 457；`builders/storage.py` 333 与 `builders/industry.py` 本次删掉死代码后降到 400 行以下；`reporting/core.py` 已于
-> 2026-09-26 随 `reporting/` 删除）；≥ 80 行的函数 30 个，最长的是 `_add_blend_level_constraints` 245 行、`build_ammonia_supply_dataframe` 202 行、
-> `_plant_operating_matrices` 199 行、`build_runtime_network` 190 行；mypy（`--ignore-missing-imports`，整包一次检查）135 个错误（21 个文件；本次少 2 个：`builders/storage.py` 1 → 0、
-> `builders/water.py` 5 → 4），集中在 `builders/network_repair.py`（34）、`builders/network.py`（28）、`optimization/network.py`（19）、
-> `optimization/results_workbook_sources.py`（15）；ruff 0.16.8 按 `pyproject.toml` 固定的 E4/E7/E9/F 规则，`src/`、`tests/`、
-> `scripts/` 都是 0 条（`_indtree/scripts/` 已于 2026-09-28 并入仓库根 `scripts/`）。只记录，不拆分。
-> 2026-10-12 的九个拆分 PR（§0 当日注）之后，超 400 行的文件剩 1 个：`optimization/assumptions.py` 416（2026-10-13 加 `province_hours`、删 `province_cf` 后 415；一个 dataclass 的 76 个字段与出处注释，不再拆）。`scripts/` 下原有的 1 个（`plot_style.py` 592）同日第十三个 PR 拆开后没有了。
 
 ## 1. 这个项目回答什么问题
 
@@ -1168,8 +941,8 @@ python -m pytest
 python -m ruff check src tests scripts
 ```
 
-`python -m coal_retrofit` 读安装所在 checkout 的 `scenarios/`，所以要先 `pip install -e .`；没装时求解可用
-`python scripts/run_single.py <情景>` 代替，参数相同。ruff 不在依赖里，规则写在 `pyproject.toml`；本项目没有指定类型检查命令与覆盖率门槛。
+`python -m coal_retrofit` 读安装所在 checkout 的 `scenarios/`，所以要先 `pip install -e .`；没装时在仓库根设
+`PYTHONPATH=src`（PowerShell 写 `$env:PYTHONPATH = "src"`）再跑 `python -m coal_retrofit`，参数相同。ruff 不在依赖里，规则写在 `pyproject.toml`；本项目没有指定类型检查命令与覆盖率门槛。
 
 ## 5. 数据与输入表
 
@@ -1205,7 +978,7 @@ python -m ruff check src tests scripts
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
 | `build_network_inputs.py` | `network.py`、`network_corridors.py`、`network_triangulation.py`、`network_edges.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
 | `build_supply_inputs.py` | `supply.py`、`supply_ammonia.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
-| `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_base.csv`、`water_nodes.csv`、`water_availability.csv`、`water_supply_links.csv` | 20、40、373、29 840、1 566 |
+| `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_nodes.csv`、`water_availability.csv` | 20、373、29 840 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
 | `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |
@@ -1216,7 +989,7 @@ python -m ruff check src tests scripts
   只在加列或改正数值时用，之后下游全部重解（见该脚本的说明）。
   `build_storage_inputs.py` 的 `--offshore-basin-dilation-px` 缺省 6（2026-10-11 前缺省不合并），给 0 才不合并海上封存体，得到的不是库里这 89 个汇。
 - `sector_targets_none.csv`（`ST_CP_BASE` 用，各组上限都是自身 2030 年水平）没有构建脚本，随 v7 输入沿用至今。
-- 求解读哪些表以 `optimization/data_prep._input_files` 为准；`plants_unit.csv`、`water_base.csv`、`water_supply_links.csv` 求解不读，
+- 求解读哪些表以 `optimization/data_prep._input_files` 为准；`plants_unit.csv` 求解不读，
   `water_scenarios.csv` 不进模型，`--water` 与 `water-members` 用它查成员。各表的列与行数见方法论附录 B.1。
 
 ### 5.3 输入在模型里的角色
@@ -1228,8 +1001,8 @@ python -m ruff check src tests scripts
 - **资源节点**：生物质、绿氢与水节点。hub 到节点的链路在读入时按 200 km 半径现建（生物质与绿氢是 `resource_match_radius_km`，
   水是 `constants.WATER_MATCH_BUFFER_KM`），多个 hub 竞争同一节点。
 - **封存汇**：`storage_hubs.csv` 给类型、陆海、累计容量与年注入能力。
-- **管网**：`optimization/network.build_runtime_network` 把候选图装成运行时图；源或汇不在图上时补支线（当前输入没有触发），
-  有源到不了任何汇就报错（拦的是读到旧输入）。
+- **管网**：`optimization/network.build_runtime_network` 把候选图装成运行时图；源或汇不在图上就报错（2026-10-13 前补一条
+  运行期支线，当前输入从未触发），有源到不了任何汇也报错（拦的是读到旧输入）。
 
 ## 6. 模型
 
@@ -1451,8 +1224,7 @@ python scripts/check_run_provenance.py --pair ST_BASE ST_WA_cwatm_126_dry_oq --r
 | [`docs/工业联合减排实现说明.md`](docs/工业联合减排实现说明.md) | 工业侧的实现与历次口径变更（§9 各小节） |
 | [`docs/工业部门参数溯源.md`](docs/工业部门参数溯源.md) | 工业参数的溯源 |
 | [`docs/官方指标口径水预算.md`](docs/官方指标口径水预算.md) | 流域取水指标口径的水预算 |
-| `docs/参数审查_*_20260930.md`、`docs/参数审查与更新建议_20260930.md`、`docs/参数调研_20261001.md` | 参数证据审查与调研记录（带日期，是当时的快照） |
-| `docs/算法实现审查_20260910.md`、`docs/架构与清理审查_20260920.md` | 早期审查记录（文件与行号是当日的快照） |
+| `docs/archive/` | 一次性的参数证据审查、调研与算法审查记录（带日期，文件与行号是当日的快照；2026-10-13 从 `docs/` 挪入） |
 | `data/封存汇图层-Fan/README.md`、`data/NaturalEarth/README.md` | 入库原始数据的出处、许可与用法 |
 | [`.claude/CLAUDE.md`](.claude/CLAUDE.md)、[`AGENTS.md`](AGENTS.md) | 项目规范与协作约定 |
 | [`references.bib`](references.bib) | 参考文献 |

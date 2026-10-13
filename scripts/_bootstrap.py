@@ -4,7 +4,7 @@
 输入构建与诊断脚本用 `ROOT` 读写 `_indtree/inputs`、`_indtree/results`（v9.2 管网，`ST_` 系在这里求解），出图脚本读
 `_indtree/inputs`、把图写到 `_indtree/results/figures/`；读入库的 `results/solved/` 结果、读写仓库根 `results/figures/` 图幅归档、
 读仓库根 `data/ChinaMapTHT/` 底图的用 `REPO_ROOT`。
-求解不经 `ROOT`：`run_single.py` 是 `python -m coal_retrofit` 的薄壳，求解树取自情景登记的 `tree`
+求解不经 `ROOT`：`python -m coal_retrofit` 的求解树取自情景登记的 `tree`
 （`scenarios/st.toml`）。两者不一致时，脚本读写的就不是求解用的那套输入与结果（CLAUDE.md 二.6），
 所以 `tests/test_scenarios.py` 核对 `ROOT` 就是登记情景的 `tree`。
 """

@@ -48,7 +48,7 @@ from coal_retrofit.optimization.solver import _solve_joint_multi_period  # noqa:
 from coal_retrofit.optimization.solver_start import _apply_rounded_start  # noqa: E402
 from test_capex_stock_no_solver import _cement_hub  # noqa: E402
 from test_h2_route_multiplier import _steel_hub  # noqa: E402
-from toy_inputs import _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
+from toy_inputs import _attach_industry_hubs, _toy_assumptions, _write_targets, _write_toy_inputs  # noqa: E402
 
 
 # ---------------------------------------------------------- (a) 工业 capex 按新建能力计 ---
@@ -165,6 +165,7 @@ def _add_steel_hub_near_h2_node(paths, steel_caps: dict[int, float]) -> None:
         has_h2_route=True, water_m3_per_year=3.0e6,
     )
     pd.concat([hubs, steel], ignore_index=True).to_csv(inputs / "industry_hubs.csv", index=False)
+    _attach_industry_hubs(paths)
     index = pd.read_csv(inputs / "industry_output_index_toy.csv")
     pd.concat([index, index.assign(sector="steel_bf_bof")], ignore_index=True).to_csv(
         inputs / "industry_output_index_toy.csv", index=False

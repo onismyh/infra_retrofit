@@ -41,7 +41,7 @@ class OptimizationScenario:
     # 部分负荷修正（2026-10-02 起，缺省 0 即关，只作敏感性）：设为机组全年在线小时数时，各规划年全国一个系数
     # κ = `constants.part_load_heat_rate_factor`(利用小时 ÷ 在线小时)，乘在煤电各部分的毛热耗与基线排放上，燃料与掺烧用量、排放、各项能耗
     # 惩罚、空冷背压与 2030 年电力基线随之放大（`plant_matrices`、`model_index`）；耗水强度不乘。利用小时取上一项，没设时取全机组
-    # 当前平均小时数。ST 的小时数下降是"整体降负荷"才该加，"整台停运、其余满发"则不该加，主线不开（docs/参数调研_20261001.md
+    # 当前平均小时数。ST 的小时数下降是"整体降负荷"才该加，"整台停运、其余满发"则不该加，主线不开（docs/archive/参数调研_20261001.md
     # §2.3）。在线 7 500 h 时 ST 四年 κ = 1.110 / 1.150 / 1.353 / 1.609，6 500 h 作低档（1.000 / 1.111 / 1.268 / 1.466）。
     coal_part_load_online_hours: float = 0.0
     # 外生的分行业、分年份工业产量指数，来自 `inputs/industry_output_index_<source>.csv`；
@@ -85,16 +85,13 @@ class OptimizationScenario:
     # 返回可靠的对偶值，所以改用参数化定价来还原水的影子价格——每一点上的附加费就是该点的
     # 影子价格。
     water_price_adder_cny_per_m3: float = 0.0
-    forced_cooling_technology: str = ""
-    ccs_water_multiplier_adjustment: float = 1.0
-    beccs_water_multiplier_adjustment: float = 1.0
     pathway_disable: tuple[str, ...] = ()
     mip_gap: float = 0.01               # MIP 最优性间隙（默认 1%；探索性求解可放宽）
     solver_threads: int = 0       # 0 = 由 Gurobi 自动检测
     solver_time_limit: int = 36000  # 秒（默认 10h）
     # Gurobi 的 Seed 与 MIPFocus，与线程数同属（模型, 参数, 线程数）：对照的两次求解必须相同，seed 族只换 solver_seed。
     # 0 是 Gurobi 的缺省种子；MIPFocus 1 侧重尽快找到好的可行解。2026-09-28 起是情景字段，此前只能用环境变量
-    # COAL_RETROFIT_GUROBI_SEED / COAL_RETROFIT_MIPFOCUS 设（仍兼容，见 `runner.build_parameters`）。
+    # COAL_RETROFIT_GUROBI_SEED / COAL_RETROFIT_MIPFOCUS 设（2026-10-13 起不再读）。
     solver_seed: int = 0
     mip_focus: int = 1
     # 热启动（实现说明 §9.7）："lp_relax" 时运行器先把全部整数变量松弛后求解、写 .sol（时限 warm_start_time_limit 秒），
@@ -115,7 +112,7 @@ class OptimizationScenario:
     electricity_price_cny_per_mwh_by_year: tuple[float, ...] = (400.0, 440.0, 490.0, 550.0)
     # 煤电容量电价，元/(kW·a)（2026-10-02 起，缺省 0 即单一制电价，只作敏感性）：按未退役装机收，煤电的电量电价同时减去
     # 容量电价 ÷ 全机组现状利用小时，按现状小时算的总收入不变，不与上面的单一制电价重复计收（`plant_matrices`）；工业买电仍按
-    # 上面的电价。2024 年起煤电两部制，每年 100 或 165 元/kW（B，政策摘要；docs/参数调研_20261001.md §2.3）。
+    # 上面的电价。2024 年起煤电两部制，每年 100 或 165 元/kW（B，政策摘要；docs/archive/参数调研_20261001.md §2.3）。
     coal_capacity_price_cny_per_kw_yr: float = 0.0
     # 每个规划期新增的自愿退役（未到设计寿命的机组）不超过当年总发电量的 15%，约合每年 1.5%：⚠ 假设（无出处）。
     # 对照：REMIND 的提前退役上限，中国落在缺省组 2%/年，常规煤电再乘 1.2，即 2.4%/年（`remind`，按装机计）；

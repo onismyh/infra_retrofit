@@ -33,7 +33,7 @@ from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
 from .solver_extract import empty_year_solutions, extract_year_solutions
 from .solver_provenance import _optional_model_attr, _solver_quality
-from .solver_start import _apply_rounded_start, _incumbent_logger
+from .solver_start import _apply_rounded_start
 from .year_types import SolveResult, YearPayload
 
 logger = logging.getLogger(__name__)
@@ -46,17 +46,14 @@ class SolveControls:
     - `relax`：把全部整数变量改成连续变量再求解（LP 松弛，热启动第 1 步）。
     - `start_sol`：按这个 .sol 给整数变量设 MIP start（热启动第 2 步，`solver_start._apply_rounded_start`）。
     - `write_sol`：有解时把解写到这里。路径须是 ASCII：Gurobi 在中文路径下写文件会失败。
-    - `log_incumbents`：每个新可行解打一行 INCUMBENT。
 
-    由运行器给：情景 `warm_start = "lp_relax"` 时两步各一套；此外读兼容的环境变量（`run_controls.env_controls`），
-    此前由 `_solve_joint_multi_period` 自己读 COAL_RETROFIT_LP_RELAX / START_SOL / WRITE_SOL / LOG_INCUMBENTS。
+    由运行器给：情景 `warm_start = "lp_relax"` 时两步各一套。
     `_solve_joint_multi_period` 的 *controls* 缺省（None）即全关。
     """
 
     relax: bool = False
     start_sol: Path | None = None
     write_sol: Path | None = None
-    log_incumbents: bool = False
 
 
 def _solve_joint_multi_period(
@@ -115,10 +112,7 @@ def _solve_joint_multi_period(
         logger.warning("solving the LP relaxation, not the MIP")
     if controls.start_sol is not None:
         _apply_rounded_start(model, Path(controls.start_sol), assumptions)
-    if controls.log_incumbents:
-        model.optimize(_incumbent_logger(year_payloads))
-    else:
-        model.optimize()
+    model.optimize()
     if controls.write_sol is not None and int(_optional_model_attr(model, "SolCount") or 0) > 0:
         model.write(str(controls.write_sol))
         logger.warning("solution written to %s", controls.write_sol)
@@ -133,13 +127,11 @@ def _solve_joint_multi_period(
             "status": status,
             "objective_cny": float("nan"),
             "solver_quality": solver_quality,
-            "capex_pathway_indices": tuple(idx.capex_pathway_indices),
             "year_solutions": empty_year_solutions(prepared, idx, year_payloads, status),
         }
     return {
         "status": status,
         "objective_cny": _model_obj_value(model) * _COST_SCALE,
         "solver_quality": solver_quality,
-        "capex_pathway_indices": tuple(idx.capex_pathway_indices),
         "year_solutions": extract_year_solutions(prepared, idx, year_payloads, status),
     }

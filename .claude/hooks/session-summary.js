@@ -155,7 +155,6 @@ const claudeMdCheck = common.checkClaudeMdUpdate(homeDir);
 
 if (claudeMdCheck.needsUpdate) {
   logContent += `- ⚠️ **CLAUDE.md memory needs updating** (${claudeMdCheck.changedFiles.length} source files changed)\n`;
-  logContent += `  Run "/update-memory" to sync latest memory\n`;
 
   // Record change details to log
   logContent += `\n`;
@@ -219,7 +218,6 @@ if (gitInfo.is_repo) {
 if (claudeMdCheck.needsUpdate) {
   displayMsg += '\n**⚠️ CLAUDE.md memory needs updating**\n';
   displayMsg += `- ${claudeMdCheck.changedFiles.length} source files changed\n`;
-  displayMsg += '- Run `/update-memory` to sync latest memory\n';
 }
 
 displayMsg += '\n---';

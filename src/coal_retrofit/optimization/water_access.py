@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def _water_scenario_family(mode: str) -> str:
     if str(mode) == "high_water_stress":
         return "high_pressure"
-    return "baseline"  # base_water 与 grid_supply 共用
+    return "baseline"  # grid_supply（2026-10-13 前另有同义的 base_water）
 
 
 def _water_member_rows(prepared: PreparedInputs, scenario: OptimizationScenario, year: int) -> pd.DataFrame:
@@ -153,9 +153,9 @@ def _withdrawal_matrices(
     withdrawal = np.zeros_like(water_intensity)
     withdrawal[:, PATHWAY_INDEX["unabated"]] = base_np
     withdrawal[:, PATHWAY_INDEX["retire"]] = 0.0
-    withdrawal[:, PATHWAY_INDEX["ccs"]] = capture_np * scenario.ccs_water_multiplier_adjustment
+    withdrawal[:, PATHWAY_INDEX["ccs"]] = capture_np
     withdrawal[:, PATHWAY_INDEX["biomass"]] = base_np * assumptions.biomass_water_multiplier
-    withdrawal[:, PATHWAY_INDEX["beccs"]] = capture_np * scenario.beccs_water_multiplier_adjustment
+    withdrawal[:, PATHWAY_INDEX["beccs"]] = capture_np
     withdrawal[:, PATHWAY_INDEX["ammonia"]] = base_np * assumptions.ammonia_water_multiplier
 
     air_base_np = air_base.to_numpy()
@@ -163,9 +163,9 @@ def _withdrawal_matrices(
     air_withdrawal = np.zeros_like(withdrawal)
     air_withdrawal[:, PATHWAY_INDEX["unabated"]] = air_base_np
     air_withdrawal[:, PATHWAY_INDEX["retire"]] = 0.0
-    air_withdrawal[:, PATHWAY_INDEX["ccs"]] = air_capture_np * scenario.ccs_water_multiplier_adjustment
+    air_withdrawal[:, PATHWAY_INDEX["ccs"]] = air_capture_np
     air_withdrawal[:, PATHWAY_INDEX["biomass"]] = air_base_np * assumptions.biomass_water_multiplier
-    air_withdrawal[:, PATHWAY_INDEX["beccs"]] = air_capture_np * scenario.beccs_water_multiplier_adjustment
+    air_withdrawal[:, PATHWAY_INDEX["beccs"]] = air_capture_np
     air_withdrawal[:, PATHWAY_INDEX["ammonia"]] = air_base_np * assumptions.ammonia_water_multiplier
     air_withdrawal = np.minimum(air_withdrawal, withdrawal)
 

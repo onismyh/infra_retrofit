@@ -7,9 +7,8 @@ from coal_retrofit.paths import ProjectPaths
 
 def main() -> None:
     paths = ProjectPaths(ROOT)
-    scenarios, base, nodes, availability = write_water_inputs(paths)
+    scenarios, nodes, availability = write_water_inputs(paths)
     print(f"Wrote {len(scenarios)} water scenario rows.")
-    print(f"Wrote {len(base)} water baseline rows.")
     print(f"Wrote {len(nodes)} water node rows.")
     print(f"Wrote {len(availability)} water availability rows.")
 

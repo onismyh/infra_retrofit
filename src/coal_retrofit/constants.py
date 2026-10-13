@@ -104,8 +104,8 @@ COOLING_WATER_INTENSITY_M3_PER_MWH = {
 
 def cooling_class(label: object) -> str:
     """GEM 的冷却方式标签（或已归类的名字）→ 上表与 `WATER_INTENSITY_BY_TECH_M3_PER_MWH` 的三个冷却键：含 `once` 为直流
-    （once-through），含 `air` 或 `dry` 为空冷（air），其余（含缺失）为循环冷却（recirculating）。逐台毛热耗、hub 用水强度与
-    缺用水表时的统一耗水值（`OptimizationAssumptions.cooling_baseline_water_intensity`）都按它归类。hub 各冷却方式的装机份额
+    （once-through），含 `air` 或 `dry` 为空冷（air），其余（含缺失）为循环冷却（recirculating）。逐台毛热耗与 hub 用水强度
+    都按它归类。hub 各冷却方式的装机份额
     （`builders.plants.build_plant_dataframe`）按上表键名做子串匹配，不走这里。"""
     text = str(label).strip().lower()
     if "once" in text:
@@ -252,7 +252,7 @@ GEM_NAMED_CFB_UNIT_IDS: frozenset[str] = frozenset({
 # （`wang2025reducing`）SI Table 1 转述同一组数值（"级"写成容量阈值，未列空冷 +15），另列 CFB 290、IGCC 270，取用。
 # 原附件按"级"分档，键为 (机型, 级)。分档值是门槛，不是机组均值；Wang 假设现役机组都达到基准水平，这里同样假设，
 # 不校准到全国统计（2022 年 302.5，本表按装机加权 305.5）。2022 版已被 2025 版（发改运行〔2025〕1499 号）替代，
-# 2025 版原表未取得（docs/参数调研_20261001.md §2.1）。
+# 2025 版原表未取得（docs/archive/参数调研_20261001.md §2.1）。
 SUPPLY_COAL_RATE_G_PER_KWH: dict[tuple[str, str], float] = {
     ("ultra-supercritical", "1000"): 285.0,
     ("ultra-supercritical", "600"): 293.0,

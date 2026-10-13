@@ -86,7 +86,7 @@ def test_blend_and_rebuild_close(tmp_path) -> None:
 
 @pytest.mark.parametrize("air", [False, True])
 def test_water_air_cooling_and_node_slack_close(tmp_path, monkeypatch, air: bool) -> None:
-    """节点余量低于电厂耗水。`air` 为真时给电厂加空冷耗水列（取缺省的空冷耗水强度，带捕集的再乘捕集耗水倍率），
+    """节点余量低于电厂耗水。`air` 为真时给电厂加空冷耗水列（空冷耗水强度 0.37，带捕集的再乘 1.82），
     缺的水靠空冷改造补上。"""
     import test_water_constraints as water
 
@@ -94,10 +94,8 @@ def test_water_air_cooling_and_node_slack_close(tmp_path, monkeypatch, air: bool
     paths = water._toy_paths(tmp_path, basin_caps=True, dry_use_m3=1.0e8)
     if air:
         plants = pd.read_csv(paths.inputs_dir / "plants.csv")
-        defaults = OptimizationAssumptions()
-        plants["air_consumption_intensity_m3_per_mwh"] = defaults.cooling_air_water_intensity_m3_per_mwh
-        plants["air_consumption_ccs_intensity_m3_per_mwh"] = (
-            defaults.cooling_air_water_intensity_m3_per_mwh * defaults.ccs_water_multiplier)
+        plants["air_consumption_intensity_m3_per_mwh"] = 0.37
+        plants["air_consumption_ccs_intensity_m3_per_mwh"] = 0.37 * 1.82
         plants.to_csv(paths.inputs_dir / "plants.csv", index=False)
     scenario, prepared, solution = water._solve(paths, "TEST-ATTRIBUTION-WATER", apply_basin_cap=False)
     costs, _ = _check_closure(prepared, solution, scenario, replace(OptimizationAssumptions(), apply_basin_cap=False))

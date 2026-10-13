@@ -7,7 +7,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from ..constants import COOLING_WATER_INTENSITY_M3_PER_MWH, HOURS_PER_YEAR, PLANNING_YEARS, cooling_class
+from ..constants import HOURS_PER_YEAR, PLANNING_YEARS
 from ..constants_province import PROVINCE_COAL_COST_CNY_PER_GJ, PROVINCE_NAME_ALIASES, PROVINCE_OPERATING_HOURS
 
 logger = logging.getLogger(__name__)
@@ -37,11 +37,7 @@ class OptimizationAssumptions:
     # biomass_upgrade_om_fraction / ammonia_upgrade_om_fraction x 掺烧能力的 capex 计（生物质 2026-10-02 起、掺氨 2026-10-10
     # 起），都不另设每 MWh 附加项：两者并存会把同一笔成本重复计算。此前生物质与 BECCS 的掺烧运维各 30 CNY/MWh，按改造路径的
     # 全部发电量收，与掺烧比例无关：Wang & Cai 2024 SI Table 3 的 γ2 18.85 $/kW/yr ~ 132 CNY/kW/yr 按约 4 400 h 折算（这个
-    # 小时数无出处）；掺氨此前 80 CNY/MWh（无出处）。
-    ccs_fixed_cost_cny_per_mwh: float = 0.0
-    biomass_fixed_cost_cny_per_mwh: float = 0.0
-    beccs_fixed_cost_cny_per_mwh: float = 0.0
-    ammonia_fixed_cost_cny_per_mwh: float = 0.0
+    # 小时数无出处）；掺氨此前 80 CNY/MWh（无出处）。这四个每 MWh 附加项此后恒为 0，2026-10-13 删去（`fixed_cost_cny_per_mwh`）。
     # 学习参考年（2030）的捕集岛改造 CAPEX，含压缩，在既有 300-1000 MW 机组上做 90% 胺法
     # 捕集。文献综述 2026-09-10（docs/工业联合减排实现说明.md §9.6）：中值 3 500 CNY/kW，
     # 区间 2 700-4 400（区间的出处没有记录；主引、上沿与国能锦界原文未核，本地 PDF 的对照值见 README §0.2）。
@@ -74,7 +70,7 @@ class OptimizationAssumptions:
     province_coal_cost_cny_per_gj: dict[str, float] = field(default_factory=PROVINCE_COAL_COST_CNY_PER_GJ.copy)
     # 煤价乘子（2026-10-02 起，缺省 1.0，只作敏感性）：乘在上表与缺省煤价上，煤电与工业捕集蒸汽的用煤同时变。上表是 2023 价格年，
     # 2024–2025 年发电集团口径低 2%–11%、2025 年秦皇岛港口价低 14%（B），敏感性取 0.89、0.86，保留分省结构、整体平移
-    # （docs/参数调研_20261001.md §2.3）。
+    # （docs/archive/参数调研_20261001.md §2.3）。
     coal_price_multiplier: float = 1.0
 
     def province_coal_cost(self, province_name: str) -> float:
@@ -191,12 +187,6 @@ class OptimizationAssumptions:
     # ~3 CNY/kg，中国氢能联盟白皮书 2019 区间 2-4），待作者给出有出处的数值。作用同煤电侧
     # 的 `ammonia_transport_cost_cny_per_kg_km`。⚠ 假设（临时值；白皮书区间未核到原文）。
     h2_transport_cost_cny_per_kg_km: float = 0.03
-    # 缺逐机组用水表时按冷却方式取的统一耗水值，与 `constants.COOLING_WATER_INTENSITY_M3_PER_MWH` 同一组数（耗水口径：
-    # 直流 0.29-0.41 m³/MWh，依据 NDRC et al. 2015 No.9 清洁生产基准，中位数 ≈0.35；原值 1.0 混淆了取水口径与耗水口径）。
-    cooling_once_through_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["once-through"]
-    cooling_recirculating_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["recirculating"]
-    cooling_air_water_intensity_m3_per_mwh: float = COOLING_WATER_INTENSITY_M3_PER_MWH["air"]
-    ccs_water_multiplier: float = 1.82
     biomass_water_multiplier: float = 1.00
     ammonia_water_multiplier: float = 1.01  # 掺氨使电厂取水、耗水都 +1%，与掺氨档位无关；⚠ 假设（无出处）
     # 水预算：`OptimizationScenario.water_mode` 不为 "no_water" 时生效，只有 v9.1 起的官方指标口径一种。
@@ -323,8 +313,8 @@ class OptimizationAssumptions:
     # （0.10–1.00），满档 2 500 元/kW 落在 Wang & Cai 2024 SI Table 3 的整包 985–3 596 元/kW 之内。
     biomass_upgrade_capex_cny_per_mw_per_level: float = 175_000.0
     # 生物质掺烧能力的固定运维，每年占其 capex 的比例：Fan et al. 2023 SI 式 (S57) 取 3%（不含燃料）。按在用的掺烧
-    # 能力（各档位层之和）计，闲置的不付；单价不随年份变，按当年单价与按建设年单价计相同（2026-10-02 起，此前见上方
-    # `biomass_fixed_cost_cny_per_mwh`）。
+    # 能力（各档位层之和）计，闲置的不付；单价不随年份变，按当年单价与按建设年单价计相同（2026-10-02 起，此前按发电量
+    # 每 MWh 30 元，见上方）。
     biomass_upgrade_om_fraction: float = 0.03
     # 掺生物质比例的炉型上限（2026-10-02 起）：煤粉炉不超过 0.15（Fan et al. 2023 的基准掺烧比例），CFB 不超过 0.30
     # （调研稿 B 级，原文未取得：⚠ 假设）。hub 内落在煤粉炉上限以上档位的在用份额不超过该 hub 的 CFB 装机份额，
@@ -337,7 +327,7 @@ class OptimizationAssumptions:
     # 121.6，取 125（每档 25 的整数倍），对应第 5 档；每档线性 25 CNY/kW，这个形状：⚠ 假设（无出处）。
     # （原值 800,000 是中国文献集中区间的 ~30 倍。）
     # 掺氨能力的固定运维，每年占其 capex 的比例，按在用的掺氨能力计，与生物质同口径（作者决定 2026-10-10；掺氨没有同口径
-    # 的出处）。此前见上方 `ammonia_fixed_cost_cny_per_mwh`。
+    # 的出处）。此前按发电量每 MWh 80 元，见上方。
     ammonia_upgrade_om_fraction: float = 0.03
     # 生物质到厂成本构成（Wang et al. 2024, Nat Commun）
     # 收购价 base_cost_cny_per_gj 在供给曲线 CSV 里（`constants.BIOMASS_COST_BASE` = 20 元/GJ）。
@@ -356,13 +346,14 @@ class OptimizationAssumptions:
         return self.province_operating_hours.get(province_name, self.capacity_factor * HOURS_PER_YEAR)
 
     def fixed_cost_cny_per_mwh(self, pathway: str) -> float:
+        """按发电量计的每 MWh 附加项：只有退役（按原发电量计的退役成本），改造路径的运维按 capex 比例计。"""
         return {
             "unabated": 0.0,
             "retire": self.retire_cost_cny_per_mwh,
-            "ccs": self.ccs_fixed_cost_cny_per_mwh,
-            "biomass": self.biomass_fixed_cost_cny_per_mwh,
-            "beccs": self.beccs_fixed_cost_cny_per_mwh,
-            "ammonia": self.ammonia_fixed_cost_cny_per_mwh,
+            "ccs": 0.0,
+            "biomass": 0.0,
+            "beccs": 0.0,
+            "ammonia": 0.0,
         }[pathway]
 
     def ccs_learning_factor(self, year: int) -> float:
@@ -405,11 +396,3 @@ class OptimizationAssumptions:
         if not self.green_h2_national_cap_mt_by_year:
             return 0.0
         return self._fraction_for_year(self.green_h2_national_cap_mt_by_year, year)
-
-    def cooling_baseline_water_intensity(self, cooling_label: str) -> float:
-        """缺逐机组用水表时的统一耗水值（m³/MWh），冷却方式按 `constants.cooling_class` 归类。"""
-        return {
-            "once-through": self.cooling_once_through_water_intensity_m3_per_mwh,
-            "air": self.cooling_air_water_intensity_m3_per_mwh,
-            "recirculating": self.cooling_recirculating_water_intensity_m3_per_mwh,
-        }[cooling_class(cooling_label)]

@@ -31,7 +31,6 @@ const cwd = input.cwd || process.cwd();
 const projectName = path.basename(cwd);
 const homeDir = os.homedir();
 const binding = common.getProjectMemoryBinding(cwd);
-const researchCandidate = common.detectResearchProject(cwd);
 
 // Build output
 let output = '';
@@ -87,22 +86,13 @@ if (binding.bound) {
   if (binding.vaultRoot) {
     output += `  - Vault root: ${binding.vaultRoot}\n`;
   }
-  output += '  - Suggested commands: /obsidian-sync, /obsidian-note\n\n';
-} else if (researchCandidate.candidate) {
-  output += '🧠 Obsidian project memory: research repo candidate\n';
-  output += `  - Detected markers: ${researchCandidate.markers.join(', ')}\n`;
-  output += '  - Suggested command: /obsidian-init\n\n';
+  output += '\n';
 }
 
 // Package manager detection
 try {
   const pm = getPackageManager();
   output += `📦 Package manager: ${pm.name} (${pm.source})\n`;
-
-  // If detected via fallback, suggest setup
-  if (pm.source === 'fallback' || pm.source === 'default') {
-    output += `💡 Run /setup-pm to configure preferred package manager\n`;
-  }
 } catch (err) {
   // Package manager detection failed, silently ignore
 }

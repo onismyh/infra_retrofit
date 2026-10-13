@@ -84,18 +84,12 @@ def test_named_cfb_units_get_a_cfb_mark_and_keep_their_steam_class() -> None:
     assert [combustion_class(label) for label in marked] == [combustion_class(label) for label in units["combustion"]]
 
 
-def test_cooling_class_and_flat_water_intensity() -> None:
-    """冷却标签归类：含 once 为直流，含 air / dry 为空冷，其余（含空与缺失）为循环冷却；缺用水表时的统一耗水值按同一归类取。"""
+def test_cooling_class_and_water_intensity_constants() -> None:
+    """冷却标签归类：含 once 为直流，含 air / dry 为空冷，其余（含空与缺失）为循环冷却；建输入按冷却方式取的耗水值。"""
     labels = ["Once-through", "Once-through air", " Dry cooling ", "Air-cooled", "recirculating", "cooling tower", "", None]
     classes = ["once-through", "once-through", "air", "air", "recirculating", "recirculating", "recirculating", "recirculating"]
     assert [cooling_class(label) for label in labels] == classes
-    assumptions = OptimizationAssumptions()
-    assert [assumptions.cooling_baseline_water_intensity(label) for label in labels] == [
-        COOLING_WATER_INTENSITY_M3_PER_MWH[cls] for cls in classes
-    ]
-    assert assumptions.cooling_once_through_water_intensity_m3_per_mwh == 0.35
-    assert assumptions.cooling_air_water_intensity_m3_per_mwh == 0.37
-    assert assumptions.cooling_recirculating_water_intensity_m3_per_mwh == 1.85
+    assert COOLING_WATER_INTENSITY_M3_PER_MWH == {"once-through": 0.35, "air": 0.37, "recirculating": 1.85}
 
 
 def test_unknown_combustion_label_raises() -> None:

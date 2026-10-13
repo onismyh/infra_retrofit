@@ -83,8 +83,8 @@ def _notes(assumptions: OptimizationAssumptions) -> list[list[Any]]:
                 "既有走廊容量不是管，不在其中。每条边以 edge_id 区分（同一对节点之间可能有不止一条候选边）；Node1、Node2 是"
                 "边的起点、终点，流量是净流量，起点到终点为正。Distance 是两端点的大圆距离，Length_Weighted 是模型用的管长"
                 f"（直线距离 x 绕行系数 {NETWORK_DETOUR_FACTOR:g}，或既有走廊的实际路由长；连通性修复补的边（edge_stitch_、"
-                "edge_merge_）直线距离不足 1 km 的按 1 km 计，运行期支线（edge_runtime_）管长不足 1 km 的按 1 km 计，这几条边的 "
-                "Length_Weighted 可达 Distance 的数倍）。<年>长度 = 在役根数 x 管长。"],
+                "edge_merge_）直线距离不足 1 km 的按 1 km 计，这几条边的 Length_Weighted 可达 Distance 的数倍）。"
+                "<年>长度 = 在役根数 x 管长。"],
         ["taransport_analysis", "表名照 ChinaCCS 的原拼写。上半部分是各管径档的在役根数与按根累计的管长，下半部分按分区"
                                 "汇总。Total_CO2_Pipeline_Length 给两种总管长：有在役管的边每条只算一次，与按根累计。"],
         ["成本", "Cost_* 与 Revenue_EOR 是各年不折现的值，投资计在建成那一年。捕集 = 煤电捕集岛投资 + 工业捕集投资 + 煤电"

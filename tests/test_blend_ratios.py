@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, fields, replace
 from types import SimpleNamespace
 from typing import cast
 
@@ -280,6 +280,19 @@ _ONLY = {
 }
 
 
+@dataclass(frozen=True)
+class _AmmoniaPerMWh(OptimizationAssumptions):
+    """给掺氨路径另收每 MWh 运维（2026-10-10 前的缺省是 80 元，模型 2026-10-13 删去这一项）：与档位无关、按份额计的
+    成本，夹具靠它让掺氨份额停在上限要求的那部分、档位取最高档。"""
+
+    ammonia_per_mwh: float = 0.0
+
+    def fixed_cost_cny_per_mwh(self, pathway: str) -> float:
+        if pathway == "ammonia":
+            return self.ammonia_per_mwh
+        return super().fixed_cost_cny_per_mwh(pathway)
+
+
 def _solve_blend_toy(
     root, pathway_disable, power_caps, *, continuous=True, carbon=(0.0, 0.0), coal=None, mip_gap=None, units=None,
     ammonia_per_mwh=None,
@@ -287,7 +300,7 @@ def _solve_blend_toy(
     """求解 2050、2060 两年的 toy，生物质与氨的供给挪到电厂旁边且充足。
 
     `coal` 改 toy 电厂所在省（山西）的煤价，元/GJ；`ammonia_per_mwh` 给掺氨路径另设每 MWh 运维
-    （`ammonia_fixed_cost_cny_per_mwh`，缺省 0）；`mip_gap` 缺省用情景的缺省值；`units` 是 ((装机, 投产年), ...)，
+    （`_AmmoniaPerMWh`；模型 2026-10-13 起没有这一项）；`mip_gap` 缺省用情景的缺省值；`units` 是 ((装机, 投产年), ...)，
     换掉 toy 的机组表（装机合计仍 1 000 MW，机型同 toy 机组，hub 毛热耗随之取机组的），缺省一台机组、两年都不到期。
     返回 (scenario, assumptions, prepared, solution)；`prepared` 供结果表函数用。
     """
@@ -330,7 +343,10 @@ def _solve_blend_toy(
             assumptions, province_coal_cost_cny_per_gj={**assumptions.province_coal_cost_cny_per_gj, "Shanxi": coal},
         )
     if ammonia_per_mwh is not None:
-        assumptions = replace(assumptions, ammonia_fixed_cost_cny_per_mwh=ammonia_per_mwh)
+        assumptions = _AmmoniaPerMWh(
+            **{field.name: getattr(assumptions, field.name) for field in fields(assumptions)},
+            ammonia_per_mwh=ammonia_per_mwh,
+        )
     solution = _solve_toy(paths, scenario, assumptions)
     return scenario, assumptions, prepare_inputs(paths, scenario, assumptions), solution
 

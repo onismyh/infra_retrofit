@@ -1,4 +1,4 @@
-"""水输入表的构建流程（`write_water_inputs`）：成员表与基准表、粗化到 2° 节点、厂址到节点的供水链路。
+"""水输入表的构建流程（`write_water_inputs`）：成员表、粗化到 2° 节点。厂址到节点的供水链路求解时现算（`optimization.data_prep._prepare_water`）。
 0.5° 网格节点与按流域预算并偏差校正的节点可用量在 `water_availability`，网格与流域的共用工具在 `water_grid`，
 偏差校正在 `water_bias`。
 """
@@ -9,10 +9,9 @@ import re
 import pandas as pd
 
 from ..artifacts import write_csv
-from ..constants import PLANNING_YEARS, WATER_COARSE_GRID_DEGREES, WATER_MATCH_BUFFER_KM
-from ..frames import iter_rows
+from ..constants import WATER_COARSE_GRID_DEGREES
 from ..paths import ProjectPaths
-from ..spatial import bin_index, within_radius
+from ..spatial import bin_index
 from .water_availability import build_water_availability_dataframe, build_water_nodes_dataframe
 
 WATER_PATTERN = re.compile(
@@ -65,27 +64,6 @@ def build_water_scenarios_dataframe(paths: ProjectPaths) -> pd.DataFrame:
         raise FileNotFoundError(f"No scenario .nc files matching WATER_PATTERN in {paths.data_dir / 'water'}")
     scenarios = pd.DataFrame(parse_water_file(paths, filename) for filename in files)
     return scenarios.sort_values(["hydrology_model", "gcm", "ssp"]).reset_index(drop=True)
-
-
-def build_water_base_dataframe(scenarios: pd.DataFrame) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
-    for _, row in scenarios[scenarios["is_base_candidate"]].iterrows():
-        for planning_year in PLANNING_YEARS:
-            rows.append(
-                {
-                    "planning_year": planning_year,
-                    "scenario_id": row["scenario_id"],
-                    "hydrology_model": row["hydrology_model"],
-                    "gcm": row["gcm"],
-                    "ssp": row["ssp"],
-                    "variable": row["variable"],
-                    "selection_rule": "ssp126_ensemble_baseline",
-                    "selection_status": "grid_node_extract_ready",
-                    "source": row["source"],
-                    "year_basis": row["year_basis"],
-                }
-            )
-    return pd.DataFrame(rows).sort_values(["planning_year", "hydrology_model", "gcm"]).reset_index(drop=True)
 
 
 def coarsen_water_inputs(
@@ -164,63 +142,9 @@ def coarsen_water_inputs(
     return coarse_nodes, coarse_availability
 
 
-def build_water_link_dataframe(paths: ProjectPaths, water_nodes: pd.DataFrame) -> pd.DataFrame:
-    """每个厂址到 `WATER_MATCH_BUFFER_KM` 内全部水节点的链路，按距离排名（`spatial.within_radius`）。"""
-    plants = pd.read_csv(paths.inputs_dir / "plants.csv")
-    plant_count = len(plants)
-    node_lons = water_nodes["longitude"].astype(float).to_numpy()
-    node_lats = water_nodes["latitude"].astype(float).to_numpy()
-    rows: list[dict[str, object]] = []
-
-    for plant in iter_rows(plants):
-        matched, distances_km = within_radius(
-            float(plant.centroid_longitude), float(plant.centroid_latitude), node_lons, node_lats,
-            WATER_MATCH_BUFFER_KM, ranked=True,
-        )
-        for rank, (node_idx, distance_km) in enumerate(zip(matched, distances_km, strict=True), start=1):
-            node = water_nodes.iloc[int(node_idx)]
-            rows.append(
-                {
-                    "plant_count": int(plant_count),
-                    "plant_id": str(plant.plant_id),
-                    "plant_index": int(plant.plant_index),
-                    "plant_province_name": str(plant.province_mode),
-                    "water_node_id": str(node["water_node_id"]),
-                    "water_node_province_name": str(node["province_name"]),
-                    "distance_km": round(float(distance_km), 3),
-                    "distance_rank": int(rank),
-                    "match_rule": "plant_buffer_intersects_water_node",
-                    "competition_scope": "shared_water_node",
-                    "buffer_km": WATER_MATCH_BUFFER_KM,
-                    "source": str(node["source"]),
-                    "year_basis": str(node["year_basis"]),
-                }
-            )
-
-    columns = [
-        "plant_count",
-        "plant_id",
-        "plant_index",
-        "plant_province_name",
-        "water_node_id",
-        "water_node_province_name",
-        "distance_km",
-        "distance_rank",
-        "match_rule",
-        "competition_scope",
-        "buffer_km",
-        "source",
-        "year_basis",
-    ]
-    return pd.DataFrame(rows, columns=columns).sort_values(
-        ["plant_id", "distance_km", "water_node_id"]
-    ).reset_index(drop=True)
-
-
-def write_water_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def write_water_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     scenarios = build_water_scenarios_dataframe(paths)
     scenarios = scenarios[scenarios["ssp"].astype(str).str.startswith("ssp")].reset_index(drop=True)
-    base = build_water_base_dataframe(scenarios)
     water_nodes = build_water_nodes_dataframe(paths, scenarios)
     water_availability = build_water_availability_dataframe(paths, scenarios, water_nodes)
     # 粗化以前是在构建之后手工施加的，所以已提交的输入无法从这个入口重新生成。
@@ -243,9 +167,6 @@ def write_water_inputs(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame,
         ].reset_index(drop=True)
 
     write_csv(scenarios, paths.inputs_dir / "water_scenarios.csv")
-    write_csv(base, paths.inputs_dir / "water_base.csv")
     write_csv(water_nodes, paths.inputs_dir / "water_nodes.csv")
     write_csv(water_availability, paths.inputs_dir / "water_availability.csv")
-    water_links = build_water_link_dataframe(paths, water_nodes)
-    write_csv(water_links, paths.inputs_dir / "water_supply_links.csv")
-    return scenarios, base, water_nodes, water_availability
+    return scenarios, water_nodes, water_availability

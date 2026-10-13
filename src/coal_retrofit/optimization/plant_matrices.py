@@ -216,7 +216,7 @@ def _plant_operating_matrices(
 
 
 def _water_intensity_matrices(
-    prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions
+    prepared: PreparedInputs, assumptions: OptimizationAssumptions
 ) -> tuple[np.ndarray, np.ndarray]:
     """逐路径耗水强度及其全空冷对应矩阵（m3/MWh）。
 
@@ -228,9 +228,9 @@ def _water_intensity_matrices(
     water_intensity = np.zeros((len(prepared.plants), len(PATHWAYS)), dtype=np.float64)
     water_intensity[:, PATHWAY_INDEX["unabated"]] = water_base
     water_intensity[:, PATHWAY_INDEX["retire"]] = 0.0
-    water_intensity[:, PATHWAY_INDEX["ccs"]] = capture_base * scenario.ccs_water_multiplier_adjustment
+    water_intensity[:, PATHWAY_INDEX["ccs"]] = capture_base
     water_intensity[:, PATHWAY_INDEX["biomass"]] = water_base * assumptions.biomass_water_multiplier
-    water_intensity[:, PATHWAY_INDEX["beccs"]] = capture_base * scenario.beccs_water_multiplier_adjustment
+    water_intensity[:, PATHWAY_INDEX["beccs"]] = capture_base
     water_intensity[:, PATHWAY_INDEX["ammonia"]] = water_base * assumptions.ammonia_water_multiplier
 
     if "air_consumption_intensity_m3_per_mwh" in prepared.plants.columns:
@@ -242,9 +242,9 @@ def _water_intensity_matrices(
     air_water_intensity = np.zeros_like(water_intensity)
     air_water_intensity[:, PATHWAY_INDEX["unabated"]] = air_base
     air_water_intensity[:, PATHWAY_INDEX["retire"]] = 0.0
-    air_water_intensity[:, PATHWAY_INDEX["ccs"]] = air_capture * scenario.ccs_water_multiplier_adjustment
+    air_water_intensity[:, PATHWAY_INDEX["ccs"]] = air_capture
     air_water_intensity[:, PATHWAY_INDEX["biomass"]] = air_base * assumptions.biomass_water_multiplier
-    air_water_intensity[:, PATHWAY_INDEX["beccs"]] = air_capture * scenario.beccs_water_multiplier_adjustment
+    air_water_intensity[:, PATHWAY_INDEX["beccs"]] = air_capture
     air_water_intensity[:, PATHWAY_INDEX["ammonia"]] = air_base * assumptions.ammonia_water_multiplier
     air_water_intensity = np.minimum(air_water_intensity, water_intensity)
     return water_intensity, air_water_intensity
@@ -279,7 +279,7 @@ def _air_cooling_matrices(
         capacity_mw * 1000.0 * float(assumptions.air_retrofit_capex_cny_per_kw) * still_wet
     )
     # 空冷背压升高：效率降 pp 个百分点，每 MWh 多烧 (pp / η) x 毛热耗的煤（η = 3.6 / 毛热耗）。多排的 CO2 按 hub 毛热耗计，
-    # 不随重建变；下面的燃料成本按各部分自己的毛热耗计（docs/参数调研_20261001.md §4 第 15 条，作者决定 2026-10-02 维持）。
+    # 不随重建变；下面的燃料成本按各部分自己的毛热耗计（docs/archive/参数调研_20261001.md §4 第 15 条，作者决定 2026-10-02 维持）。
     # 毛热耗都乘部分负荷修正（缺省关为 1；各部分的已在 `_plant_operating_matrices` 里乘过）。
     heat_rate = prepared.plants["heat_rate_gj_per_mwh"].astype(float).to_numpy() * plant["part_load_factor"]
     penalty_pp = float(assumptions.air_retrofit_efficiency_penalty_pp)

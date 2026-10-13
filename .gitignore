@@ -14,9 +14,6 @@ data/
 !/data/封存汇图层-Fan/
 !/data/NaturalEarth/
 
-# 归档区（2.4 GB，2026-09-06 从主线移出，见 _archive_20260906/README.md）
-_archive_20260906/
-
 # 可再生的缓存与构建产物
 __pycache__/
 *.pyc
@@ -28,6 +25,8 @@ __pycache__/
 # 机器本地 / 按 .claude/rules/security.md 不入库
 .claude/settings.json
 .claude/settings.local.json
+# 会话结束钩子（.claude/hooks/session-summary.js）写的会话日志
+.claude/logs/
 # 密钥、凭据与本地数据库（.claude/rules/security.md 的清单），以及 Gurobi 许可证（AGENTS.md）
 .env
 .env.*
@@ -48,11 +47,6 @@ gurobi.lic
 !/results/figures/
 # 作者本机求解后拷进来的结果（2026-10-10 起，出图与对账读这里；见 results/solved/README.md）。
 !/results/solved/
-
-# v9.1 solve tree: removed from the current version on 2026-09-28 (still in a303f05). Its results/ and
-# the data junction to the main data/ were never tracked; keep ignoring them in existing checkouts.
-_v91tree/results/
-_v91tree/data
 
 # Industry + coal solve tree (ST_ family): code lives in the root src/, the tree holds inputs and
 # results only. Its inputs -- including the 2026-09-12 rebuilt network -- belong in git; results

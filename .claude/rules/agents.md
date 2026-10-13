@@ -4,15 +4,6 @@
 
 Located in `~/.claude/agents/`:
 
-### Research Workflow
-
-| Agent | Purpose | When to Use |
-|-------|---------|-------------|
-| literature-reviewer | Literature search, classification, and trend analysis | Starting a new research topic, literature survey |
-| rebuttal-writer | Systematic rebuttal writing with tone optimization | Responding to reviewer comments |
-| paper-miner | Extract writing knowledge from successful papers | Learning writing patterns from top-venue papers |
-| kaggle-miner | Extract engineering practices from Kaggle solutions | Learning competition strategies and pipelines |
-
 ### Development Workflow
 
 | Agent | Purpose | When to Use |
@@ -24,13 +15,6 @@ Located in `~/.claude/agents/`:
 | tdd-guide | Test-driven development workflow | New features, bug fixes requiring tests |
 | bug-analyzer | Deep code execution flow analysis and root cause investigation | Debugging complex issues across multiple files |
 | dev-planner | Implementation planning and task breakdown | Complex features, multi-step refactoring |
-
-### Design & Content
-
-| Agent | Purpose | When to Use |
-|-------|---------|-------------|
-| ui-sketcher | ASCII interface design and user story generation | UI/UX planning, wireframing |
-| story-generator | Content and narrative generation | Creating documentation narratives, examples |
 
 ## Automatic Agent Invocation
 

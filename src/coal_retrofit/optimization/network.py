@@ -7,24 +7,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from ..constants import NETWORK_DETOUR_FACTOR
 from ..frames import iter_rows
 from ..paths import ProjectPaths
-from ..spatial import geodesic_length_km
-
-# 模型计价的最短支线。有三个工业 hub 正压在走廊节点上（大地线距离 0.000 km），
-# 它们的零长度支线在 2030 年被"免费"按 20 Mtpa 建成。
-# 以一公里的厂内管道为下限。
-MIN_BRANCH_LENGTH_KM = 1.0
-
-
-def _routed_branch_km(straight_km: float) -> float:
-    """支线直线长度 -> 路由长度：先乘绕行系数，再套下限。
-
-    CLAUDE.md §1.3：每条直线候选都乘 1.136；直线距离多数是大地线，直连弧与缝合边是 haversine（见该节现状注）。
-    运行期支线（电厂、封存、工业）原先用的是原始大地线距离；`builders/network.py` 建的三角化边与直连边已带该系数。
-    """
-    return max(float(straight_km) * NETWORK_DETOUR_FACTOR, MIN_BRANCH_LENGTH_KM)
 
 
 @dataclass(frozen=True)
@@ -75,56 +59,11 @@ def _build_base_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
     return graph
 
 
-def _nearest_corridor_node(nodes: pd.DataFrame, lon: float, lat: float) -> tuple[str, float]:
-    best_id = ""
-    best_distance = float("inf")
-    for row in iter_rows(nodes):
-        distance = geodesic_length_km([(lon, lat), (float(row.lon), float(row.lat))])
-        if distance < best_distance:
-            best_id = str(row.node_id)
-            best_distance = float(distance)
-    if not best_id:
-        raise ValueError("Could not find corridor node for runtime connector.")
-    return best_id, best_distance
-
-
-def _append_runtime_edge(
-    edge_rows: list[dict[str, object]],
-    graph: nx.Graph,
-    edge_id: str,
-    from_node_id: str,
-    to_node_id: str,
-    length_km: float,
-    edge_class: str,
-    source: str,
-    year_basis: str,
-    offshore_length_km: float = 0.0,
-) -> None:
-    edge_rows.append(
-        {
-            "edge_id": edge_id,
-            "from_node_id": from_node_id,
-            "to_node_id": to_node_id,
-            "length_km": round(length_km, 3),
-            "offshore_length_km": round(offshore_length_km, 3),
-            "corridor_type": "runtime",
-            "existing_corridor_flag": 0,
-            "edge_class": edge_class,
-            "source": source,
-            "year_basis": year_basis,
-        }
-    )
-    graph.add_edge(
-        from_node_id,
-        to_node_id,
-        edge_id=edge_id,
-        length_km=length_km,
-        corridor_type="runtime",
-        existing_corridor_flag=0,
-        edge_class=edge_class,
-        source=source,
-        year_basis=year_basis,
-    )
+def _terminal_nodes(nodes: pd.DataFrame, id_column: str) -> dict[str, str]:
+    """管网节点表里源或汇的 ID -> 节点 ID（该列为空的节点不是这一类）；没有这一列时为空。"""
+    if id_column not in nodes.columns:
+        return {}
+    return {str(getattr(row, id_column)): str(row.node_id) for row in iter_rows(nodes.loc[nodes[id_column].notna()])}
 
 
 def _require_sources_reach_sinks(
@@ -138,7 +77,7 @@ def _require_sources_reach_sinks(
     CCS 通路静默不可行，求解却照常完成。
 
     Args:
-        graph: 含运行期接入边的完整候选网络。
+        graph: 候选网络。
         sources: 标签（如 "industry H012"）-> 节点 ID。
         sinks: 参与求解的封存汇节点 ID。
         inputs_dir: 管网输入目录，只用于报错信息。
@@ -176,143 +115,37 @@ def build_runtime_network(
         )
     graph = _build_base_graph(base_nodes, base_edges)
     nodes = base_nodes.copy()
-    runtime_edge_rows: list[dict[str, object]] = []
-    existing_plant_nodes = {}
-    existing_storage_nodes = {}
-    if "plant_id" in base_nodes.columns:
-        existing_plant_nodes = {
-            str(row.plant_id): str(row.node_id)
-            for row in iter_rows(base_nodes.loc[base_nodes["plant_id"].notna()])
-        }
-    if "storage_hub_id" in base_nodes.columns:
-        existing_storage_nodes = {
-            str(row.storage_hub_id): str(row.node_id)
-            for row in iter_rows(base_nodes.loc[base_nodes["storage_hub_id"].notna()])
-        }
-
-    for row in iter_rows(plants):
-        if str(row.plant_id) in existing_plant_nodes:
-            continue
-        runtime_node_id = f"plant::{row.plant_id}"
-        graph.add_node(runtime_node_id, lon=float(row.centroid_longitude), lat=float(row.centroid_latitude), node_type="plant")
-        nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.centroid_longitude), float(row.centroid_latitude))
-        length_km = _routed_branch_km(length_km)
-        _append_runtime_edge(
-            edge_rows=runtime_edge_rows,
-            graph=graph,
-            edge_id=f"edge_runtime_plant_{row.plant_id}",
-            from_node_id=runtime_node_id,
-            to_node_id=nearest_node_id,
-            length_km=length_km,
-            edge_class="runtime_plant_branch",
-            source="runtime_short_link_rule",
-            year_basis="runtime",
+    # 源与汇都必须已是管网输入里的节点（`scripts/build_network_inputs.py` 把煤电 hub、工业 hub 与汇一起建网）。
+    # 2026-10-13 前这里给缺节点的源与汇补一条接最近节点的运行期支线，v9.2 输入用不到，删去。
+    plant_node_ids = _terminal_nodes(base_nodes, "plant_id")
+    storage_node_ids = _terminal_nodes(base_nodes, "storage_hub_id")
+    industry_node_ids = _terminal_nodes(base_nodes, "industry_hub_id")
+    missing = [
+        *(f"plant {pid}" for pid in plants["plant_id"].astype(str) if pid not in plant_node_ids),
+        *(f"storage {sid}" for sid in storages["storage_hub_id"].astype(str) if sid not in storage_node_ids),
+        *(f"industry {hid}" for hid in (industry_hubs["hub_id"].astype(str) if industry_hubs is not None else [])
+          if hid not in industry_node_ids),
+    ]
+    if missing:
+        more = " …" if len(missing) > 6 else ""
+        raise ValueError(
+            f"{len(missing)} 个参与求解的源或汇不在 {paths.inputs_dir / 'pipeline_nodes.csv'} 里"
+            f"（{', '.join(missing[:6])}{more}）：管网输入与厂址、汇、工业 hub 表不配套，重新运行 scripts/build_network_inputs.py"
         )
-        nodes = pd.concat(
-            [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.centroid_longitude), "lat": float(row.centroid_latitude), "node_type": "plant", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
-            ignore_index=True,
-        )
-        existing_plant_nodes[str(row.plant_id)] = runtime_node_id
 
-    storage_nodes = storages
-    for row in iter_rows(storage_nodes):
-        if str(row.storage_hub_id) in existing_storage_nodes:
-            continue
-        runtime_node_id = f"storage::{row.storage_hub_id}"
-        graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="storage_hub")
-        nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
-        length_km = _routed_branch_km(length_km)
-        _append_runtime_edge(
-            edge_rows=runtime_edge_rows,
-            graph=graph,
-            edge_id=f"edge_runtime_storage_{row.storage_hub_id}",
-            from_node_id=runtime_node_id,
-            to_node_id=nearest_node_id,
-            length_km=length_km,
-            edge_class="runtime_storage_branch",
-            source="runtime_short_link_rule",
-            year_basis="runtime",
-            # 运行期支线没有几何：接海上汇的整条算海上段，其余支线（接电厂、工业）都在陆上。
-            offshore_length_km=length_km if bool(getattr(row, "offshore", False)) else 0.0,
-        )
-        nodes = pd.concat(
-            [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "storage_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
-            ignore_index=True,
-        )
-        existing_storage_nodes[str(row.storage_hub_id)] = runtime_node_id
-
-    # 工业 hub 与煤电 hub 进入同一张图：其捕集的 CO2 争用同样的边容量和同样的汇。
-    # 支线规则完全相同，因此两类源谁都不会得到对方没有的接入优势。
-    #
-    # 最近节点可能是煤电厂节点或封存节点，因为 `nodes` 随支线的加入而增长。这不是缺陷：
-    # 节点平衡固定的是节点的净流出，令其等于自身捕集量（在汇处则为自身注入量），所以过境的
-    # 工业流量使流出恰好增加它带进来的量。质量守恒，而共享一个汇集点正是这里"共享基础设施"
-    # 的含义。
-    existing_industry_nodes: dict[str, str] = {}
-    if "industry_hub_id" in base_nodes.columns:
-        existing_industry_nodes = {
-            str(row.industry_hub_id): str(row.node_id)
-            for row in iter_rows(base_nodes.loc[base_nodes["industry_hub_id"].notna()])
-        }
-    if industry_hubs is not None and len(industry_hubs):
-        # 工业点源已作为 industry_hub 节点进入 inputs/pipeline_*.csv，并与煤电、封存汇
-        # 一起做过联合三角剖分与去交叉；到汇的可达性由 builders 的缝合步骤保证。因此这里
-        # 不再追加 `runtime_direct_fallback` 直连弧——那是图上唯一还会穿越管网的一类边。
-        for row in iter_rows(industry_hubs):
-            if str(row.hub_id) in existing_industry_nodes:
-                continue
-            runtime_node_id = f"industry::{row.hub_id}"
-            graph.add_node(runtime_node_id, lon=float(row.longitude), lat=float(row.latitude), node_type="industry_hub")
-            nearest_node_id, length_km = _nearest_corridor_node(nodes, float(row.longitude), float(row.latitude))
-            length_km = _routed_branch_km(length_km)
-            _append_runtime_edge(
-                edge_rows=runtime_edge_rows,
-                graph=graph,
-                edge_id=f"edge_runtime_industry_{row.hub_id}",
-                from_node_id=runtime_node_id,
-                to_node_id=nearest_node_id,
-                length_km=length_km,
-                edge_class="runtime_industry_branch",
-                source="runtime_short_link_rule",
-                year_basis="runtime",
-            )
-            nodes = pd.concat(
-                [nodes, pd.DataFrame([{"node_id": runtime_node_id, "lon": float(row.longitude), "lat": float(row.latitude), "node_type": "industry_hub", "degree": 1, "source": "runtime_short_link_rule", "year_basis": "runtime"}])],
-                ignore_index=True,
-            )
-            existing_industry_nodes[str(row.hub_id)] = runtime_node_id
-
-    solved_sources = {f"plant {pid}": existing_plant_nodes[pid] for pid in plants["plant_id"].astype(str)}
+    solved_sources = {f"plant {pid}": plant_node_ids[pid] for pid in plants["plant_id"].astype(str)}
     if industry_hubs is not None and len(industry_hubs):
         solved_sources.update(
-            {f"industry {hid}": existing_industry_nodes[hid] for hid in industry_hubs["hub_id"].astype(str)}
+            {f"industry {hid}": industry_node_ids[hid] for hid in industry_hubs["hub_id"].astype(str)}
         )
     _require_sources_reach_sinks(
         graph,
         sources=solved_sources,
-        sinks={existing_storage_nodes[sid] for sid in storages["storage_hub_id"].astype(str)},
+        sinks={storage_node_ids[sid] for sid in storages["storage_hub_id"].astype(str)},
         inputs_dir=paths.inputs_dir,
     )
 
-    edges = base_edges.copy()
-    if runtime_edge_rows:
-        edges = pd.concat([edges, pd.DataFrame(runtime_edge_rows)], ignore_index=True, sort=False)
-
-    edges = edges.drop_duplicates(subset=["edge_id"]).reset_index(drop=True)
-
-    # 由现有映射构造 plant_node_ids 与 storage_node_ids
-    plant_node_ids = {
-        str(plant_id): str(node_id)
-        for plant_id, node_id in existing_plant_nodes.items()
-    }
-    storage_node_ids = {
-        str(storage_hub_id): str(node_id)
-        for storage_hub_id, node_id in existing_storage_nodes.items()
-    }
-    industry_node_ids = {
-        str(hub_id): str(node_id)
-        for hub_id, node_id in existing_industry_nodes.items()
-    }
+    edges = base_edges.drop_duplicates(subset=["edge_id"]).reset_index(drop=True)
 
     # 构造有向关联矩阵：形状 (n_nodes, n_edges)
     # incidence[n, e] = +1 若边 e 从节点 n 出发

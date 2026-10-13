@@ -1,15 +1,14 @@
 """从厂级点源库构建工业点源清单。
 
 来源：点源库目录 `POINT_SOURCE_DIR`（环境变量 `COAL_RETROFIT_POINT_SOURCE_DIR`，缺省为作者本机的
-`D:\\6. Transfer\\PhD_tht\\point_source\\`）——六个工作簿，覆盖七个部门，各自都带
+`D:\\6. Transfer\\PhD_tht\\point_source\\`）——读其中钢铁、水泥、合成氨与甲醇三个工作簿，覆盖五个部门，各自都带
 WGS84 坐标、产能、产量、CO2，以及（EAF 除外）一列氢需求。
 
 该库中的单位并不统一，一旦弄错，整个工业部门会被悄无声息地按比例放缩。编写本模块前
 已对照全国总量核验：
 
     钢铁      产量以 kt 计      CO2 以 Mt 计   H2_DMD 以 kt 计   （939 Mt 粗钢）
-    其他      产量以万吨计      CO2 以 Mt 计   H2_DMD 以万吨计   （52 Mt NH3，678 Mt 原油，
-                                                                   1 269 Mt 熟料）
+    其他      产量以万吨计      CO2 以 Mt 计   H2_DMD 以万吨计   （52 Mt NH3，1 269 Mt 熟料）
     水泥      产能以 t/d 计（不是万吨）——9 000 t/d x 300 d = 2.7 Mt/yr，与它自己的
               产量列吻合，单位正是靠这项核对确定下来的。
 
@@ -32,14 +31,11 @@ from ..constants_industry import (
     INDUSTRY_CONSUMPTION_SHARE,
     SECTOR_AMMONIA,
     SECTOR_CEMENT,
-    SECTOR_COAL_CHEM,
     SECTOR_HAS_H2_ROUTE,
     SECTOR_LABELS_ZH,
     SECTOR_METHANOL,
-    SECTOR_REFINERY,
     SECTOR_STEEL_BF,
     SECTOR_STEEL_EAF,
-    SECTORS_OUT_OF_SCOPE,
     SECTORS_WITH_UNIFORM_RETIREMENT,
     water_quota,
 )
@@ -190,52 +186,6 @@ def _load_ammonia_methanol() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _load_refinery() -> pd.DataFrame:
-    df = _read("Refinery_all.xlsx", "China")
-    return pd.DataFrame({
-        "source_id": "REF_" + df["ID"].astype(str),
-        "sector": SECTOR_REFINERY,
-        "plant_name": df["Name"].astype(str),
-        "province": df["Province"].astype(str),
-        "longitude": _num(df, "lon"), "latitude": _num(df, "lat"),
-        "capacity_kt_per_year": _num(df, "Crude cap") * WAN_TO_KT,
-        "production_kt_per_year": _num(df, "Crude input") * WAN_TO_KT,
-        "co2_mt_per_year": _num(df, "Emission"),
-        "process_co2_mt_per_year": 0.0,
-        "h2_demand_kt_per_year": _num(df, "H2_dmd") * WAN_TO_KT,
-        "feedstock": "default",
-        "commission_year": pd.Series(pd.NA, index=df.index, dtype="Int64"),
-        "status": "operating",
-    })
-
-
-def _load_coal_chemical() -> pd.DataFrame:
-    """现代煤化工。读四张分工艺表，而不是 `All` 汇总表。
-
-    `All` 丢掉了产能与产量，而用水计算需要它们；分工艺表还把过程 CO2 与燃料 CO2 分开，
-    这一点很重要，因为掺氢只能替代燃料那部分。
-    """
-    frames = []
-    for sheet in ("煤制天然气", "煤制烯烃", "煤制油", "煤制乙二醇"):
-        df = _read("Coal-to-chemicals.xlsx", sheet)
-        frames.append(pd.DataFrame({
-            "source_id": f"CTC_{sheet}_" + df["ID"].astype(str),
-            "sector": SECTOR_COAL_CHEM,
-            "plant_name": df["Project"].astype(str),
-            "province": df["Province"].astype(str),
-            "longitude": _num(df, "Longtitude"), "latitude": _num(df, "Latitude"),
-            "capacity_kt_per_year": _num(df, "Capacity") * WAN_TO_KT,
-            "production_kt_per_year": _num(df, "Production") * WAN_TO_KT,
-            "co2_mt_per_year": _num(df, "Total Direct Emission"),
-            "process_co2_mt_per_year": _num(df, "CO2 Emission-Process"),
-            "h2_demand_kt_per_year": _num(df, "H2_DMD") * WAN_TO_KT,
-            "feedstock": _text(df, "Feedstock", "Coal"),
-            "commission_year": pd.Series(pd.NA, index=df.index, dtype="Int64"),
-            "status": "operating",
-        }))
-    return pd.concat(frames, ignore_index=True)
-
-
 def _assign_missing_years(frame: pd.DataFrame, base_year: int) -> pd.DataFrame:
     """补齐缺失的投运年份，补法取决于该部门掌握了多少信息。
 
@@ -300,13 +250,11 @@ def _apply_water(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_industry_sources(base_year: int = int(PLANT_YEAR_BASIS)) -> pd.DataFrame:
-    """全部七个部门的厂级工业点源，单位已统一。"""
+    """五个部门的厂级工业点源，单位已统一。"""
     frame = pd.concat(
-        [_load_steel(), _load_cement(), _load_ammonia_methanol(),
-         _load_refinery(), _load_coal_chemical()],
+        [_load_steel(), _load_cement(), _load_ammonia_methanol()],
         ignore_index=True,
     )
-    frame = frame[~frame["sector"].isin(SECTORS_OUT_OF_SCOPE)].reset_index(drop=True)
     before = len(frame)
     frame = frame[
         frame["latitude"].between(3.0, 54.0) & frame["longitude"].between(73.0, 136.0)

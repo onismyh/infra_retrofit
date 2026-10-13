@@ -10,7 +10,7 @@
     python -m coal_retrofit water-members [--tree _indtree]
 
 情景登记在仓库根 `scenarios/*.toml`（格式见 `coal_retrofit.scenarios`），`--registry` 可换目录。
-包内 INFO 日志（求解参数、水预算、热启动进度，以及 `COAL_RETROFIT_LOG_INCUMBENTS=1` 的 INCUMBENT 行）写 stderr，
+包内 INFO 日志（求解参数、水预算、热启动进度）写 stderr，
 存日志要 `2>&1`；`run` 自己的结果信息仍写 stdout。
 
 - `run` 写 `<tree>/results/<结果名>.json` 与同名目录下的九张表；结果名缺省是情景名。已有 `<结果名>.json` 时
@@ -27,12 +27,12 @@
   选项，并显示 run 会用的结果名。
 - `water-members` 列出 `<tree>/inputs/water_scenarios.csv` 的成员，逐个核各规划年的可用水量与耗水数据（两个季节）；
   `--tree` 缺省取登记情景的求解树（只许有一棵）。有水约束且指定了成员的 run 在求解之前也核这个成员（只核它读的季节）。
-- `--mip-gap` 只放宽这一次求解的 gap，结果名不变（原 `run_single.py` 的用法）；seed 复现不要用。
+- `--mip-gap` 只放宽这一次求解的 gap，结果名不变；seed 复现不要用。
 - `--tree` 换求解树（相对当前目录），结果也写在那棵树下。
-- `show`、`diff` 按 `run` 的缺省选项（8 线程、36000 s）与当前的兼容环境变量构造参数，不读输入、不求解。
+- `show`、`diff` 按 `run` 的缺省选项（8 线程、36000 s）构造参数，不读输入、不求解。
 
-退出码：0 解出来了（`water-members`：成员数据都齐全）；1 登记表、`--set`、`--water` 等、环境变量写错，或求解之前就
-拒绝（结果已存在、热启动与环境变量冲突、水文成员的数据不全），`water-members` 查出数据不全，读输入、Gurobi 出错之类
+退出码：0 解出来了（`water-members`：成员数据都齐全）；1 登记表、`--set`、`--water` 等写错，或求解之前就
+拒绝（结果已存在、水文成员的数据不全），`water-members` 查出数据不全，读输入、Gurobi 出错之类
 没有接住的异常也是 1（Python 的缺省，打印 traceback）；2 命令行写错；3 没有可用的解（求解状态不可接受，结果表补零；
 或热启动第 1 步没有解，第 2 步没跑、没写结果）。
 """
@@ -41,7 +41,6 @@ from __future__ import annotations
 import argparse
 import logging
 import math
-import os
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict, fields, replace
@@ -53,7 +52,7 @@ from .hydrology import MEMBERS_FILE, check_members, load_members, member_id, wat
 from .optimization.assumptions import OptimizationAssumptions
 from .optimization.scenario import OptimizationScenario
 from .run_controls import RunError, WarmStartFailed
-from .runner import DEFAULT_THREADS, DEFAULT_TIME_LIMIT, SOLVER_ENV_FIELDS, build_parameters, run
+from .runner import DEFAULT_THREADS, DEFAULT_TIME_LIMIT, build_parameters, run
 from .scenarios import (
     CHOICES,
     DEFAULT_REGISTRY_DIR,
@@ -163,9 +162,6 @@ def _cmd_show(registry: Registry, args: argparse.Namespace, parser: argparse.Arg
         print(f"--water/--season/--targets → {key} = {value!r}")
     if suffix and not args.set:
         print(f"run 的结果名（不给 --as 时）：{spec.name}{suffix}")
-    for key, field_name in SOLVER_ENV_FIELDS.items():
-        if os.environ.get(key):
-            print(f"环境变量 {key}={os.environ[key]} → scenario.{field_name}")
     print(f"标 * 的与 dataclass 缺省不同；线程数、时限按 run 的缺省（{DEFAULT_THREADS}、{DEFAULT_TIME_LIMIT} s）。")
     pairs: dict[str, tuple[Any, Any]] = {
         "scenario": (scenario, OptimizationScenario(experiment_id="", description="")),

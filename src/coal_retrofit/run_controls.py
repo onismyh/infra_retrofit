@@ -1,9 +1,9 @@
-"""运行控制：热启动第 1 步与 .sol 的位置、兼容的 `COAL_RETROFIT_*` 环境变量、求解时的代码版本。由 `runner.run` 调用。
+"""运行控制：热启动第 1 步与 .sol 的位置、求解时的代码版本。由 `runner.run` 调用。
 
 热启动（实现说明 §9.7）2026-09-28 之前要手工跑两次：第 1 步设 COAL_RETROFIT_LP_RELAX 与 COAL_RETROFIT_WRITE_SOL、
 `--time-limit 1800`，第 2 步设 COAL_RETROFIT_START_SOL。情景 `warm_start = "lp_relax"` 时运行器在同一进程里照做：
 两步各读一次输入、各建一次模型，与手工跑两次是同一对求解。第 1 步只写 .sol，不写结果表，它的状态、目标函数、
-用时与 .sol 的摘要记进最终 result.json 的 `resolved.warm_start`。
+用时与 .sol 的摘要记进最终 result.json 的 `resolved.warm_start`。手工两步用的 COAL_RETROFIT_* 环境变量 2026-10-13 删除。
 """
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import gc
 import hashlib
 import logging
 import math
-import os
 import subprocess
 import tempfile
 import time
@@ -31,12 +30,8 @@ from .scenarios import REPO_ROOT, shown_path
 
 logger = logging.getLogger(__name__)
 
-# 运行器自己做热启动两步时，这两个环境变量再设就是两套办法叠在一起：直接拒绝。
-WARM_START_ENV = ("COAL_RETROFIT_LP_RELAX", "COAL_RETROFIT_START_SOL")
-
-
 class RunError(RuntimeError):
-    """求解之前就拒绝：结果已存在、热启动与环境变量冲突、.sol 没有可用的 ASCII 路径。命令行退出码 1。"""
+    """求解之前就拒绝：结果已存在、.sol 没有可用的 ASCII 路径。命令行退出码 1。"""
 
 
 class WarmStartFailed(RuntimeError):
@@ -55,31 +50,6 @@ def initial_state(prepared: PreparedInputs) -> SolveState:
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
         remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
     )
-
-
-def env_controls() -> SolveControls:
-    """兼容的环境变量 → 求解开关。非空即设，与此前求解器自己读时相同。"""
-    return SolveControls(
-        relax=bool(os.environ.get("COAL_RETROFIT_LP_RELAX")),
-        start_sol=_env_path("COAL_RETROFIT_START_SOL"),
-        write_sol=_env_path("COAL_RETROFIT_WRITE_SOL"),
-        log_incumbents=bool(os.environ.get("COAL_RETROFIT_LOG_INCUMBENTS")),
-    )
-
-
-def _env_path(key: str) -> Path | None:
-    value = os.environ.get(key)
-    return Path(value) if value else None
-
-
-def check_warm_start_env() -> None:
-    """情景 `warm_start = "lp_relax"` 时不许再设 COAL_RETROFIT_LP_RELAX / START_SOL。"""
-    given = [key for key in WARM_START_ENV if os.environ.get(key)]
-    if given:
-        raise RunError(
-            f"情景 warm_start = \"lp_relax\" 由运行器自己做热启动两步，不能再设 {'、'.join(given)}；去掉环境变量，"
-            f"或用 --set scenario.warm_start=none --as <结果名> 照旧手工跑"
-        )
 
 
 def sol_path(tree: Path, name: str, sol_dir: Path | None) -> Path:
