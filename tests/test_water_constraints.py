@@ -4,6 +4,8 @@
 
 toy 没有流域面图层，也没有 plants.csv 的取水定额表；两处都在调用函数内部导入，
 所以直接替换模块属性即可（`monkeypatch` 在测试结束时还原）。
+
+toy 没有空冷耗水列时，CCS 多耗的水只能记在节点松弛上，这几例开着松弛开关（`allow_slack`，2026-10-14 起缺省关）。
 """
 from __future__ import annotations
 
@@ -120,7 +122,7 @@ def test_node_limit_keeps_existing_use_and_overdraw_lands_in_node_slack(tmp_path
     份额重算核对。流域指标不激活。"""
     monkeypatch.setattr(builders_water_grid, "assign_basin_codes", _toy_basin_codes)
     paths = _toy_paths(tmp_path, basin_caps=True, dry_use_m3=1.0e8)
-    _, _, solution = _solve(paths, "TEST-WATER-NODE", apply_basin_cap=False)
+    _, _, solution = _solve(paths, "TEST-WATER-NODE", apply_basin_cap=False, allow_slack=True)
     assert solution["status"] == "optimal"
     slacks = []
     for year in YEARS:
@@ -196,12 +198,12 @@ def test_existing_use_cap_offsets_ccs_water_with_air_cooling(tmp_path, monkeypat
 def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch) -> None:
     """流域上限打开：流域取水等于余量、流域松弛为零，即上限靠改变路径满足而非松弛；
     流域取水另按取水强度、工业取水与解出的份额重算核对。
-    同一输入关掉流域上限（只剩环境流量规则）时流域字段全为空，目标值更低。"""
+    同一输入关掉流域上限（只剩环境流量规则）时流域字段全为空，目标值更低。CCS 多耗的水要记在节点松弛上，开着松弛开关。"""
     monkeypatch.setattr(builders_water_grid, "assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
     paths = _toy_paths(tmp_path, basin_caps=True)
 
-    _, _, capped = _solve(paths, "TEST-WATER-QUOTA")
+    _, _, capped = _solve(paths, "TEST-WATER-QUOTA", allow_slack=True)
     assert capped["status"] == "optimal"
     for year in YEARS:
         ys = capped["year_solutions"][year]
@@ -224,7 +226,7 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
         assert industry > 0.0
         assert float(ys["slacks"]["water_basin_use_m3"][0]) == pytest.approx(coal + industry, rel=1e-6)
 
-    _, _, env_only = _solve(paths, "TEST-WATER-ENVONLY", apply_basin_cap=False)
+    _, _, env_only = _solve(paths, "TEST-WATER-ENVONLY", apply_basin_cap=False, allow_slack=True)
     assert env_only["status"] == "optimal"
     for year in YEARS:
         year_data = env_only["year_solutions"][year]["year_data"]
@@ -233,19 +235,42 @@ def test_basin_quota_binds_at_the_residual_and_costs_more(tmp_path, monkeypatch)
     assert float(capped["objective_cny"]) > float(env_only["objective_cny"])
 
 
+def test_basin_and_node_slacks_are_hard_by_default(tmp_path, monkeypatch) -> None:
+    """松弛开关缺省关：流域取水指标与水节点的松弛变量都建了、上界都为 0；toy 的 CCS 多耗的水没有空冷可抵，模型不可行。"""
+    from coal_retrofit.optimization import solver as solver_module
+
+    models = []
+    add_vintages = solver_module.add_capacity_vintages
+
+    def _spy(model, *args, **kwargs):
+        models.append(model)
+        return add_vintages(model, *args, **kwargs)
+
+    monkeypatch.setattr(solver_module, "add_capacity_vintages", _spy)
+    monkeypatch.setattr(builders_water_grid, "assign_basin_codes", _toy_basin_codes)
+    monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
+    _, _, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-HARD")
+    assert solution["status"] in ("infeasible", "infeasible_or_unbounded")
+    (model,) = models
+    for stem in ("water_basin_slack_m3", "water_slack_m3"):
+        upper = [float(v.UB) for v in model.getVars() if v.VarName.startswith(f"{stem}_")]
+        assert len(upper) == len(YEARS), stem   # toy 每年一个流域、一个水节点
+        assert upper == [0.0] * len(YEARS), stem
+
+
 def test_air_columns_and_pathway_split_with_air_cooling(tmp_path, monkeypatch) -> None:
     """流域上限绑定时 toy 电厂在运行路径上转空冷。明细表的空冷运行份额是运行路径上空冷份额之和，在役份额是在役的空冷
     能力；2060 年退役份额变大，2050 年建成的空冷仍在役（寿命 20 年），在役能力高于运行份额。逐路径的减排量与捕集量含空冷背压的排放与捕集，逐厂相加
     等于求解器的值。逐厂成本（`costs.csv` 的煤电行）的空冷背压燃料费为正，能耗惩罚三项之和等于目标函数的
-    energy_penalty_cost（不折现）。"""
+    energy_penalty_cost（不折现）。CCS 多耗的水要记在节点松弛上，开着松弛开关。"""
     from coal_retrofit.optimization.results_costs import build_costs_table
     from coal_retrofit.optimization.results_plant import _build_pathway_table, _build_plant_detail_table
 
     monkeypatch.setattr(builders_water_grid, "assign_basin_codes", _toy_basin_codes)
     monkeypatch.setattr(builders_water_quota, "calibrated_withdrawal_intensities", _toy_withdrawal)
-    scenario, prepared, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-AIR")
+    scenario, prepared, solution = _solve(_toy_paths(tmp_path, basin_caps=True), "TEST-WATER-AIR", allow_slack=True)
     assert solution["status"] == "optimal"
-    costs = build_costs_table(prepared, solution, scenario, OptimizationAssumptions())  # `_solve` 没改缺省假设
+    costs = build_costs_table(prepared, solution, scenario, OptimizationAssumptions(allow_slack=True))  # 与 `_solve` 同
     operating = [k for k, pathway in enumerate(PATHWAYS) if pathway != "retire"]
     for year in YEARS:
         ys = solution["year_solutions"][year]

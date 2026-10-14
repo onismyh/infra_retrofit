@@ -157,29 +157,27 @@ def test_negative_or_nan_pipe_om_fraction_is_rejected(fraction: float) -> None:
         _transport_storage_costs(payload, [payload], 0, SimpleNamespace(), assumptions, 0, 0)  # type: ignore[arg-type, list-item]
 
 
-def test_national_injection_cap_limits_total_storage_use(tmp_path) -> None:
-    """部署进度是全国各汇合计的年注入上限（2026-10-10 起）：设成 1 Mt/a 时两年的注入合计都不超过它，余下的减排要求
-    落进缺口；空元组即不设，toy 每年注入约 2.6 Mt（目标所需），没有缺口。"""
+def test_sink_injectivity_alone_limits_storage_use(tmp_path) -> None:
+    """封存只受各汇自身的年注入上限（Fan 2025 聚类内逐格之和 × injectivity_multiplier）约束，全国部署上限 2026-10-14 删：
+    toy 汇 10 Mt/a，每年注入约 2.6 Mt（目标所需）；乘 0.1 缩到 1 Mt/a 时，松弛开关缺省关、注入上限是硬约束，目标够不着就不可行。"""
     pytest.importorskip("gurobipy", reason=GUROBI)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.5})
     years = (2030, 2040)
-    scenario = OptimizationScenario(
-        experiment_id="TEST-NATIONAL-INJECTION", description="toy", planning_years=years, sector_target_source="toy",
-        carbon_price_cny_per_t_by_year=(0.0, 0.0), electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
-        pathway_disable=("retire", "biomass", "beccs", "ammonia"), solver_time_limit=300,
-    )
+    assumptions = OptimizationAssumptions()
 
-    def run(cap: tuple[float, ...]):
-        assumptions = OptimizationAssumptions(storage_national_injection_mtpa_by_year=cap)
+    def run(multiplier: float):
+        scenario = OptimizationScenario(
+            experiment_id="TEST-SINK-INJECTION", description="toy", planning_years=years, sector_target_source="toy",
+            carbon_price_cny_per_t_by_year=(0.0, 0.0), electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
+            pathway_disable=("retire", "biomass", "beccs", "ammonia"), solver_time_limit=300,
+            injectivity_multiplier=multiplier,
+        )
         prepared = prepare_inputs(paths, scenario, assumptions)
-        solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, initial_state(prepared))
-        assert solution["status"] == "optimal"
-        return solution["year_solutions"]
+        return _solve_joint_multi_period(prepared, scenario, assumptions, years, initial_state(prepared))
 
-    free, capped = run(()), run((1.0, 1.0, 1.0, 1.0))
+    free, capped = run(1.0), run(0.1)
+    assert free["status"] == "optimal"
     for year in years:
-        assert float(np.sum(free[year]["storage_use_mtpa"])) > 1.0 + 1e-3
-        assert float(free[year]["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6)
-        assert float(np.sum(capped[year]["storage_use_mtpa"])) <= 1.0 + 1e-6
-        assert float(capped[year]["slacks"]["target_shortfall_mt"]) > 0.0
+        assert 1.0 + 1e-3 < float(np.sum(free["year_solutions"][year]["storage_use_mtpa"])) <= 10.0 + 1e-6
+    assert capped["status"] in ("infeasible", "infeasible_or_unbounded")

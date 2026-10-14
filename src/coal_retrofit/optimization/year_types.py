@@ -99,12 +99,11 @@ class YearData:
     retrofit_stock_capex: np.ndarray
     retrofit_stock_om: np.ndarray
 
-    # --- 价格、封存部署、部门上限 ---
+    # --- 价格、封存、部门上限 ---
     carbon_price: float
     coal_savings_per_gj: np.ndarray
     coal_savings_per_kg_nh3: np.ndarray
     storage_injectivity_mtpa: np.ndarray
-    storage_national_injection_mtpa: float  # 全国各汇合计的年注入量上限，Mt/a；inf 即不设
     sector_cap_fraction: dict[str, float]
 
     # --- 工业氢链路（与煤电氨共用节点；本年输入没有链路时两个关联矩阵为 None，

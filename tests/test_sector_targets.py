@@ -1,4 +1,5 @@
-"""单厂 toy 模型上的部门碳目标上限与利用小时轨迹。"""
+"""单厂 toy 模型上的部门碳目标上限与利用小时轨迹。查缺口的几例开着松弛开关（`allow_slack`，2026-10-14 起缺省关，
+关时够不着的上限就不可行，见 `test_slack_penalties`）。"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -23,8 +24,8 @@ from toy_inputs import _write_targets, _write_toy_inputs  # noqa: E402
 YEARS = (2030, 2040)
 
 
-def _solve(paths, scenario: OptimizationScenario) -> SolveResult:
-    assumptions = OptimizationAssumptions()
+def _solve(paths, scenario: OptimizationScenario, allow_slack: bool = False) -> SolveResult:
+    assumptions = OptimizationAssumptions(allow_slack=allow_slack)
     prepared = prepare_inputs(paths, scenario, assumptions)
     years = scenario.planning_years
     state = SolveState(
@@ -89,7 +90,7 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
         pathway_disable=("retire", "biomass", "beccs", "ammonia"),
         solver_time_limit=300,
     )
-    solution = _solve(paths, scenario)
+    solution = _solve(paths, scenario, allow_slack=True)
     assert solution["status"] == "optimal"
     y2 = solution["year_solutions"][2040]
     by_group = y2["slacks"]["target_shortfall_by_group"]
@@ -131,7 +132,7 @@ def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_pa
     def _run(cap_gj: float):
         assumptions = OptimizationAssumptions(
             biomass_national_cap_gj_per_year=cap_gj,
-            biomass_blend_max_pulverized=1.0, biomass_blend_max_cfb=1.0,
+            biomass_blend_max_pulverized=1.0, biomass_blend_max_cfb=1.0, allow_slack=True,
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
         years = scenario.planning_years
@@ -187,7 +188,7 @@ def test_green_h2_cap_binds_ammonia_and_lands_in_shortfall(tmp_path) -> None:
 
     def _run(cap_mt: tuple[float, ...]):
         assumptions = OptimizationAssumptions(
-            green_h2_national_cap_mt_by_year=cap_mt,
+            green_h2_national_cap_mt_by_year=cap_mt, allow_slack=True,
         )
         prepared = prepare_inputs(paths, scenario, assumptions)
         years = scenario.planning_years
@@ -225,7 +226,7 @@ def test_total_target_mode_pools_the_groups_into_one_cap(tmp_path) -> None:
             electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
             pathway_disable=("retire", "biomass", "beccs", "ammonia"), solver_time_limit=300,
         )
-        solution = _solve(paths, scenario)
+        solution = _solve(paths, scenario, allow_slack=True)
         assert solution["status"] == "optimal"
         return solution["year_solutions"][2040]["slacks"]
 

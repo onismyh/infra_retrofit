@@ -5,8 +5,8 @@
 - 残值 + 工业：碳价、水泥目标在 2050 年收紧（工业捕集岛 capex 与运行费）、管道固定运维、期末残值；这一例另用九张表
   核对：`sources`、`network`、`sinks` 的成本合计加上系统项等于目标函数值；
 - 掺烧 + 重建：除退役外全部路径开放、有碳价、机组分批到期（生物质、氨、掺烧升级、重建 capex、搁浅资产）；
-- 水：节点余量低于电厂耗水，超出部分落在节点松弛上（取水成本、松弛惩罚）；另一例给电厂加空冷耗水列，
-  缺的水靠空冷改造补上（空冷 capex、背压能耗）。
+- 水：节点余量低于电厂耗水，超出部分落在节点松弛上（取水成本、松弛惩罚；开着松弛开关 `allow_slack`，2026-10-14 起
+  缺省关）；另一例给电厂加空冷耗水列，缺的水靠空冷改造补上（空冷 capex、背压能耗）。
 都要 Gurobi。
 """
 from __future__ import annotations
@@ -86,8 +86,8 @@ def test_blend_and_rebuild_close(tmp_path) -> None:
 
 @pytest.mark.parametrize("air", [False, True])
 def test_water_air_cooling_and_node_slack_close(tmp_path, monkeypatch, air: bool) -> None:
-    """节点余量低于电厂耗水。`air` 为真时给电厂加空冷耗水列（空冷耗水强度 0.37，带捕集的再乘 1.82），
-    缺的水靠空冷改造补上。"""
+    """节点余量低于电厂耗水，松弛开关开着。`air` 为真时给电厂加空冷耗水列（空冷耗水强度 0.37，带捕集的再乘 1.82），
+    缺的水靠空冷改造补上；为假时超出部分记在节点松弛上。"""
     import test_water_constraints as water
 
     monkeypatch.setattr(water.builders_water_grid, "assign_basin_codes", water._toy_basin_codes)
@@ -97,8 +97,9 @@ def test_water_air_cooling_and_node_slack_close(tmp_path, monkeypatch, air: bool
         plants["air_consumption_intensity_m3_per_mwh"] = 0.37
         plants["air_consumption_ccs_intensity_m3_per_mwh"] = 0.37 * 1.82
         plants.to_csv(paths.inputs_dir / "plants.csv", index=False)
-    scenario, prepared, solution = water._solve(paths, "TEST-ATTRIBUTION-WATER", apply_basin_cap=False)
-    costs, _ = _check_closure(prepared, solution, scenario, replace(OptimizationAssumptions(), apply_basin_cap=False))
+    scenario, prepared, solution = water._solve(paths, "TEST-ATTRIBUTION-WATER", apply_basin_cap=False, allow_slack=True)
+    assumptions = replace(OptimizationAssumptions(), apply_basin_cap=False, allow_slack=True)
+    costs, _ = _check_closure(prepared, solution, scenario, assumptions)
     assert (costs["category"] == "water_cost").any()
     if air:
         assert (costs["category"] == "air_retrofit_capex").any()

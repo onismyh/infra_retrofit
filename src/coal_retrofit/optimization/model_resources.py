@@ -92,12 +92,14 @@ def add_basin_withdrawal_cap(
     air_share: GrbMVar,
     industry_withdrawal_by_hub: list[GrbExpr],
     plant_count: int,
+    slack_ub: float,
     year_suffix: str,
 ) -> tuple[GrbMVar | None, GrbMVar | None]:
     """流域取水指标（制度半边：用水总量控制指标，作用于取水，按流域）。
 
     有水约束（`water_mode` 不为 no_water）且 `apply_basin_cap` 为真时激活，条件见
-    `water_access._basin_cap_data`。返回 (流域松弛, 流域取水量)，未激活时 (None, None)。
+    `water_access._basin_cap_data`。返回 (流域松弛, 流域取水量)，未激活时 (None, None)。流域松弛的上界是 *slack_ub*
+    （`allow_slack` 关时 0，即硬约束）。
     """
     basin_membership = year_data.water_basin_membership
     water_basin_slack_m3 = None
@@ -131,7 +133,7 @@ def add_basin_withdrawal_cap(
         ]
         basin_count = basin_membership.shape[0]
         water_basin_slack_m3 = model.addMVar(
-            basin_count, lb=0.0, name=f"water_basin_slack_m3_{year_suffix}"
+            basin_count, lb=0.0, ub=slack_ub, name=f"water_basin_slack_m3_{year_suffix}"
         )
         # 流域取水量用命名变量而非匿名表达式，便于直接提取报告。
         water_basin_use_m3 = model.addMVar(

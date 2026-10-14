@@ -35,6 +35,8 @@ from .year_types import YearData, YearSolution
 COST_COLUMNS = ["year", "entity_type", "entity_id", "category", "item", "kind", "cost_cny", "cost_discounted_cny"]
 SYSTEM_COLUMNS = ["year", "category", "kind", "discount_weight", "cost_cny", "cost_discounted_cny",
                   "attributed_discounted_cny"]
+# 成本对账里算作浮点舍入的绝对差（元，折现值）：不到它的类别不计差额（`cost_closure`）。
+CLOSURE_ABS_TOL_CNY = 1.0
 
 
 def build_costs_table(
@@ -93,8 +95,13 @@ def build_system_table(solution: Mapping[str, Any], costs: pd.DataFrame) -> pd.D
 
 
 def cost_closure(system: pd.DataFrame) -> pd.Series:
-    """逐年的最大相对差：|拆到各实体的合计 − 求解器的合计| / max(|求解器的合计|, 1 元)，按年取各类别的最大值。"""
+    """逐年的最大相对差：|拆到各实体的合计 − 求解器的合计| / max(|求解器的合计|, 1 元)，按年取各类别的最大值。
+
+    绝对差不到 `CLOSURE_ABS_TOL_CNY`（1 元）的类别记 0（2026-10-14 起）：合计近乎为零的类别（如 2060 年只有 −1e-5 元的搁浅资产）
+    分母封底 1 元，1e-5 元的浮点舍入就超过 `results_tables.CLOSURE_TOL` 的 1e-6，对账误报不闭合。
+    """
     gap = (system["attributed_discounted_cny"] - system["cost_discounted_cny"]).abs()
+    gap = gap.mask(gap < CLOSURE_ABS_TOL_CNY, 0.0)   # NaN 原样留着，不当成 0
     scale = system["cost_discounted_cny"].abs().clip(lower=1.0)
     return (gap / scale).groupby(system["year"]).max()
 
