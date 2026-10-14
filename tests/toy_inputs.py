@@ -226,6 +226,6 @@ def _write_targets(
 
 
 def _toy_assumptions() -> OptimizationAssumptions:
-    """默认假设。toy 汇每年都提供满额 10 Mtpa：2026-10-10 起部署进度是全国合计的上限（2030 年 210 Mt/a），
-    不再缩放各汇（此前要去掉爬坡，否则 2030 年只剩 1.7 Mtpa，低于目标所需的 ~2.6 Mt/yr）。"""
+    """默认假设。toy 汇每年都提供满额 10 Mtpa（各汇自身的年注入上限；2026-10-10 前各汇按部署进度缩放，要去掉爬坡，
+    否则 2030 年只剩 1.7 Mtpa，低于目标所需的 ~2.6 Mt/yr）。松弛开关缺省关（2026-10-14 起），约束都是硬约束。"""
     return OptimizationAssumptions()

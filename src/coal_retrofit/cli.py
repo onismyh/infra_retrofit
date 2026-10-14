@@ -205,19 +205,35 @@ def _cmd_run(registry: Registry, args: argparse.Namespace, parser: argparse.Argu
         _check_result_name(registry, name, "自动拼出的结果名", parser)
         print(f"结果名：{name}")
     sol_dir = args.sol_dir.absolute() if args.sol_dir is not None else None
+    allow_slack = bool(spec.assumptions.get("allow_slack", OptimizationAssumptions.allow_slack))
     try:
         result = run(spec, name=name, tree=tree, threads=args.threads, time_limit=args.time_limit,
                      mip_gap=args.mip_gap, applied_sets={**applied, **boundary}, sol_dir=sol_dir, force=args.force)
     except WarmStartFailed as exc:
-        print(f"错误：{exc}；没有跑第 2 步，也没有写结果", file=sys.stderr)
+        print(f"错误：{exc}；没有跑第 2 步，也没有写结果{_infeasible_hint(exc.record.get('status'), allow_slack)}",
+              file=sys.stderr)
         return 3
     _print_summary(result)
     if not math.isfinite(result["global_objective_cny"]):
         status = result["solver_quality"].get("status")
-        print(f"错误：{result['name']} 没有可用的解（求解状态 {status}）：结果表是补零的，不能拿来出图或相减",
-              file=sys.stderr)
+        print(f"错误：{result['name']} 没有可用的解（求解状态 {status}）：结果表是补零的，不能拿来出图或相减"
+              f"{_infeasible_hint(status, allow_slack)}", file=sys.stderr)
         return 3
     return 0
+
+
+def _infeasible_hint(status: object, allow_slack: bool) -> str:
+    """求解状态是不可行时补一句怎么查（松弛开关 2026-10-14 起缺省关，松弛约束都成了硬约束）；其余状态不补。
+    *allow_slack* 是这次求解的开关：已开着仍不可行，就不再让人去开开关。"""
+    if status not in ("infeasible", "infeasible_or_unbounded"):
+        return ""
+    if allow_slack:
+        return "。松弛开关 allow_slack 已开仍不可行：满足不了的是不带松弛的约束（全国生物质 / 绿氢上限、份额守恒、跨期约束等）"
+    return (
+        "。松弛开关 assumptions.allow_slack 关着（缺省）时，部门目标、生物质 / 绿氢 / 水节点、流域取水指标、各汇注入与累计封存、"
+        "管道流量都是硬约束，不可行说明其中有满足不了的；加 --set assumptions.allow_slack=true --as <新结果名> 重解，"
+        "checks.csv 里不为零的松弛就是那一类"
+    )
 
 
 def _check_result_name(registry: Registry, name: str, label: str, parser: argparse.ArgumentParser) -> None:

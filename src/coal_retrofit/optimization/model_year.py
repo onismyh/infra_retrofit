@@ -81,14 +81,16 @@ def add_year_block(
     biomass_flow_gj = model.addMVar(biomass_link_count, lb=0.0, name=f"biomass_flow_gj_{year_suffix}")
     ammonia_flow_kg = model.addMVar(ammonia_link_count, lb=0.0, name=f"ammonia_flow_kg_{year_suffix}")
     water_flow_m3 = model.addMVar(water_link_count, lb=0.0, name=f"water_flow_m3_{year_suffix}")
+    # 松弛与缺口变量：`allow_slack` 关（缺省）时上界为 0，所在约束是硬约束；开时不设上界、按罚额进目标（`model_costs._slack_penalty`）。
     # 总缺口 = 各组缺口之和，老读者继续读标量。
-    target_shortfall_mt = model.addVar(lb=0.0, name=f"target_shortfall_mt_{year_suffix}")
-    biomass_slack_gj = model.addMVar(idx.biomass_node_count, lb=0.0, name=f"biomass_slack_gj_{year_suffix}")
-    h2_slack_kg = model.addMVar(ammonia_node_count, lb=0.0, name=f"h2_slack_kg_{year_suffix}")
-    water_slack_m3 = model.addMVar(water_node_count, lb=0.0, name=f"water_slack_m3_{year_suffix}")
-    injectivity_slack_mtpa = model.addMVar(storage_count, lb=0.0, name=f"injectivity_slack_mtpa_{year_suffix}")
-    storage_slack_mt = model.addMVar(storage_count, lb=0.0, name=f"storage_slack_mt_{year_suffix}")
-    edge_slack_mtpa = model.addMVar(edge_count, lb=0.0, name=f"edge_slack_mtpa_{year_suffix}")
+    slack_ub = GRB.INFINITY if assumptions.allow_slack else 0.0
+    target_shortfall_mt = model.addVar(lb=0.0, ub=slack_ub, name=f"target_shortfall_mt_{year_suffix}")
+    biomass_slack_gj = model.addMVar(idx.biomass_node_count, lb=0.0, ub=slack_ub, name=f"biomass_slack_gj_{year_suffix}")
+    h2_slack_kg = model.addMVar(ammonia_node_count, lb=0.0, ub=slack_ub, name=f"h2_slack_kg_{year_suffix}")
+    water_slack_m3 = model.addMVar(water_node_count, lb=0.0, ub=slack_ub, name=f"water_slack_m3_{year_suffix}")
+    injectivity_slack_mtpa = model.addMVar(storage_count, lb=0.0, ub=slack_ub, name=f"injectivity_slack_mtpa_{year_suffix}")
+    storage_slack_mt = model.addMVar(storage_count, lb=0.0, ub=slack_ub, name=f"storage_slack_mt_{year_suffix}")
+    edge_slack_mtpa = model.addMVar(edge_count, lb=0.0, ub=slack_ub, name=f"edge_slack_mtpa_{year_suffix}")
     edge_flow_mtpa = model.addMVar(edge_count, lb=0.0, name=f"edge_flow_mtpa_{year_suffix}")
     storage_use_mtpa = model.addMVar(storage_count, lb=0.0, name=f"storage_use_mtpa_{year_suffix}")
 
@@ -128,14 +130,14 @@ def add_year_block(
     )
     water_basin_slack_m3, water_basin_use_m3 = add_basin_withdrawal_cap(
         model, year_data, share, plant.air_share, industry_payload.withdrawal_by_hub_scaled,
-        plant_count, year_suffix,
+        plant_count, slack_ub, year_suffix,
     )
 
     # --- 注入速率、部门目标、路径开关 ---
     _add_injectivity_limit(model, year_data, storage_use_mtpa, injectivity_slack_mtpa, storage_count, year_suffix)
     target_shortfall_by_group = _add_sector_targets(
         model, year_data, scenario, idx, year, plant.total_reduction_mt,
-        industry_payload.residual_by_group, target_shortfall_mt, year_suffix,
+        industry_payload.residual_by_group, target_shortfall_mt, slack_ub, year_suffix,
     )
     _add_pathway_switches(model, share, scenario, plant_count, year_suffix)
 
@@ -309,7 +311,7 @@ def _add_injectivity_limit(
     storage_count: int,
     year_suffix: str,
 ) -> None:
-    """各汇年注入量 <= 该汇的年注入上限（+ 松弛）；全国合计 <= 本年部署进度（设了才加）。"""
+    """各汇年注入量 <= 该汇的年注入上限（+ 松弛）。2026-10-14 前全国合计另受逐年部署上限约束（已删）。"""
     injectivity_year = np.asarray(year_data.storage_injectivity_mtpa, dtype=np.float64)
     model.addConstrs(
         (
@@ -319,9 +321,6 @@ def _add_injectivity_limit(
         ),
         name=f"injectivity_limit_{year_suffix}",
     )
-    national = float(year_data.storage_national_injection_mtpa)
-    if np.isfinite(national):
-        model.addConstr(storage_use_mtpa.sum() <= national, name=f"national_injection_limit_{year_suffix}")
 
 
 def _add_sector_targets(
@@ -333,13 +332,15 @@ def _add_sector_targets(
     total_reduction_mt: GrbExpr,
     industry_residual_by_group: dict[str, GrbExpr],
     target_shortfall_mt: gp.Var,
+    slack_ub: float,
     year_suffix: str,
 ) -> dict[str, gp.Var]:
     """部门残余排放上限：residual_g(y) <= cap_fraction_g(y) x baseline_g(2030) + shortfall_g(y)。
 
     煤电整体为 power 组；工业 hub 经 SECTOR_TARGET_GROUP 映射到 steel / cement / chemicals。
     `sector_target_mode` 为 "total" 时（2026-10-10 起）四组合成一条：sum_g residual_g <= sum_g cap_g x baseline_g + shortfall，
-    缺口记在键 "total" 下。返回各组（或 total）缺口变量；总缺口 `target_shortfall_mt` 约束为其和。
+    缺口记在键 "total" 下。返回各组（或 total）缺口变量；总缺口 `target_shortfall_mt` 约束为其和。缺口变量的上界是 *slack_ub*
+    （`allow_slack` 关时 0，即硬约束）。
     """
     caps = year_data.sector_cap_fraction
     target_shortfall_by_group: dict[str, gp.Var] = {}
@@ -354,7 +355,7 @@ def _add_sector_targets(
             )
     mode = str(scenario.sector_target_mode)
     if mode == "total":
-        shortfall = model.addVar(lb=0.0, name=f"target_shortfall_all_{year_suffix}")
+        shortfall = model.addVar(lb=0.0, ub=slack_ub, name=f"target_shortfall_all_{year_suffix}")
         target_shortfall_by_group["total"] = shortfall
         model.addConstr(
             gp.quicksum(residual_exprs.values()) - shortfall
@@ -363,7 +364,7 @@ def _add_sector_targets(
         )
     elif mode == "sector":
         for group, residual in residual_exprs.items():
-            shortfall = model.addVar(lb=0.0, name=f"target_shortfall_{group}_{year_suffix}")
+            shortfall = model.addVar(lb=0.0, ub=slack_ub, name=f"target_shortfall_{group}_{year_suffix}")
             target_shortfall_by_group[group] = shortfall
             model.addConstr(
                 residual - shortfall <= float(caps[group]) * float(idx.sector_base_2030[group]),

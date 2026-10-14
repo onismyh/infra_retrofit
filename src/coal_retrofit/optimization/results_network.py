@@ -113,12 +113,11 @@ def _build_sinks_table(
     - `storage_type` 是 dsa / eor，`offshore` 是海上汇的标记（`storage_hubs.csv`，没有这一列的输入记 False），`province`
       是汇所在节点的省（海上记 Offshore，`results_regions.node_provinces`）。
     - `injectivity_mtpa` 是单汇年注入能力上限（Fan 2025 逐格之和 x `injectivity_multiplier`，不随年份变，即约束所用的值；
-      全国合计另受逐年部署上限），`capacity_mt` 是累计
-      封存容量；`remaining_before_mt` / `remaining_after_mt` 是本区间注入前后的剩余容量（注入量 x 区间年数），
+      2026-10-14 前全国合计另受逐年部署上限），`capacity_mt` 是累计封存容量（同为 Fan 2025 逐格之和）；`remaining_before_mt` / `remaining_after_mt` 是本区间注入前后的剩余容量（注入量 x 区间年数），
       `cumulative_injected_mt` = 容量 − 区间末剩余。
     - 每吨封存成本：`storage_cost_before_credit_cny_per_t` 是扣 EOR 抵扣前（按汇型与陆海定价），`storage_cost_cny_per_t`
       是扣后、即目标函数所用（`data_prep._prepare_storages`）；`eor_credit_cny` = 两者之差 x 注入量，CNY/yr。
-    - `injectivity_slack_mtpa`、`storage_slack_mt` 是注入能力与累计容量约束的松弛（应为零）。
+    - `injectivity_slack_mtpa`、`storage_slack_mt` 是注入能力与累计容量约束的松弛（应为零；松弛开关 `allow_slack` 关时恒为零）。
     """
     storages = prepared.storages
     ids = storages["storage_hub_id"].astype(str)

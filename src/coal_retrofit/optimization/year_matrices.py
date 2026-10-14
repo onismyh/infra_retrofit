@@ -111,7 +111,7 @@ def _build_year_matrices(
     coal_savings_per_kg_nh3 = (
         coal_price_per_plant * float(assumptions.nh3_lhv_gj_per_kg) * float(ammonia_data.get("ammonia_flow_scale", 1.0))
     )
-    # 封存：各汇的年注入上限（不随年份变）；全国合计另受本年的部署进度约束。
+    # 封存：各汇的年注入上限（不随年份变）。
     storage_injectivity_mtpa = prepared.storages["injectivity_mtpa"].astype(float).to_numpy()
     # 本年各组上限，各组自身 2030 基线的比例。
     rows = prepared.sector_targets[prepared.sector_targets["planning_year"].astype(int) == int(year)]
@@ -145,7 +145,6 @@ def _build_year_matrices(
         coal_savings_per_gj=coal_savings_per_gj,
         coal_savings_per_kg_nh3=coal_savings_per_kg_nh3,
         storage_injectivity_mtpa=storage_injectivity_mtpa,
-        storage_national_injection_mtpa=float(assumptions.storage_national_injection_mtpa(int(year))),
         sector_cap_fraction=sector_cap_fraction,
         industry_h2_links=industry_h2_data["links"],
         industry_h2_hub_membership=industry_h2_data["hub_membership"],

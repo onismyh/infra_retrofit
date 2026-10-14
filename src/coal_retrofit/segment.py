@@ -18,7 +18,9 @@ from typing import Any
 # 第 13 段（2026-10-12）：粗化水节点坐标改按模拟径流（local_runoff）加权（此前按校正后的可用量），水节点与供水链路表重建。
 # 第 14 段（2026-10-13）：ISIMIP 网格面积的地球半径改用 `spatial.EARTH_RADIUS_KM`（此前 6 371 km），水表重建（耗水与模拟径流
 # 放大 2.76 ppm）；流域余量取整到 m3；煤电发电量直接按利用小时算，不经容量因子往返。
-MODEL_SEGMENT = 14
+# 第 15 段（2026-10-14）：删全国封存部署上限（各汇只受 Fan 2025 聚类之和的年注入与累计上限）；松弛与缺口变量由
+# `allow_slack` 控制、缺省关（硬约束）；成本对账绝对差不到 1 元的类别不计。
+MODEL_SEGMENT = 15
 
 
 class StaleResultError(RuntimeError):

@@ -48,7 +48,8 @@ from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
 
 TABLES = ("sources", "source_routes", "sinks", "network", "resources", "resource_flows", "costs", "system", "checks")
-# 成本对账的容差：拆到各实体的合计与求解器合计的最大相对差（`results_costs.cost_closure`）。
+# 成本对账的容差：拆到各实体的合计与求解器合计的最大相对差（`results_costs.cost_closure`；绝对差不到 1 元的类别不计，
+# `results_costs.CLOSURE_ABS_TOL_CNY`）。
 CLOSURE_TOL = 1e-6
 # 各表并入成本合计时，实体号所在的列与 `costs.csv` 的实体类型；源表的实体类型逐行取 `source_type`（记 None）。
 _COST_KEYS = {"sources": ("source_id", None), "network": ("edge_id", "edge"), "sinks": ("sink_id", "sink")}

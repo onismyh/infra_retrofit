@@ -238,22 +238,18 @@ def test_fig8_industry_abatement_by_sector_and_route(monkeypatch: pytest.MonkeyP
 
 
 def test_fig9_storage_by_type_and_offshore(monkeypatch: pytest.MonkeyPatch) -> None:
-    """年注入与累计封存按汇型 × 陆海汇总（累计量换成 Gt）；注入不等于捕集、超过全国部署上限、海上标记不认识都报错；
-    不设上限（null）的年份不查。"""
+    """年注入与累计封存按汇型 × 陆海汇总（累计量换成 Gt）；注入不等于捕集、海上标记不认识都报错（全国部署上限 2026-10-14 删，
+    不再查）。"""
     fig9 = _load(monkeypatch, "plot_fig9_storage")
     sinks = pd.DataFrame({"year": 2040, "storage_type": ["dsa", "dsa", "eor"], "offshore": [False, True, False],
                           "injected_mtpa": [10.0, 4.0, 1.0], "cumulative_injected_mt": [100.0, 40.0, 10.0]})
-    result = {"years": {"2040": {"storage_national_injection_mtpa": 20.0}}}
-    data = {"sinks": sinks, "captured": pd.Series({2040: 15.0}), "result": result}
+    data = {"sinks": sinks, "captured": pd.Series({2040: 15.0})}
     fig9.check(data)
     tables = fig9.summary(sinks)
     assert tables["annual"].loc[2040].tolist() == pytest.approx([10.0, 4.0, 1.0, 0.0])
     assert tables["cumulative"].loc[2040, "dsa_offshore"] == pytest.approx(0.04)
     with pytest.raises(ValueError, match="守恒"):
         fig9.check({**data, "captured": pd.Series({2040: 14.0})})
-    with pytest.raises(ValueError, match="部署上限"):
-        fig9.check({**data, "result": {"years": {"2040": {"storage_national_injection_mtpa": 12.0}}}})
-    fig9.check({**data, "result": {"years": {"2040": {"storage_national_injection_mtpa": None}}}})
     with pytest.raises(ValueError, match="offshore"):
         fig9.check({**data, "sinks": sinks.assign(offshore=["no", "yes", "no"])})
 

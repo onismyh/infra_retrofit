@@ -174,7 +174,6 @@ def solve(
             "coal_reduction_mt": coal_reduction,
             "coal_residual_mt": coal_baseline_year - coal_reduction,
             "sector_cap_fraction": dict(year_data.sector_cap_fraction or {}),
-            "storage_national_injection_mtpa": (float(year_data.storage_national_injection_mtpa) if np.isfinite(year_data.storage_national_injection_mtpa) else None),  # 不设上限时记 null
             "industry": industry_summary,
             "cost_breakdown": {k: float(v) for k, v in ys["cost_breakdown_cny"].items()},
             # 煤电参照（全部维持不改造运行）的基线净运行成本，CNY/yr、不折现、不进目标（增量口径，2026-10-10 起）；上面的 cost_breakdown 是折现并乘区间权重后的值，二者相加前先换到同一口径（system.csv 的 cost_cny 是不折现值）。

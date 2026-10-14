@@ -40,8 +40,9 @@ BIOMASS_NODE_AGGREGATION_DEGREES = 0.25
 # 低于化学计量。节点上限按绿氢计，煤电用氨按此折成氢扣减；到厂氨价里的氢成本同按此折算（`builders.supply_ammonia.reprice_h2_component`）。
 NH3_H2_RATIO = 0.18
 # 资源与水松弛的罚额（`optimization/model_costs._slack_penalty`，结果侧 `results_costs._slack_costs` 同价）：远高于任何真实
-# 供给成本，只为保住可行性。绿氢节点上限 2026-10-10 起按 kg H2 计，此前按 kg NH3 计、罚 1000 元/kg NH3；折到氢
-# （÷ NH3_H2_RATIO ≈ 5 556 元/kg H2）保持罚力度不变，2026-10-11 前曾直接沿用 1000 元/kg H2（第 9–10 段）。
+# 供给成本，只为保住可行性；只在松弛开关 `OptimizationAssumptions.allow_slack` 开时起作用（缺省关，松弛上界为 0）。
+# 绿氢节点上限 2026-10-10 起按 kg H2 计，此前按 kg NH3 计、罚 1000 元/kg NH3；折到氢（÷ NH3_H2_RATIO ≈ 5 556 元/kg H2）
+# 保持罚力度不变，2026-10-11 前曾直接沿用 1000 元/kg H2（第 9–10 段）。
 SLACK_PENALTY_CNY_PER_GJ_BIOMASS = 2_000.0
 SLACK_PENALTY_CNY_PER_KG_H2 = 1_000.0 / NH3_H2_RATIO
 SLACK_PENALTY_CNY_PER_M3_WATER = 1_000.0

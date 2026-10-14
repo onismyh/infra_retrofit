@@ -173,12 +173,10 @@ class OptimizationAssumptions:
     # 这一费率原先是字段 `pipe_capex_cny_per_mtpa_km`；分档之后它只流向一个没人读的报告系数，已删除。
     pipe_capacity_tiers_mtpa: tuple[float, ...] = (2.0, 5.0, 20.0)
     pipe_capex_cny_per_km_by_tier: tuple[float, ...] = (2.0e6, 3.5e6, 8.0e6)
-    # 封存部署进度：全国各汇合计的年注入量上限（Mt/a，各规划年一个；空元组即不设），各汇另受自身年注入上限
-    # （`injectivity_mtpa`，Fan 2025 逐格注入能力之和，不随年份变）约束（`model_year._add_injectivity_limit`）。取 ACCA21 (2021)
-    # CCUS 路线图的区间中点：2030 年 0.2-4.08 亿 t（中点 2.1）、2050 年 6-14.5（10.2）、2060 年 10-18.2（14.1），2040 年在 2035 与
-    # 2050 年的区间之间插值（~7.5）。作者定（2026-10-10）：部署进度直接作全国速率，各汇不再按进度缩放；此前是各汇可建速率 x 比例
-    # (0.17, 0.58, 0.80, 1.00)，比例 = 上面的中点 ÷ 旧的全国可建速率 12.8 亿 t/a、以 1 封顶。
-    storage_national_injection_mtpa_by_year: tuple[float, ...] = (210.0, 750.0, 1020.0, 1410.0)
+    # 封存只受各汇自身的两个上限约束，都是建汇时聚类范围内 Fan 2025 的逐格之和（`data_prep._prepare_storages`）：年注入上限
+    # `injectivity_mtpa` 与累计封存上限 `available_capacity_mt`。2026-10-10 至 10-14 全国合计另受部署上限
+    # `storage_national_injection_mtpa_by_year`（ACCA21 CCUS 减排需求区间中点 210 / 750 / 1 020 / 1 410 Mt/a）约束，作者定（2026-10-14）
+    # 不用 Fan 2025 以外的数，已删；ACCA21 区间只在方法论 §6.3 作对照。
     # 绿氨供给爬坡：各节点的绿氢供给逐年乘这一比例（`resource_access`）。供给曲线只是技术潜力（2025 年 8 551 Mt NH3/yr，
     # 而全机组 50% 掺烧只需 ~1 600 Mt），所以没有爬坡时节点上限永不绑定。默认全为 1，因为仓库里
     # 还没有有出处的中国绿氨建设轨迹；有了再设。
@@ -283,6 +281,11 @@ class OptimizationAssumptions:
     # 0.97 = 去掉这部分 ROW 份额。原为 0.4（无出处）；据称一篇德国拓扑论文用了 10% 的
     # 走廊折扣，但未能打开（ScienceDirect S2772656826001004）——须经作者核实后才可用 0.9。
     corridor_capex_multiplier: float = 0.97
+    # 松弛开关（作者定，2026-10-14）：管所有松弛与缺口变量——部门目标缺口、生物质 / 绿氢 / 水节点、流域取水指标、各汇年注入
+    # 与累计封存、管道流量（`model_year.add_year_block`、`model_resources.add_basin_withdrawal_cap`）。缺省 False：这些变量上界为 0，
+    # 约束都是硬约束，满足不了就不可行（求解状态 infeasible，命令行退出码 3）。True 时不设上界，超出部分按下面的罚额与
+    # `constants.SLACK_PENALTY_*` 进目标（2026-10-14 前一直如此，没有开关）。
+    allow_slack: bool = False
     slack_penalty_cny_per_unit: float = 5_000_000_000.0
     sparse_interval_years: int = 10
     # 动态资源调配参数
@@ -380,12 +383,6 @@ class OptimizationAssumptions:
             return float(mapping[year])
         nearest = min(mapping, key=lambda candidate: abs(candidate - year))
         return float(mapping[nearest])
-
-    def storage_national_injection_mtpa(self, year: int) -> float:
-        """`year` 全国各汇合计的年注入量上限（Mt/a）；没有设（空元组）时为 inf。"""
-        if not self.storage_national_injection_mtpa_by_year:
-            return float("inf")
-        return self._fraction_for_year(self.storage_national_injection_mtpa_by_year, year)
 
     def ammonia_supply_deployment_fraction(self, year: int) -> float:
         """绿氨技术潜力中，在 `year` 已建成的份额。"""

@@ -4,7 +4,8 @@
   减排时的排放），彩色柱是残余排放，黑色短横线是部门上限；残余排放高出上限的部分用红字标出。
   上限 = 碳目标轨迹给的比例 × 该组自身 2030 年的冻结技术排放（model_year._add_sector_targets）。
 读图注意：电力的残余排放 = 冻结技术排放 − 逐厂减排量之和；工业按 hub 的 baseline − reduction 汇总到目标组
-  （constants_industry.SECTOR_TARGET_GROUP）。超过上限的部分由带罚项的目标缺口变量承担，即该组目标没达到。
+  （constants_industry.SECTOR_TARGET_GROUP）。松弛开关 allow_slack 开时，超过上限的部分由带罚项的目标缺口变量承担，
+  即该组目标没达到；缺省关，缺口恒为 0。
   结果里只记了上限的比例，2030 年的基线要从 2030 年的结果里取，所以 2030 必须是规划年，否则脚本报错。
 数据：results/solved/<情景>/sources.csv（煤电、工业分别取 source_type 为 coal、industry 的行），results/solved/<情景>.json。
 自检：各组逐年的残余与冻结技术排放 = result.json 记的值；目标缺口 = max(0, 残余 − 上限)（模型约束 残余 − 缺口 ≤ 上限，
