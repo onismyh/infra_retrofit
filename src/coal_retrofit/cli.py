@@ -228,7 +228,7 @@ def _infeasible_hint(status: object, allow_slack: bool) -> str:
     if status not in ("infeasible", "infeasible_or_unbounded"):
         return ""
     if allow_slack:
-        return "。松弛开关 allow_slack 已开仍不可行：满足不了的是不带松弛的约束（全国生物质 / 绿氢上限、份额守恒、跨期约束等）"
+        return "。松弛开关 allow_slack 已开仍不可行：满足不了的是不带松弛的约束（全国绿氢上限、份额守恒、跨期约束等）"
     return (
         "。松弛开关 assumptions.allow_slack 关着（缺省）时，部门目标、生物质 / 绿氢 / 水节点、流域取水指标、各汇注入与累计封存、"
         "管道流量都是硬约束，不可行说明其中有满足不了的；加 --set assumptions.allow_slack=true --as <新结果名> 重解，"

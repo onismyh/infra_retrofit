@@ -31,13 +31,11 @@ def _edge_capex_multiplier(edge_class: str, existing_flag: int, assumptions: Opt
 def _edge_matrices(
     prepared: PreparedInputs, assumptions: OptimizationAssumptions, state: SolveState
 ) -> dict[str, Any]:
-    """管网边：存量与可新增容量、各管径档单根 capex、运输运维系数（均按海上段计海上倍率）。"""
+    """管网边：存量容量、各管径档单根 capex、运输运维系数（均按海上段计海上倍率）。新增根数不设上限（2026-10-16 起）。"""
     edge_base_stock = (
         prepared.network.edges["existing_corridor_flag"].fillna(0).astype(float).to_numpy() * assumptions.existing_corridor_capacity_mtpa
         + state.edge_added_stock_mtpa
     )
-    edge_max_total = np.full(len(prepared.network.edges), assumptions.standard_pipe_capacity_mtpa * assumptions.max_parallel_pipes)
-    edge_max_new = np.maximum(0.0, edge_max_total - edge_base_stock)
     edge_length_km = prepared.network.edges["length_km"].astype(float).to_numpy()
     # 计价长度：海上段（`builders.network_offshore`）乘海上倍率，陆上段按原长。
     priced_length_km = edge_length_km + (assumptions.offshore_transport_multiplier - 1.0) * (
@@ -62,7 +60,6 @@ def _edge_matrices(
     )
     return {
         "edge_base_stock_mtpa": edge_base_stock,
-        "edge_max_new_mtpa": edge_max_new,
         "pipe_tiers_mtpa": tiers,
         "edge_tier_capex": edge_tier_capex,
         "edge_route_opex_coeff": edge_route_opex_coeff,

@@ -160,7 +160,6 @@ class YearData:
 
     # --- 管网边（`year_matrices._edge_matrices`）---
     edge_base_stock_mtpa: np.ndarray
-    edge_max_new_mtpa: np.ndarray
     pipe_tiers_mtpa: tuple[float, ...]
     edge_tier_capex: np.ndarray
     edge_route_opex_coeff: np.ndarray
@@ -181,8 +180,6 @@ class YearPayload:
     share: GrbMVar
     co2_flow_fwd: GrbMVar
     co2_flow_bwd: GrbMVar
-    build_edge: GrbMVar
-    add_cap: GrbMVar
     pipe_count: GrbMVar
     rebuild: GrbMVar
     # (plant_count, 类数) 各重建热耗类的重建份额 ρ_c <= f_c，Σ_c ρ_c = rebuild，跨期不减。
@@ -215,8 +212,6 @@ class YearPayload:
     ammonia_use_kg: GrbMVar
     water_use_m3: GrbMVar
     air_share: GrbMVar
-    select_b: GrbMVar
-    select_a: GrbMVar
     # 在用的掺烧能力 Σ_l (档位下标) x z_l，生物质（含 BECCS）、氨各一份，供结果表（`constraints_blend.add_blend_level_constraints`）；
     # 生物质的另计掺烧能力的固定运维（2026-10-02 起）。独热档位下是所选档位 x 路径份额；连续 hub 下非整数时对应不到任何一档。
     blend_level_b: GrbMVar
@@ -287,6 +282,7 @@ class YearSolution(TypedDict):
     status: str
     objective_cny: float
     share: np.ndarray
+    # 当年及以前是否在这条边上铺过管（各期新增容量累计 > 0，`solver_extract` 算出；2026-10-16 前是锁存的二元变量）。
     build_edge: np.ndarray
     rebuild: np.ndarray
     rebuild_class: np.ndarray  # (plant_count, 类数)

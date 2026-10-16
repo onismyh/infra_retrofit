@@ -32,7 +32,7 @@
 > 口径不同：节煤不含掺氨，能耗惩罚不含空冷背压与随档位变化的生物质惩罚；表里也没有掺烧升级、空冷与重建的 capex，生物质与氨的
 > 采购按供应链路计、没有分到厂。所以碳成本改正后，合计仍不等于该厂在目标函数里的贡献。模型、目标值与厂合计减排不变；
 > 要用这几列，这一改动合入之前落盘的 `ST_` 结果需重解（实现说明 §9.8）。
-> 2026-09-27 起 `network_edges.csv` 删去 `num_pipe_new`、`num_pipe_stock` 两列：它们是容量 ÷ `standard_pipe_capacity_mtpa`（20 Mtpa），
+> 2026-09-27 起 `network_edges.csv` 删去 `num_pipe_new`、`num_pipe_stock` 两列：它们是容量 ÷ `standard_pipe_capacity_mtpa`（20 Mtpa；该字段 2026-10-16 删），
 > 不是管道根数；本年实际铺设的根数见 `pipes_new_by_tier`（如 `1x2|1x20`）。
 > 2026-09-27 起 `plot_style.residual_emissions_mt`（`scripts/plot_style.py`）只按 `*_blend_ratio` 列算残余排放，
 > 没有这几列就报错。此前没有这几列时按档位下标换算，而下标分不出独热档位与连续 hub：连续 hub 的下标恰为整数时
@@ -108,7 +108,7 @@
 >
 > 2026-09-30 起改造能力按铭牌定规模、按建设年分代（**模型改动**，作者决定 2026-09-30；实现说明 §9.10）：
 > - 工业 CCS 与氢路线的所需能力 = 当年捕集量（氢路线为当年产量）× 铭牌系数 max(1, 铭牌产能 ÷ 现状产量)（`industry_hubs.csv` 的
->   `capacity_kt_per_year` ÷ `production_kt_per_year`，`optimization/industry_matrices.py:174`）：设备按铭牌建，水泥、电炉钢、合成氨、甲醇
+>   `capacity_kt_per_year` ÷ `production_kt_per_year`，`optimization/industry_matrices.py:175`）：设备按铭牌建，水泥、电炉钢、合成氨、甲醇
 >   按部门合计产量只有铭牌的 73%–83%；铭牌小于产量的 49 个 hub（长流程钢 40 个）按产量建，铭牌或产量缺失、不为正的 hub 读入时报错。
 >   单位 capex 不变（工业 CCS 仍按各部门的元/(t CO₂·a)，煤电仍按元/kW），捕集量、减排量、需氢量与能耗仍按产量算。
 > - 煤电捕集岛、工业捕集能力与氢路线能力按建设年分代（`optimization/vintage.py`）：capex 计在本期新建量上；v 年建的能力在
@@ -167,7 +167,7 @@
 >   原址重建不改冷却方式）；未重建部分取未到期机组的装机加权毛热耗（由 hub 值反推，两部分按 f 加权还原 hub 值；反推放大误差，
 >   部分到期 hub 的 hub 值与按现行分档基准逐台现算、按装机加权的值相差超过 1e-4 就报错）。0 < f < 1 的 hub
 >   把每条运行路径的份额、空冷份额与掺烧各档拆出重建机组承担的部分（运行的重建部分不超过重建份额，未重建部分不超过未到期装机
->   1 − f，`optimization/constraints_rebuilt.py:15-67`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
+>   1 − f，`optimization/constraints_rebuilt.py:24-76`）；运行排放、燃料、CCS 额外燃料与生物质、空冷的效率惩罚各按自己的毛热耗与效率计，
 >   空冷背压惩罚的排放与捕集仍按 hub 毛热耗（作者决定维持）。哪几台机组运行、退役、改空冷由求解器定，模型不追踪逐台状态；
 >   拆到各路径的份额不受跨期约束，跨期约束只管 hub 合计与重建部分的运行合计（自愿退役核算，见下条）。f = 0 或 1 的 hub（整数
 >   hub 都是）两部分相同，不加变量（2026-10-02 起重建部分再按重建毛热耗分类，f = 1 而有两类以上的 hub 也拆，见本节末）。
@@ -233,8 +233,8 @@
 >   一代）；管道仍按建成量计，原址重建仍按建成量计、扣回期末已关停的。现行寿命与 10 年网格下，煤电改造能力（20 年）只有 2060 年
 >   建的有残值，而它们都是当年要用才建的，数值不变；工业氢路线（25 年）2050 年建的能力到 2060 年因减产闲置的部分不再计残值。
 >   此前按建成量计，期末不在用的也抵扣。
-> - 重建部分按重建毛热耗分类（`optimization/data_prep_plants._with_expiry`、`optimization/model_year.py:55-60`、
->   `optimization/constraints_rebuilt.py:15-67`、`optimization/model_linking.py:104-119`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
+> - 重建部分按重建毛热耗分类（`optimization/data_prep_plants._with_expiry`、`optimization/model_year.py:56-61`、
+>   `optimization/constraints_rebuilt.py:24-76`、`optimization/model_linking.py:56-72`）：规划期内到期的机组按重建毛热耗（六位小数）分类，
 >   重建份额是各类之和，每类不超过该类已到期的装机份额、各自不减，先重建哪一类由求解器定；运行路径份额、空冷份额与掺烧各档的重建
 >   部分按类拆，系数取该类与未重建部分之差。ST 输入到 2060 年有到期机组的 324 个 hub 里，231 个只有一类（与此前相同），87 个两类、
 >   6 个三类，类间毛热耗相差 0.8%–6.4%；全部到期而有两类以上的 hub 也拆。此前重建部分取到期机组重建毛热耗的装机加权平均，不分实际
@@ -328,7 +328,7 @@
 >   甲醇的来源未能唯一指认），油头合成氨与电石炉、矿热炉尾气制甲醇按煤头取，焦炉煤气与天然气制甲醇取 0（推断：没有排放 CO₂ 的
 >   高浓度流股）；电炉钢 0。读入时按点源 CO₂ 加权到 hub（`optimization/industry_inputs._hub_source_shares`，读
 >   `industry_sources.csv`；有 hub 在点源表里没有点源时报错，没有点源表时各 hub 按部门的 default 原料取，供 toy 输入用）。
->   捕集量 = hub CO₂ × 份额 × 捕集率，份额为 0 的 hub 不开放 CCS（`optimization/industry_matrices.py:214`、`:226`）。此前份额
+>   捕集量 = hub CO₂ × 份额 × 捕集率，份额为 0 的 hub 不开放 CCS（`optimization/industry_matrices.py:215`、`:226`）。此前份额
 >   都按 1，化工的纯流股参数（450 元/(t·a)、无再沸器蒸汽）用在全厂 CO₂ 上。化工纯流股以外的烟气不开放 CCS，本轮不加胺法
 >   路线（作者 2026-10-02）。纯流股只需脱水和压缩，仍乘与胺法相同的捕集率 0.90（按批准的计划保留）；氢路线的减排不乘捕集率，
 >   纯流股若实际接近全部捕集，CCS 相对氢路线少算约 10%。
@@ -346,7 +346,7 @@
 > - 混合 hub：份额为 0 的点源不改造。60 个甲醇 hub 里 18 个同时有份额为 0 的焦炉煤气制或天然气制点源；捕集量按份额加权，
 >   自然只含份额为正的点源，CCS 能力的铭牌系数也只按这些点源的铭牌与产量算；合成氨、甲醇氢路线的产量、能力、需氢量、非氢运行
 >   差额与取水也只计这些点源（读入时由点源表算出它们占 hub 产量、铭牌产能与取水的比例，
->   `optimization/industry_inputs.ABATABLE_SHARE_COLUMNS`；`optimization/industry_matrices.py:184-194`、`:266-275`、`:293-302`）。
+>   `optimization/industry_inputs.ABATABLE_SHARE_COLUMNS`；`optimization/industry_matrices.py:185-195`、`:266-275`、`:293-302`）。
 >   长流程钢、水泥、合成氨的点源份额都为正，与按整个 hub 相同。
 > - 余热份额（`OptimizationAssumptions.industry_capture_waste_heat_share`，新参数，{部门: 份额}，缺省空表即全为 0）：蒸汽用煤与
 >   蒸汽 CO₂ 都乘 (1 − 份额)，余热原用于发电的机会成本不计；键不是模型内的部门、或份额不在 [0, 1]（含 NaN）时报错
@@ -535,7 +535,7 @@
 >   `ST_BASE` 读入时建的 200 km 内链路 71 148 → 70 999 条，煤电 hub 够得着的节点合计 17.37 EJ/a。
 >   各省降到改前的 22%（上海）至 96%（新疆），香港 7%；台湾在情景 4 栅格里全为 0，由 47 个节点变为没有（模型里没有台湾的煤电 hub）。
 > - 全国上限 16 EJ/a（`biomass_national_cap_gj_per_year`，作者 2026-09-10 定）没有改：改前约为节点合计的 53%，现为 88%、
->   煤电 hub 可达量的 92%；作者 2026-10-11 决定暂不改。
+>   煤电 hub 可达量的 92%；作者 2026-10-11 决定暂不改（2026-10-16 删除，见 §0 的 2026-10-16 条）。
 > - 绿氨表 `ammonia_supply_curve.csv` 没有重建：`scripts/build_supply_inputs.py`（`write_supply_inputs`）两张表一起建，本机没有
 >   `data/H2/` 绿氢栅格，会在氨表处报错、一张都不写；这次直接调 `build_biomass_supply_dataframe` 与 `write_csv` 只写了生物质表。
 >
@@ -725,6 +725,67 @@
 > - 风险（按分段 14 的结果推，未重解）：缺省硬约束下 ST_BASE 与 ST_WA 会不可行。两者水泥组 2050、2060 年都有缺口（BASE 65.8、53.6 Mt，
 >   WA 76.1、57.7 Mt；水泥只有 CCS 一条路，结构性部分按输入推约 50.0、51.5 Mt，见本节 2026-10-07 一条），删全国注入上限救不了；WA 另有 2030 年
 >   流域超取水指标 0.71 亿 m³。ST_TOT_BASE 与 ST_CP_BASE 的分段 14 解里所有松弛都为零，删上限只放宽可行域，硬约束下仍可行。
+>
+> 2026-10-16 起按作者对分段 15 诊断的决定改管道与流域余量（**模型口径变更，模型分段 15 → 16**；`docs/方法论.md` §3.4、§6.2、§7.3、§9.1–9.2、
+> 附录 B.3、C.2、D.4，`docs/参数来源索引_20260930.md` 新增 D09；CLAUDE.md §二.2、§二.7 记第十六段边界）：
+> - 管道规格换成作者提供的 ChinaCCS.xlsm `data_CO2pipe` 表（10 档管径）中的 12、24、42 英寸三档（细、中、粗）：单根能力取该档上限
+>   3.25 / 19.69 / 83.954 Mt/a，每 km 投资取表中 146.8 / 330.0 / 598.4 万元（此前 2 / 5 / 20 Mt/a、2.0 / 3.5 / 8.0 百万元/km）。类别倍率与
+>   海上倍率照旧乘在上面。
+> - 删每边每期最多 2 根（`max_parallel_pipes`）、每边在役新增合计 ≤ 2 × 20 Mt/a（`standard_pipe_capacity_mtpa`）两个上限：都没有出处；
+>   各档根数是不设上限的整数，由 MIP 按成本选。随之删去不进目标的建成 / 新增两个二元标志（`build_edge`、`add_cap`）及其 5 条联结约束
+>   （建成不可逆、新增须铺管、有上限才可建等）；管道只剩“流量 ≤ 既有走廊容量 + 在役新增 + 松弛”一条（`model_linking.add_capacity_constraints`）。
+>   结果里的 `build_edge` 改由各期新增容量累计是否为正得出。
+> - 管道寿命 30 → 40 年（作者定）：2030 年铺的管在规划期内不到期，期末残值按 40 年折旧。
+> - LP 热启动取整（`solver_start._cheapest_cover`）：逐边逐年用整根组合覆盖松弛解的新增容量，组合取目标函数里 `pipe_count` 系数
+>   （折现 capex、在役固定运维、期末残值）之和最小者，根数不设上限，总能覆盖；此前按不折现的每 km capex 在根数与在役上限内选，盖不住就取最大可行组合。
+> - 流域余量去掉煤电重复计算：公报的工业取水只单列直流火(核)电，闭式循环与空冷煤电的取水留在工业剩余项里，此前预留扣掉的只有
+>   已建模工业，煤电这份水在预留里与约束里各计一次。现在 `builders/water_quota.modelled_coal_closed_loop_withdrawal` 按模型自己的机组
+>   （2025 年及以前投产、非直流冷却）、所在省利用小时与 Wang (2023) 取水强度估出各流域的这份水，从预留里一并扣出：
+>   余量 = 上限 − (预留 − 工业 − 煤电闭式循环) × 达标比例。九个流域合计扣出 61.5 亿 m³（按下面改正后的机组表；改正前 61.9）；2030 年余量各增 0（西南诸河）
+>   至 11.3 亿 m³，西北诸河超指标（比例 0.8795）由 2.10 增到 10.33 亿 m³。两类扣出合计超过公报工业减直流火(核)电时报错。删去没有调用方的
+>   `basin_reserved_withdrawal(exclude_all_industry=True)` 乐观口径。`water_basin_caps.csv` 新增 `modelled_coal_closed_loop_1e8_m3` 列，已按
+>   恒等式（新余量 = 旧余量 + 煤电扣出 × 比例）就地更新；本仓库环境缺 ISIMIP 分摊权重文件，作者本机用 `scripts/build_water_basin_caps.py`
+>   重建核对（预计只差取整）。这份扣出取决于机组冷却方式标注，下面的机组改正之后已按同一恒等式再更新一次。
+> - 验证：ruff 0 条；490 个测试通过（487 + 3：预留扣出的逐机组口径、余量公式、超出公报报错；管道的 5 个用例按新档位与寿命改写，
+>   热启动取整的用例改测按目标系数选组合）；方法论 337 处单行号引用都在文件范围内，随行号移动的已改，文首基准改为 `6f045a5`。
+> - 风险：粗管单位能力投资只有细管的 16%，LP 下界里的分数根更便宜，2% gap 是否可达待作者本机求解确认（CLAUDE.md §二.2）；
+>   根数不设上限后不会再因单边容量不可行。未求解。
+>
+> 同日（同属分段 16）按作者"约束按建议删、水泥定方向、冷却方式有来源的改正、计划外问题全部改掉、汇按 300 km 两种聚类都算"的决定另改：
+> - 删冗余约束（被别的约束蕴含，可行域不变）：掺烧档位的 McCormick 三条与"选零档则份额为零"（`nb_b` / `nb_a`）；炉型档位的 `_u2`；
+>   `no_rebuild_`、`rebuild_le_expired_`（由各类重建份额上界 f_c 蕴含）；拆分 hub 的 `expire_retire_or_rebuild_`（由重建拆分的两条蕴含）；
+>   合计重建份额不减（由各类不减蕴含；各类不减只加在上期该类已有到期装机的 hub 上）；`rebuild_delta` 改为表达式；掺烧路径的
+>   `rebuilt_le_share_`（由档位拆分蕴含）；退役列的空冷份额约束与不许空冷时的 `air_share_off` / `air_new_off`（改为变量上界）；
+>   工业 `ind_route_unavailable`（改为份额上界）、上期路线不可用时的 `ind_mono_`、无链路且路线不可用时的 `ind_h2_balance_`；
+>   资源节点上限只加在有链路或可用量为负的节点上。toy 模型 70 次求解的约束行数 18 753 → 10 763；MIPGap 0 重解，除删档位单调的两个
+>   用例外目标逐位相同。
+> - 删有含义的约束（**模型口径变更**）：掺烧档位单调 `mono_b` / `mono_a`（煤电可降档；已付的掺烧能力投资不退，闲置能力寿命内可再用），
+>   连续 hub 的档位选择变量 σ 随之只在整数 hub 下建；全国生物质上限 `biomass_national_cap_gj_per_year`（16 EJ/a；现行档位下 2030 年
+>   用量约 8 EJ/a，碰不到）。toy 掺烧用例 MIPGap 0 的目标 2.02434040476499 → 2.0212590345858223（降档更便宜），只删单调时逐位复现。
+>   保留：捕集份额锁定、工业路线单调、自愿退役速率上限、全国绿氢上限。
+> - 水泥 CCS 方案 A（作者授权定方向）：再生蒸汽燃煤锅炉的烟气并入捕集岛（`constants_industry_capture.INDUSTRY_CCS_BOILER_FLUE_CAPTURED`、
+>   `capture_yield`）：捕集量 = η E / (1 − η σ)，净减排合可捕集排放的 1 − (1 − η)/(1 − η σ)，σ = 0.2131 时 0.876（此前 0.708），
+>   高于 TIMES CN60 水泥组 2050 / 2060 年所需的 0.780 / 0.795；捕集岛的投资、能耗、耗材与取水都按含锅炉烟气的捕集量计。依据 CEMCAP D4.6
+>   p.85（参数来源索引 I25，读了原文）。钢铁另有氢路线，锅炉烟气仍排空；余热份额 0.3 不变（CEMCAP 的 3.8% 是欧洲参考窑，取 0.038
+>   时净减排 0.864，仍够）。
+> - GEM 机组表改正（`constants_gem_corrections.GEM_UNIT_CORRECTIONS`，`builders.plants.apply_unit_corrections` 改前核对原值；参数来源索引 D10）：
+>   18 台冷却方式改空冷（武安 2 台原记直流；大同二二期、上都一期、吉木萨尔、轮台、阿克苏各 2 台与三峡南疆 6 台原记湿冷），国神博州 2 台
+>   省份改新疆，国能中卫扩建 1 台投产年改 2026；`plants_unit.csv` 改 21 行，`plants.csv`、`plants_unit_hub.csv` 用库里的 `write_plants`
+>   重建（不改输入时逐字节复现库里的表），8 个 hub 的冷却装机、毛热耗（空冷 +15 g/kWh）、用水强度与 `already_air_share` 变（如 P0123 直流
+>   1 800 → 1 200 MW）。查过没改的：盘山 1、2 号机型，神头第一 600 / 660 MW，元宝山投产年，三峡南疆分台投产年（来源不足）。
+> - 直流冷却标定只数 2025 年及以前投产的机组（`data_prep_plants._once_through_bulletin_share`、`builders/water_quota.once_through_calibration`）：
+>   此前连 2026 年起投产的 24.3 GW 淡水直流机组也算进模拟值，模拟偏大约 10%，标定因子 0.497 → 0.547，开流域上限时直流冷却取水随之增约 10%。
+> - 绿氢全国上限的注释改正出处：2060 的 120 Mt 取自水规总院的需求预测（参数来源索引 R07），不是氢能联盟 75–162 Mt 的中值；数值不变。
+> - 汇的距离聚类（**建表选项，库里输入不换**）：`scripts/build_storage_inputs.py --cluster-km 300 --linkage complete|average`
+>   （`builders/storage_clusters.py`）：同类型、同在陆上或海上的格先并成 25 km 块，再按 haversine 距离层次聚类，簇内封存潜力与注入能力
+>   相加。300 km 下 complete（簇内任意两块 ≤ 300 km）108 个汇（DSA 80、EOR 28，海上 30），average（簇间平均 ≤ 300 km）51 个（DSA 34、
+>   EOR 17，海上 14）；现行 89 个。注入能力合计不变（约 55.6 万 Mt/a），单汇注入中位数 53 → 1 003 / 1 756 Mt/a，注入不足 10 Mt/a 的汇
+>   26 → 8 / 2 个，煤电到最近汇的装机加权距离 210 → 170 / 210 km。海上标记取簇内格的落省（雷州半岛与海南北部的陆上簇质心落在琼州海峡）。
+>   作者选定后本机重建 `storage_hubs.csv` 与管网。
+> - 验证：ruff 0 条；497 个测试通过（490 + 8 − 1：汇距离聚类 4 个、机组改正 1 个、直流标定口径 2 个、水泥锅炉烟气 1 个；删全国生物质上限的用例）；
+>   约束清理的其余用例按新约束集改写；方法论行号引用随代码移动已改，文首基准仍为 `6f045a5`。
+> - 风险：删档位单调与水泥方案 A 都改变最优解，冷却与标定改正改变有水约束情景的取水；均未求解。水泥目标在方案 A 下按输入可达，
+>   但 ST_BASE / ST_WA 在硬约束下是否可行仍待本机求解确认。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -734,15 +795,15 @@
 
 | 环节 | 煤电 | 工业 | 代码位置 |
 |---|---|---|---|
-| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:200`、`optimization/vintage.py`、`optimization/model_industry.py:154-158`、`:232`（`industry_capex_expr`） |
-| 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:58-79`、`optimization/model_industry.py:175` |
+| capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:194`、`optimization/vintage.py`、`optimization/model_industry.py:153-157`、`:232`（`industry_capex_expr`） |
+| 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:33-54`、`optimization/model_industry.py:174` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`constants.annuity_factor` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:129`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:249`、`:295-298` |
-| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:204-209`、`:235-242` |
-| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:199` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:129`、`optimization/industry_matrices.py:238`、`:291` |
-| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 30、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:65`、`optimization/model_costs.py:67-104`、`optimization/vintage.py`（`_end_in_use`） |
-| 到寿命后 | 管道到 30 年，捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:126`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:262`、`:295-298` |
+| 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:205-210`、`:235-242` |
+| 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:200` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:126`、`optimization/industry_matrices.py:252`、`:291` |
+| 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 40（2026-10-16 前 30）、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:65`、`optimization/model_costs.py:67-104`、`optimization/vintage.py`（`_end_in_use`） |
+| 到寿命后 | 管道到 40 年（2026-10-16 前 30 年；2030 年铺的在规划期内不到期），捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
 **本轮已统一的差异**（批 2）：
 
@@ -781,15 +842,15 @@
 2. **工业没有退役和搁浅资产。** 煤电有退役份额、搁浅资产（只计提前退役，3 500 元/kW × 未到期装机的平均 min(1, 剩余寿命 / 20 年)）和原址重建
    （3 500 × 70% 元/kW）；工业产量完全外生，没有厂址级退役决策（`optimization/industry.py` 模块说明的"已知偏差"）。
 3. **工业 H2 路线的 capex 没有学习曲线**（两侧 CCS 都有）。H2 路线的非氢运行差额由文献溢价锚点反推，目标计入
-   max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:116` 起。
+   max(0, 年度成本（含固定运维与购氢）)，见 `optimization/model_industry.py:112` 起。
 4. **水费只对煤电收。** 所有情景（含不设水约束的）里，煤电用水都经取水链路计费：到厂单价 4.0 元/m³ + 0.05 元/(m³·km) × 距离
    （`optimization/data_prep._prepare_water`），乘该厂的"定额 / 耗水"比（截在 0–20，`optimization/data_prep_plants._prepare_plants`），再加情景加价
    `water_price_adder_cny_per_m3`（缺省 0）（`optimization/water_access._water_access_data`、`optimization/model_costs.py:209-213`）。
    工业取水（含捕集的 1.65 m³/t CO₂）只进流域上限，不进目标函数。
 5. **所需能力的口径不同。** 两侧的捕集固定运维都按在役且在用的能力、建设年单价计（2026-09-30 起，`optimization/vintage.py`）；
-   煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:140-150`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
+   煤电的所需能力是捕集份额 × 装机（`optimization/model_linking.py:93-103`），`ST_` 的利用小时从 3 600 h 降到 1 500 h 也照付；
    工业的所需能力是铭牌系数 × 当年捕集量（氢路线为产量；CCS 与合成氨、甲醇的氢路线只计可捕集份额为正的点源，铭牌系数也按它们算，
-   `optimization/industry_matrices.py:247`、`:293`），随产量指数变，
+   `optimization/industry_matrices.py:260`、`:293`），随产量指数变，
    `ST_` 下长流程钢 2060 年产量只有 2030 年的 23%，所需能力随之降到 23%，固定运维只付这部分。
    作者 2026-09-23 决定维持现状，只改正原来"两侧相同"的说法；2026-09-30 前两侧还按当年单价计，煤电按改造 MW × 份额、工业按当年捕集量。
 
@@ -846,7 +907,7 @@
 
 | 参数 | 取值 | 出处 | 判定 |
 |---|---|---|---|
-| 管道 capex（2 / 5 / 20 Mtpa 三档） | 2.0 / 3.5 / 8.0 百万元/km | 规模指数 0.6：Knoope et al. 2013；干线基价 40 万元/(Mtpa·km) 取的是"ADB 中国系数"，没能定位出自哪份 ADB 报告，同处引的 Smith et al. 2021 折算只有 23 万且没核到原文；对照：按 Fan et al. 2023 SI 的材料法自算 12–16 万（式中 r 按半径读；原文称其为直径，按直径读是 47–65 万，原式待核；壁厚与保温层为自设），吉林石化—吉林油田一期按规模放大 71 万（只见检索摘要） | 规模指数有出处（原文未核）；干线基价 ⚠ 假设（出处不具体） |
+| 管道 capex（细 / 中 / 粗 3.25 / 19.69 / 83.954 Mt/a 三档，2026-10-16 起） | 1.468 / 3.300 / 5.984 百万元/km | 作者提供的 ChinaCCS.xlsm `data_CO2pipe` 表 12 / 24 / 42 英寸三档的 Cost（万元/km）与 flow_Max（`docs/参数来源索引_20260930.md` D09）；表内没写价格年与原始出处。2026-10-16 前为 2 / 5 / 20 Mtpa 三档 2.0 / 3.5 / 8.0 百万元/km：规模指数 0.6 取 Knoope et al. 2013，干线基价 40 万元/(Mtpa·km) 取的是没能定位的“ADB 中国系数” | 有表（作者提供），原始出处未知 |
 | 沿既有走廊新建的折减 | × 0.97 | NETL 2013 路权公式（经 IEAGHG 2013/18 Table 20 转引）：路权约占 24–40 英寸、100 英里管道 capex 的 2–3%，0.97 = 去掉这部分 | 推导（原文未核） |
 | 支线 / 直连倍率（管道） | × 1.35 / 2.8 | — | ⚠ 假设（无出处） |
 | 海上倍率（管道） | × 1.5，只乘边落在陆地之外的海上段（2026-10-10 起；此前凡接海上汇的边整条乘） | 二手转述 1.6（1.5–2.0，USAID 2002、ZEP 2011、Knoope 2014）；PyPSA technology-data 转录的 DEA 海底管道投资为陆上 2.0 倍 | 作者定，在文献区间低端 |
@@ -854,7 +915,7 @@
 | 封存成本 | 陆上 35 元/t（2026-10-02 前 32） | An et al. 2025 SI Table 7：5.0（3.0–8.5）$/t = 35（21–60）元/t | 有出处 |
 | 海上封存倍率 | × 2.2（2026-10-02 起；此前海上、陆上同价） | REMIND carbon management 表：海上、陆上注入投资 525 / 350，固定运维占投资 0.12 / 0.06 每年，寿命 40 年；按 6% 年化后之比 2.21（只按投资比为 1.5） | 推导（REMIND 的注入成本之比，套用到 An 的封存单价上；按模型贴现率 6% 年化，5%–8% 为 2.13–2.26；单位按表头推断，比值与单位无关） |
 | EOR 抵扣 | 12 元/t | — | ⚠ 假设（无出处） |
-| 管道寿命 | 30 年 | — | ⚠ 假设（设定值） |
+| 管道寿命 | 40 年（2026-10-16 起，此前 30 年） | 作者定 | ⚠ 假设（设定值） |
 | 绿氨燃料价里的合成岛 capex | 875 USD/(t·a)，按模型贴现率、30 年折成年金计入氨价 | 注释由"绿地绿氨 1 300–2 000 USD/(t·a) 扣掉电解槽"推得，未列文献（`constants.NH3_HB_CAPEX_USD_PER_TONNE_YEAR` 的注释、`builders/supply_ammonia.py:63-145`）；2026-09-23 前单用 8%、20 年，见 §0.1 (e) 与下面的表外参数 | ⚠ 假设（出处不具体） |
 | 工业用氢运费 | 0.03 元/(kg·km) | 注释称取中国氢能联盟白皮书 2019 的量级，未核到原文 | ⚠ 假设（临时值） |
 
@@ -966,7 +1027,7 @@
 | 部分 | 现状 |
 |---|---|
 | 输入 | v9.2 管网的整套输入在 `_indtree/inputs/`，已入库；`scripts/build_*.py` 从原始数据重建（§5） |
-| 模型 | 2030、2040、2050、2060 四个规划年联立的一个 MILP，用 Gurobi 求解；`ST_` 系的 hub 决策是连续的，整数变量只有管道的根数与建设标志（§6） |
+| 模型 | 2030、2040、2050、2060 四个规划年联立的一个 MILP，用 Gurobi 求解；`ST_` 系的 hub 决策是连续的，整数变量只有管道的根数（§6） |
 | 情景 | 登记 4 个（`scenarios/st.toml`）；20 个水文成员用 `run --water` 并到登记情景上，敏感性用 `--set` / `--as`（§7） |
 | 求解 | 在作者本机：8 线程，`ST_` 系 MIPGap 2%，LP 松弛热启动由 `run` 自动做（§6.5） |
 | 结果 | 每次求解写一个 `<结果名>.json`、九张 CSV 与结果工作簿 `ccs_results.xlsx`（§8） |
@@ -1113,7 +1174,7 @@ python -m ruff check src tests scripts
 - **煤电 hub**：六条路径的份额；掺烧档位（生物质与 BECCS 0.10 / 0.15 / 0.20，0.20 档只对 CFB 装机开放，煤粉炉上限 0.15；掺氨 0.10–0.50 五档）；
   空冷改造；到期机组的原址重建。`ST_` 系份额是连续变量，且恰好分摊到各掺烧档位上。
 - **工业 hub**：不改造、CCS、氢路线三条路线的份额。
-- **管网**：各期各边新建管道的根数（规格 2、5、20 Mt/yr，每期每边最多 2 根）与建设标志，各边的双向流量。
+- **管网**：各期各边新建管道的根数（细 / 中 / 粗三档 3.25、19.69、83.954 Mt/yr，根数不设上限），各边的双向流量。
 - **封存**：各汇各期的注入量。
 - **资源**：各链路的生物质、煤电用氨与工业用氢（氨与氢共用绿氢节点）流量，煤电各水链路的用水量。
 - **缺口与松弛**：部门目标缺口，注入、管道、资源与水的松弛；都按高罚价进目标，正常应为零，非零就是那条约束被放宽了，
@@ -1142,11 +1203,11 @@ python -m ruff check src tests scripts
 | 跨期不可逆、自愿退役速率上限 | §4.6 |
 | 工业路线份额、路线不可逆与能力到期 | §5.1、§5.4 |
 | 改造能力按建设年分代、到寿命退出 | §3.3 |
-| CO₂ 流量守恒；管道在役容量（30 年寿命内的新建管，每边缺省上限 40 Mt/yr） | §6.1、§6.2 |
+| CO₂ 流量守恒；管道在役容量（40 年寿命内的新建管，每边不设上限） | §6.1、§6.2 |
 | 汇的年注入上限与累计容量（都只取 Fan 2025 聚类范围内逐格之和；2026-10-14 起不设全国合计上限） | §6.3 |
 | 生物质与绿氢的节点上限、全国上限 | §7.1 |
 | 节点生态可用水量（煤电耗水） | §7.2 |
-| 流域取水总量指标（煤电与工业取水） | §7.3 |
+| 流域取水总量指标（煤电与工业取水；余量已把两者在公报年的现状取水从预留里扣出） | §7.3 |
 | 部门碳目标：分部门上限或合计上限（`sector_target_mode`） | §7.4 |
 
 上面的部门目标、资源节点、流域取水指标、汇的注入与累计容量、管道流量各带一组缺口或松弛变量，全由 `OptimizationAssumptions.allow_slack`

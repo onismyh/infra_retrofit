@@ -148,13 +148,22 @@ INDUSTRY_CCS_CONSUMABLES_CNY_PER_T_CO2: Final[dict[str, float]] = {
 }
 # 再沸器蒸汽由厂内燃煤锅炉产生：每 GJ 蒸汽的耗煤量 = 1 / 效率。
 # 其 CO2 直接排空（改造捕集的是工艺流股，不是辅助锅炉——PKU/Baowu 案例也这样计，
-# 辅助电厂按 743 g/kWh），所以 CCS 路线的净减排是捕集量减去这部分蒸汽 CO2。
+# 辅助电厂按 743 g/kWh），所以 CCS 路线的净减排是捕集量减去这部分蒸汽 CO2；水泥的锅炉烟气 2026-10-16 起并入捕集岛，
+# 见 `INDUSTRY_CCS_BOILER_FLUE_CAPTURED`。
 # 2026-09-22 之前，模型把 ACCA21 单位成本视为已含能耗，且什么都不排空。
 # 效率 0.88：DEA 311.1a 燃煤蒸汽锅炉年均净效率 89%（2030 年区间 87-90.8；`dea_iph`），是为捕集新建锅炉的口径；
 # 若蒸汽取自存量工业锅炉，运行效率低得多（检索摘要称 60-72%，未核原文）。
 # 蒸汽可有一部分取自窑 / 炉余热（2026-10-02 起）：份额按部门由 `OptimizationAssumptions.industry_capture_waste_heat_share`
 # 给（水泥缺省 0.3，2026-10-07 起；此前各部门 0），蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，少发的余热电见下。
 INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY: Final[float] = 0.88
+# 再沸器蒸汽锅炉的烟气并入捕集岛、与工艺烟气一起按捕集率 η 捕集的部门（2026-10-16 起：水泥；此前各部门都放空）。
+# 设每吨捕集量对应的锅炉 CO2 为 σ（`capture_steam_co2_t_per_t`），可捕集排放为 E：捕集量 C = η (E + σC)，即
+# C = ηE / (1 − ησ)（`capture_yield`）；净减排仍是 C − σC = C (1 − σ)，合 E 的 1 − (1 − η) / (1 − ησ)。水泥 η = 0.9、
+# σ = 0.2131（余热份额 0.3）时 0.876，此前 0.9 x (1 − σ) = 0.708，够不到 TIMES CN60 水泥 2050 / 2060 年所需的
+# 0.780 / 0.795（水泥没有氢路线）。依据：CEMCAP D4.6（Voldsund 等 2019，Zenodo 10.5281/zenodo.2597091）p.85 技术展望，
+# 胺法用锅炉供汽时锅炉排放使 CO2 避免率降约 23%，可把锅炉烟气并入窑烟气一起捕集。捕集岛按 C（含锅炉烟气）定规模，
+# 投资、能耗、耗材与取水都按 C 计；并入锅炉烟气的额外投资没有找到数，未另加。钢铁同样有再沸器蒸汽，但有氢路线，仍放空。
+INDUSTRY_CCS_BOILER_FLUE_CAPTURED: Final[frozenset[str]] = frozenset({SECTOR_CEMENT})
 # 余热改供再生蒸汽后每 GJ 余热蒸汽少发的余热电，kWh（2026-10-07 起计入，按情景电价买电补上；此前不计）；有再沸器蒸汽而没有这个值的
 # 部门（钢铁）设了正的余热份额时报错（`capture_variable_cost_cny_per_t`）。水泥 55（47-63），推算（B）：新型干法窑纯低温余热发电
 # 30-40 kWh/t 熟料（检索摘要列有 30-38、32-40、30-40），用的是 3-5 bara 低压汽能取的那段废气热，按 0.3 x 2.8 GJ/t x 0.755 t 捕集量/t
@@ -248,6 +257,14 @@ def capture_steam_co2_t_per_t(sector: str, coal_emission_factor_t_per_gj: float,
     """产生再沸器蒸汽所排空的 CO2，单位为每吨捕集 CO2 对应的吨数；余热供给的那部分蒸汽（`waste_heat_share`）不排。"""
     steam_gj = _require(INDUSTRY_CCS_STEAM_GJ_PER_T_CO2, sector, "capture steam duty")
     return steam_gj * (1.0 - float(waste_heat_share)) / INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY * float(coal_emission_factor_t_per_gj)
+
+
+def capture_yield(sector: str, capture_rate: float, steam_co2_t_per_t: float) -> float:
+    """每吨可捕集排放的捕集量：锅炉烟气并入捕集岛的部门（`INDUSTRY_CCS_BOILER_FLUE_CAPTURED`）为 η / (1 − ησ)，其余为 η。"""
+    eta = float(capture_rate)
+    if sector in INDUSTRY_CCS_BOILER_FLUE_CAPTURED:
+        return eta / (1.0 - eta * float(steam_co2_t_per_t))
+    return eta
 
 
 def levelised_capture_cost_cny_per_t(

@@ -11,6 +11,16 @@ from .scenario import PATHWAYS
 from .year_types import GrbExpr, GrbMVar, YearData
 
 
+def _drawn_nodes(available, *memberships) -> list[int]:
+    """要加上限的节点：有链路取用，或可用量为负。没有链路且可用量 >= 0 的节点，上限是 0 <= 可用量 + 松弛，恒成立
+    （2026-10-16 前也加）。memberships 是 (节点, 链路) 关联矩阵，None 跳过。"""
+    drawn = np.asarray(available, dtype=np.float64) < 0.0
+    for membership in memberships:
+        if membership is not None:
+            drawn |= np.asarray(abs(membership).sum(axis=1)).ravel() > 0   # 稀疏或稠密都行
+    return np.flatnonzero(drawn).tolist()
+
+
 def add_resource_balances(
     model,
     year_data: YearData,
@@ -47,27 +57,19 @@ def add_resource_balances(
     _add_vector_upper_bound(
         model, biomass_node_expr, year_data.biomass_available + biomass_slack_gj,
         biomass_node_count, f"biomass_node_limit_{year_suffix}",
+        _drawn_nodes(year_data.biomass_available, year_data.biomass_link_node_membership),
     )
-    # 全国生物质上限（默认 16 EJ/yr），按求解器缩放单位。
-    if assumptions.biomass_national_cap_gj_per_year > 0:
-        model.addConstr(
-            biomass_use_gj.sum()
-            <= assumptions.biomass_national_cap_gj_per_year
-            / float(year_data.biomass_flow_scale),
-            name=f"biomass_national_cap_{year_suffix}",
-        )
     # 节点是绿氢产地，上限只按绿氢计（2026-10-10 起）：煤电用的氨在节点上由绿氢合成，按 NH3_H2_RATIO（kg H2/kg NH3）
     # 折成氢扣减，工业氢路线直接扣减，两者共用节点的绿氢上限与全国绿氢上限。此前节点上限按折成氨的量计，另有一条
     # 全国绿氨上限（已删）。
     h2_node_expr = ammonia_node_expr * NH3_H2_RATIO
-    if (
-        year_data.industry_h2_node_membership is not None
-        and int(industry_h2_flow_kg.shape[0]) > 0
-    ):
-        h2_node_expr = h2_node_expr + year_data.industry_h2_node_membership @ industry_h2_flow_kg
+    industry_h2 = year_data.industry_h2_node_membership if int(industry_h2_flow_kg.shape[0]) > 0 else None
+    if industry_h2 is not None:
+        h2_node_expr = h2_node_expr + industry_h2 @ industry_h2_flow_kg
     _add_vector_upper_bound(
         model, h2_node_expr, year_data.h2_available_kg + h2_slack_kg,
         ammonia_node_count, f"green_h2_node_limit_{year_suffix}",
+        _drawn_nodes(year_data.h2_available_kg, year_data.ammonia_link_node_membership, industry_h2),
     )
     # 全国绿氢上限 Mt H2/yr（所有用户从共享电解节点取的绿氢）。
     _h2_scale = float(year_data.ammonia_flow_scale)
@@ -82,6 +84,7 @@ def add_resource_balances(
         _add_vector_upper_bound(
             model, water_node_expr, year_data.water_available_m3 + water_slack_m3,
             water_node_count, f"water_node_limit_{year_suffix}",
+            _drawn_nodes(year_data.water_available_m3, year_data.water_link_node_membership),
         )
 
 

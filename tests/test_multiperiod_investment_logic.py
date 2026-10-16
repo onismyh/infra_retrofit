@@ -74,8 +74,8 @@ def _expected_ccs(
 
 
 def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> None:
-    """容量按管径档位（2 / 5 / 20 Mtpa）整根计：~2.3 Mt/yr 的流量取能覆盖它的最便宜档位组合
-    （一根 5-Mtpa 管 3.5e6 CNY/km，比两根 2-Mtpa 管的 4.0e6 便宜），而不是一根 20-Mtpa 干线。
+    """容量按管径档位（细 / 中 / 粗 3.25 / 19.69 / 83.954 Mt/a，ChinaCCS 12" / 24" / 42"）整根计：~2.3 Mt/yr 的流量取
+    能覆盖它的最便宜档位组合，即一根细管（1.47e6 CNY/km），而不是中管或粗管。
     并且第 1 期建成的边在第 2 期不得被迫再次新增容量（旧的最小建设量锁存 bug）。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2050: 0.5, 2060: 0.5})
@@ -104,15 +104,16 @@ def test_pipeline_tiers_size_the_pipe_to_the_flow_and_build_once(tmp_path) -> No
     assert y1["share"][0, ccs_idx] == pytest.approx(s_ccs_expected, rel=1e-3)
     assert y1["edge_flow_mtpa"][0] == pytest.approx(captured_expected, rel=1e-3)
 
-    # 捕集的 CO2（~2.3 Mt/yr）超出 2-Mtpa 档；一根 5-Mtpa 管是最便宜的覆盖方案，
-    # 所以第 1 期新增容量恰为 5 Mtpa——而不是一根 20-Mtpa 干线。
-    assert captured_expected > 2.0
-    assert y1["new_cap_mtpa"][0] == pytest.approx(5.0, rel=1e-3)
-    assert y1["pipe_count"][0].tolist() == pytest.approx([0.0, 1.0, 0.0], abs=1e-6)
+    # 捕集的 CO2（~2.3 Mt/yr）在细管档（3.25 Mt/a）以内；一根细管是最便宜的覆盖方案，
+    # 所以第 1 期新增容量恰为细管一档——而不是中管或粗管。
+    tiers = assumptions.pipe_capacity_tiers_mtpa
+    assert 2.0 < captured_expected < tiers[0]
+    assert y1["new_cap_mtpa"][0] == pytest.approx(tiers[0], rel=1e-3)
+    assert y1["pipe_count"][0].tolist() == pytest.approx([1.0, 0.0, 0.0], abs=1e-6)
     assert y1["build_edge"][0] == pytest.approx(1.0)
 
-    # 第 2 期沿用第 1 期建成的容量存量：不新增容量，但锁存的建设标志必须保持为 1
-    # （不可逆），流量继续使用这条边。
+    # 第 2 期沿用第 1 期建成的管（40 a 寿命内仍在役）：不新增容量，建设标志（各期新增累计 > 0）仍为 1，
+    # 流量继续使用这条边。
     assert y2["new_cap_mtpa"][0] == pytest.approx(0.0, abs=1e-6)
     assert y2["build_edge"][0] == pytest.approx(1.0)
     # 2060 年能耗惩罚比例更低，更小的份额就能满足同样 50% 的目标——但捕集份额锁定

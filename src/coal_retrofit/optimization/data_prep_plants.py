@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 
-from ..constants import COAL_DESIGN_LIFE_YEARS
+from ..constants import COAL_DESIGN_LIFE_YEARS, WATER_INTENSITY_BY_TECH_M3_PER_MWH, cooling_class
+from ..constants_water_quota import BULLETIN_YEAR
 from ..paths import ProjectPaths
 from .assumptions import OptimizationAssumptions
 from .input_tables import read_input_csv
@@ -111,13 +113,35 @@ def _read_unit_hub_map(paths: ProjectPaths, plants: pd.DataFrame) -> pd.DataFram
     return units.assign(plant_id=units["plant_id"].astype(str))
 
 
+def _once_through_bulletin_share(units: pd.DataFrame, by_plant: Callable[[pd.Series], np.ndarray]) -> np.ndarray:
+    """hub 直流冷却取水里公报年（`BULLETIN_YEAR`）及以前投产机组的份额，按装机 x Wang (2023) 直流冷却取水强度加权；
+    没有直流冷却机组的 hub 取 1.0（它的直流冷却分量为零，取什么都不影响）。
+
+    直流冷却标定（`builders.water_quota.once_through_calibration`）拿公报的直流火(核)电取水除以模型的直流冷却取水，
+    后者只该数公报里有的机组；2026-10-16 前连 2026 年起投产的 24.3 GW 淡水直流机组也算进去，模拟值偏大约 10%，
+    标定因子偏小（0.497，改后 0.547）。与流域余量里煤电闭式循环取水的扣出（`modelled_coal_closed_loop_withdrawal`）
+    同一个机组口径。海水直流 hub 的直流冷却分量为零，这里不必区分。
+    """
+    from ..builders.plants_water import combustion_class
+
+    once_through = units["cooling_technology"].map(cooling_class) == "once-through"
+    intensity = units["combustion"].map(
+        lambda label: WATER_INTENSITY_BY_TECH_M3_PER_MWH[(combustion_class(label), "once-through")]["withdrawal"]
+    )
+    withdrawal = (units["capacity_mw"].astype(float) * intensity).where(once_through, 0.0)
+    early = by_plant(withdrawal.where(units["commission_year"].astype(int) <= BULLETIN_YEAR, 0.0))
+    every = by_plant(withdrawal)
+    return np.divide(early, every, out=np.ones_like(every), where=every > 0.0)
+
+
 def _with_expiry(
     paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, plants: pd.DataFrame
 ) -> pd.DataFrame:
     """加逐规划年的列（`plant_matrices` 用）：到期装机份额 `expired_share_{年}`（f）、剩余账面份额
     `remaining_life_fraction_{年}`、未重建部分的毛热耗 `heat_rate_unexpired_{年}`；重建部分按重建热耗分类 j，
     每类一列不随年变的重建热耗 `heat_rate_rebuilt_c{j}` 与逐年的到期份额 `expired_share_c{j}_{年}`（f_j，按类相加为 f）。
-    另加不随年变的 CFB 装机份额 `cfb_share`（掺生物质比例的炉型上限，2026-10-02 起），不随机组到期与重建变。
+    另加不随年变的 CFB 装机份额 `cfb_share`（掺生物质比例的炉型上限，2026-10-02 起），不随机组到期与重建变；
+    与公报年及以前投产机组的直流冷却取水份额 `once_through_bulletin_share`（直流冷却标定用，2026-10-16 起）。
 
     按机组计（`plants_unit_hub.csv`）：连续 hub（缺省）逐台在投产年 + 设计寿命到期；整数 hub 整个 hub 在
     `retirement_year`（平均投产年 + 设计寿命）一起到期，f 只取 0 或 1。2026-10-02 前两种模式都按整个 hub 计。
@@ -155,6 +179,7 @@ def _with_expiry(
     total = by_plant(capacity)
     # CFB 装机份额：机型标签按 `/` 分段后有一段是 cfb（本体机型为 CFB，或厂名写明 CFB 的 `/CFB` 标记，2026-10-07 起）。
     out["cfb_share"] = by_plant(capacity.where(is_cfb(units["combustion"]), 0.0)) / total
+    out["once_through_bulletin_share"] = _once_through_bulletin_share(units, by_plant)
     # 部分到期 hub 的未重建部分由 hub 毛热耗反推，误差放大 1 / (1 - f) 倍，甚至为负：这些 hub 的 hub 值须与机组表按装机
     # 加权的值一致（plants.csv 取四位小数），改了分档煤耗等常量而没重建输入时报错。
     stale = np.abs(by_plant(capacity * unit_heat_rate) / total - hub_heat_rate) > 1e-4

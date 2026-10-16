@@ -2,7 +2,7 @@
 
 图含义：
   a  各流域各规划年的取水指标利用率 = 煤电与工业的取水 ÷ 流域余量。流域余量 = 用水总量控制指标 −（生活 + 农业
-     + 生态 + 非电工业）+ 已建模工业的现状取水（builders/water_quota.write_basin_caps），约束见
+     + 生态 + 工业 − 直流火(核)电）+ 已建模工业与煤电闭式循环的现状取水（builders/water_quota.write_basin_caps），约束见
      model_resources.add_basin_withdrawal_cap。深红格（> 100%）表示模型动用了带罚项的松弛、该流域指标没守住
      （只在松弛开关 allow_slack 开时可能；缺省关，指标是硬约束）；
      "无余量"是余量 ≤ 0 而仍有取水的流域。本情景没启用流域上限时 a 只写一行说明。

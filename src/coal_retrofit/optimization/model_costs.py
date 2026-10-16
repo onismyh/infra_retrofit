@@ -58,7 +58,7 @@ def add_year_costs(
         **_transport_storage_costs(payload, year_payloads, year_position, prepared, assumptions, edge_count, storage_count),
     }
     early_new, rebuilt_new = retirement_flows(model, payload, prev_payload, plant_count)
-    one_off = _one_off_capex(model, payload, prev_payload, scenario, assumptions, early_new, plant_count, edge_count)
+    one_off = _one_off_capex(payload, prev_payload, scenario, assumptions, early_new, plant_count, edge_count)
     add_retirement_rate_limit(model, payload, scenario, early_new, rebuilt_new, plant_count)
 
     payload.cost_exprs = {name: df * interval_weight * expr / _COST_SCALE for name, expr in annual.items()}
@@ -253,7 +253,6 @@ def _transport_storage_costs(
 
 
 def _one_off_capex(
-    model,
     payload: YearPayload,
     prev_payload: YearPayload | None,
     scenario: OptimizationScenario,
@@ -265,11 +264,10 @@ def _one_off_capex(
     """一次性 capex（CNY，未折现未缩放），键与 `cost_exprs` 同名同序；逐厂搁浅资产与原址重建另写入
     `payload.stranded_by_plant`、`payload.rebuild_capex_by_plant`。
 
-    分代资产（捕集岛、掺烧升级、空冷改造）计在本年新建量上（`vintage`）；原址重建非首年按增量计，加辅助变量与约束；
+    分代资产（捕集岛、掺烧升级、空冷改造）计在本年新建量上（`vintage`）；原址重建非首年按重建份额的增量计；
     搁浅资产计在新增提前退役 `early_new` 上（`retirement.retirement_flows`）。这些加入模型的先后决定模型指纹。
     """
     year_data = payload.year_data
-    yr_sfx = str(payload.year)
     capacity_mw = year_data.capacity_mw
     expired_share = year_data.expired_share
 
@@ -294,31 +292,17 @@ def _one_off_capex(
     ) + sum((_priced(unit_a, payload.blend_new_a[:, j]) for j in range(payload.blend_new_a.shape[1])), 0.0)
     air_retrofit_capex = _priced(_air_unit_capex(year_data), payload.air_new)
 
-    # 原址重建 capex：容量 x 新建成本比例 x 重建份额的增量（rebuild 锁存）；只有本年有到期装机的 hub 能重建
-    # （`model_year._add_expiry_rules`），2026-10-02 前按整个 hub 到期计。
-    # 逐厂一项记进 `payload.rebuild_capex_by_plant`（不能重建的 hub 为 0.0），合计与此前同式同序。
+    # 原址重建 capex：容量 x 新建成本比例 x 重建份额的增量 ρ_t - ρ_{t-1}（逐类不减，`model_linking`，所以增量非负）；
+    # 只有本年有到期装机的 hub 能重建（各类重建份额的上界是该类的到期份额），2026-10-02 前按整个 hub 到期计。
+    # 2026-10-16 前非首年的增量是辅助变量 δ >= ρ_t - ρ_{t-1}、δ >= 0。逐厂一项记进 `payload.rebuild_capex_by_plant`
+    # （不能重建的 hub 为 0.0）。
     rebuild_cost_per_mw = assumptions.stranded_asset_base_cny_per_kw * scenario.rebuild_capex_fraction * 1000.0
     payload.rebuild_capex_by_plant = [0.0] * plant_count
-    if prev_payload is None:
-        for p in range(plant_count):
-            if float(expired_share[p]) > 0.0:
-                payload.rebuild_capex_by_plant[p] = float(capacity_mw[p]) * rebuild_cost_per_mw * payload.rebuild[p]
-        rebuild_capex = gp.quicksum(
-            payload.rebuild_capex_by_plant[p] for p in range(plant_count) if float(expired_share[p]) > 0.0
-        )
-    else:
-        rebuild_capex_terms = []
-        for p in range(plant_count):
-            if float(expired_share[p]) <= 0.0:
-                continue
-            delta_rebuild = model.addVar(lb=0.0, name=f"rebuild_delta_{p}_{yr_sfx}")
-            model.addConstr(
-                delta_rebuild >= payload.rebuild[p] - prev_payload.rebuild[p],
-                name=f"rebuild_delta_lb_{p}_{yr_sfx}",
-            )
-            payload.rebuild_capex_by_plant[p] = float(capacity_mw[p]) * rebuild_cost_per_mw * delta_rebuild
-            rebuild_capex_terms.append(payload.rebuild_capex_by_plant[p])
-        rebuild_capex = gp.quicksum(rebuild_capex_terms) if rebuild_capex_terms else 0.0
+    rebuilding = [p for p in range(plant_count) if float(expired_share[p]) > 0.0]
+    for p in rebuilding:
+        added = payload.rebuild[p] if prev_payload is None else payload.rebuild[p] - prev_payload.rebuild[p]
+        payload.rebuild_capex_by_plant[p] = float(capacity_mw[p]) * rebuild_cost_per_mw * added
+    rebuild_capex = gp.quicksum(payload.rebuild_capex_by_plant[p] for p in rebuilding) if rebuilding else 0.0
 
     return {
         "stranded_capex": stranded_capex,

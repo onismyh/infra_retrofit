@@ -115,7 +115,7 @@ def test_inheritance_merges_sections_and_keeps_note_local(tmp_path) -> None:
         ('[X]\ntree = "t"\n[X.scenario]\nsolver_threads = 4\n', "--threads"),
         ('[X]\ntree = "t"\n[X.scenario]\nexperiment_id = "X"\n', "取结果名"),
         ('[X]\ntree = "t"\n[X.scenario]\nmip_gap = "0.03"\n', "应为 float"),
-        ('[X]\ntree = "t"\n[X.assumptions]\nmax_parallel_pipes = true\n', "应为 int"),
+        ('[X]\ntree = "t"\n[X.assumptions]\npipeline_lifetime_years = true\n', "应为 int"),
         ('[X]\ntree = "t"\n[X.scenario]\nplanning_years = [2030.5]\n', "应为 int"),
         # 取值有限的字段（CHOICES）在登记表这一层拦：water_season、water_mode 模型按值比较，拼错不报错而是静默走另一支；
         # warm_start、mip_focus 本来要到运行器或 Gurobi 才报错，这里提前。

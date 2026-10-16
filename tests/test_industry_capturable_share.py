@@ -195,8 +195,9 @@ def _steel_and_cement_hubs() -> IndustryInputs:
 
 @pytest.mark.parametrize("share", [0.0, 0.3, 0.6])
 def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share: float) -> None:
-    """长流程钢 + 水泥两个 hub，只给水泥设余热份额：水泥的蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，每 GJ 余热蒸汽少发的
-    55 kWh 余热电按情景电价加进运行费（2026-10-07 起），钢铁不变；份额 0 与空表相同。"""
+    """长流程钢 + 水泥两个 hub，只给水泥设余热份额：水泥每吨捕集量的蒸汽用煤与蒸汽 CO2 都乘 (1 − 份额)，每 GJ 余热蒸汽
+    少发的 55 kWh 余热电按情景电价加进运行费（2026-10-07 起），钢铁不变；份额 0 与空表相同。水泥的锅炉烟气进捕集岛
+    （2026-10-16 起），捕集量随蒸汽 CO2 变，所以按每吨捕集量比。"""
     industry = _steel_and_cement_hubs()
     assumptions = OptimizationAssumptions(industry_capture_waste_heat_share={"cement": share})
     base = industry_year_data(industry, _SCENARIO, OptimizationAssumptions(industry_capture_waste_heat_share={}), 2030)
@@ -205,10 +206,9 @@ def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share
     coal_per_t = steam_gj / cc.INDUSTRY_CCS_STEAM_BOILER_EFFICIENCY
     coal_cost_per_t = coal_per_t * assumptions.province_coal_cost("Shanxi")
     lost_power_cost_per_t = steam_gj * 55.0 / 1000.0 * _SCENARIO.electricity_price_for_year(2030)
-    captured_t = data.captured_mt[1, CCS] * 1e6
-    assert data.opex_cny[1, CCS] == pytest.approx(
-        base.opex_cny[1, CCS] + share * captured_t * (lost_power_cost_per_t - coal_cost_per_t), rel=1e-12
-    )
+    per_t = data.opex_cny[1, CCS] / (data.captured_mt[1, CCS] * 1e6)
+    base_per_t = base.opex_cny[1, CCS] / (base.captured_mt[1, CCS] * 1e6)
+    assert per_t == pytest.approx(base_per_t + share * (lost_power_cost_per_t - coal_cost_per_t), rel=1e-12)
     steam_co2 = coal_per_t * assumptions.coal_emission_factor_t_per_gj
     assert data.reduction_mt[1, CCS] == pytest.approx(data.captured_mt[1, CCS] * (1.0 - (1.0 - share) * steam_co2), rel=1e-12)
     np.testing.assert_array_equal(data.opex_cny[0], base.opex_cny[0])
@@ -216,7 +216,8 @@ def test_waste_heat_share_cuts_steam_coal_and_steam_co2_of_its_sector_only(share
 
 
 def test_cement_takes_waste_heat_share_0p3_by_default() -> None:
-    """主线（2026-10-07 起）：水泥再生蒸汽的余热份额缺省 0.3、其余部门 0，净减排系数 0.9 x (1 − 0.7 x 0.3044) = 0.708。"""
+    """主线（2026-10-07 起）：水泥再生蒸汽的余热份额缺省 0.3、其余部门 0，σ = 0.7 x 0.3044 = 0.2131；锅炉烟气进捕集岛
+    （2026-10-16 起），净减排系数 1 − 0.1 / (1 − 0.9σ) = 0.876（此前 0.9 x (1 − σ) = 0.708）。"""
     assert OptimizationAssumptions().industry_capture_waste_heat_share == {"cement": 0.3}
     assert cc.INDUSTRY_WASTE_HEAT_LOST_POWER_KWH_PER_GJ == {"cement": 55.0}
     data = industry_year_data(_steel_and_cement_hubs(), _SCENARIO, OptimizationAssumptions(), 2030)
@@ -226,7 +227,25 @@ def test_cement_takes_waste_heat_share_0p3_by_default() -> None:
     np.testing.assert_array_equal(data.opex_cny, explicit.opex_cny)
     np.testing.assert_array_equal(data.reduction_mt, explicit.reduction_mt)
     co2_mt = float(_steel_and_cement_hubs().hubs["co2_mt_per_year"].iloc[1])  # 水泥可捕集份额 1
-    assert data.reduction_mt[1, CCS] / co2_mt == pytest.approx(0.708, abs=5e-4)
+    assert data.reduction_mt[1, CCS] / co2_mt == pytest.approx(0.876, abs=5e-4)
+
+
+def test_cement_boiler_flue_gas_goes_through_the_capture_island() -> None:
+    """水泥的锅炉烟气与窑烟气一起按 η 捕集（2026-10-16 起）：捕集量 = η E / (1 − ησ)，净减排 = 捕集量 x (1 − σ)，
+    即 E 的 1 − (1 − η) / (1 − ησ)；捕集能力、运行费与取水都按捕集量计。长流程钢的锅炉烟气照旧放空，捕集量 = η E。"""
+    assumptions = OptimizationAssumptions()
+    data = industry_year_data(_steel_and_cement_hubs(), _SCENARIO, assumptions, 2030)
+    co2 = _steel_and_cement_hubs().hubs["co2_mt_per_year"].astype(float).to_numpy()
+    sigma = cc.capture_steam_co2_t_per_t("cement", assumptions.coal_emission_factor_t_per_gj, 0.3)
+    assert cc.INDUSTRY_CCS_BOILER_FLUE_CAPTURED == frozenset({"cement"})
+    assert data.captured_mt[1, CCS] == pytest.approx(co2[1] * _RATE / (1.0 - _RATE * sigma), rel=1e-12)
+    assert data.reduction_mt[1, CCS] == pytest.approx(co2[1] * (1.0 - (1.0 - _RATE) / (1.0 - _RATE * sigma)), rel=1e-12)
+    assert data.captured_mt[0, CCS] == pytest.approx(co2[0] * _RATE, rel=1e-12)
+    assert data.capacity_mt_per_share[1, CCS] == pytest.approx(data.captured_mt[1, CCS], rel=1e-12)
+    variable = cc.capture_variable_cost_cny_per_t(
+        "cement", assumptions.province_coal_cost("Shanxi"), _SCENARIO.electricity_price_for_year(2030), 0.3
+    )
+    assert data.opex_cny[1, CCS] == pytest.approx(data.captured_mt[1, CCS] * 1e6 * variable, rel=1e-12)
 
 
 def test_waste_heat_share_without_a_lost_power_value_is_refused() -> None:

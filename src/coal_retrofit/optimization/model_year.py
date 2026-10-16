@@ -6,6 +6,7 @@ import numpy as np
 from ..constants_industry import POWER_TARGET_GROUP
 from ._shared import GRB, PATHWAY_INDEX, PreparedInputs, SolveState, gp
 from .constraints import _add_plant_path_constraints
+from .constraints_rebuilt import splits_rebuilt
 from .model_index import ModelIndex
 from .model_resources import add_basin_withdrawal_cap, add_resource_balances
 from .resource_access import BiomassAccess
@@ -61,14 +62,11 @@ def add_year_block(
     co2_flow_fwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_fwd_{year_suffix}")
     co2_flow_bwd = model.addMVar(edge_count, lb=0.0, name=f"co2_flow_bwd_{year_suffix}")
     co2_node_outflow = model.addMVar(idx.n_nodes, lb=-GRB.INFINITY, name=f"co2_node_outflow_{year_suffix}")
-    # build_edge 是"已建成"的锁存标志；add_cap 是"本期新增容量"。
-    build_edge = model.addMVar(edge_count, vtype=GRB.BINARY, name=f"build_edge_{year_suffix}")
-    add_cap = model.addMVar(edge_count, vtype=GRB.BINARY, name=f"add_cap_{year_suffix}")
-    # 容量按管径档整根新增，`new_cap_mtpa` 是派生的连续总量。
+    # 容量按管径档整根新增，根数不设上限（2026-10-16 起；此前每边每期最多 `max_parallel_pipes` 根，另有不带成本的
+    # 二元标志 build_edge / add_cap），`new_cap_mtpa` 是派生的连续总量。
     pipe_tiers = tuple(float(t) for t in year_data.pipe_tiers_mtpa)
     pipe_count = model.addMVar(
-        (edge_count, len(pipe_tiers)), vtype=GRB.INTEGER, lb=0.0,
-        ub=float(assumptions.max_parallel_pipes), name=f"pipe_count_{year_suffix}",
+        (edge_count, len(pipe_tiers)), vtype=GRB.INTEGER, lb=0.0, name=f"pipe_count_{year_suffix}",
     )
     new_cap_mtpa = model.addMVar(edge_count, lb=0.0, name=f"new_cap_mtpa_{year_suffix}")
     model.addConstrs(
@@ -103,7 +101,7 @@ def add_year_block(
     # `model_linking`。
     blend_new_b = model.addMVar((plant_count, len(scenario.biomass_blend_levels)), lb=0.0, name=f"blend_new_b_{year_suffix}")
     blend_new_a = model.addMVar((plant_count, len(scenario.ammonia_blend_levels)), lb=0.0, name=f"blend_new_a_{year_suffix}")
-    _add_expiry_rules(model, share, rebuild, year_data.expired_share, plant_count, year_suffix)
+    _add_expiry_rules(model, share, rebuild, year_data.expired_share, class_share, plant_count, year_suffix)
 
     # --- CO2 管网节点平衡；工业捕集在 hub 自己的节点进入同一张图，所以工业年块建在两段之间 ---
     _add_co2_power_storage_balance(
@@ -148,8 +146,6 @@ def add_year_block(
         share=share,
         co2_flow_fwd=co2_flow_fwd,
         co2_flow_bwd=co2_flow_bwd,
-        build_edge=build_edge,
-        add_cap=add_cap,
         pipe_count=pipe_count,
         rebuild=rebuild,
         rebuild_class=rebuild_class,
@@ -178,8 +174,6 @@ def add_year_block(
         ammonia_use_kg=plant.ammonia_use_kg,
         water_use_m3=plant.water_use_m3,
         air_share=plant.air_share,
-        select_b=plant.select_b,
-        select_a=plant.select_a,
         blend_level_b=plant.blend_level_b,
         blend_level_a=plant.blend_level_a,
         blend_layers_b=plant.blend_layers_b,
@@ -214,26 +208,25 @@ def _add_expiry_rules(
     share: GrbMVar,
     rebuild: GrbMVar,
     expired_share: np.ndarray,
+    class_share: np.ndarray,
     plant_count: int,
     year_suffix: str,
 ) -> None:
-    """到期装机（份额 f）退役或原址重建：退役份额 >= f - 重建份额，重建份额 <= f；没有到期装机的 hub 不能重建。
+    """到期装机（份额 f）退役或原址重建：退役份额 >= f - 重建份额。
 
-    整数 hub 的 f 只取 0 或 1（整个 hub 一起到期，`data_prep_plants._with_expiry`），约束与 2026-10-02 前相同；
-    连续 hub 按机组逐台到期，0 < f < 1 时多一条重建上限。
+    只对不拆重建部分的到期 hub 加（f = 1 且只有一类重建热耗，`constraints_rebuilt.splits_rebuilt`）；拆分的 hub 由
+    `add_rebuilt_split` 的两条蕴含。重建份额 <= f、没有到期装机的 hub 不能重建，由各类重建份额的上界 f_c（Σ_c f_c = f）与
+    `rebuild_by_class_` 蕴含。2026-10-16 前这几条对所有 hub 都显式加（`no_rebuild_`、`rebuild_le_expired_`）。
     """
     retire_idx = PATHWAY_INDEX["retire"]
     for plant_idx in range(plant_count):
         expired = float(expired_share[plant_idx])
-        if expired <= 0.0:
-            model.addConstr(rebuild[plant_idx] == 0, name=f"no_rebuild_{plant_idx}_{year_suffix}")
+        if expired <= 0.0 or splits_rebuilt(expired, class_share[plant_idx, :]):
             continue
         model.addConstr(
             share[plant_idx, retire_idx] >= expired - rebuild[plant_idx],
             name=f"expire_retire_or_rebuild_{plant_idx}_{year_suffix}",
         )
-        if expired < 1.0:
-            model.addConstr(rebuild[plant_idx] <= expired, name=f"rebuild_le_expired_{plant_idx}_{year_suffix}")
 
 
 def _add_co2_power_storage_balance(

@@ -102,8 +102,12 @@ def extract_year_solutions(
     plant_count, storage_count, edge_count = idx.plant_count, idx.storage_count, idx.edge_count
     hub_count = len(prepared.industry.hubs)
     year_solutions: dict[int, YearSolution] = {}
+    # 是否铺过管由各期新增容量累计得出（2026-10-16 前是锁存的二元变量 build_edge）。
+    laid_so_far = np.zeros(edge_count)
     for payload in year_payloads:
         year = int(payload.year)
+        new_cap = _var_value(payload.new_cap_mtpa, edge_count)
+        laid_so_far = laid_so_far + new_cap
         year_data = payload.year_data
         biomass_node_count = len(prepared.biomass)
         ammonia_node_count = len(year_data.ammonia_nodes)
@@ -123,10 +127,10 @@ def extract_year_solutions(
             "status": status,
             "objective_cny": _expr_value(payload.objective_expr) * _COST_SCALE,
             "share": _var_value(payload.share, (plant_count, len(PATHWAYS))),
-            "build_edge": _var_value(payload.build_edge, edge_count),
+            "build_edge": (laid_so_far > 1e-6).astype(float),
             "rebuild": _var_value(payload.rebuild, plant_count),
             "rebuild_class": _var_value(payload.rebuild_class, tuple(payload.rebuild_class.shape)),
-            "new_cap_mtpa": _var_value(payload.new_cap_mtpa, edge_count),
+            "new_cap_mtpa": new_cap,
             "edge_flow_mtpa": _var_value(payload.edge_flow_mtpa, edge_count),
             "co2_flow_fwd": _var_value(payload.co2_flow_fwd, edge_count),
             "co2_flow_bwd": _var_value(payload.co2_flow_bwd, edge_count),

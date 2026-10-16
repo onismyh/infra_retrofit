@@ -8,7 +8,6 @@ from .constraints_rebuilt import RUNNING
 from .model_industry import add_industry_capacity
 from .salvage import horizon_end_year
 from .assumptions import OptimizationAssumptions
-from .scenario import OptimizationScenario
 from .vintage import add_vintage_stock
 from .year_types import YearPayload
 
@@ -16,38 +15,14 @@ from .year_types import YearPayload
 def add_inter_period_constraints(
     model,
     year_payloads: list[YearPayload],
-    scenario: OptimizationScenario,
     plant_count: int,
-    edge_count: int,
     industry_hub_count: int,
 ) -> None:
     """所有年块建完后加的跨期约束。多年才有意义的项在单年模型下自动跳过。"""
     from .industry import add_industry_monotonicity
 
-    # 掺烧档位单调：CDF 形式 Σ_{l'≤l} select[p,l',t+1] ≤ Σ_{l'≤l} select[p,l',t]。掺烧设备不可逆：改造到某档的容量
-    # 不回到低档；到寿命后仍在用的档位要重建（掺烧能力分代，`add_capacity_vintages`）。
-    if len(year_payloads) > 1:
-        n_opts_b = len(scenario.biomass_blend_levels) + 1
-        n_opts_a = len(scenario.ammonia_blend_levels) + 1
-        for yi in range(1, len(year_payloads)):
-            sel_b_curr = year_payloads[yi].select_b
-            sel_b_prev = year_payloads[yi - 1].select_b
-            sel_a_curr = year_payloads[yi].select_a
-            sel_a_prev = year_payloads[yi - 1].select_a
-            year_sfx = str(year_payloads[yi].year)
-            for p in range(plant_count):
-                cdf_b_curr = gp.LinExpr()
-                cdf_b_prev = gp.LinExpr()
-                for level in range(n_opts_b - 1):
-                    cdf_b_curr += sel_b_curr[p, level]
-                    cdf_b_prev += sel_b_prev[p, level]
-                    model.addConstr(cdf_b_curr <= cdf_b_prev, name=f"mono_b_{p}_{level}_{year_sfx}")
-                cdf_a_curr = gp.LinExpr()
-                cdf_a_prev = gp.LinExpr()
-                for level in range(n_opts_a - 1):
-                    cdf_a_curr += sel_a_curr[p, level]
-                    cdf_a_prev += sel_a_prev[p, level]
-                    model.addConstr(cdf_a_curr <= cdf_a_prev, name=f"mono_a_{p}_{level}_{year_sfx}")
+    # 掺烧比例可以逐期调整（2026-10-16 起）：掺烧能力按层分代、capex 计在新建量上、到寿命退出（`add_capacity_vintages`），
+    # 调低档位不退钱。此前另有档位 CDF 不增（`mono_b` / `mono_a`），即掺烧比例不许下降。
 
     # 工业减排不可逆。
     if len(year_payloads) > 1:
@@ -78,43 +53,21 @@ def add_inter_period_constraints(
                 name=f"capture_share_lock_{yr_sfx}",
             )
 
-    # 管道建成不可逆。
+    # 原址重建不可逆，逐重建热耗类不减（2026-10-02 起）：否则重建了的一类可以换成另一类而不付钱。合计重建份额
+    # ρ = Σ_c ρ_c（`model_year`）随之不减，2026-10-16 前另有一条合计的不减。上一期该类没有到期装机（ρ_c 上界为 0）时这条是
+    # ρ_c >= 0，不加。
     if len(year_payloads) > 1:
         for yi in range(1, len(year_payloads)):
-            be_curr = year_payloads[yi].build_edge
-            be_prev = year_payloads[yi - 1].build_edge
             yr_sfx = str(year_payloads[yi].year)
-            model.addConstrs(
-                (be_curr[e] >= be_prev[e] for e in range(edge_count)),
-                name=f"build_irreversible_{yr_sfx}",
-            )
-
-    # build_edge[e,t] = 1 当且仅当 t 或之前某期 add_cap 置 1。
-    for yi, payload in enumerate(year_payloads):
-        yr_sfx = str(payload.year)
-        model.addConstrs(
-            (
-                payload.build_edge[edge_idx]
-                <= gp.quicksum(year_payloads[pi].add_cap[edge_idx] for pi in range(yi + 1))
-                for edge_idx in range(edge_count)
-            ),
-            name=f"build_flag_tie_{yr_sfx}",
-        )
-
-    # 原址重建不可逆，各重建热耗类也不减（2026-10-02 起）：否则重建了的一类可以换成另一类而不付钱。
-    if len(year_payloads) > 1:
-        for yi in range(1, len(year_payloads)):
-            rb_curr = year_payloads[yi].rebuild
-            rb_prev = year_payloads[yi - 1].rebuild
-            yr_sfx = str(year_payloads[yi].year)
-            model.addConstrs(
-                (rb_curr[p] >= rb_prev[p] for p in range(plant_count)),
-                name=f"rebuild_irreversible_{yr_sfx}",
-            )
             rc_curr = year_payloads[yi].rebuild_class
             rc_prev = year_payloads[yi - 1].rebuild_class
+            prev_class_share = year_payloads[yi - 1].year_data.rebuilt_class_share
             model.addConstrs(
-                (rc_curr[p, c] >= rc_prev[p, c] for p in range(plant_count) for c in range(rc_curr.shape[1])),
+                (
+                    rc_curr[p, c] >= rc_prev[p, c]
+                    for p in range(plant_count) for c in range(rc_curr.shape[1])
+                    if float(prev_class_share[p, c]) > 0.0
+                ),
                 name=f"rebuild_class_irreversible_{yr_sfx}",
             )
 
@@ -194,65 +147,26 @@ def add_capacity_constraints(
     assumptions: OptimizationAssumptions,
     state: SolveState,
     edge_base_stock: np.ndarray,
-    edge_max_new_total: np.ndarray,
     edge_count: int,
     storage_count: int,
 ) -> None:
-    """一年的管道新增/流量容量与封存累计容量约束。"""
+    """一年的管道流量容量与封存累计容量约束。
+
+    管道只有一条容量约束：流量不超过存量加仍在寿命内的往期新增（到寿命的管不再计，可在原址重铺）。2026-10-16 前另有
+    每边每期最多 `max_parallel_pipes` 根、在役新增合计不超过 `standard_pipe_capacity_mtpa × max_parallel_pipes`（40 Mt/a）
+    两个上限，以及不带成本的二元标志 build_edge / add_cap 和它们的 5 条联结约束，都已删去。
+    """
     year_suffix = str(payload.year)
-    build_edge = payload.build_edge
-    add_cap = payload.add_cap
-    pipe_count = payload.pipe_count
-    new_cap_mtpa = payload.new_cap_mtpa
     edge_flow_mtpa = payload.edge_flow_mtpa
     edge_slack_mtpa = payload.edge_slack_mtpa
     storage_slack_mt = payload.storage_slack_mt
-    n_tiers = int(pipe_count.shape[1])
-    edge_buildable = (edge_max_new_total > 1e-9).astype(float)
-
-    model.addConstrs((build_edge[edge_idx] <= edge_buildable[edge_idx] for edge_idx in range(edge_count)), name=f"edge_buildable_{year_suffix}")
-    # 容量上限挂在 add_cap（本期新增）上而非锁存的 build_edge：只有 add_cap=1 才能铺管，
-    # 铺了管 add_cap 才能为 1，标志精确。
-    model.addConstrs(
-        (new_cap_mtpa[edge_idx] <= edge_max_new_total[edge_idx] * add_cap[edge_idx] for edge_idx in range(edge_count)),
-        name=f"edge_new_cap_limit_{year_suffix}",
-    )
-    model.addConstrs(
-        (
-            gp.quicksum(pipe_count[edge_idx, k] for k in range(n_tiers)) >= add_cap[edge_idx]
-            for edge_idx in range(edge_count)
-        ),
-        name=f"edge_add_lays_pipe_{year_suffix}",
-    )
-    model.addConstrs(
-        (
-            gp.quicksum(pipe_count[edge_idx, k] for k in range(n_tiers))
-            <= float(assumptions.max_parallel_pipes) * add_cap[edge_idx]
-            for edge_idx in range(edge_count)
-        ),
-        name=f"edge_pipes_need_add_{year_suffix}",
-    )
-    model.addConstrs(
-        (add_cap[edge_idx] <= build_edge[edge_idx] for edge_idx in range(edge_count)),
-        name=f"edge_add_implies_build_{year_suffix}",
-    )
 
     current_year = int(payload.year)
     lifetime = assumptions.pipeline_lifetime_years
-    # 只累计仍在寿命内的往期新增容量：流量上限与累计新增上限都只数在役的管，到寿命的管可在
-    # 原址重建。2026-09-23 前累计新增上限把已到寿命的管也算进去，边一旦铺满就再也不能重建。
     alive_indices = [
         past_idx for past_idx in range(year_position + 1)
         if current_year - int(year_payloads[past_idx].year) < lifetime
     ]
-    model.addConstrs(
-        (
-            gp.quicksum(year_payloads[pi].new_cap_mtpa[edge_idx] for pi in alive_indices)
-            <= edge_max_new_total[edge_idx]
-            for edge_idx in range(edge_count)
-        ),
-        name=f"edge_total_new_cap_limit_{year_suffix}",
-    )
     model.addConstrs(
         (
             edge_flow_mtpa[edge_idx]

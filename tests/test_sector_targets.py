@@ -100,66 +100,10 @@ def test_unmeetable_cap_is_reported_as_group_shortfall(tmp_path) -> None:
     assert y2["slacks"]["target_shortfall_mt"] == pytest.approx(by_group["power"], rel=1e-9)
 
 
-def test_national_biomass_cap_limits_fleet_biomass_and_lands_in_shortfall(tmp_path) -> None:
-    """生物质是唯一剩下的路径、2040 年要求减排 15% 时，不设上限的机组群靠掺烧满足上限；
-    远低于该需求的全国上限恰好绑定，未满足的部分表现为 power 组的缺口。档位与炉型上限取 2026-10-02 前的值（五档到 1.00、
-    不分炉型）：现行三档下改造路径的发电量乘 1.15（`retrofit_cf_boost`），煤粉炉最高的 15% 掺烧只减排约 2%，满足不了。"""
-    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
-    # 把生物质节点挪到电厂旁边，使燃料链路存在（fixture 故意把它放在 2 000 km 之外）。
-    pd.DataFrame(
-        {
-            "biomass_node_id": ["B1"],
-            "longitude": [112.2],
-            "latitude": [37.0],
-            "available_gj": [1.0e9],
-            "base_cost_cny_per_gj": [22.0],
-            "province_name": ["Shanxi"],
-        }
-    ).to_csv(paths.inputs_dir / "biomass_supply_curve.csv", index=False)
-    _write_targets(paths, {2030: 1.0, 2040: 0.85})
-    scenario = OptimizationScenario(
-        experiment_id="TEST-BIOCAP",
-        description="toy",
-        planning_years=YEARS,
-        sector_target_source="toy",
-        carbon_price_cny_per_t_by_year=(0.0, 0.0),
-        electricity_price_cny_per_mwh_by_year=(400.0, 440.0),
-        pathway_disable=("retire", "ccs", "beccs", "ammonia"),
-        solver_time_limit=300,
-        biomass_blend_levels=(0.10, 0.25, 0.50, 0.75, 1.00),
-    )
-
-    def _run(cap_gj: float):
-        assumptions = OptimizationAssumptions(
-            biomass_national_cap_gj_per_year=cap_gj,
-            biomass_blend_max_pulverized=1.0, biomass_blend_max_cfb=1.0, allow_slack=True,
-        )
-        prepared = prepare_inputs(paths, scenario, assumptions)
-        years = scenario.planning_years
-        state = SolveState(
-            edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),
-            remaining_storage_mt=prepared.storages["available_capacity_mt"].astype(float).to_numpy(),
-        )
-        return _solve_joint_multi_period(prepared, scenario, assumptions, years, state)
-
-    free = _run(0.0)
-    assert free["status"] == "optimal"
-    y_free = free["year_solutions"][2040]
-    assert y_free["slacks"]["target_shortfall_by_group"]["power"] == pytest.approx(0.0, abs=1e-9)
-    demand_gj = float(np.sum(y_free["biomass_use_gj"]))
-    assert demand_gj > 0.0
-
-    cap_gj = 0.5 * demand_gj
-    capped = _run(cap_gj)
-    assert capped["status"] == "optimal"
-    y_cap = capped["year_solutions"][2040]
-    assert float(np.sum(y_cap["biomass_use_gj"])) == pytest.approx(cap_gj, rel=1e-6)
-    assert y_cap["slacks"]["target_shortfall_by_group"]["power"] > 0.0
-
-
 def test_green_h2_cap_binds_ammonia_and_lands_in_shortfall(tmp_path) -> None:
-    """与生物质测试同构，唯一路径换成掺氨：不设上限时，2040 年的减排要求得以满足；全国绿氢上限设为该需求折成氢
-    （x NH3_H2_RATIO）的一半时恰好绑定，氨用量为一半，其余部分成为 power 组缺口（2026-10-10 起氨只受绿氢上限约束）。"""
+    """掺氨是唯一剩下的路径：不设上限时，2040 年的减排要求得以满足；全国绿氢上限设为该需求折成氢（x NH3_H2_RATIO）的
+    一半时恰好绑定，氨用量为一半，其余部分成为 power 组缺口（2026-10-10 起氨只受绿氢上限约束）。2026-10-16 前另有同构的
+    生物质全国上限测试，那条上限已删。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     pd.DataFrame(
         {

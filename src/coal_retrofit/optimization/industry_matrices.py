@@ -19,6 +19,7 @@ from ..constants_industry_capture import (
     capture_capex_cny_per_t_yr,
     capture_steam_co2_t_per_t,
     capture_variable_cost_cny_per_t,
+    capture_yield,
 )
 from ..constants_industry_h2 import (
     INDUSTRY_H2_ABATEMENT_FRACTION,
@@ -224,10 +225,23 @@ def industry_year_data(
     # unabated：hub 按现状运行。无减排、无额外成本，取水保持现状。
     water_m3[:, UNABATED] = base_water_m3
 
+    # 再生蒸汽由燃煤锅炉产生，每吨捕集量对应的锅炉 CO2 为 steam_co2_per_t（只需压缩的化工气流为零），与煤电侧能耗惩罚排放
+    # 的处理口径相同。由余热供给的那部分蒸汽（`industry_capture_waste_heat_share`，水泥缺省 0.3、其余 0）不烧煤、不排，
+    # 用煤与排放都乘 (1 − 余热份额)；少发的余热电在 `variable_unit` 里按情景电价计（`capture_variable_cost_cny_per_t`）。
+    waste_heat = _waste_heat_share(assumptions, sectors)
+    steam_co2_per_t = np.array(
+        [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj, float(w)) for s, w in zip(sectors, waste_heat, strict=True)],
+        dtype=np.float64,
+    )
     # ccs：按 `capture_rate` 捕集 hub 排放中可捕集的那部分（2026-10-02 起；此前是全部排放）。长流程钢、水泥的份额为 1，
     # 燃烧排放与工艺排放一视同仁——这对水泥恰恰是关键：水泥 63% 的排放来自煅烧，任何燃料替代都碰不到它们。合成氨、甲醇
-    # 只捕集原料制氢的纯流股，与其纯流股参数（无再沸器蒸汽、450 元/(t·a)）同一口径。
-    captured_mt[:, CCS] = co2_mt * capturable * capture_rate
+    # 只捕集原料制氢的纯流股，与其纯流股参数（无再沸器蒸汽、450 元/(t·a)）同一口径。水泥的锅炉烟气也进捕集岛
+    # （2026-10-16 起，`capture_yield`），捕集量是可捕集排放的 η / (1 − ησ) 倍；其余部门的锅炉烟气放空，捕集量为 η 倍。
+    captured_per_t = np.array(
+        [capture_yield(s, capture_rate, float(sigma)) for s, sigma in zip(sectors, steam_co2_per_t, strict=True)],
+        dtype=np.float64,
+    )
+    captured_mt[:, CCS] = co2_mt * capturable * captured_per_t
     captured_t = captured_mt[:, CCS] * 1e6
     # 捕集岛改造 capex 按捕集能力定规模（每 t/a 能力的 CNY x 新增的捕集能力 t/a），与煤电改造一样做学习调整；
     # 捕集能力 = 捕集量 x 铭牌系数。固定运维取 capex 的一个比例，按在役且在用的能力与建设年的单价计（与煤电捕集岛
@@ -236,7 +250,6 @@ def industry_year_data(
     # （2026-09-23 前也乘）。
     capex_unit = np.array([capture_capex_cny_per_t_yr(s) for s in sectors], dtype=np.float64)
     capex_unit = capex_unit * learning * cost_multiplier
-    waste_heat = _waste_heat_share(assumptions, sectors)
     variable_unit = np.array(
         [
             capture_variable_cost_cny_per_t(s, float(c), elec_price_mwh, float(w))
@@ -248,14 +261,8 @@ def industry_year_data(
     capex_cny_per_mt[:, CCS] = capex_unit * 1e6
     fixed_om_cny_per_mt[:, CCS] = capex_cny_per_mt[:, CCS] * INDUSTRY_CCS_FIXED_OM_FRACTION
     opex_cny[:, CCS] = captured_t * variable_unit
-    # 再生蒸汽由燃煤锅炉产生，其 CO2 直接放空，所以该路线的净减排是捕集量减去这部分蒸汽 CO2
-    # （只需压缩的化工气流为零）。与煤电侧能耗惩罚排放的处理口径相同。由余热供给的那部分蒸汽
-    # （`industry_capture_waste_heat_share`，水泥缺省 0.3、其余 0）不烧煤、不排，用煤与排放都乘 (1 − 余热份额)；少发的余热电
-    # 在 `variable_unit` 里按情景电价计（`capture_variable_cost_cny_per_t`）。
-    steam_co2_per_t = np.array(
-        [capture_steam_co2_t_per_t(s, emission_factor_t_per_gj, float(w)) for s, w in zip(sectors, waste_heat, strict=True)],
-        dtype=np.float64,
-    )
+    # 净减排 = 捕集量 − 锅炉产生的 CO2：锅炉烟气放空时那部分直接排放；并入捕集岛时被捕的那部分已在捕集量里，
+    # 逃逸的 (1 − η) 照排，两种情形都是捕集量 x (1 − σ)。
     reduction_mt[:, CCS] = captured_mt[:, CCS] * (1.0 - steam_co2_per_t)
     water_m3[:, CCS] = base_water_m3 + captured_t * INDUSTRY_CAPTURE_WATER_M3_PER_T_CO2
 

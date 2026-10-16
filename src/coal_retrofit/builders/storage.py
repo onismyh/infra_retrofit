@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,11 @@ from scipy import ndimage
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
 from ..spatial import containing_polygon_index, load_provinces, pixel_centers
+from .storage_clusters import CLUSTER_LINKAGES, ClusterLinkage, distance_clusters
+
+if TYPE_CHECKING:
+    from affine import Affine
+    from rasterio.crs import CRS
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +27,48 @@ _MIN_STORAGE_MT = 10.0
 # Fan 2025 数据集栅格的逐格注入能力之和（Mt/a）：DSA 按加权平均法（DSA-injection-AVG-Recommended.tif），EOR 每格取格内
 # 油田的最大值（EOR-injectionl.tif）。每格一个注入点、格值即该点的年注入能力（Fan et al. 2025 Sci Data 12:640，式 8、12）。
 _FAN_RASTER_INJECTION_MTPA = {"DSA": 532_344.6, "EOR": 24_309.3}
+
+
+def _read_storage_raster(
+    storage_path: object, injectivity_path: object
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, Affine, CRS]:
+    """读一对封存栅格：有效格掩膜（封存潜力 > 0 且不是 nodata）、封存潜力（每格 Mt CO2）、注入能力（每格 Mt/a，nodata 记零）、
+    仿射变换与 CRS。"""
+    with rasterio.open(storage_path) as src:
+        storage = src.read(1).astype(np.float64)
+        nodata = src.nodata
+        transform = src.transform
+        crs = src.crs
+
+    with rasterio.open(injectivity_path) as src:
+        injectivity = src.read(1).astype(np.float64)
+        inj_nodata = src.nodata
+
+    # 把 nodata 替换为零，保证求和安全
+    if nodata is not None:
+        storage_nodata = storage == nodata
+    else:
+        storage_nodata = np.zeros_like(storage, dtype=bool)
+    if inj_nodata is not None:
+        injectivity[injectivity == inj_nodata] = 0.0
+    return ~storage_nodata & (storage > 0), storage, injectivity, transform, crs
+
+
+def _node_row(
+    storage_type: str, total_storage: float, total_injectivity: float, pixel_count: int, lon: float, lat: float
+) -> dict:
+    """一个汇（连通域或距离簇）的一行：封存潜力与注入能力按类型落到 DSA / EOR 列。"""
+    return {
+        "storage_type": storage_type,
+        "storage_dsa_mt": total_storage if storage_type == "dsa" else 0.0,
+        "storage_eor_mt": total_storage if storage_type == "eor" else 0.0,
+        "storage_all_mt": total_storage,
+        "injectivity_dsa_avg_mtpa": total_injectivity if storage_type == "dsa" else 0.0,
+        "injectivity_eor_avg_mtpa": total_injectivity if storage_type == "eor" else 0.0,
+        "pixel_count": int(pixel_count),
+        "longitude": round(float(lon), 4),
+        "latitude": round(float(lat), 4),
+    }
 
 
 def _extract_storage_nodes(
@@ -42,25 +90,7 @@ def _extract_storage_nodes(
     Returns:
         每个保留下来的连通域占一行的 DataFrame。
     """
-    with rasterio.open(storage_path) as src:
-        storage = src.read(1).astype(np.float64)
-        nodata = src.nodata
-        transform = src.transform
-        crs = src.crs
-
-    with rasterio.open(injectivity_path) as src:
-        injectivity = src.read(1).astype(np.float64)
-        inj_nodata = src.nodata
-
-    # 把 nodata 替换为零，保证求和安全
-    if nodata is not None:
-        storage_nodata = storage == nodata
-    else:
-        storage_nodata = np.zeros_like(storage, dtype=bool)
-    if inj_nodata is not None:
-        injectivity[injectivity == inj_nodata] = 0.0
-
-    valid = ~storage_nodata & (storage > 0)
+    valid, storage, injectivity, transform, crs = _read_storage_raster(storage_path, injectivity_path)
     if not valid.any():
         return pd.DataFrame()
 
@@ -100,21 +130,35 @@ def _extract_storage_nodes(
         cy = float((y_proj[mask] * weights).sum())
         lon, lat = transformer.transform(cx, cy)
 
-        result_rows.append(
-            {
-                "storage_type": storage_type,
-                "storage_dsa_mt": total_storage if storage_type == "dsa" else 0.0,
-                "storage_eor_mt": total_storage if storage_type == "eor" else 0.0,
-                "storage_all_mt": total_storage,
-                "injectivity_dsa_avg_mtpa": total_injectivity if storage_type == "dsa" else 0.0,
-                "injectivity_eor_avg_mtpa": total_injectivity if storage_type == "eor" else 0.0,
-                "pixel_count": int(mask.sum()),
-                "longitude": round(lon, 4),
-                "latitude": round(lat, 4),
-            }
-        )
+        result_rows.append(_node_row(storage_type, total_storage, total_injectivity, int(mask.sum()), lon, lat))
 
     return pd.DataFrame(result_rows)
+
+
+def _extract_distance_clusters(
+    paths: ProjectPaths,
+    storage_path: object,
+    injectivity_path: object,
+    storage_type: str,
+    cluster_km: float,
+    cluster_linkage: ClusterLinkage,
+) -> pd.DataFrame:
+    """按距离聚类（`storage_clusters.distance_clusters`）从一对栅格中提取汇，每簇一行，丢掉储量不足 `_MIN_STORAGE_MT` 的簇。
+
+    海上标记 `offshore` 取簇内格的落省（同一簇的格同在陆上或同在海上），不按质心判：簇可以不连通，质心会落到簇外，
+    300 km 下雷州半岛与海南北部的陆上 DSA 并成一簇，质心落在琼州海峡里。
+    """
+    valid, storage, injectivity, transform, crs = _read_storage_raster(storage_path, injectivity_path)
+    provinces = load_provinces(paths.data_dir / "ChinaMap" / "provinces.shp").to_crs("EPSG:4326")
+    clusters = distance_clusters(
+        valid, storage, injectivity, transform, crs, provinces.geometry, cluster_km, cluster_linkage
+    )
+    kept = clusters[clusters["storage_mt"] >= _MIN_STORAGE_MT]
+    return pd.DataFrame([
+        {**_node_row(storage_type, row.storage_mt, row.injectivity_mtpa, row.pixel_count, row.longitude, row.latitude),
+         "offshore": bool(row.offshore)}
+        for row in kept.itertuples(index=False)
+    ])
 
 
 def _merge_group(group: pd.DataFrame) -> dict:
@@ -254,6 +298,8 @@ def _validate_against_source_dataset(frame: pd.DataFrame) -> None:
 def build_storage_hub_dataframe(
     paths: ProjectPaths,
     offshore_basin_dilation_px: int = 6,
+    cluster_km: float | None = None,
+    cluster_linkage: ClusterLinkage = "complete",
 ) -> pd.DataFrame:
     """构建汇表。
 
@@ -261,34 +307,42 @@ def build_storage_hub_dataframe(
     缺省 6（30 km）复现来源评估的 7 个海上盆地与库里 89 个汇的表（理由见 `_offshore_basin_labels`；`d519525` 之前库函数与
     脚本缺省都不合并，脚本在 `d519525` 改 6，库函数随后跟进）；0 不合并，保留每个封存体，即 103 个汇的表。陆上封存体从不因它而合并。
 
-    封存栅格中每个保留下来的连通域就是一个汇——即来源评估所划定的一个连续的
+    缺省（*cluster_km* 为 None）封存栅格中每个保留下来的连通域就是一个汇——即来源评估所划定的一个连续的
     地质封存体。DSA 与 EOR 封存体即使上下叠置也保持分开，因为二者成本不同：
     EOR 可按 `eor_credit_cny_per_t` 抵减基础封存成本，深部咸水层封存则不能。
 
-    封存体不按距离合并（2026-10-11 删掉了从未被调用的 `merge_distance_km` 分支）。v7 输入无条件执行的 200 km
-    合并没有地质依据：它把 103 个封存体压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把
-    按容量加权的电厂到最近汇的运距从 200 km 拉长到 234 km。
+    给了 *cluster_km*（km）就改按距离聚类（2026-10-16 起，`storage_clusters`）：同一类型、同在陆上或同在海上的格按
+    *cluster_linkage*（complete：簇内任意两块相距不超过阈值；average：簇间块与块的平均距离不超过阈值）切成簇，簇内逐格之和
+    即汇的封存潜力与注入能力；不做连通域，也不做海上盆地合并（*offshore_basin_dilation_px* 不起作用）。DSA 与 EOR 仍分开聚。
+    v7 输入无条件执行的 200 km 合并（2026-10-11 删掉了从未被调用的 `merge_distance_km` 分支）与此不同：它在 103 个封存体之间
+    按距离合并、不分类型，把 103 个压成 35 个，把 7 232 Mt 的 EOR 容量改标为 DSA——删掉了其收益抵扣——并把按容量加权的电厂到
+    最近汇的运距从 200 km 拉长到 234 km。
     """
     if offshore_basin_dilation_px < 0:
         raise ValueError(f"offshore_basin_dilation_px 须 >= 0（0 为不合并），得到 {offshore_basin_dilation_px}")
+    if cluster_km is not None and not cluster_km > 0:
+        raise ValueError(f"cluster_km 须 > 0，得到 {cluster_km}")
+    if cluster_linkage not in CLUSTER_LINKAGES:
+        raise ValueError(f"cluster_linkage 须为 {CLUSTER_LINKAGES} 之一，得到 {cluster_linkage!r}")
     base = paths.data_dir / "封存汇图层-Fan"
+    rasters = {
+        "dsa": (base / "DSA-storage potential.tif", base / "DSA-injection-AVG-Recommended.tif"),
+        "eor": (base / "EOR-storage potential.tif", base / "EOR-injectionl.tif"),
+    }
+    if cluster_km is None:
+        bodies = [_extract_storage_nodes(storage_path=stor, injectivity_path=inj, storage_type=kind)
+                  for kind, (stor, inj) in rasters.items()]
+    else:
+        bodies = [_extract_distance_clusters(paths, stor, inj, kind, float(cluster_km), cluster_linkage)
+                  for kind, (stor, inj) in rasters.items()]
 
-    dsa = _extract_storage_nodes(
-        storage_path=base / "DSA-storage potential.tif",
-        injectivity_path=base / "DSA-injection-AVG-Recommended.tif",
-        storage_type="dsa",
-    )
-
-    eor = _extract_storage_nodes(
-        storage_path=base / "EOR-storage potential.tif",
-        injectivity_path=base / "EOR-injectionl.tif",
-        storage_type="eor",
-    )
-
-    combined = pd.concat([dsa, eor], ignore_index=True)
+    combined = pd.concat(bodies, ignore_index=True)
     _validate_against_source_dataset(combined)
-    logger.info("%d geological storage bodies retained (no distance merge)", len(combined))
-    if offshore_basin_dilation_px > 0:
+    if cluster_km is not None:
+        logger.info("%d storage hubs from %s-linkage distance clustering at %g km", len(combined), cluster_linkage, cluster_km)
+    else:
+        logger.info("%d geological storage bodies retained (no distance merge)", len(combined))
+    if cluster_km is None and offshore_basin_dilation_px > 0:
         # 0 不进这里：scipy 的 binary_dilation 对 iterations <= 0 是"膨胀到不再变化"，会把整张栅格并成一个盆地。
         combined = _merge_offshore_by_basin(
             paths, combined, base / "DSA-storage potential.tif", offshore_basin_dilation_px
@@ -299,9 +353,10 @@ def build_storage_hub_dataframe(
     combined["storage_hub_index"] = range(1, len(combined) + 1)
     combined["storage_hub_id"] = combined["storage_hub_index"].map(lambda i: f"S{int(i):03d}")
     combined["province"] = ""
-    combined["offshore"] = _flag_offshore(paths, combined)
+    if cluster_km is None:
+        combined["offshore"] = _flag_offshore(paths, combined)   # 距离聚类的标记取簇内格的落省（`_extract_distance_clusters`）
     combined["source"] = str(base.name)
-    combined["year_basis"] = "Fan_raster_5km"
+    combined["year_basis"] = "Fan_raster_5km" if cluster_km is None else f"Fan_raster_5km_{cluster_linkage}_{cluster_km:g}km"
 
     columns = [
         "storage_hub_id",
@@ -323,7 +378,14 @@ def build_storage_hub_dataframe(
     return combined[columns].sort_values("storage_hub_index").reset_index(drop=True)
 
 
-def write_storage_hubs(paths: ProjectPaths, offshore_basin_dilation_px: int = 6) -> pd.DataFrame:
-    storage = build_storage_hub_dataframe(paths, offshore_basin_dilation_px=offshore_basin_dilation_px)
+def write_storage_hubs(
+    paths: ProjectPaths,
+    offshore_basin_dilation_px: int = 6,
+    cluster_km: float | None = None,
+    cluster_linkage: ClusterLinkage = "complete",
+) -> pd.DataFrame:
+    storage = build_storage_hub_dataframe(
+        paths, offshore_basin_dilation_px=offshore_basin_dilation_px, cluster_km=cluster_km, cluster_linkage=cluster_linkage
+    )
     write_csv(storage, paths.inputs_dir / "storage_hubs.csv")
     return storage
