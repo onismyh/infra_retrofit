@@ -107,3 +107,27 @@ def test_build_corridor_tables_dedupes_endpoints(tmp_path) -> None:
     assert (edges["edge_class"] == NETWORK_EDGE_CLASS_MAIN).all()
     assert (edges["length_km"] == edges["direct_length_km"]).all()
     assert edges.loc[0, "length_km"] > 190.0    # 30°N 上 2° 经度约 193 km
+
+
+def test_terminal_only_network_includes_industry_hubs(tmp_path) -> None:
+    """`--no-corridors` 的端点网含煤电、封存汇与工业 hub 三类端点（工业 hub 剔西藏），与有走廊时的接入点同一读法；
+    2026-10-16 前漏了工业 hub，求解时报"源不在管网里"。"""
+    from coal_retrofit.builders.network import _build_terminal_only_nodes
+    from coal_retrofit.builders.network_edges import NODE_COLUMNS
+
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    pd.DataFrame({"plant_id": ["P1", "P2"], "plant_index": [1, 2], "centroid_longitude": [112.0, 113.0],
+                  "centroid_latitude": [37.0, 38.0], "province_mode": ["Shanxi", "Hebei"]}).to_csv(
+        inputs / "plants.csv", index=False)
+    pd.DataFrame({"storage_hub_id": ["S001"], "storage_hub_index": [1], "longitude": [112.5], "latitude": [37.5],
+                  "province": [np.nan]}).to_csv(inputs / "storage_hubs_300km_average.csv", index=False)
+    pd.DataFrame({"hub_id": ["cement_000", "cement_001"], "longitude": [114.0, 91.1], "latitude": [36.0, 29.6],
+                  "province": ["Henan", "Xizang"]}).to_csv(inputs / "industry_hubs.csv", index=False)
+    nodes, edges = _build_terminal_only_nodes(ProjectPaths(tmp_path), "300km_average")
+    assert list(nodes.columns) == list(NODE_COLUMNS) and edges.empty
+    assert nodes["node_id"].tolist() == ["node_00001", "node_00002", "node_00003", "node_00004"]
+    assert nodes["node_type"].tolist() == ["plant", "plant", "storage_hub", "industry_hub"]
+    assert nodes["industry_hub_id"].dropna().tolist() == ["cement_000"]
+    assert nodes["storage_hub_id"].dropna().tolist() == ["S001"]
+    assert nodes.loc[3, ["lon", "lat"]].tolist() == [114.0, 36.0]
