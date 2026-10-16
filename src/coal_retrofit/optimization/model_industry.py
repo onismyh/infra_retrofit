@@ -72,16 +72,12 @@ def add_industry_year(
         raise RuntimeError("gurobipy is required to build the industrial block.")
     n = len(industry.hubs)
     n_routes = len(INDUSTRY_ROUTES)
-    share = model.addMVar((n, n_routes), lb=0.0, ub=1.0, name=f"ind_share_{year_suffix}")
+    # 不可用路线的份额上界为 0（2026-10-16 前是等式约束 `ind_route_unavailable`）。
+    available = np.asarray(ydata.route_available, dtype=bool)
+    share = model.addMVar((n, n_routes), lb=0.0, ub=available.astype(np.float64), name=f"ind_share_{year_suffix}")
     model.addConstrs(
         (share[hub, :].sum() == 1.0 for hub in range(n)), name=f"ind_share_sum_{year_suffix}"
     )
-    unavailable = np.argwhere(~ydata.route_available)
-    if len(unavailable):
-        model.addConstrs(
-            (share[int(hub), int(route)] == 0.0 for hub, route in unavailable),
-            name=f"ind_route_unavailable_{year_suffix}",
-        )
     captured = ydata.captured_mt
     captured_by_hub = [
         gp.quicksum(float(captured[hub, r]) * share[hub, r] for r in range(n_routes))
@@ -128,6 +124,9 @@ def add_industry_year(
             links_of_hub.setdefault(int(hub_idx), []).append(int(link_idx))
         for hub in range(n):
             hub_links = links_of_hub.get(hub, [])
+            # 没有链路、且需氢量为零或路线不可用的 hub，平衡是 0 == 0，不加（2026-10-16 前也加）。
+            if not hub_links and (float(h2_demand[hub]) <= 0.0 or not available[hub, H2]):
+                continue
             purchase = gp.quicksum(
                 float(h2_link_cost[link]) * h2_flow_kg[link] for link in hub_links
             ) if hub_links else gp.LinExpr()
@@ -141,10 +140,10 @@ def add_industry_year(
                     name=f"ind_h2_cost_lb_{hub}_{year_suffix}",
                 )
     else:
-        # 完全没有氢链路：这时只有需氢量为零的 hub 能走这条路线，而这些 hub 的路线已被
-        # `industry_year_data` 关闭。这里仍显式强制平衡。
+        # 完全没有氢链路：需氢量为正的 hub 买不到氢，不能走氢路线。`route_available` 不看链路（`industry_matrices`），
+        # 所以这一分支里这条是唯一的屏障，不是冗余。
         for hub in range(n):
-            if float(h2_demand[hub]) > 0.0:
+            if float(h2_demand[hub]) > 0.0 and available[hub, H2]:
                 model.addConstr(share[hub, H2] == 0.0, name=f"ind_h2_no_supply_{hub}_{year_suffix}")
     annual_cost = annual_cost + h2_route_cost.sum()
 
@@ -186,10 +185,12 @@ def add_industry_monotonicity(model, payloads: list[IndustryPayload], hub_count:
     for index in range(1, len(payloads)):
         current = payloads[index].share
         previous = payloads[index - 1].share
+        # 上一年路线不可用（份额上界为 0）的 hub，这一行是份额 >= 0，不加（2026-10-16 前也加）。
+        was_available = np.asarray(payloads[index - 1].year_data.route_available, dtype=bool)
         suffix = payloads[index].year_suffix
         for route in (CCS, H2):
             model.addConstrs(
-                (current[hub, route] >= previous[hub, route] for hub in range(hub_count)),
+                (current[hub, route] >= previous[hub, route] for hub in range(hub_count) if was_available[hub, route]),
                 name=f"ind_mono_{INDUSTRY_ROUTES[route]}_{suffix}",
             )
 

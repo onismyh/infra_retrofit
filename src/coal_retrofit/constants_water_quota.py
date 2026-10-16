@@ -99,10 +99,13 @@ PROVINCES_WITHOUT_CAP: Final[frozenset[str]] = frozenset({"香港", "澳门", "�
 #    http://www.mwr.gov.cn/sj/tjgb/szygb/202606/t20260629_2131924.html
 #    键为本仓库的流域代码；A = 松花江区 + 辽河区，合并以与几何图层一致。
 #    `thermal_once_through` 是公报的〔其中: 直流火(核)电〕子列：它是 `industry` 的组成
-#    部分，不是额外的加项。减去它得到非电工业；不要把它加到总量上。闭式循环火电冷却在
-#    工业剩余项里，在这一来源中无法分离——这就是为什么 `builders/water_quota.py` 把整个
-#    电力部门的取水交还给模型，而不是试图在这里把它扣净。
+#    部分，不是额外的加项；不要把它加到总量上。闭式循环与空冷火电的冷却用水在工业剩余项里，
+#    这一来源不单列，`builders/water_quota.modelled_coal_closed_loop_withdrawal` 按模型自己的机组与强度
+#    估出煤电这一块，从预留里扣出。
 # --------------------------------------------------------------------------------------
+# 上表的数据年。煤电闭式循环取水的扣出只数这一年及以前投产的机组。
+BULLETIN_YEAR: Final[int] = 2025
+
 BASIN_WITHDRAWAL_2025_1E8_M3: Final[dict[str, dict[str, float]]] = {
     "A": {"domestic": 58.3, "industry": 38.5, "thermal_once_through": 6.6,
           "agriculture": 478.2, "ecology": 34.5, "total": 609.5},

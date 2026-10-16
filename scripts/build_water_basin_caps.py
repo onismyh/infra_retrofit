@@ -25,7 +25,8 @@ def main() -> int:
     frame = write_basin_caps(paths)
     headline = frame[frame["planning_year"] == frame["planning_year"].min()]
     print(headline[["basin_code", "basin_name", "cap_1e8_m3", "actual_2025_1e8_m3",
-                    "reserved_1e8_m3", "modelled_industry_1e8_m3", "compliance_ratio",
+                    "reserved_1e8_m3", "modelled_industry_1e8_m3", "modelled_coal_closed_loop_1e8_m3",
+                    "compliance_ratio",
                     "residual_uncapped_1e8_m3", "residual_1e8_m3"]].to_string(index=False))
     over = headline.loc[headline["compliance_ratio"] < 1.0, "basin_code"].tolist()
     print(f"\n现状用水已超其分摊指标的流域: {over or '无'}"

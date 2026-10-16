@@ -79,7 +79,7 @@ def test_fig2_load_takes_industry_sector_from_hub_table(monkeypatch: pytest.Monk
         "storage_hubs": pd.DataFrame({"storage_hub_id": ["S1"], "storage_type": ["dsa"]}),
         "industry_hubs": pd.DataFrame({"hub_id": ["cement_000", "steel_eaf_000"], "sector": ["cement", "steel_eaf"]}),
     }
-    monkeypatch.setattr(fig2, "read_input", lambda name: tables[name].copy())
+    monkeypatch.setattr(fig2, "read_input", lambda name, sinks="": tables[name].copy())
     data = fig2.load()
     assert data["industry"]["sector"].tolist() == ["cement"]
     tables["industry_hubs"] = pd.concat([tables["industry_hubs"]] * 2, ignore_index=True)
@@ -352,6 +352,31 @@ def test_results_of_an_old_model_segment_are_refused(monkeypatch: pytest.MonkeyP
             with pytest.raises(StaleResultError, match="重解"):
                 plot_io.read_result(str(tmp_path / "R"), "t")
     assert plot_io.result_dir("ST_BASE") == plot_io.SOLVED_DIR / "ST_BASE"
+
+
+def test_plot_io_reads_the_sink_variant(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """汇表与管网按汇变体读带后缀的文件，别的表给了变体就报错；结果图的变体取求解时记的 `resolved.scenario.sink_variant`
+    （这一项之前落盘的结果没有，即缺省汇表）；图名加 `_<变体>`。"""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import json
+
+    import plot_io
+    from coal_retrofit.segment import MODEL_SEGMENT
+
+    monkeypatch.setattr(plot_io, "INPUTS_DIR", tmp_path)
+    pd.DataFrame({"v": ["default"]}).to_csv(tmp_path / "storage_hubs.csv", index=False)
+    pd.DataFrame({"v": ["average"]}).to_csv(tmp_path / "storage_hubs_300km_average.csv", index=False)
+    assert plot_io.read_input("storage_hubs")["v"].tolist() == ["default"]
+    assert plot_io.read_input("storage_hubs", "300km_average")["v"].tolist() == ["average"]
+    with pytest.raises(ValueError, match="industry_hubs 不随汇变体变"):
+        plot_io.read_input("industry_hubs", "300km_average")
+    assert plot_io.variant_name("fig2", "") == "fig2" and plot_io.variant_name("fig2", "300km_average") == "fig2_300km_average"
+    for scenario, expected in (({}, ""), ({"sink_variant": "300km_complete"}, "300km_complete")):
+        resolved = {"model_segment": MODEL_SEGMENT, "scenario": scenario}
+        (tmp_path / "R.json").write_text(json.dumps({"resolved": resolved}), encoding="utf-8")
+        plot_io.read_result_json.cache_clear()
+        assert plot_io.result_sink_variant(str(tmp_path / "R")) == expected
+    plot_io.read_result_json.cache_clear()
 
 
 def test_plot_io_does_not_import_matplotlib(monkeypatch: pytest.MonkeyPatch) -> None:

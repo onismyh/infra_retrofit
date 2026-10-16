@@ -109,9 +109,9 @@ def test_workbook_backs_the_eor_credit_out_of_each_sinks_own_price(tmp_path) -> 
 
 
 def test_pipe_om_is_charged_on_the_capex_of_pipes_in_service(tmp_path) -> None:
-    """1 座电厂 - 1 条边 - 1 个汇，只开放 CCS，每年捕集约一半排放（> 2 Mtpa，每条边只容一根 5 Mtpa 管）。2030 年铺的管
-    2050 年仍在役，2050 年不铺新管也付运维；2060 年满 30 年寿命退出、在原址重铺，只付重铺那一代的。按流量计的一项缺省
-    为 0，运输运维（各年不折现）就是 4% x 在役管道的 capex。"""
+    """1 座电厂 - 1 条边 - 1 个汇，只开放 CCS，每年捕集约一半排放（约 2.6 Mt/a，一根细管够用）。管道寿命设 30 a（缺省
+    40 a 在 2030–2060 内不到期）：2030 年铺的管 2050 年仍在役，2050 年不铺新管也付运维；2060 年满 30 年寿命退出、在原址
+    重铺，只付重铺那一代的。按流量计的一项缺省为 0，运输运维（各年不折现）就是 4% x 在役管道的 capex。"""
     pytest.importorskip("gurobipy", reason=GUROBI)
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.5, 2050: 0.5, 2060: 0.5})
@@ -124,9 +124,7 @@ def test_pipe_om_is_charged_on_the_capex_of_pipes_in_service(tmp_path) -> None:
         pathway_disable=("retire", "biomass", "beccs", "ammonia"),
         solver_time_limit=300,
     )
-    assumptions = OptimizationAssumptions(
-        standard_pipe_capacity_mtpa=5.0, max_parallel_pipes=1,
-    )
+    assumptions = OptimizationAssumptions(pipeline_lifetime_years=30)
     assert assumptions.pipe_fixed_om_fraction == 0.04 and assumptions.route_opex_cny_per_t_km == 0.0
     prepared = prepare_inputs(paths, scenario, assumptions)
     solution = _solve_joint_multi_period(prepared, scenario, assumptions, years, initial_state(prepared))

@@ -112,6 +112,26 @@ def test_run_writes_tables_result_and_resolved(tmp_path, capsys) -> None:
     assert moved["global_objective_cny"] == base["global_objective_cny"]
 
 
+def test_sink_variant_run_reads_only_the_variant_tables(tmp_path, capsys) -> None:
+    """`--sinks` 求解读汇变体的三张表（`sink_inputs`）：缺表时在求解之前以退出码 1 报错；缺省的三张表改名成变体的之后照常
+    解出，结果名加 `_sinks<变体>`，`resolved` 记变体与读的文件。"""
+    registry = _registry(tmp_path)
+    inputs = tmp_path / "toy" / "inputs"
+    argv = ["--registry", str(registry), "run", "TOY", "--threads", "1", "--time-limit", "60", "--sinks", "300km_average"]
+    assert cli.main(argv) == 1
+    assert "没有汇变体 300km_average 的 storage_hubs_300km_average.csv" in capsys.readouterr().err
+    stems = {"storage_hubs": "storage_hubs", "pipeline_nodes": "pipeline_nodes", "pipeline_edges": "pipeline_candidate_edges"}
+    for stem in stems.values():
+        (inputs / f"{stem}.csv").rename(inputs / f"{stem}_300km_average.csv")
+    assert cli.main(argv) == 0
+    resolved = _load(tmp_path / "toy" / "results" / "TOY_sinks300km_average.json")["resolved"]
+    assert resolved["scenario"]["sink_variant"] == "300km_average"
+    assert resolved["set"] == {"scenario.sink_variant": "300km_average"}
+    assert {key: resolved["input_files"][key] for key in stems} == {
+        key: f"inputs/{stem}_300km_average.csv" for key, stem in stems.items()}
+    assert {p.name for p in (tmp_path / "toy" / "results" / "TOY_sinks300km_average").glob("*.csv")} == TABLES
+
+
 def test_seed_and_mip_focus_reach_the_model(tmp_path) -> None:
     """情景字段 `solver_seed`、`mip_focus` 经运行器设到 Gurobi 模型上：溯源记的是从模型上读回的值。"""
     registry = _registry(tmp_path)

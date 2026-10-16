@@ -11,6 +11,7 @@ import pandas as pd
 from ..constants import NETWORK_EDGE_CLASS_PLANT_BRANCH, NETWORK_EDGE_CLASS_STORAGE_BRANCH, TARGET_GEO_CRS
 from ..frames import iter_rows
 from ..paths import ProjectPaths
+from ..sink_inputs import sink_input_path
 from ..spatial import geodesic_length_km
 from .network_edges import make_edge_record
 
@@ -155,10 +156,11 @@ def load_plants(paths: ProjectPaths) -> pd.DataFrame:
     )
 
 
-def load_storage_hubs(paths: ProjectPaths) -> pd.DataFrame:
+def load_storage_hubs(paths: ProjectPaths, sink_variant: str = "") -> pd.DataFrame:
+    """汇表：缺省 `storage_hubs.csv`，汇变体读带后缀的表（`sink_inputs.sink_input_path`，2026-10-16 起）。"""
     return _load_attachment_table(
         paths=paths,
-        filename="storage_hubs.csv",
+        filename=sink_input_path(paths.inputs_dir, "storage_hubs", sink_variant).name,
         id_column="storage_hub_id",
         index_column="storage_hub_index",
         province_column="province",
@@ -223,12 +225,13 @@ def build_attachment_tables(
     main_edges: pd.DataFrame,
     first_node_index: int,
     first_edge_index: int,
+    sink_variant: str = "",
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
     corridor_type_lookup = _build_corridor_type_lookup(main_edges)
     corridor_nodes = corridor_nodes[["node_id", "lon", "lat"]].reset_index(drop=True).copy()
 
     plant_hubs = load_plants(paths)
-    storage_hubs = load_storage_hubs(paths)
+    storage_hubs = load_storage_hubs(paths, sink_variant)
 
     branch_node_rows: list[dict[str, object]] = []
     branch_edge_rows: list[dict[str, object]] = []

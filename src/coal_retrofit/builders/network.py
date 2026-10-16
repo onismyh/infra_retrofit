@@ -1,7 +1,7 @@
 """候选管网两张表（`pipeline_nodes.csv`、`pipeline_candidate_edges.csv`）的构建流程 `build_network_tables`：
 既有油气干线走廊（`network_corridors`）与煤电、封存、工业点源的接入支线（`network_branches`）合成一张图，加源—汇
 三角剖分候选边（`network_triangulation`），剔西藏、去交叉、缝合、并片（`network_repair`），再补源到汇的专线，最后量每条边的
-海上段（`network_offshore`）。`--no-corridors` 时只有煤电与封存端点，没有走廊与支线。列序与边记录在 `network_edges`。"""
+海上段（`network_offshore`）。`--no-corridors` 时只有煤电、封存与工业 hub 三类端点，没有走廊与支线。列序与边记录在 `network_edges`。"""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,8 @@ import pandas as pd
 
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
-from .network_branches import build_attachment_tables
+from ..sink_inputs import sink_input_path
+from .network_branches import build_attachment_tables, load_industry_hubs, load_plants, load_storage_hubs
 from .network_corridors import build_corridor_tables, load_corridor_layer
 from .network_edges import EDGE_COLUMNS, NODE_COLUMNS, next_edge_index
 from .network_offshore import offshore_length_km
@@ -62,7 +63,10 @@ def _merge_network_tables(
     )
 
 
-def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_network_tables(
+    paths: ProjectPaths, use_corridors: bool = True, sink_variant: str = "",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """候选管网两张表；汇取汇变体 *sink_variant* 的汇表（`sink_inputs`，缺省 `storage_hubs.csv`）。"""
     if use_corridors:
         gas_layer, gas_path, _ = load_corridor_layer(paths, "gas_pipelines.shp", "gas")
         oil_layer, oil_path, _ = load_corridor_layer(paths, "oil_pipeline.shp", "oil")
@@ -78,11 +82,12 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
             main_edges=main_edges,
             first_node_index=len(main_nodes) + 1,
             first_edge_index=next_edge_index(main_edges),
+            sink_variant=sink_variant,
         )
         nodes, edges = _merge_network_tables(main_nodes, main_edges, branch_nodes, branch_edges, corridor_degree_additions)
     else:
         # 只含端点的网络：电厂 + 封存 hub，没有走廊
-        nodes, edges = _build_terminal_only_nodes(paths)
+        nodes, edges = _build_terminal_only_nodes(paths, sink_variant)
 
     triangulation_edges = build_triangulation_candidate_edges(nodes, edges)
     if not triangulation_edges.empty:
@@ -122,53 +127,36 @@ def build_network_tables(paths: ProjectPaths, use_corridors: bool = True) -> tup
     return nodes, edges
 
 
-def _build_terminal_only_nodes(paths: ProjectPaths) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """只用电厂与封存 hub 构建节点表（不含走廊节点）。"""
-    plants = pd.read_csv(paths.inputs_dir / "plants.csv")
-    storage = pd.read_csv(paths.inputs_dir / "storage_hubs.csv")
-
-    node_rows: list[dict] = []
-    node_index = 1
-    for _, row in plants.iterrows():
-        node_rows.append({
-            "node_id": f"node_{node_index:05d}",
-            "lon": row["centroid_longitude"],
-            "lat": row["centroid_latitude"],
-            "node_type": "plant",
-            "degree": 0,
-            "source": row.get("source", ""),
-            "year_basis": row.get("year_basis", ""),
-            "plant_id": row["plant_id"],
-            "plant_index": row["plant_index"],
-            "storage_hub_id": pd.NA,
-            "storage_hub_index": pd.NA,
-            "province": row.get("province_mode", ""),
+def _build_terminal_only_nodes(paths: ProjectPaths, sink_variant: str = "") -> tuple[pd.DataFrame, pd.DataFrame]:
+    """只用煤电厂址、封存汇与工业 hub 建节点表（不含走廊节点与支线），三类端点与有走廊时的接入点同一读法
+    （`network_branches.load_plants` / `load_storage_hubs` / `load_industry_hubs`，工业 hub 剔西藏）。
+    2026-10-16 前这里只读煤电与封存汇，漏了工业 hub，建出的管网在求解时报"386 个源不在管网里"。"""
+    terminals = (
+        (load_plants(paths), "plant", {"plant_id": "plant_id", "plant_index": "plant_index"}),
+        (load_storage_hubs(paths, sink_variant), "storage_hub",
+         {"storage_hub_id": "storage_hub_id", "storage_hub_index": "storage_hub_index"}),
+        (load_industry_hubs(paths), "industry_hub", {"industry_hub_id": "hub_id", "industry_index": "industry_index"}),
+    )
+    parts = [
+        pd.DataFrame({
+            "lon": table["lon"], "lat": table["lat"], "node_type": node_type, "degree": 0,
+            "source": table["source"], "year_basis": table["year_basis"],
+            **{column: table[source] for column, source in ids.items()},
+            "province": table["province"],
         })
-        node_index += 1
-    for _, row in storage.iterrows():
-        node_rows.append({
-            "node_id": f"node_{node_index:05d}",
-            "lon": row["longitude"],
-            "lat": row["latitude"],
-            "node_type": "storage_hub",
-            "degree": 0,
-            "source": row.get("source", ""),
-            "year_basis": row.get("year_basis", ""),
-            "plant_id": pd.NA,
-            "plant_index": pd.NA,
-            "storage_hub_id": row["storage_hub_id"],
-            "storage_hub_index": row["storage_hub_index"],
-            "province": row.get("province", ""),
-        })
-        node_index += 1
-
-    nodes = pd.DataFrame(node_rows)
+        for table, node_type, ids in terminals if len(table)
+    ]
+    nodes = pd.concat(parts, ignore_index=True).reindex(columns=list(NODE_COLUMNS))
+    nodes["node_id"] = [f"node_{i:05d}" for i in range(1, len(nodes) + 1)]
     edges = pd.DataFrame(columns=list(EDGE_COLUMNS))
     return nodes, edges
 
 
-def write_network_inputs(paths: ProjectPaths, use_corridors: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
-    nodes, edges = build_network_tables(paths, use_corridors=use_corridors)
-    write_csv(nodes, paths.inputs_dir / "pipeline_nodes.csv")
-    write_csv(edges, paths.inputs_dir / "pipeline_candidate_edges.csv")
+def write_network_inputs(
+    paths: ProjectPaths, use_corridors: bool = True, sink_variant: str = "",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """建候选管网并写出：缺省 `pipeline_nodes.csv`、`pipeline_candidate_edges.csv`，汇变体写带后缀的两张（`sink_inputs`）。"""
+    nodes, edges = build_network_tables(paths, use_corridors=use_corridors, sink_variant=sink_variant)
+    write_csv(nodes, sink_input_path(paths.inputs_dir, "pipeline_nodes", sink_variant))
+    write_csv(edges, sink_input_path(paths.inputs_dir, "pipeline_candidate_edges", sink_variant))
     return nodes, edges

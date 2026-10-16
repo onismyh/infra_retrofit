@@ -7,10 +7,10 @@ from typing import NamedTuple
 import numpy as np
 
 from ..constants import WATER_FLOW_SCALE   # 流量缩放系数，用于数值稳定
-from ._shared import PATHWAY_INDEX, gp
+from ._shared import GRB, PATHWAY_INDEX, gp
 from .assumptions import OptimizationAssumptions
 from .constraints_blend import add_blend_level_constraints
-from .constraints_rebuilt import add_rebuilt_split, rebuilt_dot
+from .constraints_rebuilt import RUNNING, add_rebuilt_split, rebuilt_dot
 from .scenario import OptimizationScenario, PATHWAYS
 from .year_types import GrbExpr, GrbMVar, RebuiltShares, YearData
 
@@ -19,8 +19,9 @@ def _add_vector_equality(model, lhs, rhs, length: int, name: str) -> None:
     model.addConstrs((lhs[idx] == rhs[idx] for idx in range(length)), name=name)
 
 
-def _add_vector_upper_bound(model, lhs, rhs, length: int, name: str) -> None:
-    model.addConstrs((lhs[idx] <= rhs[idx] for idx in range(length)), name=name)
+def _add_vector_upper_bound(model, lhs, rhs, length: int, name: str, rows=None) -> None:
+    """lhs[i] <= rhs[i]，i 取 rows（缺省为全部 0..length-1）；约束名的下标仍是 i。"""
+    model.addConstrs((lhs[idx] <= rhs[idx] for idx in (range(length) if rows is None else rows)), name=name)
 
 
 def _path_dot(coeffs, variables, p: int, skip_zero: bool = False):
@@ -40,8 +41,6 @@ class PlantPathTerms(NamedTuple):
     ammonia_use_kg: GrbMVar
     water_use_m3: GrbMVar
     total_reduction_mt: GrbExpr
-    select_b: GrbMVar
-    select_a: GrbMVar
     blend_level_b: GrbMVar
     blend_level_a: GrbMVar
     blend_layers_b: list[list[GrbExpr]]
@@ -80,17 +79,15 @@ def _add_plant_path_constraints(
     # 一个真实的自由度：一个 hub 聚合了约 10 台机组，运营方要选择其中
     # 哪几台同时配捕集岛和空冷凝汽器。
     allow_air = bool(year_data.allow_air_cooling_retrofit) and year_data.air_water_intensity is not None
-    # 退役路径不发电，空冷份额的上界为零（2026-10-02 前由已装存量 >= 各路径空冷份额之和压低，存量有富余时可任取）。
-    air_ub = np.ones((plant_count, pathway_count))
+    # 退役路径不发电，空冷份额的上界为零（2026-10-02 前由已装存量 >= 各路径空冷份额之和压低，存量有富余时可任取）；
+    # 不许空冷改造时全为零（2026-10-16 前是等式约束 `air_share_off` / `air_new_off`）。
+    air_ub = np.full((plant_count, pathway_count), 1.0 if allow_air else 0.0)
     air_ub[:, PATHWAY_INDEX["retire"]] = 0.0
     air_share = model.addMVar((plant_count, pathway_count), lb=0.0, ub=air_ub, name=f"air_share{sfx}")
     # 本年新建的空冷改造（占仍湿冷装机的份额）：在役（寿命内历年新建之和）>= 运行路径上的空冷份额之和，到寿命退出，
     # capex 计在新建上（`model_linking.add_capacity_vintages`，2026-10-02 起；此前是只增不减、永不到期的已装存量，
     # capex 计在它的增量上）。
-    air_new = model.addMVar(plant_count, lb=0.0, name=f"air_new{sfx}")
-    if not allow_air:
-        model.addConstr(air_share == 0.0, name=f"air_share_off{sfx}")
-        model.addConstr(air_new == 0.0, name=f"air_new_off{sfx}")
+    air_new = model.addMVar(plant_count, lb=0.0, ub=GRB.INFINITY if allow_air else 0.0, name=f"air_new{sfx}")
 
     # 有到期装机的 hub 的份额按重建热耗类拆出原址重建部分（与未重建部分毛热耗不同）。
     rebuilt_share, rebuilt_air_share = add_rebuilt_split(
@@ -139,7 +136,8 @@ def _add_plant_path_constraints(
         )
         model.addConstr(water_use_m3[plant_idx] == water_expr, name=f"water_use_{plant_idx}{sfx}")
         if allow_air:
-            for path_idx in range(pathway_count):
+            # 退役列的上界为零，那一行是 0 <= 退役份额，不加。
+            for path_idx in RUNNING:
                 model.addConstr(
                     air_share[plant_idx, path_idx] <= share[plant_idx, path_idx],
                     name=f"air_share_le_share_{plant_idx}_{path_idx}{sfx}",
@@ -194,8 +192,8 @@ def _add_plant_path_constraints(
     return PlantPathTerms(
         captured_mt_by_plant=captured_mt_by_plant, biomass_use_gj=blend.biomass_use_gj, ammonia_use_kg=blend.ammonia_use_kg,
         water_use_m3=water_use_m3, total_reduction_mt=gp.quicksum(plant_reduction_exprs),
-        select_b=blend.select_b, select_a=blend.select_a, blend_level_b=blend.blend_level_b,
-        blend_level_a=blend.blend_level_a, blend_layers_b=blend.blend_layers_b, blend_layers_a=blend.blend_layers_a,
+        blend_level_b=blend.blend_level_b, blend_level_a=blend.blend_level_a,
+        blend_layers_b=blend.blend_layers_b, blend_layers_a=blend.blend_layers_a,
         bio_penalty_by_plant=blend.bio_penalty_by_plant, plant_reduction_exprs=plant_reduction_exprs,
         air_share=air_share, air_new=air_new, biomass_blend_x_share=blend.biomass_blend_x_share,
         beccs_blend_x_share=blend.beccs_blend_x_share, ammonia_blend_x_share=blend.ammonia_blend_x_share,

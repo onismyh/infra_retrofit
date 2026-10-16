@@ -14,7 +14,14 @@ import pandas as pd
 import pytest
 
 from coal_retrofit.builders.plants import unit_heat_rate_gj_per_mwh
-from coal_retrofit.constants import COAL_STATION_SERVICE_RATE, STANDARD_COAL_GJ_PER_KG, annuity_factor
+from coal_retrofit.builders.water_quota import once_through_calibration
+from coal_retrofit.constants import (
+    COAL_STATION_SERVICE_RATE,
+    STANDARD_COAL_GJ_PER_KG,
+    WATER_INTENSITY_BY_TECH_M3_PER_MWH,
+    annuity_factor,
+)
+from coal_retrofit.constants_water_quota import BULLETIN_YEAR, NATIONAL_ONCE_THROUGH_WITHDRAWAL_1E8_M3
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.data_prep_plants import _with_expiry
@@ -131,6 +138,27 @@ def test_rebuilt_unit_keeps_its_cooling(tmp_path, cooling: str, adder_g_per_kwh:
     assert sum(out.loc[0, f"expired_share_c{j}_2060"] for j in range(first + 1)) == pytest.approx(1.0, abs=1e-12)
 
 
+@pytest.mark.parametrize("cooling", [("once-through", "once-through", "recirculating"), ("recirculating",) * 3])
+def test_once_through_calibration_counts_only_units_in_the_bulletin(tmp_path, cooling) -> None:
+    """直流冷却标定的模拟总量只数公报年及以前投产的机组（2026-10-16 起）：600 MW 亚临界直流 2005 年投产、300 MW 超临界直流
+    2026 年投产、100 MW 湿冷，份额按装机 x Wang (2023) 直流取水强度加权；没有直流机组的 hub 取 1.0。"""
+    paths = _unit_toy(tmp_path, capacity=(600.0, 300.0, 100.0), commission=(2005, BULLETIN_YEAR + 1, 2010),
+                      combustion=("subcritical", "supercritical", "subcritical"), cooling=cooling)
+    scenario = OptimizationScenario(experiment_id="T", description="toy", planning_years=YEARS)
+    out = _with_expiry(paths, scenario, OptimizationAssumptions(), pd.read_csv(paths.inputs_dir / "plants.csv"))
+    sub, sup = (WATER_INTENSITY_BY_TECH_M3_PER_MWH[(c, "once-through")]["withdrawal"] for c in ("subcritical", "supercritical"))
+    if cooling[0] != "once-through":
+        assert out.loc[0, "once_through_bulletin_share"] == 1.0
+        return
+    assert out.loc[0, "once_through_bulletin_share"] == pytest.approx(600.0 * sub / (600.0 * sub + 300.0 * sup), rel=1e-12)
+    plants = out.assign(once_through_withdrawal_intensity_m3_per_mwh=(600.0 * sub + 300.0 * sup) / 1000.0)
+    generation = pd.Series([1000.0 * 4000.0])
+    expected = NATIONAL_ONCE_THROUGH_WITHDRAWAL_1E8_M3 * 1e8 / (600.0 * 4000.0 * sub)
+    assert once_through_calibration(plants, generation) == pytest.approx(expected, rel=1e-12)
+    with pytest.raises(KeyError, match="once_through_bulletin_share"):
+        once_through_calibration(plants.drop(columns="once_through_bulletin_share"), generation)
+
+
 @pytest.mark.parametrize("first_unit", ["subcritical", "igcc"])
 def test_partly_expired_hub_has_two_heat_rates_and_keeps_the_book_value(tmp_path, first_unit) -> None:
     """2050 年 f = 0.6：未重建部分的毛热耗就是未到期那台 400 MW 的（由 hub 值反推，两部分按 f 加权还原 hub 值），
@@ -198,17 +226,22 @@ def test_partly_expired_hub_has_two_heat_rates_and_keeps_the_book_value(tmp_path
 
 
 def test_expiry_rules_follow_the_expired_share() -> None:
-    """f = 0：不能重建；f = 1：退役 >= 1 - 重建（与 2026-10-02 前同一条）；0 < f < 1：退役 >= f - 重建、重建 <= f。"""
+    """f = 0：不能重建；0 < f < 1：重建 <= f（两条都由各类重建份额的上界 f_c 与 ρ = Σ_c ρ_c 给出，2026-10-16 前另有显式约束）；
+    f = 1 且只有一类：退役 >= 1 - 重建（与 2026-10-02 前同一条）。`_add_expiry_rules` 只加最后这条，拆分的 hub（这里的 hub 2）
+    由 `add_rebuilt_split` 给出退役 >= f - 重建（`test_rebuilt_split_bounds`）。"""
     gp = pytest.importorskip("gurobipy", reason=GUROBI)
     from coal_retrofit.optimization.model_year import _add_expiry_rules
 
     expired = np.array([0.0, 1.0, 0.6])
-    for objective, fixed_rebuild, expected in (("max_rebuild", None, expired), ("min_retire", 0.0, expired)):
+    class_share = np.array([[0.0], [1.0], [0.6]])
+    for objective, fixed_rebuild, expected in (("max_rebuild", None, expired), ("min_retire", 0.0, [0.0, 1.0, 0.0])):
         model = gp.Model()
         model.Params.OutputFlag = 0
         share = model.addMVar((3, len(PATHWAYS)), lb=0.0, ub=1.0)
         rebuild = model.addMVar(3, lb=0.0, ub=1.0 if fixed_rebuild is None else fixed_rebuild)
-        _add_expiry_rules(model, share, rebuild, expired, 3, "t")
+        rebuild_class = model.addMVar(class_share.shape, lb=0.0, ub=class_share)
+        model.addConstrs(rebuild_class[p, :].sum() == rebuild[p] for p in range(3))
+        _add_expiry_rules(model, share, rebuild, expired, class_share, 3, "t")
         if objective == "max_rebuild":
             model.setObjective(rebuild.sum(), gp.GRB.MAXIMIZE)
         else:
@@ -217,7 +250,7 @@ def test_expiry_rules_follow_the_expired_share() -> None:
         value = rebuild.X if objective == "max_rebuild" else share.X[:, RETIRE]
         np.testing.assert_allclose(value, expected, atol=1e-9, err_msg=objective)
         names = [c.ConstrName for c in model.getConstrs()]
-        assert [n for n in names if n.startswith("rebuild_le_expired")] == ["rebuild_le_expired_2_t"]
+        assert [n for n in names if n.startswith("expire_retire_or_rebuild")] == ["expire_retire_or_rebuild_1_t"]
 
 
 def test_rebuilt_split_bounds() -> None:
@@ -225,9 +258,10 @@ def test_rebuilt_split_bounds() -> None:
     hub 2：f = 0.6（一类），份额固定为未改造 0.5、CCS 0.3、退役 0.2，重建 0.5，CCS 的空冷份额 0.2：重建部分 Σr 在
     [f - 退役, 重建] = [0.4, 0.5] 之间；CCS 全由重建机组承担（r = 0.3）时空冷全在重建部分（ra = 0.2），全由未重建机组
     承担（r = 0）时全不在。hub 3：f = 1，两类的到期份额 0.7、0.3，份额同 hub 2，重建 0.8：各路径全由重建部分承担
-    （Σ_c r_c = 份额），第 0 类承担的在 [0.8 - 0.3, 0.7] = [0.5, 0.7] 之间。不开空冷时不拆空冷份额。"""
+    （Σ_c r_c = 份额），第 0 类承担的在 [0.8 - 0.3, 0.7] = [0.5, 0.7] 之间。不开空冷时不拆空冷份额。掺烧路径的
+    Σ_c r_c <= 份额由掺烧档位的分摊蕴含（`constraints_blend`，2026-10-16 起不在 `add_rebuilt_split` 里加），这里另加以代替。"""
     gp = pytest.importorskip("gurobipy", reason=GUROBI)
-    from coal_retrofit.optimization.constraints_rebuilt import add_rebuilt_split
+    from coal_retrofit.optimization.constraints_rebuilt import RUNNING, UNBLENDED, add_rebuilt_split
 
     ccs = PATHWAY_INDEX["ccs"]
     fixed = np.zeros((4, len(PATHWAYS)))
@@ -246,6 +280,10 @@ def test_rebuilt_split_bounds() -> None:
         model.addConstr(rebuild_class[2, :].sum() == 0.5)
         model.addConstr(rebuild_class[3, :].sum() == 0.8)
         r, ra = add_rebuilt_split(model, share, rebuild_class, air_share, expired, class_share, 4, allow_air, "_t")
+        for p, parts in r.items():
+            for k in RUNNING:
+                if k not in UNBLENDED:
+                    model.addConstr(gp.quicksum(part[k] for part in parts.values()) <= share[p, k])
         return model, r, ra
 
     for allow_air in (True, False):

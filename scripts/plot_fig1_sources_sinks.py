@@ -8,10 +8,10 @@
 读图注意：排放是现状值（煤电 = 装机 × 分省利用小时 × hub 毛热耗 × 排放因子，工业取 industry_hubs.csv），不是求解结果；
           规划年的排放会按利用小时轨迹与产量指数缩放。
 数据：煤电用模型自己的读入函数 `data_prep_plants._prepare_plants`，工业用 `industry_inputs.prepare_industry`
-      （已按模型剔除西藏 hub），封存汇取 `_indtree/inputs/storage_hubs.csv`。
+      （已按模型剔除西藏 hub），封存汇取 `_indtree/inputs/storage_hubs.csv`（`--sinks` 取汇变体的表，`coal_retrofit.sink_inputs`）。
 自检：坐标与排放没有缺值（缺值的点会被静默丢掉）；部门都在 `SECTOR_ORDER` 里；封存汇类型只有 dsa / eor。
-输出：_indtree/results/figures/fig1_sources_sinks{,_en}.{pdf,png}
-用法：python scripts/plot_fig1_sources_sinks.py [--lang zh|en|both]
+输出：_indtree/results/figures/fig1_sources_sinks{,_<汇变体>}{,_en}.{pdf,png}
+用法：python scripts/plot_fig1_sources_sinks.py [--sinks 300km_complete|300km_average] [--lang zh|en|both]
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 
 from _bootstrap import ROOT
-from plot_io import figure_cli, langs, read_input
+from plot_io import figure_cli, langs, read_input, variant_name
 from plot_map import MAP_LEGEND, add_scs_inset, check_off_land, draw_china_basemap, mainland_extent, to_map_xy
 from plot_style import (
     FULL_WIDTH_MM, INK, MARKERS, MM, MT_CO2_YR, NEUTRAL, SECTOR_COLORS, SECTOR_ORDER, SINK_COLORS, SINK_EDGE,
@@ -41,7 +41,7 @@ SMAX = 70.0                  # 排放最大的源（煤电与工业合在一起�
                              # 画出的面积是 π/4·SMAX，菱形按 MARKER_AREA 换算后同值同面积
 
 
-def load() -> dict[str, pd.DataFrame]:
+def load(sinks: str = "") -> dict[str, pd.DataFrame]:
     """煤电厂址、工业 hub、封存汇，都是进模型的那一套。"""
     from coal_retrofit.optimization.data_prep_plants import _prepare_plants
     from coal_retrofit.optimization.industry_inputs import prepare_industry
@@ -57,8 +57,8 @@ def load() -> dict[str, pd.DataFrame]:
     hubs = prepare_industry(paths, assumptions).hubs
     industry = pd.DataFrame({"sector": hubs["sector"], "lon": hubs["longitude"],
                              "lat": hubs["latitude"], "co2_mt": hubs["co2_mt_per_year"]})
-    sinks = read_input("storage_hubs")[["storage_type", "longitude", "latitude"]]
-    return {"sources": pd.concat([coal, industry], ignore_index=True), "sinks": sinks}
+    storage = read_input("storage_hubs", sinks)[["storage_type", "longitude", "latitude"]]
+    return {"sources": pd.concat([coal, industry], ignore_index=True), "sinks": storage}
 
 
 def check(data: dict[str, pd.DataFrame]) -> None:
@@ -141,12 +141,12 @@ def draw(data: dict[str, pd.DataFrame], lang: str):
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = figure_cli(__doc__, scenario=False).parse_args(argv)
-    data = load()
+    args = figure_cli(__doc__, scenario=False, sinks=True).parse_args(argv)
+    data = load(args.sinks)
     check(data)
     for lang in langs(args.lang):
         apply_style(lang)
-        save_fig(draw(data, lang), NAME, lang)
+        save_fig(draw(data, lang), variant_name(NAME, args.sinks), lang)
 
 
 if __name__ == "__main__":

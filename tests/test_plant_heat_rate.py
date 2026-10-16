@@ -8,12 +8,15 @@ min(热耗, 3.6/0.45 = 8.0)（旧 8.5714 x 0.42/0.45 = 7.99997）：含效率或
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from coal_retrofit.builders.plants import (
     _supply_coal_rate_g_per_kwh,
+    apply_unit_corrections,
     build_plant_dataframe,
     is_cfb,
     mark_named_cfb,
@@ -83,6 +86,36 @@ def test_named_cfb_units_get_a_cfb_mark_and_keep_their_steam_class() -> None:
         unit_heat_rate_gj_per_mwh(units.assign(combustion=marked)), unit_heat_rate_gj_per_mwh(units)
     )
     assert [combustion_class(label) for label in marked] == [combustion_class(label) for label in units["combustion"]]
+
+
+def test_unit_corrections_check_the_gem_value_and_are_idempotent(monkeypatch) -> None:
+    """GEM 机组表的逐台改正（2026-10-16 起）：改前核对 GEM 原值，已改过的跳过（可重复调用），原值对不上或机组不在表里报错；
+    投产年按整数写，不改输入。库里的改正表每条都有来源与 A / B 等级。"""
+    from coal_retrofit.builders import plants
+    from coal_retrofit.constants_gem_corrections import GEM_UNIT_CORRECTIONS, UnitCorrection
+
+    assert all(fix.grade in {"A", "B"} and fix.source.startswith("https://") for fix in GEM_UNIT_CORRECTIONS)
+    assert len({(fix.unit_id, fix.field) for fix in GEM_UNIT_CORRECTIONS}) == len(GEM_UNIT_CORRECTIONS)
+    # 库里的机组表已按改正表重建
+    committed = pd.read_csv(Path(__file__).resolve().parents[1] / "_indtree" / "inputs" / "plants_unit.csv", dtype=str)
+    assert apply_unit_corrections(committed).astype(str).equals(committed)
+    fixes = (
+        UnitCorrection("U1", "cooling_technology", "recirculating", "Air", "A", "https://example.org/a"),
+        UnitCorrection("U2", "commission_year", "2025", "2026", "B", "https://example.org/b"),
+    )
+    monkeypatch.setattr(plants, "GEM_UNIT_CORRECTIONS", fixes)
+    units = pd.DataFrame({"unit_id": ["U1", "U2", "U3"], "cooling_technology": ["recirculating", "Air", "once-through"],
+                          "commission_year": [2010, 2025, 2000]})
+    original = units.copy()
+    fixed = apply_unit_corrections(units)
+    pd.testing.assert_frame_equal(units, original)
+    assert fixed["cooling_technology"].tolist() == ["Air", "Air", "once-through"]
+    assert fixed["commission_year"].tolist() == [2010, 2026, 2000]
+    pd.testing.assert_frame_equal(apply_unit_corrections(fixed), fixed)
+    with pytest.raises(ValueError, match="expected 'recirculating'"):
+        apply_unit_corrections(units.assign(cooling_technology=["once-through", "Air", "once-through"]))
+    with pytest.raises(KeyError, match="U2"):
+        apply_unit_corrections(units.iloc[[0, 2]])
 
 
 def test_cooling_class() -> None:

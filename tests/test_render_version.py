@@ -54,6 +54,7 @@ def test_copy_results_archives_solved_results_not_tree_results(monkeypatch: pyte
     tree, solved, dest = tmp_path / "tree", tmp_path / "solved", tmp_path / "v1"
     (tree / "inputs").mkdir(parents=True)
     (tree / "inputs" / "storage_hubs.csv").write_text("storage_hub_id\n", encoding="utf-8")
+    (tree / "inputs" / "pipeline_nodes_300km_average.csv").write_text("node_id\n", encoding="utf-8")  # 汇变体的表也拷
     (tree / "results" / "ST_LOCAL").mkdir(parents=True)                 # 本机求解树的结果，出图不读
     (tree / "results" / "ST_LOCAL.json").write_text("{}", encoding="utf-8")
     (solved / "ST_BASE").mkdir(parents=True)
@@ -65,4 +66,5 @@ def test_copy_results_archives_solved_results_not_tree_results(monkeypatch: pyte
     data = dest / "data"
     assert sorted(p.name for p in (data / "ST_BASE").iterdir()) == ["ccs_results.xlsx", "sources.csv"]
     assert (data / "ST_BASE.json").is_file() and (data / "storage_hubs.csv").is_file()
+    assert (data / "pipeline_nodes_300km_average.csv").is_file() and not (data / "pipeline_nodes.csv").exists()
     assert not (data / "ST_LOCAL.json").exists() and not (data / "ST_ORPHAN.json").exists()

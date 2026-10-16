@@ -83,17 +83,16 @@ def _solve_joint_multi_period(
         for year_index in range(len(years))
     ]
     add_inter_period_constraints(
-        model, year_payloads, scenario, idx.plant_count, idx.edge_count, len(prepared.industry.hubs),
+        model, year_payloads, idx.plant_count, len(prepared.industry.hubs),
     )
     add_capacity_vintages(model, year_payloads, assumptions)
 
     first_year_data = year_payloads[0].year_data
     edge_base_stock = np.asarray(first_year_data.edge_base_stock_mtpa, dtype=np.float64)
-    edge_max_new_total = np.asarray(first_year_data.edge_max_new_mtpa, dtype=np.float64)
     for year_position, payload in enumerate(year_payloads):
         add_capacity_constraints(
             model, payload, year_payloads, year_position, assumptions, state,
-            edge_base_stock, edge_max_new_total, idx.edge_count, idx.storage_count,
+            edge_base_stock, idx.edge_count, idx.storage_count,
         )
         add_year_costs(
             model, payload, year_payloads, year_position, prepared, scenario, assumptions,

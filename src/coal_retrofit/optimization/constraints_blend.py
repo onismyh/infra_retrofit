@@ -1,5 +1,5 @@
-"""掺烧档位：每个厂选生物质（含 BECCS）与氨的掺烧档位（独热二元变量，或连续 hub 下改造到各档位的容量份额），用 McCormick
-把路径份额分摊到各档位上，并由此组成燃料用量、减排、能耗惩罚与在用掺烧能力（`add_blend_level_constraints`）。
+"""掺烧档位：路径份额在生物质（含 BECCS）与氨各档掺烧比例上的分摊 z（`Σ_l z = 路径份额`），整数 hub 另有每厂选一个档位的
+独热二元变量；由 z 组成燃料用量、减排、能耗惩罚与在用掺烧能力（`add_blend_level_constraints`）。
 由 `constraints._add_plant_path_constraints` 调用。"""
 from __future__ import annotations
 
@@ -12,21 +12,6 @@ from ._shared import GRB, PATHWAY_INDEX, gp
 from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
 from .year_types import GrbExpr, GrbMVar, RebuiltShares, YearData
-
-
-def _add_mccormick_product(model, share_var, binary_var, name: str):
-    """线性化 z = share_var * binary_var，其中 binary 取值 {0,1}，share 取值 [0,1]。
-
-    连续 hub 下 binary 是改造到该档位的容量份额，z 是路径份额里落在该档位的部分，不等于两者之积：
-    这三条只给上下界，怎样分摊由调用方的 `Σ_l z = share` 与 `z_bio + z_beccs ≤ select` 这几条约束决定。
-    有了 `Σ_l z = share`，`_u1`、`_lo` 两条可由它、`_u2`、各档位份额合计为 1 与变量下界 0 推出（两种形式下都是）；
-    留着不删：删了可行域不变，但模型指纹与求解路径都会变。
-    """
-    z = model.addVar(lb=0.0, ub=1.0, name=name)
-    model.addConstr(z <= share_var,                      name=f"{name}_u1")
-    model.addConstr(z <= binary_var,                     name=f"{name}_u2")
-    model.addConstr(z >= share_var - (1.0 - binary_var), name=f"{name}_lo")
-    return z
 
 
 def _add_rebuilt_parts(model, z, classes, name: str) -> dict[int, gp.Var]:
@@ -64,10 +49,10 @@ def _blend_coeffs(source, p: int) -> _BlendCoeffs:
 class _LevelShares:
     """一个厂共用一组掺烧档位的路径（生物质与 BECCS 共用生物质档位，氨单独一组）在各档位上的份额。
 
-    每档每条路径一个 z（路径份额里落在该档的部分，`_add_mccormick_product`）；拆出重建部分的 hub（`rebuilt` 非空）再按重建热耗类
-    拆出 rz_c（`_add_rebuilt_parts`）。另记结果表用的 Σβ·z（`x_share`）、各类的 Σβ·rz（`rebuilt_x_share`）与在用掺烧能力
+    每档每条路径一个 z >= 0（路径份额里落在该档的部分）；拆出重建部分的 hub（`rebuilt` 非空）再按重建热耗类拆出 rz_c
+    （`_add_rebuilt_parts`）。另记结果表用的 Σβ·z（`x_share`）、各类的 Σβ·rz（`rebuilt_x_share`）与在用掺烧能力
     Σ (档位下标) x z（`in_use`，组内各路径共用档位能力）。`paths` 是 (约束名里的路径名, z 的变量名前缀, 路径列)；
-    变量与约束按 `paths` 的顺序加，变量名与约束名同拆分前（模型指纹不变）。
+    变量与约束按 `paths` 的顺序加。
     """
 
     def __init__(self, model, paths, share, p: int, sfx: str, base: _BlendCoeffs,
@@ -81,14 +66,14 @@ class _LevelShares:
         self.rebuilt_x_share = [{c: gp.LinExpr() for c in rebuilt} for _ in paths]
         self.in_use = gp.LinExpr()
 
-    def add_level(self, level: int, beta: float, select, coupling: str | None = None) -> list[tuple[_BlendCoeffs, list]]:
-        """第 level 档（掺烧比例 beta，档位变量 select）：各路径的 z 与各类的 rz。coupling 给约束名前缀时另加
-        Σ_路径 z <= select（组内路径共用改造到该档位的容量；独热形式下自动成立，档位取份额时才起约束作用）。
+    def add_level(self, level: int, beta: float, select, coupling: str) -> list[tuple[_BlendCoeffs, list]]:
+        """第 level 档（掺烧比例 beta）：各路径的 z 与各类的 rz。整数 hub 另加 Σ_路径 z <= select（约束名前缀 coupling；
+        select 是该档的独热变量，连续 hub 为 None，不加）。
         返回 [(系数, 各路径的份额)]：先是未重建部分 (base, z)，再是各类重建部分 (该类与未重建部分之差, rz_c)。"""
         name = f"_{self.p}_{level}{self.sfx}"
         prefixes = [prefix for _, prefix, _ in self.paths]
-        zs = [_add_mccormick_product(self.model, s, select, f"{prefix}{name}") for s, prefix in zip(self.shares, prefixes)]
-        if coupling is not None:
+        zs = [self.model.addVar(lb=0.0, ub=1.0, name=f"{prefix}{name}") for prefix in prefixes]
+        if select is not None:
             self.model.addConstr(gp.quicksum(zs) <= select, name=f"{coupling}{name}")
         self.in_use += (level + 1) * gp.quicksum(zs)
         for i, z in enumerate(zs):
@@ -106,9 +91,8 @@ class _LevelShares:
 
     def add_partition(self, out: dict[tuple[int, int, int], GrbExpr]) -> None:
         """一条路径的份额恰好分摊到各档位上（Σ_l z_l = 路径份额），各类的重建份额同样（Σ_l rz_{c,l} = r_c）。上界：多个档位份额
-        为正时，减排量不会被重复计算；下界：份额为正就至少按最低档掺烧。独热档位下 McCormick 精确，加上 `nb_b` / `nb_a`（选档位 0
-        时份额为 0），等式自动成立；连续 hub 下 McCormick 只给 z 上下界，2026-09-27 前这里是 `<=`，份额可以有一部分不落在任何档位上
-        （BECCS 不掺生物质就是 CCS；"生物质"份额不烧生物质，也能拿改造路径的 CF 提升）。各类的 Σβ·rz 记进
+        为正时，减排量不会被重复计算；下界：份额为正就至少按最低档掺烧。2026-09-27 前这里是 `<=`，连续 hub 下份额可以有一部分
+        不落在任何档位上（BECCS 不掺生物质就是 CCS；"生物质"份额不烧生物质，也能拿改造路径的 CF 提升）。各类的 Σβ·rz 记进
         out[(厂, 类, 路径列)]。"""
         for (label, _, _), s, z in zip(self.paths, self.shares, self.z):
             self.model.addConstr(gp.quicksum(z) == s, name=f"zsum_{label}_{self.p}{self.sfx}")
@@ -125,8 +109,6 @@ class _LevelShares:
 class BlendTerms(NamedTuple):
     """`add_blend_level_constraints` 的变量与表达式；表达式的列表每厂一项。用量、减排与惩罚各项含重建部分。"""
 
-    select_b: GrbMVar                   # (厂, L_b+1)，档位 0 = 不掺生物质
-    select_a: GrbMVar                   # (厂, L_a+1)，档位 0 = 不掺氨
     # 在用的生物质掺烧能力 Σ_l (l+1)·(z_bio[p,l] + z_beccs[p,l])，即档位下标 x 落在该档的份额（生物质与 BECCS 共用档位能力），
     # 供结果表与掺烧能力的固定运维（`model_costs._operating_costs`，2026-10-02 起）。2026-10-02 前是 Σ l·select_b，capex 计在它的增量上
     blend_level_b: GrbMVar
@@ -161,7 +143,14 @@ def add_blend_level_constraints(
     sfx: str,
     rebuilt_share: RebuiltShares | None = None,
 ) -> BlendTerms:
-    """为每个厂添加掺烧档位变量（独热二元变量，或连续 hub 下改造到各档位的容量份额）、线性化用的 z 以及用量约束。
+    """为每个厂添加各档的路径份额 z（整数 hub 另有每厂选一个档位的独热二元变量）以及用量约束。
+
+    连续 hub（`hub_decisions_continuous`，缺省）只有 z：z >= 0，Σ_l z_l = 路径份额，hub 内不同机组可以掺到不同档位。整数 hub 另有
+    独热变量 select（第 0 列 = 不掺烧，第 l+1 列 = 档位 l，每厂合计为 1），每档 Σ_路径 z_l <= select_l：生物质与 BECCS 共用一组
+    （`zlvl_b`），氨一组（`zlvl_a`），一个 hub 一年只掺一个档位。2026-10-16 前连续 hub 也有 select（改造到各档的容量份额，跨期
+    CDF 不增，即掺烧比例不许下降），另有 McCormick 三条（z <= 份额、z <= select、z >= 份额 - (1 - select)）与"选档位 0 则份额为 0"
+    （`nb_b` / `nb_a`）：后几条都由 Σ_l z = 份额、z <= select 与 Σ select = 1 蕴含；跨期单调删去后，连续 hub 的 select 对 z 不再有约束
+    （任意 z 都能取 select_l = Σ_路径 z_l），一并删去。
 
     拆出重建部分的 hub（`rebuilt_share` 里有的厂，`constraints_rebuilt.add_rebuilt_split`）把各档的 z 再按重建热耗类拆出重建部分
     rz_c：rz_{c,l} >= 0，Σ_c rz_{c,l} <= z_l，Σ_l rz_{c,l} = 该路径该类的重建份额；用量、减排、惩罚各项按同式逐类加一遍重建部分，
@@ -185,12 +174,12 @@ def add_blend_level_constraints(
     L_a = len(blend_a)
     lhv = float(assumptions.nh3_lhv_gj_per_kg)
 
-    # select_b/select_a：第 0 列 = "不掺烧"，第 l+1 列 = "掺烧档位 l"
-    # 独热二元变量（一个 hub 选一个档位），或 hub 容量中改造到各档位的
-    # 连续份额；见 `OptimizationAssumptions.hub_decisions_continuous`。
-    sel_vtype = GRB.CONTINUOUS if assumptions.hub_decisions_continuous else GRB.BINARY
-    select_b = model.addMVar((plant_count, L_b + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_b{sfx}")
-    select_a = model.addMVar((plant_count, L_a + 1), lb=0.0, ub=1.0, vtype=sel_vtype, name=f"sel_a{sfx}")
+    # select_b/select_a（只有整数 hub）：第 0 列 = "不掺烧"，第 l+1 列 = "掺烧档位 l"，独热二元变量（一个 hub 选一个档位）。
+    one_hot = not assumptions.hub_decisions_continuous
+    select_b = select_a = None
+    if one_hot:
+        select_b = model.addMVar((plant_count, L_b + 1), vtype=GRB.BINARY, name=f"sel_b{sfx}")
+        select_a = model.addMVar((plant_count, L_a + 1), vtype=GRB.BINARY, name=f"sel_a{sfx}")
     blend_level_b = model.addMVar(plant_count, lb=0.0, ub=float(L_b), name=f"blv_b{sfx}")
     blend_level_a = model.addMVar(plant_count, lb=0.0, ub=float(L_a), name=f"blv_a{sfx}")
     biomass_use_gj = model.addMVar(plant_count, lb=0.0, name=f"biomass_use_gj{sfx}")
@@ -226,18 +215,12 @@ def add_blend_level_constraints(
         G_beccs = float(G_bp[beccs_idx])
         G_amm = float(G_bp[amm_idx])
 
-        # --- 每类路径恰好选一个掺烧档位（连续 hub 下：各档位的容量份额合计为 1） ---
-        model.addConstr(select_b[p, :].sum() == 1.0, name=f"sel_b_{p}{sfx}")
-        model.addConstr(select_a[p, :].sum() == 1.0, name=f"sel_a_{p}{sfx}")
+        # --- 整数 hub：每类路径恰好选一个掺烧档位；选档位 0（不掺烧）时份额为 0 由 Σ_l z = 份额与 z <= select 蕴含 ---
+        if one_hot:
+            model.addConstr(select_b[p, :].sum() == 1.0, name=f"sel_b_{p}{sfx}")
+            model.addConstr(select_a[p, :].sum() == 1.0, name=f"sel_a_{p}{sfx}")
 
-        # --- 若选档位 0（不掺烧），相关份额必须为 0（连续 hub 下：份额不超过改造了的容量份额 1 − select[0]）。
-        # `_LevelShares.add_partition` 的 `Σ_l z = s` 加上 `z_bio + z_beccs ≤ select_b`、`z_amm ≤ select_a` 与上面的档位份额
-        # 合计为 1 已蕴含这两条（两种形式下都是），留着不删，理由同 `_add_mccormick_product` ---
-        model.addConstr(share[p, bio_idx] + share[p, beccs_idx] <= 1.0 - select_b[p, 0], name=f"nb_b_{p}{sfx}")
-        model.addConstr(share[p, amm_idx] <= 1.0 - select_a[p, 0], name=f"nb_a_{p}{sfx}")
-
-        # --- 线性化：独热档位下 z = select_b[p, l+1] × share；连续 hub 下 z 是路径份额里落在该档位的部分
-        # （见 `_add_mccormick_product`） ---
+        # --- z 是路径份额里落在该档位的部分；整数 hub 下 z = select[p, l+1] × 份额 ---
         bio = _LevelShares(model, (("bio", "zb", bio_idx), ("beccs", "zbc", beccs_idx)), share, p, sfx, base, deltas, rebuilt)
         bio_use_expr = gp.LinExpr()
         bio_red = gp.LinExpr()
@@ -249,7 +232,8 @@ def add_blend_level_constraints(
         beccs_penalty_captured = gp.LinExpr()
         for level, beta_b in enumerate(blend_b):
             # 生物质与 BECCS 两条路径共用改造到该档位的容量（`zlvl_b`）。
-            for coeffs, (x_bio, x_beccs) in bio.add_level(level, beta_b, select_b[p, level + 1], coupling="zlvl_b"):
+            select = select_b[p, level + 1] if one_hot else None
+            for coeffs, (x_bio, x_beccs) in bio.add_level(level, beta_b, select, "zlvl_b"):
                 bio_use_expr += coeffs.heat_rate * beta_b * (G_bio * x_bio + G_beccs * x_beccs) / BIOMASS_FLOW_SCALE
                 bio_red += coeffs.emissions_retrofit * beta_b * x_bio
                 beccs_blend_red += coeffs.emissions_retrofit * beta_b * x_beccs
@@ -274,7 +258,8 @@ def add_blend_level_constraints(
         amm_use_expr = gp.LinExpr()
         amm_red = gp.LinExpr()
         for level, beta_a in enumerate(blend_a):
-            for coeffs, (x_amm,) in amm.add_level(level, beta_a, select_a[p, level + 1]):
+            select = select_a[p, level + 1] if one_hot else None
+            for coeffs, (x_amm,) in amm.add_level(level, beta_a, select, "zlvl_a"):
                 amm_use_expr += G_amm * coeffs.heat_rate / lhv * beta_a * x_amm / AMMONIA_FLOW_SCALE
                 amm_red += coeffs.emissions_retrofit * beta_a * x_amm
         amm.add_partition(rebuilt_blend_x_share)
@@ -293,7 +278,6 @@ def add_blend_level_constraints(
         amm_blend_x_share.append(amm.x_share[0])
 
     return BlendTerms(
-        select_b=select_b, select_a=select_a,
         blend_level_b=blend_level_b, blend_level_a=blend_level_a, blend_layers_b=bio_layers, blend_layers_a=amm_layers,
         biomass_use_gj=biomass_use_gj, ammonia_use_kg=ammonia_use_kg,
         bio_red_exprs=bio_red_exprs, beccs_blend_red_exprs=beccs_blend_red_exprs, amm_red_exprs=amm_red_exprs,

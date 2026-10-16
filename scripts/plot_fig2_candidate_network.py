@@ -4,11 +4,12 @@
   既有油气干线走廊、源到汇的直连弧、支线（源或汇接到干线，虚线）、三角化候选边（含连通片合并边与缝合边）；图例里是
   各类条数。灰色圆点是煤电厂址，菱形是工业 hub（颜色按部门，同图 1），方块是封存汇（深蓝深部咸水层、浅蓝驱油封存）。
 读图注意：这是候选集合，不是求解出的管网（求解结果见图 6）；既有干线按实际路由画，其余按 WKT 折线或两端直线画。
-数据：_indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv、industry_hubs.csv（工业 hub 的部门）。
+数据：_indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv（`--sinks` 取汇变体的三张表，
+  `coal_retrofit.sink_inputs`）、industry_hubs.csv（工业 hub 的部门）。
 自检：edge_class 都认识（各类条数之和 = 总边数）；每条边都画得出来（端点都在节点表里）；封存汇类型只有 dsa / eor；
   工业 hub 都配得上部门（industry_hubs.csv），部门都在 SECTOR_ORDER 里。
-输出：_indtree/results/figures/fig2_candidate_network{,_en}.{pdf,png}
-用法：python scripts/plot_fig2_candidate_network.py [--lang zh|en|both]
+输出：_indtree/results/figures/fig2_candidate_network{,_<汇变体>}{,_en}.{pdf,png}
+用法：python scripts/plot_fig2_candidate_network.py [--sinks 300km_complete|300km_average] [--lang zh|en|both]
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.typing import LineStyleType
 
-from plot_io import figure_cli, langs, read_input
+from plot_io import figure_cli, langs, read_input, variant_name
 from plot_map import (
     MAP_LEGEND,
     add_scs_inset, check_off_land, draw_china_basemap, edge_lines, mainland_extent, to_map_xy,
@@ -53,11 +54,11 @@ TEXT = {
 }
 
 
-def load() -> dict[str, pd.DataFrame]:
-    nodes = read_input("pipeline_nodes")
-    edges = read_input("pipeline_candidate_edges")
+def load(sinks: str = "") -> dict[str, pd.DataFrame]:
+    nodes = read_input("pipeline_nodes", sinks)
+    edges = read_input("pipeline_candidate_edges", sinks)
     storage = nodes[nodes["node_type"] == "storage_hub"].merge(
-        read_input("storage_hubs")[["storage_hub_id", "storage_type"]],
+        read_input("storage_hubs", sinks)[["storage_hub_id", "storage_type"]],
         on="storage_hub_id", how="left", validate="one_to_one")
     sectors = read_input("industry_hubs")[["hub_id", "sector"]].astype({"hub_id": str})
     industry = nodes[nodes["node_type"] == "industry_hub"].astype({"industry_hub_id": str}).merge(
@@ -137,14 +138,14 @@ def draw(data: dict[str, pd.DataFrame], groups: dict[str, pd.DataFrame], lines: 
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = figure_cli(__doc__, scenario=False).parse_args(argv)
-    data = load()
+    args = figure_cli(__doc__, scenario=False, sinks=True).parse_args(argv)
+    data = load(args.sinks)
     groups = classify(data["edges"])
     check(data, groups)
     lines = {key: edge_lines(frame, data["nodes"]) for key, frame in groups.items()}
     for lang in langs(args.lang):
         apply_style(lang)
-        save_fig(draw(data, groups, lines, lang), NAME, lang)
+        save_fig(draw(data, groups, lines, lang), variant_name(NAME, args.sinks), lang)
 
 
 if __name__ == "__main__":

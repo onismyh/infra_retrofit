@@ -15,6 +15,7 @@ import pandas as pd
 from ..constants import WATER_MATCH_BUFFER_KM
 from ..frames import iter_rows
 from ..paths import ProjectPaths
+from ..sink_inputs import require_sink_inputs, sink_input_path
 from ..spatial import within_radius
 from ._shared import PreparedInputs
 from .assumptions import OptimizationAssumptions
@@ -84,7 +85,9 @@ def _prepare_output_index(paths: ProjectPaths, scenario: OptimizationScenario) -
 
 
 def _prepare_storages(paths: ProjectPaths, scenario: OptimizationScenario, assumptions: OptimizationAssumptions) -> pd.DataFrame:
-    storages = pd.read_csv(paths.inputs_dir / "storage_hubs.csv")
+    # 汇变体（`scenario.sink_variant`，2026-10-16 起）：缺省读 storage_hubs.csv，距离聚类的变体读带后缀的表（`sink_inputs`）。
+    require_sink_inputs(paths.inputs_dir, scenario.sink_variant)
+    storages = pd.read_csv(sink_input_path(paths.inputs_dir, "storage_hubs", scenario.sink_variant))
     if scenario.storage_scope == "dsa_only":
         storages = storages[storages["storage_type"].astype(str) == "dsa"].copy()
     storages["available_capacity_mt"] = storages["storage_all_mt"].astype(float).clip(lower=0.0)
@@ -222,21 +225,21 @@ def _input_files(paths: ProjectPaths, scenario: OptimizationScenario) -> dict[st
     """本情景 `prepare_inputs` 实际读取的文件，{逻辑名: 路径}，供溯源摘要用（`solver_provenance._input_digest`）。
 
     条件与各读取处一致；增删读取处时同步改这里，`tests/test_input_digest.py` 在 toy 上核对两者。
-    逻辑名固定，不随情景变（部门目标与产量指数的文件名带来源名，键不带）。
+    逻辑名固定，不随情景变（部门目标与产量指数的文件名带来源名、汇与管网的带汇变体，键不带）。
     """
     inputs = paths.inputs_dir
     files = {
         "plants": inputs / "plants.csv",
         "plants_unit_hub": inputs / "plants_unit_hub.csv",  # 机组级到期与两部分毛热耗（`_with_expiry`）
-        "storage_hubs": inputs / "storage_hubs.csv",
+        "storage_hubs": sink_input_path(inputs, "storage_hubs", scenario.sink_variant),
         "biomass_supply_curve": inputs / "biomass_supply_curve.csv",
         "ammonia_supply_curve": inputs / "ammonia_supply_curve.csv",  # 煤电掺氨与工业氢价共用
         "water_nodes": inputs / "water_nodes.csv",
         "water_availability": inputs / "water_availability.csv",
         "sector_targets": inputs / f"sector_targets_{scenario.sector_target_source}.csv",
         "industry_hubs": inputs / "industry_hubs.csv",
-        "pipeline_nodes": inputs / "pipeline_nodes.csv",
-        "pipeline_edges": inputs / "pipeline_candidate_edges.csv",
+        "pipeline_nodes": sink_input_path(inputs, "pipeline_nodes", scenario.sink_variant),
+        "pipeline_edges": sink_input_path(inputs, "pipeline_candidate_edges", scenario.sink_variant),
     }
     # 工业 hub 的可捕集份额与份额为正的点源所占比例由点源表算（`industry_inputs._hub_source_shares`）；
     # 没有点源表时（toy 输入）不读。
@@ -278,7 +281,7 @@ def prepare_inputs(
         industry.hubs, ammonia_supply, float(assumptions.resource_match_radius_km)
     )
     network = build_runtime_network(
-        paths, plants, storages, industry_hubs=industry.hubs,
+        paths, plants, storages, industry_hubs=industry.hubs, sink_variant=scenario.sink_variant,
     )
     return PreparedInputs(
         plants=plants,

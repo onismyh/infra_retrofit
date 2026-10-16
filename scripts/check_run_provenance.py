@@ -37,7 +37,8 @@ Exit status is 1 if any hard rule is violated, so this can gate a figure build.
   是空值时按 gap 反推。对照（c，`--pair` 的第一个结果）的目标函数或下界不是正数时只给绝对区间（元）。
 - 热启动看情景 `warm_start = "lp_relax"`（运行器自动两步），两边一个热启动一个没有记 failure。碳价（`carbon_price_cny_per_t_by_year`）两边不同记 failure：目标函数含的碳价支出不同。
   2026-10-02 起贴现率（`discount_rate`）、煤电容量电价（`coal_capacity_price_cny_per_kw_yr`，此前落盘的结果没有这一项，
-  按 0 比）两边不同同样记 failure。
+  按 0 比）两边不同同样记 failure；2026-10-16 起汇变体（`sink_variant`，此前没有这一项，按缺省汇表比）两边不同也记 failure：
+  汇表与管网是不同的输入版本（CLAUDE.md 二.6）。
 - `--pair` 另比两边都有的输入摘要（`digest_*`），不同就记 failure（CLAUDE.md 二.6）；两边读的不是同一个文件的
   （`resolved.input_files` 不同）与只有一边有的只列出。任一边没有 `resolved.code`（这之前落盘，跨 PR #11 连续 hub
   掺烧等式的模型改动分不出来）记 failure；提交号不同、求解时有未提交的改动、记不了提交号，只告警。
@@ -71,9 +72,12 @@ OBJECTIVE_BASIS = {
     "scenario.carbon_price_cny_per_t_by_year": "目标函数含的碳价支出不同，只能比路径结构",
     "scenario.discount_rate": "目标函数折现的贴现率不同，只能比路径结构",
     "scenario.coal_capacity_price_cny_per_kw_yr": "目标函数含的煤电容量电费收入不同，只能比路径结构",
+    # 汇变体不同即汇表与管网是不同的输入版本（CLAUDE.md 二.6，`coal_retrofit.sink_inputs`，2026-10-16 起）；输入摘要的逻辑名
+    # 相同而文件不同，`describe_digests` 只列不判，所以在这里判。
+    "scenario.sink_variant": "汇表与管网是不同的输入版本（CLAUDE.md 二.6），各自报 [下界, 目标] 由作者选",
 }
-# 加这一项之前落盘的 `resolved` 里没有这个键，缺的一边按缺省值比（单一制电价），否则跨这次改动的比较都会误判。
-OBJECTIVE_BASIS_DEFAULTS = {"scenario.coal_capacity_price_cny_per_kw_yr": 0.0}
+# 加这一项之前落盘的 `resolved` 里没有这个键，缺的一边按缺省值比（单一制电价、缺省汇表），否则跨这次改动的比较都会误判。
+OBJECTIVE_BASIS_DEFAULTS = {"scenario.coal_capacity_price_cny_per_kw_yr": 0.0, "scenario.sink_variant": ""}
 
 
 def load(name, results=RESULTS):
@@ -103,7 +107,7 @@ def _env_view(resolved):
 
 
 def describe_params(label, names, a, b, failures, warnings):
-    """两次求解的参数差与环境变量差（`resolved` 段）。热启动两边不一致、碳价、贴现率或容量电价不同（`OBJECTIVE_BASIS`）
+    """两次求解的参数差与环境变量差（`resolved` 段）。热启动两边不一致、碳价、贴现率、容量电价或汇变体不同（`OBJECTIVE_BASIS`）
     记进 *failures*；提交号不同、有未提交的改动、记不了提交号记进 *warnings*（`resolved.code`，旧结果没有这一项）。
 
     任一边没有 `resolved`（2026-09-27 之前落盘）就说明比不了。

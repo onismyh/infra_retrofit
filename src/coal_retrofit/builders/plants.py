@@ -22,6 +22,7 @@ from ..constants import (
     SUPPLY_COAL_RATE_G_PER_KWH,
     cooling_class,
 )
+from ..constants_gem_corrections import GEM_UNIT_CORRECTIONS
 from ..paths import ProjectPaths
 from ..spatial import cluster_labels
 from .plants_water import add_seawater_classification, finalize_water_intensities, hub_water_intensities
@@ -87,6 +88,7 @@ def build_plants_unit_dataframe(paths: ProjectPaths) -> pd.DataFrame:
         }
     )
     out["combustion"] = mark_named_cfb(out)
+    out = apply_unit_corrections(out)
     out["source"] = source_file.name
     out["year_basis"] = PLANT_YEAR_BASIS
     return out[
@@ -121,6 +123,26 @@ def mark_named_cfb(units: pd.DataFrame) -> pd.Series:
     named = units["unit_id"].astype(str).isin(GEM_NAMED_CFB_UNIT_IDS) & ~is_cfb(combustion)
     combustion[named] = combustion[named].astype(str) + "/CFB"
     return combustion
+
+
+def apply_unit_corrections(units: pd.DataFrame) -> pd.DataFrame:
+    """按 `constants_gem_corrections.GEM_UNIT_CORRECTIONS` 逐台改值（2026-10-16 起）。改前核对原值：已是改后的值就跳过
+    （可重复调用），既不是 GEM 原值也不是改后的值、或机组不在表里时报错。commission_year 按整数改，其余按字符串。"""
+    out = units.copy()
+    position = {unit: i for i, unit in enumerate(out["unit_id"].astype(str))}
+    for fix in GEM_UNIT_CORRECTIONS:
+        if fix.unit_id not in position:
+            raise KeyError(f"GEM unit correction for {fix.unit_id}: unit not in the table")
+        row = out.index[position[fix.unit_id]]
+        current = str(out.at[row, fix.field])
+        if current == fix.value:
+            continue
+        if current != fix.gem_value:
+            raise ValueError(
+                f"GEM unit correction for {fix.unit_id}.{fix.field}: expected {fix.gem_value!r} (or {fix.value!r}), got {current!r}"
+            )
+        out.at[row, fix.field] = int(fix.value) if fix.field == "commission_year" else fix.value
+    return out
 
 
 def most_common_string(values: pd.Series) -> str:

@@ -1,6 +1,6 @@
 ﻿unit_id,plant_site,capacity_mw,commission_year,combustion,cooling_technology,province,latitude,longitude,source,year_basis,plant_id,heat_rate_gj_per_mwh
-G100000100098,浙能新疆阿克苏纺织工业城热电厂,350.0,2016,supercritical,recirculating,Xinjiang,41.154153,80.399732,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.5754
-G100000100099,浙能新疆阿克苏纺织工业城热电厂,350.0,2017,supercritical,recirculating,Xinjiang,41.154153,80.399732,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.5754
+G100000100098,浙能新疆阿克苏纺织工业城热电厂,350.0,2016,supercritical,Air,Xinjiang,41.154153,80.399732,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.993
+G100000100099,浙能新疆阿克苏纺织工业城热电厂,350.0,2017,supercritical,Air,Xinjiang,41.154153,80.399732,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.993
 G100000100108,徐矿集团新疆阿克苏电厂,200.0,2011,subcritical,recirculating,Xinjiang,41.078773,80.16948,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.993
 G100000100109,徐矿集团新疆阿克苏电厂,200.0,2011,subcritical,recirculating,Xinjiang,41.078773,80.16948,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0224,8.993
 G100000113040,鑫玛热电集团安达热电,50.0,2014,subcritical,recirculating,Heilongjiang,46.399604,125.298159,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0044,8.993
@@ -484,8 +484,8 @@ G100000113342,国电电力大同湖东发电项目,1000.0,2026,ultra-supercritic
 G100000113343,国电电力大同湖东发电项目,1000.0,2026,ultra-supercritical,recirculating,Shanxi,39.972797,113.381187,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,7.935
 G100000102240,中煤大同发电厂,135.0,2010,subcritical,recirculating,Shanxi,39.947261,113.104985,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.993
 G100000102241,中煤大同发电厂,135.0,2011,subcritical,recirculating,Shanxi,39.947261,113.104985,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.993
-G100000102249,国电电力大同第二发电厂,600.0,2005,subcritical,recirculating,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.7425
-G100000102250,国电电力大同第二发电厂,600.0,2005,subcritical,recirculating,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.7425
+G100000102249,国电电力大同第二发电厂,600.0,2005,subcritical,Air,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,9.1601
+G100000102250,国电电力大同第二发电厂,600.0,2005,subcritical,Air,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,9.1601
 G100000102243,国电电力大同第二发电厂,660.0,2009,supercritical,Air,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.7703
 G100000102251,国电电力大同第二发电厂,660.0,2009,supercritical,Air,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,8.7703
 G100000102246,国电电力大同第二发电厂,200.0,1986,subcritical,Air,Shanxi,40.0279118,113.2933181,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0013,9.4107
@@ -870,8 +870,8 @@ G100000109657,国能长源电力随州发电厂,660.0,2023,supercritical,once-th
 G100000109658,国能长源电力随州发电厂,660.0,2023,supercritical,once-through,Hubei,31.640073,113.522017,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0283,8.3527
 G100000109207,国能岳阳电厂,1000.0,2023,ultra-supercritical,once-through,Hunan,29.6129835,112.754572,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0093,7.935
 G100000109208,国能岳阳电厂,1000.0,2023,ultra-supercritical,once-through,Hunan,29.6129835,112.754572,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0093,7.935
-G100001000209,国神公司博州2×66万千瓦煤电项目,660.0,2026,ultra-supercritical,recirculating,Inner Mongolia,44.8653203,82.0605123,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0168,8.1578
-G100001000210,国神公司博州2×66万千瓦煤电项目,660.0,2026,ultra-supercritical,recirculating,Inner Mongolia,44.8653203,82.0605123,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0168,8.1578
+G100001000209,国神公司博州2×66万千瓦煤电项目,660.0,2026,ultra-supercritical,recirculating,Xinjiang,44.8653203,82.0605123,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0168,8.1578
+G100001000210,国神公司博州2×66万千瓦煤电项目,660.0,2026,ultra-supercritical,recirculating,Xinjiang,44.8653203,82.0605123,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0168,8.1578
 G100000113887,新疆国泰新华矿业股份公司煤基精细化工自备电厂,350.0,2019,supercritical,recirculating,Xinjiang,44.6951246,89.0690716,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.5754
 G100000113888,新疆国泰新华矿业股份公司煤基精细化工自备电厂,350.0,2018,supercritical,recirculating,Xinjiang,44.6951246,89.0690716,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.5754
 G100000105082,江苏国信靖江发电厂,660.0,2013,ultra-supercritical,once-through,Jiangsu,32.030487,120.383144,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0052,8.1578
@@ -1272,8 +1272,8 @@ G100000104436,华能聊城电厂,330.0,2002,subcritical,recirculating,Shandong,3
 G100000104437,华能聊城电厂,330.0,2003,subcritical,once-through,Shandong,36.4684815,115.9117469,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0027,8.993
 G100000104440,华能北方联合电力临河热电厂,300.0,2007,subcritical,recirculating,Inner Mongolia,40.782222,107.491111,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0004,8.993
 G100000104441,华能北方联合电力临河热电厂,300.0,2007,subcritical,recirculating,Inner Mongolia,40.782222,107.491111,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0004,8.993
-G100000104442,华能轮台热电厂,350.0,2016,supercritical,recirculating,Xinjiang,41.821533,84.003586,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0258,8.5754
-G100000104443,华能轮台热电厂,350.0,2016,supercritical,recirculating,Xinjiang,41.821533,84.003586,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0258,8.5754
+G100000104442,华能轮台热电厂,350.0,2016,supercritical,Air,Xinjiang,41.821533,84.003586,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0258,8.993
+G100000104443,华能轮台热电厂,350.0,2016,supercritical,Air,Xinjiang,41.821533,84.003586,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0258,8.993
 G100000104454,华能洛阳发电厂,350.0,2015,supercritical,recirculating,Henan,34.5825272,112.4003626,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0033,8.5754
 G100000104455,华能洛阳发电厂,350.0,2015,supercritical,recirculating,Henan,34.5825272,112.4003626,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0033,8.5754
 G100000104456,华能罗源电厂,660.0,2017,ultra-supercritical,once-through,Fujian,26.411436,119.764294,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0001,8.1578
@@ -1533,8 +1533,8 @@ G100000105176,中石油吉林乙烯发电厂,31.0,2003,subcritical,recirculating
 G100000112143,国电吉林江南热电厂,330.0,2010,subcritical,recirculating,Jilin,43.793557,126.5896225,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0030,8.993
 G100000112144,国电吉林江南热电厂,330.0,2011,subcritical,recirculating,Jilin,43.793557,126.5896225,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0030,8.993
 G100000113517,吉林市源源热电,30.0,2017,subcritical,recirculating,Jilin,43.807052,126.47887,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0030,8.993
-G100000102091,"准东能源吉木萨尔2×350MW热电联产项目, 大唐新疆发电公司吉木萨尔分公司热电联产",350.0,2026,supercritical,recirculating,Xinjiang,43.959,89.213,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0137,8.5754
-G100000102092,"准东能源吉木萨尔2×350MW热电联产项目, 大唐新疆发电公司吉木萨尔分公司热电联产",350.0,2026,supercritical,recirculating,Xinjiang,43.959,89.213,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0137,8.5754
+G100000102091,"准东能源吉木萨尔2×350MW热电联产项目, 大唐新疆发电公司吉木萨尔分公司热电联产",350.0,2026,supercritical,Air,Xinjiang,43.959,89.213,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0137,8.993
+G100000102092,"准东能源吉木萨尔2×350MW热电联产项目, 大唐新疆发电公司吉木萨尔分公司热电联产",350.0,2026,supercritical,Air,Xinjiang,43.959,89.213,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0137,8.993
 G100000105185,国电华能五彩湾北三发电厂,660.0,2021,ultra-supercritical,recirculating,Xinjiang,44.80538879,89.19372668,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.1578
 G100000105186,国电华能五彩湾北三发电厂,660.0,2022,ultra-supercritical,recirculating,Xinjiang,44.805389,89.193727,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.1578
 G100000115859,"济南能源集团济南热电2×66万千瓦先进燃煤机组供热项目, 济南能源长清电厂2×66万千瓦先进燃煤机组供热项目",660.0,2024,ultra-supercritical,recirculating,Shandong,36.53453,116.775898,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0034,8.1578
@@ -2387,8 +2387,8 @@ G100000104507,华能国际上安发电厂,300.0,1997,subcritical,Air,Hebei,38.05
 G100000104508,华能国际上安发电厂,300.0,1997,subcritical,Air,Hebei,38.05729,114.19627,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0051,9.4107
 G100000104509,华能国际上安发电厂,620.0,2008,supercritical,Air,Hebei,38.05729,114.19627,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0051,8.7703
 G100000104510,华能国际上安发电厂,620.0,2010,supercritical,Air,Hebei,38.05729,114.19627,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0051,8.7703
-G100000104513,华能北方联合电力上都发电厂,600.0,2006,subcritical,recirculating,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,8.7425
-G100000104514,华能北方联合电力上都发电厂,600.0,2006,subcritical,recirculating,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,8.7425
+G100000104513,华能北方联合电力上都发电厂,600.0,2006,subcritical,Air,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,9.1601
+G100000104514,华能北方联合电力上都发电厂,600.0,2006,subcritical,Air,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,9.1601
 G100000104515,华能北方联合电力上都发电厂,600.0,2007,subcritical,Air,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,9.1601
 G100000104516,华能北方联合电力上都发电厂,600.0,2007,subcritical,Air,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,9.1601
 G100000104517,华能北方联合电力上都发电厂,660.0,2011,supercritical,Air,Inner Mongolia,42.22369,116.029256,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0113,8.7703
@@ -2740,12 +2740,12 @@ G100001000352,"三峡蒙能东胜热电近区（色连）4×1000MW扩建项目, 
 G100001000353,"三峡蒙能东胜热电近区（色连）4×1000MW扩建项目, 三峡集团库布齐中北部新能源基地400万千瓦配套煤电项目",1000.0,2027,ultra-supercritical/CCS,recirculating,Inner Mongolia,40.307414,110.127321,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0009,7.935
 G100001000354,"三峡蒙能东胜热电近区（色连）4×1000MW扩建项目, 三峡集团库布齐中北部新能源基地400万千瓦配套煤电项目",1000.0,2028,ultra-supercritical/CCS,recirculating,Inner Mongolia,40.307414,110.127321,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0009,7.935
 G100001000355,"三峡蒙能东胜热电近区（色连）4×1000MW扩建项目, 三峡集团库布齐中北部新能源基地400万千瓦配套煤电项目",1000.0,2028,ultra-supercritical/CCS,recirculating,Inner Mongolia,40.307414,110.127321,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0009,7.935
-G100001027684,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
-G100001027686,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
-G100001027687,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
-G100001027688,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
-G100001027689,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
-G100001027690,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,recirculating,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.1578
+G100001027684,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
+G100001027686,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
+G100001027687,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
+G100001027688,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
+G100001027689,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
+G100001027690,"三峡南疆塔克拉玛干沙漠新能源基地6×66万千瓦煤电项目, “疆电外送”第四通道电源项目",660.0,2027,ultra-supercritical,Air,Xinjiang,37.876453,88.181922,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0344,8.5754
 G100000110094,天池能源昌吉热电,350.0,2017,supercritical,recirculating,Xinjiang,44.004362,87.171961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0125,8.5754
 G100000110095,天池能源昌吉热电,350.0,2017,supercritical,recirculating,Xinjiang,44.004362,87.171961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0125,8.5754
 G100000115649,天池能源昌吉热电,660.0,2025,ultra-supercritical,recirculating,Xinjiang,44.004362,87.171961,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0125,8.1578
@@ -2970,8 +2970,8 @@ G100000110858,云南能投威信能源公司,600.0,2012,supercritical,recirculat
 G100001031287,瓮安县新材料及电子化学品项目热电联产项目,40.0,2025,CFB,recirculating,Guizhou,27.142663,107.255005,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0150,8.0742
 G100000110955,武钢青山自备电厂,220.0,1996,subcritical,recirculating,Hubei,30.641183,114.468031,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0106,8.993
 G100000110956,武钢青山自备电厂,220.0,1997,subcritical,recirculating,Hubei,30.641183,114.468031,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0106,8.993
-G100000102200,大唐武安发电厂,300.0,2012,subcritical,once-through,Hebei,36.81893,114.18713,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0123,8.993
-G100000102201,大唐武安发电厂,300.0,2012,subcritical,once-through,Hebei,36.81893,114.18713,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0123,8.993
+G100000102200,大唐武安发电厂,300.0,2012,subcritical,Air,Hebei,36.81893,114.18713,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0123,9.4107
+G100000102201,大唐武安发电厂,300.0,2012,subcritical,Air,Hebei,36.81893,114.18713,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0123,9.4107
 G100000110976,国家电投中煤能源新疆准东五彩湾北二电厂,660.0,2020,ultra-supercritical,recirculating,Xinjiang,44.8388927,89.1908616,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.1578
 G100000110977,国家电投中煤能源新疆准东五彩湾北二电厂,660.0,2020,ultra-supercritical,recirculating,Xinjiang,44.8388927,89.1908616,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.1578
 G100000112913,国家电投中煤能源新疆准东五彩湾北二电厂,660.0,2019,ultra-supercritical,recirculating,Xinjiang,44.8388927,89.1908616,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0098,8.1578
@@ -3562,7 +3562,7 @@ G100000111695,中天合创鄂尔多斯煤炭深加工示范项目热电联产,13
 G100000111696,中天合创鄂尔多斯煤炭深加工示范项目热电联产,30.0,2016,subcritical,recirculating,Inner Mongolia,39.085839,109.473878,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0278,8.993
 G100000101785,中卫热电厂,350.0,2016,supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.993
 G100000101786,中卫热电厂,350.0,2016,supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.993
-G100000115553,中卫热电厂,660.0,2025,ultra-supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.5754
+G100000115553,中卫热电厂,660.0,2026,ultra-supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.5754
 G100000115554,中卫热电厂,660.0,2026,ultra-supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.5754
 G100000115555,中卫热电厂,660.0,2026,ultra-supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.5754
 G100000115556,中卫热电厂,660.0,2026,ultra-supercritical,Air,Ningxia,37.622562,105.235214,GEM_with_Cooling_Technology_July2025.xlsx,2025,P0186,8.5754

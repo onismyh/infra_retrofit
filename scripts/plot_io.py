@@ -13,6 +13,7 @@ import pandas as pd
 
 from _bootstrap import REPO_ROOT, ROOT  # 数据树 _indtree/
 from coal_retrofit.segment import check_segment
+from coal_retrofit.sink_inputs import SINK_INPUT_STEMS, SINK_VARIANTS, sink_input_path
 
 INPUTS_DIR = ROOT / "inputs"
 # 结果图读入库的 `results/solved/<结果名>(.json)`（作者本机求解后拷进来，见该目录的 README.md）；`--scenario` 给路径时
@@ -23,8 +24,8 @@ MAIN_SCENARIO = "ST_WA_cwatm_126_dry_oq"
 LANGS = ("zh", "en")         # 中文版、英文版（字体见 `plot_style.FONTS`）
 
 
-def figure_cli(doc: str | None, *, scenario: bool = True) -> argparse.ArgumentParser:
-    """出图脚本的统一参数：--lang zh|en|both（缺省两版都出），结果图另有 --scenario。"""
+def figure_cli(doc: str | None, *, scenario: bool = True, sinks: bool = False) -> argparse.ArgumentParser:
+    """出图脚本的统一参数：--lang zh|en|both（缺省两版都出），结果图另有 --scenario，画汇或管网输入的图另有 --sinks。"""
     lines = (doc or "").strip().splitlines()
     parser = argparse.ArgumentParser(description=lines[0] if lines else None,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -34,6 +35,10 @@ def figure_cli(doc: str | None, *, scenario: bool = True) -> argparse.ArgumentPa
         parser.add_argument("--scenario", default=MAIN_SCENARIO,
                             help=f"结果名，读 results/solved/<结果名>/ 的结果表（缺省 {MAIN_SCENARIO}）；"
                                  "给路径（含 /）时读该目录，如 _indtree/results/ST_BASE")
+    if sinks:
+        parser.add_argument("--sinks", choices=[variant for variant in SINK_VARIANTS if variant], default="",
+                            help="汇变体（coal_retrofit.sink_inputs）：读带后缀的汇表与管网，图名加 _<变体>；"
+                                 "缺省读不带后缀的表")
     return parser
 
 
@@ -75,10 +80,27 @@ def read_result_json(scenario: str) -> dict:
     return result
 
 
-def read_input(name: str) -> pd.DataFrame:
-    """读 `_indtree/inputs/<name>.csv`（列名去掉 BOM）。"""
-    frame = pd.read_csv(INPUTS_DIR / f"{name}.csv", encoding="utf-8-sig")
-    return frame
+def read_input(name: str, sinks: str = "") -> pd.DataFrame:
+    """读 `_indtree/inputs/<name>.csv`（列名去掉 BOM）。汇表与管网两张表（`SINK_INPUT_STEMS`）按汇变体 *sinks* 取文件
+    （`sink_inputs.sink_input_path`），其余表不随汇变体变，给了变体就报错。"""
+    if name in SINK_INPUT_STEMS:
+        path = sink_input_path(INPUTS_DIR, name, sinks)
+    elif sinks:
+        raise ValueError(f"{name} 不随汇变体变，不能按变体 {sinks!r} 读")
+    else:
+        path = INPUTS_DIR / f"{name}.csv"
+    return pd.read_csv(path, encoding="utf-8-sig")
+
+
+def result_sink_variant(scenario: str) -> str:
+    """结果求解时用的汇变体（`resolved.scenario.sink_variant`；这一项之前落盘的结果没有，即缺省汇表）。"""
+    resolved = read_result_json(scenario).get("resolved") or {}
+    return str((resolved.get("scenario") or {}).get("sink_variant", ""))
+
+
+def variant_name(name: str, sinks: str) -> str:
+    """图名：缺省汇变体不变，其余加 `_<变体>`，免得覆盖缺省汇表的图。"""
+    return f"{name}_{sinks}" if sinks else name
 
 
 def check_close(what: str, got, expected, *, atol: float = 1e-3, rtol: float = 1e-6) -> None:

@@ -3,7 +3,7 @@
 (a) 工业 capex 计在新建能力上，不计在路线份额的增量上（2026-09-30 前计在单调能力存量的增量上；
     到寿命退出与固定运维按建设年见 `test_capacity_vintages.py`）。
 (b) BECCS 的捕集岛按 CCS 计价，生物质改造只走掺烧档位 capex，各收一次。
-(c) 管道到寿命后可在原址重铺：累计新增上限、热启动与结果表都只数在役的管。
+(c) 管道到寿命后可在原址重铺（在役容量只数未到寿命的管）；热启动按目标系数取最便宜的整根组合覆盖松弛解。
 (d) 成本乘子两侧都只乘 capex 与随 capex 的固定运维，不乘能耗、耗材与 BECCS 的掺烧运维。
 
 不求解的几条（(b) 的 BECCS 固定运维、(c) 的在役存量、(d) 的两侧成本乘子、工业逐 hub 成本的投资项）
@@ -268,18 +268,14 @@ def test_beccs_pays_the_capture_island_once_and_the_biomass_conversion_once(tmp_
 
 
 # ------------------------------------------------- (c) 管道到寿命后可原位重建 ---
-def _one_pipe_assumptions() -> OptimizationAssumptions:
-    """每条边只容一根 5 Mtpa 管（标准管 5 x 1 根）；封存不爬坡。"""
-    return OptimizationAssumptions(
-        standard_pipe_capacity_mtpa=5.0,
-        max_parallel_pipes=1,
-    )
+def _thirty_year_pipe_assumptions() -> OptimizationAssumptions:
+    """管道寿命取 30 a（缺省 40 a 在 2030–2060 内不到期），其余缺省：toy 每年注入约 2.6 Mt，一根细管（3.25 Mt/a）够用。"""
+    return OptimizationAssumptions(pipeline_lifetime_years=30)
 
 
 def test_expired_pipeline_can_be_rebuilt_in_place(tmp_path) -> None:
-    """1 座电厂 - 1 条边 - 1 个汇，只开放 CCS，两年都要捕集约一半排放（> 2 Mtpa，只有 5 Mtpa 档够用）。
-    2030 年铺的管 2060 年满 30 年寿命，2060 年必须在原址重铺。2026-09-23 前累计新增上限
-    把已到寿命的管也算进去（5 + 5 > 5），2060 年铺不了，只能走管道松弛或目标缺口。"""
+    """1 座电厂 - 1 条边 - 1 个汇，只开放 CCS，两年都要捕集约一半排放（约 2.6 Mt/a，一根细管够用）。
+    2030 年铺的管 2060 年满 30 年寿命退出，不再计入在役容量，2060 年必须在原址重铺；松弛开关缺省关，铺不了就不可行。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.5, 2050: 0.5, 2060: 0.5})
     scenario = OptimizationScenario(
@@ -290,34 +286,42 @@ def test_expired_pipeline_can_be_rebuilt_in_place(tmp_path) -> None:
         pathway_disable=("retire", "biomass", "beccs", "ammonia"),
         solver_time_limit=300,
     )
-    solution = _solve_toy(paths, scenario, _one_pipe_assumptions())
+    assumptions = _thirty_year_pipe_assumptions()
+    solution = _solve_toy(paths, scenario, assumptions)
+    smallest = assumptions.pipe_capacity_tiers_mtpa[0]
     for year in (2030, 2060):
         ys = solution["year_solutions"][year]
-        assert float(ys["new_cap_mtpa"][0]) == pytest.approx(5.0, abs=1e-6), year
+        assert float(ys["new_cap_mtpa"][0]) == pytest.approx(smallest, abs=1e-6), year
         assert float(np.sum(ys["slacks"]["edge_slack_mtpa"])) == pytest.approx(0.0, abs=1e-6), year
         assert float(ys["slacks"]["target_shortfall_mt"]) == pytest.approx(0.0, abs=1e-6), year
 
 
-def test_warm_start_reseeds_an_expired_pipe(tmp_path) -> None:
-    """LP 热启动取整同样只数在役的管：2030 年铺满的边 2050 年不能再铺，2060 年到寿命后重铺。"""
-    assumptions = _one_pipe_assumptions()
-    years, n_tiers = (2030, 2050, 2060), len(assumptions.pipe_capacity_tiers_mtpa)
+def test_warm_start_covers_each_relaxed_capacity_with_the_cheapest_pipes(tmp_path) -> None:
+    """LP 热启动取整逐年覆盖松弛解的新增容量，组合按目标函数里 `pipe_count` 的系数取最便宜的，根数不设上限。
+    缺省三档（3.25 / 19.69 / 83.954 Mt/a）：2.6 → 1 根细管；0 → 不铺；10 → 1 根中管（4 根细管更贵）；
+    25 → 1 根粗管；84 → 1 根粗管 + 1 根细管。2060 年把粗管的系数调到 10 倍，25 改由 1 根中管 + 2 根细管（比 2 根中管便宜）、
+    84 改由 4 根中管 + 2 根细管覆盖：组合按系数选，不按缺省单价。"""
+    assumptions = OptimizationAssumptions()
+    tiers = assumptions.pipe_capacity_tiers_mtpa
+    costs = np.asarray(assumptions.pipe_capex_cny_per_km_by_tier, dtype=float)
+    need = {2030: [2.6, 0.0, 10.0, 25.0, 84.0], 2060: [25.0, 84.0, 0.0, 0.0, 0.0]}
+    expected = {
+        2030: [(1, 0, 0), (0, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1)],
+        2060: [(2, 1, 0), (2, 4, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)],
+    }
+    scale = {2030: np.ones(len(tiers)), 2060: np.array([1.0, 1.0, 10.0])}
     model = gp.Model()
     model.Params.OutputFlag = 0
-    for year in years:
-        model.addMVar((1, n_tiers), vtype=gp.GRB.INTEGER, ub=1.0, name=f"pipe_count_{year}")
-        model.addMVar(1, vtype=gp.GRB.BINARY, name=f"add_cap_{year}")
-        model.addMVar(1, vtype=gp.GRB.BINARY, name=f"build_edge_{year}")
+    for year in need:
+        model.addMVar((5, len(tiers)), vtype=gp.GRB.INTEGER, obj=np.tile(costs * scale[year], (5, 1)),
+                      name=f"pipe_count_{year}")
     sol = tmp_path / "relaxed.sol"
-    sol.write_text("".join(f"new_cap_mtpa_{year}[0] 5.0\n" for year in years), encoding="utf-8")
+    sol.write_text("".join(f"new_cap_mtpa_{year}[{e}] {value}\n" for year, values in need.items()
+                           for e, value in enumerate(values)), encoding="utf-8")
     _apply_rounded_start(model, sol, assumptions)
     model.update()
-    five = assumptions.pipe_capacity_tiers_mtpa.index(5.0)
-    start = {
-        year: [model.getVarByName(f"pipe_count_{year}[0,{k}]").Start for k in range(n_tiers)]
-        for year in years
-    }
-    assert start[2030][five] == 1.0 and sum(start[2030]) == 1.0
-    assert sum(start[2050]) == 0.0
-    assert start[2060][five] == 1.0 and sum(start[2060]) == 1.0
-    assert model.getVarByName("add_cap_2060[0]").Start == 1.0
+    for year, rows in expected.items():
+        for e, counts in enumerate(rows):
+            start = tuple(model.getVarByName(f"pipe_count_{year}[{e},{k}]").Start for k in range(len(tiers)))
+            assert start == counts, (year, e)
+            assert sum(c * t for c, t in zip(counts, tiers)) >= need[year][e]

@@ -1,5 +1,5 @@
 """汇表构建的入参处理：海上盆地膨胀像素数在读 Fan 栅格之前就查（2026-10-11 起缺省 6），0 为不合并、不进盆地合并；
-海上标记的落省判据。"""
+海上标记的落省判据；按距离聚类的可选建法（2026-10-16 起，complete / average linkage）。"""
 from __future__ import annotations
 
 import geopandas as gpd
@@ -66,3 +66,65 @@ def test_offshore_flag_counts_points_on_the_coastline_as_land_and_rejects_nan(mo
     assert flags.to_dict() == {3: False, 5: False, 7: True}
     with pytest.raises(ValueError, match="NaN"):
         storage._flag_offshore(paths, pd.DataFrame({"longitude": [np.nan], "latitude": [30.5]}))
+
+
+def _three_cells() -> tuple[np.ndarray, np.ndarray, np.ndarray, object]:
+    """一行三个有效格，北纬 30 度上东经 100.0、101.5、103.2（地理坐标栅格，0.05 度一格）：A-B 144 km、B-C 164 km、A-C 308 km，
+    各在不同的 25 km 块里。"""
+    from rasterio.transform import from_origin
+
+    storage_raster = np.zeros((1, 70))
+    injectivity = np.zeros((1, 70))
+    for col, stored, injected in ((0, 100.0, 1.0), (30, 300.0, 2.0), (64, 50.0, 4.0)):
+        storage_raster[0, col], injectivity[0, col] = stored, injected
+    return storage_raster > 0, storage_raster, injectivity, from_origin(99.975, 30.025, 0.05, 0.05)
+
+
+@pytest.mark.parametrize(("method", "groups"), [("complete", [400.0, 50.0]), ("average", [450.0])])
+def test_distance_clusters_complete_and_average_linkage(method, groups) -> None:
+    """complete 下 C 与 A 相距 308 km > 300，单独成簇；average 下 {A, B} 与 C 的平均距离 (308 + 164) / 2 = 236 km，并成一簇。
+    簇内封存潜力、注入能力与格数相加，质心按封存量加权。"""
+    from coal_retrofit.builders.storage_clusters import distance_clusters
+
+    valid, stored, injected, transform = _three_cells()
+    land = gpd.GeoSeries([box(90.0, 20.0, 110.0, 40.0)], crs="EPSG:4326")
+    clusters = distance_clusters(valid, stored, injected, transform, "EPSG:4326", land, 300.0, method)
+    assert sorted(clusters["storage_mt"], reverse=True) == groups
+    assert clusters["injectivity_mtpa"].sum() == 7.0 and clusters["pixel_count"].sum() == 3
+    assert not clusters["offshore"].any()
+    first = clusters.loc[clusters["storage_mt"].idxmax()]
+    lon = (100.0 * 100.0 + 101.5 * 300.0 + (103.2 * 50.0 if method == "average" else 0.0)) / first["storage_mt"]
+    assert first["longitude"] == pytest.approx(lon, abs=1e-9)
+
+
+def test_distance_clusters_keep_land_and_sea_apart() -> None:
+    """省界只盖住 A、B：C 在海上，average 下也不与陆上的 A、B 并簇（陆上、海上分开聚），海上标记取格的落省。"""
+    from coal_retrofit.builders.storage_clusters import distance_clusters
+
+    valid, stored, injected, transform = _three_cells()
+    land = gpd.GeoSeries([box(99.0, 29.0, 102.0, 31.0)], crs="EPSG:4326")
+    clusters = distance_clusters(valid, stored, injected, transform, "EPSG:4326", land, 300.0, "average")
+    assert clusters.set_index("storage_mt")["offshore"].to_dict() == {400.0: False, 50.0: True}
+
+
+def test_distance_clustering_arguments_are_checked_and_skip_the_basin_merge(monkeypatch, tmp_path) -> None:
+    """阈值不为正、linkage 不认识都在读栅格之前报错；距离聚类不做海上盆地合并，海上标记沿用簇的（不按质心重判）。"""
+    paths = ProjectPaths(tmp_path)
+    with pytest.raises(ValueError, match="cluster_km"):
+        build_storage_hub_dataframe(paths, cluster_km=0.0)
+    with pytest.raises(ValueError, match="cluster_linkage"):
+        build_storage_hub_dataframe(paths, cluster_km=300.0, cluster_linkage="single")  # type: ignore[arg-type]
+
+    def fail(*args: object) -> None:
+        raise AssertionError("distance clustering must not call this")
+
+    def fake_clusters(paths, storage_path, injectivity_path, storage_type, cluster_km, cluster_linkage) -> pd.DataFrame:
+        return _toy_bodies(storage_type).assign(offshore=storage_type == "eor")
+
+    monkeypatch.setattr(storage, "_extract_distance_clusters", fake_clusters)
+    monkeypatch.setattr(storage, "_extract_storage_nodes", fail)
+    monkeypatch.setattr(storage, "_merge_offshore_by_basin", fail)
+    monkeypatch.setattr(storage, "_flag_offshore", fail)
+    hubs = build_storage_hub_dataframe(paths, cluster_km=300.0, cluster_linkage="average")
+    assert hubs.set_index("storage_type")["offshore"].to_dict() == {"dsa": False, "eor": True}
+    assert set(hubs["year_basis"]) == {"Fan_raster_5km_average_300km"}
