@@ -217,6 +217,15 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     water_links = pd.DataFrame(
         link_rows, columns=["plant_id", "water_node_id", "distance_km", "distance_rank", "delivered_cost_cny_per_m3"]
     )
+    # 厂侧水平衡（供水流量 == 耗水）在所有情景里都建（`model_resources.add_resource_balances`，无水约束时也建）：
+    # 没有一条链路的 hub 耗水被迫为 0，只剩退役一条路径可行，而且不报错。半径内没有水节点的 hub 直接拒绝。
+    unlinked = sorted(set(plants["plant_id"].astype(str)) - set(water_links["plant_id"].astype(str)))
+    if unlinked:
+        more = " …" if len(unlinked) > 6 else ""
+        raise ValueError(
+            f"{len(unlinked)} 个煤电 hub 在 {WATER_MATCH_BUFFER_KM:g} km 内没有水节点（{', '.join(unlinked[:6])}{more}）："
+            "厂侧水平衡会把它们的耗水压成 0、只剩退役可行；核对 water_nodes.csv 与 plants.csv 的坐标，或重建水节点表"
+        )
     logger.info("Water links: %d", len(water_links))
     return water_nodes, water_links, water_availability
 

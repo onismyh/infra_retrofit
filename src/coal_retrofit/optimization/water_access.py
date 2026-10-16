@@ -223,6 +223,56 @@ def _basin_cap_data(
     return membership, residual, codes
 
 
+def basin_withdrawal_floor(
+    generation_by_pathway: np.ndarray,
+    withdrawal: np.ndarray,
+    air_withdrawal: np.ndarray,
+    basin_membership: np.ndarray,
+    industry_water_m3: np.ndarray,
+    industry_route_available: np.ndarray,
+    industry_basin_membership: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """各流域取水的两个下限（m3/yr，与 `water_basin_available_m3` 同单位），供 `warn_basin_floor` 与诊断用。
+
+    返回 (煤电全部改空冷、不退役、不加捕集时的取水, 工业每个 hub 取各可用路线中取水最少者)。前者是煤电不退役能做到的
+    最低取水：空冷取水强度已是 min(空冷, 原冷却)（`_withdrawal_matrices`），再低只能退役。
+    """
+    un = PATHWAY_INDEX["unabated"]
+    coal_min = generation_by_pathway[:, un] * air_withdrawal[:, un]
+    coal_floor = basin_membership @ coal_min
+    water = np.where(industry_route_available, industry_water_m3, np.inf).min(axis=1)
+    industry_floor = (
+        industry_basin_membership @ water if industry_basin_membership is not None
+        else np.zeros(basin_membership.shape[0])
+    )
+    return coal_floor, industry_floor
+
+
+def warn_basin_floor(
+    year: int, codes: list[str], residual_m3: np.ndarray, coal_floor_m3: np.ndarray, industry_floor_m3: np.ndarray
+) -> list[str]:
+    """流域余量低于"工业最少取水 + 煤电不退役的最低取水"时逐流域告警，返回告警的流域码。
+
+    这样的流域只有退役煤电才能满足硬约束（`allow_slack` 关时），结果里该流域的退役是水预算逼出来的，不是经济选择；
+    余量还低于工业最少取水的，连退光煤电也不够。`_indtree/inputs/water_basin_caps.csv` 2026-10-16 核对：西北诸河（K）
+    2030 年余量 2.10 亿 m3，低于工业最少取水 1.72 + 煤电全空冷 0.98 = 2.71（`docs/方法论.md` §7.3）。
+    """
+    flagged: list[str] = []
+    for b, code in enumerate(codes):
+        floor = float(coal_floor_m3[b]) + float(industry_floor_m3[b])
+        if float(residual_m3[b]) < floor:
+            flagged.append(str(code))
+            logger.warning(
+                "water: basin %s in %d: quota residual %.2f 1e8 m3 is below the floor %.2f "
+                "(industry at its least-water routes %.2f + coal all air-cooled without retirement %.2f); "
+                "the basin cap can only be met by retiring coal there%s",
+                code, year, float(residual_m3[b]) / 1e8, floor / 1e8, float(industry_floor_m3[b]) / 1e8,
+                float(coal_floor_m3[b]) / 1e8,
+                " (or not at all: it is below industry's floor alone)" if float(residual_m3[b]) < float(industry_floor_m3[b]) else "",
+            )
+    return flagged
+
+
 def _water_access_data(
     prepared: PreparedInputs, scenario: OptimizationScenario, assumptions: OptimizationAssumptions, year: int,
     baseline_use_m3: np.ndarray,

@@ -74,9 +74,12 @@ WATER_DIR = PATHS.data_dir / "water"
 # National Water Resources Survey and Evaluation, 1956-2016) is the model's own bias reference,
 # `constants.OFFICIAL_BASIN_WATER_1E8_M3`, and is not copied here; the recent column is the China
 # Water Resources Bulletin series, 2015-2024 mean. Both are transcribed from Wang G. et al. (2025)
-# Advances in Water Science 36(6), Table 1 (reference/water/wangGQ2025_adv_water_sci_36_948.pdf),
-# internally consistent with that paper's aggregates: north six 5221, south four 23078, national
-# 28299. The boundary file merges Songhua and Liao into one polygon (code A), so they are summed.
+# Advances in Water Science 36(6), Table 1 (reference/water/wangGQ2025_adv_water_sci_36_948.pdf).
+# The paper's aggregates north six 5221 / south four 23078 / national 28299 are the BASELINE column
+# (they are the sums of `OFFICIAL_BASIN_WATER_1E8_M3`); this bulletin column sums to 5908.3 / 22978.8 /
+# 28887.1, i.e. +13.16% / -0.43% / +2.08% on the baseline, which is what the paper reports for it
+# (checked 2026-10-16; the earlier comment attributed the baseline aggregates to this column).
+# The boundary file merges Songhua and Liao into one polygon (code A), so they are summed.
 BULLETIN_2015_2024_1E8_M3: dict[str, float] = {
     "A": 1972.1 + 463.1,   # Songhua + Liao
     "C": 353.5,            # Hai

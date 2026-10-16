@@ -9,8 +9,8 @@
 读图注意：蓝线画的是年流量，不是建成的管道能力；在役管道按 network.csv 的 total_capacity_mtpa（既有走廊容量 + 寿命内的
   建成容量）判断。管段按候选管网的 WKT 折线画，没有 WKT 的按两端直线画。
 数据：results/solved/<情景>/network.csv、sources.csv（煤电、工业取 source_type 为 coal、industry 的行）、sinks.csv，
-  _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv（取结果求解时的汇变体 `sink_variant`
-  的三张表，`coal_retrofit.sink_inputs`）。
+  _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv（取结果求解时的汇变体 `sink_variant` 的两张表，
+  `coal_retrofit.sink_inputs`；汇的坐标已在节点表里，不另读 storage_hubs.csv）。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
   封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）；图例不压国土。
 输出：_indtree/results/figures/fig6_co2_network{,_en}.{pdf,png}
@@ -59,23 +59,13 @@ def load(scenario: str) -> dict[str, pd.DataFrame]:
         "storage": read_result(scenario, "sinks").astype({"sink_id": str}),
         "candidates": read_input("pipeline_candidate_edges", sinks),
         "nodes": read_input("pipeline_nodes", sinks),
-        "sinks": read_input("storage_hubs", sinks).astype({"storage_hub_id": str}),
     }
 
 
 def node_table(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """管网节点坐标：输入的节点表，加上运行期补的节点（network.py：plant::、storage::、industry:: 前缀）。"""
-    plants = data["plants"].drop_duplicates("source_id")
-    hubs = data["industry"].drop_duplicates("source_id")
-    sinks = data["sinks"]
-    return pd.concat([
-        data["nodes"][["node_id", "lon", "lat"]],
-        pd.DataFrame({"node_id": "plant::" + plants["source_id"], "lon": plants["longitude"],
-                      "lat": plants["latitude"]}),
-        pd.DataFrame({"node_id": "storage::" + sinks["storage_hub_id"], "lon": sinks["longitude"],
-                      "lat": sinks["latitude"]}),
-        pd.DataFrame({"node_id": "industry::" + hubs["source_id"], "lon": hubs["longitude"], "lat": hubs["latitude"]}),
-    ], ignore_index=True)
+    """管网节点坐标：就是输入的节点表（`pipeline_nodes.csv`）。源与汇都已是表里的节点（`network.build_runtime_network`
+    2026-10-13 起不再在运行期补 plant:: / storage:: / industry:: 前缀的节点，此前这里还要把它们拼上）。"""
+    return data["nodes"][["node_id", "lon", "lat"]].reset_index(drop=True)
 
 
 def year_layers(data: dict[str, pd.DataFrame], year: int) -> dict[str, pd.DataFrame]:

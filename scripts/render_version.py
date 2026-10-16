@@ -1,6 +1,6 @@
 """重绘全部图，并把图、画图用的结果与输入指纹归档到图幅版本目录。
 
-    python scripts/render_version.py --version <版本> [--timeout 秒] [--skip-plots]
+    python scripts/render_version.py --version <版本> [--timeout 秒] [--skip-plots] [--force]
 
 出图脚本读求解树 <tree>（固定是 `_bootstrap.ROOT`，即 `_indtree`）的 inputs/，结果图读入库的 results/solved/
 （`plot_io.SOLVED_DIR`），图写到 <tree>/results/figures/。所以没有 `--tree`：另指一棵树，归档的就不是画图用的那套。
@@ -17,6 +17,9 @@ v9 / v9.1 的图只能在历史里（`a303f05`）重绘，当前版本不再维�
    连同 <tree>/inputs/ 的输入指纹拷到 <version>/data/，图背后的数字不再只存在于会话临时目录（v8/v9 的求解树就是这么丢的）。
    <version>/data/ 被 .gitignore 的 `data/` 一行忽略，只留在本机；入库的是 results/solved/ 本身。
    2026-10-11 之前拷的是 <tree>/results/ 下的结果与表（不含工作簿），与出图读的 results/solved/ 不是同一份。
+
+版本目录下已有 figures/ 或 data/ 且不为空时拒绝运行（2026-10-16 起）：重跑同一版本，这次失败的图与已从 results/solved/ 删掉的结果
+会以上一轮的旧文件留在目录里，图与数据不再同源（CLAUDE.md §五）。`--force` 先清掉这两个目录与 render.log 再归档；README.md 不动。
 
 不写 README——版本 README 的数字必须由人读过图之后填。
 """
@@ -104,15 +107,40 @@ def copy_results(tree: Path, solved: Path, dest: Path) -> list[str]:
     return scen
 
 
+ARCHIVED = ("figures", "data", "render.log")
+
+
+def prepare_dest(dest: Path, force: bool) -> None:
+    """建版本目录。里面已有 `ARCHIVED` 的任一项（figures/、data/ 非空，或 render.log）时拒绝，`force` 为真则先删掉它们。
+
+    只动这三项：版本目录的 README.md 是人写的，不碰。
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    stale = [name for name in ARCHIVED
+             if (dest / name).is_file() or ((dest / name).is_dir() and any((dest / name).iterdir()))]
+    if not stale:
+        return
+    if not force:
+        raise SystemExit(
+            f"{dest} 下已有 {', '.join(stale)}：上一轮归档的图与数据会与这次的混在一起，不再同源（CLAUDE.md §五）。"
+            "换一个 --version，或加 --force 先清掉这三项再归档（README.md 不动）"
+        )
+    for name in stale:
+        target = dest / name
+        shutil.rmtree(target) if target.is_dir() else target.unlink()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True, help="图幅版本目录名，写到 results/figures/<version>/")
     parser.add_argument("--timeout", type=int, default=1800, help="每个出图脚本的时限（秒），超时记为失败")
     parser.add_argument("--skip-plots", action="store_true", help="不画图，只归档根目录下已有的图")
+    parser.add_argument("--force", action="store_true",
+                        help="版本目录下已有 figures/、data/ 或 render.log 时先清掉再归档（缺省拒绝运行）")
     args = parser.parse_args()
     tree = ROOT
     dest = REPO_ROOT / "results" / "figures" / args.version
-    dest.mkdir(parents=True, exist_ok=True)
+    prepare_dest(dest, args.force)
 
     started = time.time()
     rows = [] if args.skip_plots else run_plots(tree, dest / "render.log", args.timeout)

@@ -129,6 +129,11 @@ def add_scs_inset(ax, draw=None, *, height: float = 0.26):
     inset.set_aspect("equal")
     inset.set_xticks([])
     inset.set_yticks([])
+    # geopandas 1.2 起对投影 CRS 的图层自动写轴标签（"Easting [metre]" / "Northing [metre]"）；主图 `mainland_extent`
+    # 关了整个坐标轴看不到，小图只关刻度、保留方框，标签会落在小图左侧与下方（§4.5 无坐标轴文字）。放在底图与
+    # 业务图层都画完之后清，回调里再画 geopandas 图层会重设。
+    inset.set_xlabel("")
+    inset.set_ylabel("")
     inset.set_facecolor("white")
     for side in inset.spines.values():
         side.set_visible(True)     # apply_style 关了上、右轴线，小图要完整方框
