@@ -93,7 +93,7 @@ def unordered_edge_key(from_node_id: object, to_node_id: object) -> tuple[str, s
 def next_edge_index(edges: pd.DataFrame) -> int:
     """`edge_id` 中最大数字后缀加一。
 
-    不是 `len(edges) + 1`：去交叉过滤删掉若干行之后，表中最大的 id 会超过表长，按表长编号
+    不是 `len(edges) + 1`：删掉若干行之后（西藏剔除；2026-10-16 前还有去交叉过滤），表中最大的 id 会超过表长，按表长编号
     会悄悄重发已在使用的 id。`prepare_inputs` 以 `edge_id` 为键，所以重复项会被丢弃而不是
     报错——早先有一次建网就这样丢了 410 条候选边，连一条警告都没有。
 

@@ -26,6 +26,12 @@ NETWORK_DETOUR_FACTOR = 1.136
 # 留下到不了封存的源。SimCCS 保证的是同一个不变量：即使成本面经过
 # 加权以抑制穿越，每个源和汇也必须至少由一条可行走廊连通。
 NETWORK_DIRECT_SINK_TOP_K = 5
+# 专线的伸长率门槛：源到该汇在现有候选网络上的最短路不长于直线管长（haversine × 绕行系数）的 2.8 倍，就不加这条专线。
+# 按长度比，不乘各类边的造价倍率：取与专线造价倍率（`OptimizationAssumptions.direct_fallback_capex_multiplier`）相同的 2.8，
+# 意思是网络路线不长于它时，专线按 2.8 倍单价算大致不比沿网络走便宜（网络各类边的倍率在 0.97–1.35，两端接入支线 1.35，
+# 所以按造价算的盈亏点略低于 2.8）。两个常量各管各的（一个建网、一个计价），改一个不会带着另一个变。
+# 2026-10-16 起替代此前的相交检验（与已有边相交的专线一律丢弃）。
+NETWORK_DIRECT_SINK_MAX_STRETCH = 2.8
 
 BIOMASS_GJ_PER_TONNE = 15.0
 # 收购成本锚点：Wang & Cai 2024 (Nat Commun, SI Table 3) 10.3 USD/MWh × 7.0 / 3.6 ≈ 20.0。
