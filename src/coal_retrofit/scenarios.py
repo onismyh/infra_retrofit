@@ -11,7 +11,7 @@
   字段名写错、写错节、类型不对都直接报错。数组读成元组，整数写在浮点字段里读成浮点。
   字典型字段（如 `province_coal_cost_cny_per_gj`）整张替换，不与缺省或父情景按键合并：只写一个省，其余省就不在
   表里了（与 `dataclasses.replace` 相同）。
-  取值有限的字段（`CHOICES`：`water_mode`、`water_season`、`sector_target_mode`、`warm_start`、`mip_focus`）只许写模型认的值。
+  取值有限的字段（`CHOICES`：`water_mode`、`water_season`、`sector_target_mode`、`warm_start`、`mip_focus`、`sink_variant`）只许写模型认的值。
 
 `experiment_id`、`description` 由运行器取结果名，`solver_threads`、`solver_time_limit` 是运行选项、
 由命令行 `--threads`、`--time-limit` 给，这四个字段不许写进登记表。
@@ -35,6 +35,7 @@ from typing import Any
 
 from .optimization.assumptions import OptimizationAssumptions
 from .optimization.scenario import OptimizationScenario
+from .sink_inputs import SINK_VARIANTS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_DIR = REPO_ROOT / "scenarios"
@@ -56,13 +57,14 @@ RESERVED_FIELDS: dict[str, str] = {
 # scenario 节里只认这几个值的字段，读登记表与 `--set` 时就查。`water_season`、`water_mode` 模型按值比较，
 # 写错不报错，而是静默走另一支：`water_season = "dyr"` 按全年算，`water_mode` 拼错就按有水约束的 baseline 族算。
 # `warm_start` 运行器另有兜底检查，`mip_focus`（Gurobi 的取值范围）越界时 Gurobi 设参数才报错，`sector_target_mode` 写错
-# 要到读完输入、建模型时才报（`model_year._add_sector_targets`），这里都提前报错。
+# 要到读完输入、建模型时才报（`model_year._add_sector_targets`），`sink_variant` 写错要到读汇表时才报（`sink_inputs`），这里都提前报错。
 CHOICES: dict[str, tuple[Any, ...]] = {
     "water_mode": ("no_water", "grid_supply", "high_water_stress"),
     "water_season": ("annual", "dry"),
     "sector_target_mode": ("sector", "total"),
     "warm_start": ("none", "lp_relax"),
     "mip_focus": (0, 1, 2, 3),
+    "sink_variant": SINK_VARIANTS,
 }
 
 

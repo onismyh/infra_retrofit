@@ -248,6 +248,17 @@ def test_cement_boiler_flue_gas_goes_through_the_capture_island() -> None:
     assert data.opex_cny[1, CCS] == pytest.approx(data.captured_mt[1, CCS] * 1e6 * variable, rel=1e-12)
 
 
+@pytest.mark.parametrize(("sigma", "diverges"), [(0.19 / 0.9, False), (1.0 / 0.9, True), (1.2, True)])
+def test_capture_yield_refuses_a_diverging_boiler_loop(sigma: float, diverges: bool) -> None:
+    """锅炉烟气并入捕集岛时 ησ ≥ 1 捕集量发散，报错；不并入的部门不受 σ 影响。"""
+    if diverges:
+        with pytest.raises(ValueError, match="capture diverges"):
+            cc.capture_yield("cement", 0.9, sigma)
+    else:
+        assert cc.capture_yield("cement", 0.9, sigma) == pytest.approx(0.9 / 0.81)
+    assert cc.capture_yield("steel_bf_bof", 0.9, sigma) == 0.9
+
+
 def test_waste_heat_share_without_a_lost_power_value_is_refused() -> None:
     """有再沸器蒸汽的部门（长流程钢）设了正的余热份额、却没有少发余热电的值时报错，不按 0 计；没有再沸器蒸汽的部门
     （合成氨、甲醇只压缩）不用这个值，份额为正也不改成本与蒸汽 CO2。"""

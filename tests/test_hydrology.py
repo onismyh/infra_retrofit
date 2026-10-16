@@ -207,11 +207,38 @@ def test_cli_boundary_options(tmp_path, monkeypatch, capsys) -> None:
     show = ["--registry", directory, "show", "BASE", "--water", "cwatm/gfdl-esm4/ssp370", "--season", "dry"]
     assert cli.main(show) == 0
     shown = capsys.readouterr().out
-    assert "--water/--season/--targets → scenario.water_scenario_id = 'cwatm|gfdl-esm4|ssp370'" in shown
+    assert "--water/--season/--targets/--sinks → scenario.water_scenario_id = 'cwatm|gfdl-esm4|ssp370'" in shown
     assert "run 的结果名（不给 --as 时）：BASE_cwatm_gfdl-esm4_ssp370_dry" in shown
     assert "* water_season = 'dry'    （缺省 'annual'）" in shown
     assert cli.main([*show, "--set", "scenario.mip_gap=0.05"]) == 0
     assert "run 的结果名" not in capsys.readouterr().out
+
+
+def test_sinks_option_sets_the_variant_and_suffixes_the_name(tmp_path, monkeypatch, capsys) -> None:
+    """`--sinks` 设 `scenario.sink_variant`（`coal_retrofit.sink_inputs`），结果名在其余后缀之后加 `_sinks<变体>`；
+    与 `--set` 改同一字段时报错；没登记的变体由 argparse 拒绝。"""
+    directory = _registry(tmp_path)
+    calls: list = []
+    monkeypatch.setattr(cli, "run", _fake_run(calls))
+    base = ["--registry", directory, "run", "BASE"]
+    assert cli.main([*base, "--targets", "total", "--sinks", "300km_complete"]) == 0
+    spec, kwargs = calls[-1]
+    assert kwargs["name"] == "BASE_total_sinks300km_complete" and spec.scenario["sink_variant"] == "300km_complete"
+    assert kwargs["applied_sets"] == {"scenario.sector_target_mode": "total", "scenario.sink_variant": "300km_complete"}
+    capsys.readouterr()
+    assert cli.main([*base, "--sinks", "300km_average", "--set", "scenario.sink_variant=300km_complete",
+                     "--as", "X"]) == 1
+    assert "只留一处" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main([*base, "--sinks", "100km_complete"])
+    assert excinfo.value.code == 2
+    assert cli.main(["--registry", directory, "show", "BASE", "--sinks", "300km_average"]) == 0
+    shown = capsys.readouterr().out
+    assert "--water/--season/--targets/--sinks → scenario.sink_variant = '300km_average'" in shown
+    assert "run 的结果名（不给 --as 时）：BASE_sinks300km_average" in shown
+    # --set 写了没登记的变体：在求解之前由登记表的 CHOICES 拒绝
+    assert cli.main(["--registry", directory, "show", "BASE", "--set", "scenario.sink_variant=300km"]) == 1
+    assert "只能是" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(("registered", "message"), [

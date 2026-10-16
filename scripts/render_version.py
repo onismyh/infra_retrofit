@@ -32,6 +32,8 @@ from pathlib import Path
 from _bootstrap import REPO_ROOT, ROOT
 from plot_io import SOLVED_DIR  # 结果图读的结果目录（plot_io 不依赖 matplotlib）
 
+from coal_retrofit.sink_inputs import SINK_INPUT_STEMS, SINK_VARIANTS, sink_input_path
+
 
 def run_plots(tree: Path, log_path: Path, timeout: int) -> list[tuple[str, int, float]]:
     scripts = sorted((REPO_ROOT / "scripts").glob("plot_fig*.py"))
@@ -93,11 +95,12 @@ def copy_results(tree: Path, solved: Path, dest: Path) -> list[str]:
             if f.is_file():
                 shutil.copy2(f, out / f.name)
         scen.append(name)
-    # 输入版本的指纹：汇与候选边的行数是 README 第一行要写的数字。
-    for name in ("storage_hubs.csv", "pipeline_candidate_edges.csv", "pipeline_nodes.csv"):
-        f = tree / "inputs" / name
-        if f.exists():
-            shutil.copy2(f, data / name)
+    # 输入版本的指纹：汇与候选边的行数是 README 第一行要写的数字。汇变体（`coal_retrofit.sink_inputs`）的三张表有就一并拷。
+    for variant in SINK_VARIANTS:
+        for stem in SINK_INPUT_STEMS:
+            f = sink_input_path(tree / "inputs", stem, variant)
+            if f.exists():
+                shutil.copy2(f, data / f.name)
     return scen
 
 

@@ -13,7 +13,7 @@ import pandas as pd
 
 from ..constants import TARGET_GEO_CRS
 from ..constants_province import PROVINCE_NAME_ALIASES
-from ..spatial import containing_polygon_index, load_provinces
+from ..spatial import containing_polygon_index, load_provinces, nearest_polygon_index
 from ._shared import PreparedInputs
 
 OFFSHORE = "Offshore"
@@ -63,7 +63,8 @@ def node_provinces(prepared: PreparedInputs, provinces_path: Path) -> dict[str, 
     `offshore` 为真时记海上（与封存成本的海上倍率同一标记，`data_prep._prepare_storages`），否则取
     `storage_hubs.csv` 的省名；`pipeline_nodes.csv` 自带的省名。拼法统一换成 `PROVINCES` 的写法（`PROVINCE_NAME_ALIASES`）。
     都没有的（走廊节点、没填省名的封存汇）按经纬度落在省界图层哪个省，落在所有省之外记海上，与 builders 标记海上封存汇
-    同一判据（`builders.storage._flag_offshore`，都走 `spatial.containing_polygon_index`）；只有这时才读图层。
+    同一判据（`builders.storage._flag_offshore`，都走 `spatial.containing_polygon_index`）；只有这时才读图层。陆上汇
+    （`offshore` 为假）落在所有省之外时取最近的省，不记海上。
     """
     network = prepared.network
     plants = dict(zip(prepared.plants["plant_id"].astype(str), prepared.plants["province_name"], strict=True))
@@ -83,9 +84,12 @@ def node_provinces(prepared: PreparedInputs, provinces_path: Path) -> dict[str, 
         offer(node, plants[str(plant_id)])
     for hub_id, node in network.industry_node_ids.items():
         offer(node, industry[str(hub_id)])
+    onshore_sinks: set[str] = set()
     for hub_id, node in network.storage_node_ids.items():
         if str(hub_id) not in storages.index:
             continue  # 节点表里有、本情景不纳入的汇（`storage_scope = "dsa_only"` 去掉的 EOR 汇），与走廊节点同法定省
+        if not offshore[str(hub_id)]:
+            onshore_sinks.add(str(node))
         offer(node, OFFSHORE if offshore[str(hub_id)] else storages.get("province", pd.Series()).get(str(hub_id)))
     for node_id, value in nodes.get("province", pd.Series()).items():
         offer(node_id, value)
@@ -94,6 +98,11 @@ def node_provinces(prepared: PreparedInputs, provinces_path: Path) -> dict[str, 
         if not Path(provinces_path).exists():
             raise FileNotFoundError(f"{provinces_path} 不存在：{len(unplaced)} 个管网节点没有省名，要按省界图层定省")
         by_node.update(_locate(nodes.loc[unplaced, ["lon", "lat"]], provinces_path))
+        # 陆上汇（`offshore` 为假）的注入中心可能落在省界之外：300 km 距离聚类的汇变体把雷州半岛与海南北部的陆上 DSA 并成一簇，
+        # 质心在琼州海峡。这种汇取最近的省，不记海上，与封存成本的陆上口径一致（2026-10-16 起；缺省 89 个汇没有这种情形）。
+        stray = [node for node in unplaced if node in onshore_sinks and by_node[node] == OFFSHORE]
+        if stray:
+            by_node.update(_locate(nodes.loc[stray, ["lon", "lat"]], provinces_path, nearest=True))
     unknown = sorted({name for name in by_node.values() if name != OFFSHORE and name not in PROVINCES})
     if unknown:
         raise ValueError(f"管网节点的省名 {unknown} 不在 results_regions.PROVINCES 里")
@@ -108,11 +117,13 @@ def _given(value: Any) -> str | None:
     return PROVINCE_NAME_ALIASES.get(name, name)
 
 
-def _locate(points: pd.DataFrame, provinces_path: Path) -> dict[str, str]:
+def _locate(points: pd.DataFrame, provinces_path: Path, nearest: bool = False) -> dict[str, str]:
     """按经纬度（`lon`、`lat` 两列，索引为节点号）把节点落到省界图层的省；压在省界上的取 `province_id` 小的那个，
-    落在所有省之外的记海上。坐标含 NaN 或超出经纬度范围时报错（2026-10-13 前 NaN 记海上）。"""
+    落在所有省之外的记海上（*nearest* 时取边界最近的省，`spatial.nearest_polygon_index`）。坐标含 NaN 或超出经纬度范围时
+    报错（2026-10-13 前 NaN 记海上）。"""
     layer = load_provinces(provinces_path).to_crs(TARGET_GEO_CRS)   # 按 province_id 升序
-    index = containing_polygon_index(points["lon"], points["lat"], layer.geometry)
+    locate = nearest_polygon_index if nearest else containing_polygon_index
+    index = np.asarray(locate(points["lon"], points["lat"], layer.geometry), dtype=float)
     names = layer["province_name"].to_numpy()
     return {str(node): OFFSHORE if np.isnan(i) else _english(str(names[int(i)])) for node, i in zip(points.index, index)}
 

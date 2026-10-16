@@ -21,3 +21,5 @@ xlsx 的 About 页。数据集另有 `DSA injection-MAX.tif`（逐格最大值�
 
 重建汇表：`python scripts/build_storage_inputs.py --offshore-basin-dilation-px 6`（海上封存体按盆地合并，89 个汇）；
 2026-10-10 用这四个文件重建，与库里的 `storage_hubs.csv` 逐字节相同。
+汇变体（2026-10-16 起，`src/coal_retrofit/sink_inputs.py`）：`--cluster-km 300 --linkage complete|average` 按 300 km 距离聚类，
+写 `storage_hubs_300km_complete.csv`（108 个汇）、`storage_hubs_300km_average.csv`（51 个），不覆盖缺省汇表。

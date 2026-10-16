@@ -776,16 +776,44 @@
 > - 直流冷却标定只数 2025 年及以前投产的机组（`data_prep_plants._once_through_bulletin_share`、`builders/water_quota.once_through_calibration`）：
 >   此前连 2026 年起投产的 24.3 GW 淡水直流机组也算进模拟值，模拟偏大约 10%，标定因子 0.497 → 0.547，开流域上限时直流冷却取水随之增约 10%。
 > - 绿氢全国上限的注释改正出处：2060 的 120 Mt 取自水规总院的需求预测（参数来源索引 R07），不是氢能联盟 75–162 Mt 的中值；数值不变。
-> - 汇的距离聚类（**建表选项，库里输入不换**）：`scripts/build_storage_inputs.py --cluster-km 300 --linkage complete|average`
+> - 汇的距离聚类（**建表选项，缺省汇表不换**）：`scripts/build_storage_inputs.py --cluster-km 300 --linkage complete|average`
 >   （`builders/storage_clusters.py`）：同类型、同在陆上或海上的格先并成 25 km 块，再按 haversine 距离层次聚类，簇内封存潜力与注入能力
 >   相加。300 km 下 complete（簇内任意两块 ≤ 300 km）108 个汇（DSA 80、EOR 28，海上 30），average（簇间平均 ≤ 300 km）51 个（DSA 34、
 >   EOR 17，海上 14）；现行 89 个。注入能力合计不变（约 55.6 万 Mt/a），单汇注入中位数 53 → 1 003 / 1 756 Mt/a，注入不足 10 Mt/a 的汇
 >   26 → 8 / 2 个，煤电到最近汇的装机加权距离 210 → 170 / 210 km。海上标记取簇内格的落省（雷州半岛与海南北部的陆上簇质心落在琼州海峡）。
->   作者选定后本机重建 `storage_hubs.csv` 与管网。
+>   作者决定两种都算，保留为汇变体，见下一段。
 > - 验证：ruff 0 条；497 个测试通过（490 + 8 − 1：汇距离聚类 4 个、机组改正 1 个、直流标定口径 2 个、水泥锅炉烟气 1 个；删全国生物质上限的用例）；
 >   约束清理的其余用例按新约束集改写；方法论行号引用随代码移动已改，文首基准仍为 `6f045a5`。
 > - 风险：删档位单调与水泥方案 A 都改变最优解，冷却与标定改正改变有水约束情景的取水；均未求解。水泥目标在方案 A 下按输入可达，
 >   但 ST_BASE / ST_WA 在硬约束下是否可行仍待本机求解确认。
+>
+> 同日按作者"汇用 average 和 complete 两个选项，都要算"加汇变体（**不改缺省情景的模型口径，分段仍为 16**；`src/coal_retrofit/sink_inputs.py`，
+> `docs/方法论.md` §1.2、§8.1、§9.3、附录 A、B.1）：
+> - 情景字段 `scenario.sink_variant`：空串（缺省）读现行 89 个汇的 `storage_hubs.csv` 与在它上面建的管网；`300km_complete` / `300km_average`
+>   读同名加后缀的三张表（`storage_hubs_<变体>.csv`、`pipeline_nodes_<变体>.csv`、`pipeline_candidate_edges_<变体>.csv`）。登记表只认这三个值
+>   （`scenarios.CHOICES`）。
+> - 建表：`build_storage_inputs.py --cluster-km 300 --linkage complete|average` 写 `storage_hubs_300km_<linkage>.csv`，不再覆盖 `storage_hubs.csv`；
+>   `--linkage` 不配 `--cluster-km` 报错。`build_network_inputs.py --sinks <变体>` 读变体的汇表、写同后缀的两张管网表（`--offshore-only` 同样认）。
+>   两张变体汇表已入库（108 / 51 个汇）；管网要读油气干线走廊（`gas_pipelines.shp`、`oil_pipeline.shp`），本仓库环境没有，作者本机重建。
+> - 求解：`run <情景> --sinks <变体>`（`show` 也认）设该字段，不给 `--as` 时结果名在其余后缀之后加 `_sinks<变体>`。缺变体的任一张表在建模之前
+>   报错并给建表命令（`run` 在热启动删旧 `.sol` 之前就核，退出码 1）；汇 id 按序号编、各变体共用，运行期另核模型给每个汇用的管网节点
+>   坐标与汇表一致（差超过 1e-6° 即报错），拦"换了汇表、没重建管网"。结果表给汇定省时，陆上汇落在省界之外取最近的省、不记海上
+>   （average 变体里质心在琼州海峡的那个陆上 DSA 簇记海南；缺省 89 个汇没有这种情形，结果不变）。
+> - 溯源与出图：输入摘要的逻辑名不变、路径随变体；`check_run_provenance.py --pair` 遇两边 `sink_variant` 不同记 failure（不同的输入版本，
+>   CLAUDE.md §二.6；此前落盘的结果按缺省汇表比）。图 1、图 2 加 `--sinks`（图名加 `_<变体>`），图 6 按结果记的变体读管网；`render_version.py`
+>   归档时一并拷各变体的表。
+> - 本机步骤（4 个情景 × 2 个变体 = 8 次求解，最多并发 2 路，CLAUDE.md §二.5）：
+>   ```powershell
+>   python scripts/build_network_inputs.py --sinks 300km_complete
+>   python scripts/build_network_inputs.py --sinks 300km_average
+>   python -m coal_retrofit run ST_BASE --sinks 300km_complete --threads 8   # 结果名 ST_BASE_sinks300km_complete
+>   python -m coal_retrofit run ST_BASE --sinks 300km_average --threads 8    # ST_TOT_BASE、ST_WA_cwatm_126_dry_oq、ST_CP_BASE 同
+>   ```
+> - 验证：ruff 0 条；510 个测试通过（497 + 13：汇变体的文件名、建表只写变体文件、toy 上按变体读表、缺表与坐标不配套报错 7 个，输入清单随变体 1 个，
+>   溯源判定 3 个，命令行 `--sinks` 1 个，出图读表 1 个；命令行 `show` 的标签与图 2 的读表替身随签名改写），审查后另加 5 个（515）：
+>   toy 上 `--sinks` 求解只读变体的三张表、缺表退出码 1，陆上汇落省，`capture_yield` 的 ησ ≥ 1 报错 3 个。另在数据树副本上走通：
+>   不用走廊建 average 变体的管网（补上工业 hub 后 787 节点 / 1 591 边、51 个汇节点），按变体读入 51 个汇，缺省仍 89 个汇、1 052 / 1 559。
+> - 风险：8 个结果都未求解；两个变体的管网规模（节点、边数）待本机建出后补记。变体与缺省之间、两个变体之间的结果都只能各报 [下界, 目标]，不得相减。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -1119,7 +1147,8 @@ python -m ruff check src tests scripts
 | `build_plant_inputs.py [--hubs]` | `plants.py`、`plants_water.py` | `plants_unit.csv`；加 `--hubs` 另写 `plants.csv`、`plants_unit_hub.csv` | 3 623；350、3 623 |
 | `build_industry_inputs.py` | `industry.py` | `industry_sources.csv`、`industry_hubs.csv` | 2 552、390 |
 | `build_storage_inputs.py --offshore-basin-dilation-px 6` | `storage.py` | `storage_hubs.csv` | 89 |
-| `build_network_inputs.py` | `network.py`、`network_corridors.py`、`network_triangulation.py`、`network_edges.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv` | 1 052、1 559 |
+| `build_storage_inputs.py --cluster-km 300 --linkage complete\|average` | `storage.py`、`storage_clusters.py` | 汇变体 `storage_hubs_300km_complete.csv`、`storage_hubs_300km_average.csv` | 108、51 |
+| `build_network_inputs.py [--sinks <变体>]` | `network.py`、`network_corridors.py`、`network_triangulation.py`、`network_edges.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv`（`--sinks` 写同后缀的两张） | 1 052、1 559（变体待本机建） |
 | `build_supply_inputs.py` | `supply.py`、`supply_ammonia.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
 | `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_nodes.csv`、`water_availability.csv` | 20、373、29 840 |
 | `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
@@ -1245,6 +1274,7 @@ python -m coal_retrofit show ST_WA_cwatm_126_dry_oq                   # 解析�
 python -m coal_retrofit diff ST_BASE ST_WA_cwatm_126_dry_oq           # 两个情景的参数差
 python -m coal_retrofit run ST_BASE --threads 8                       # 求解并落盘
 python -m coal_retrofit run ST_BASE --water cwatm/gfdl-esm4/ssp370 --season dry
+python -m coal_retrofit run ST_BASE --sinks 300km_complete            # 汇变体，结果名 ST_BASE_sinks300km_complete
 python -m coal_retrofit run ST_BASE --set scenario.discount_rate=0.05 --as ST_BASE_dr5
 python -m coal_retrofit water-members                                 # 20 个水文成员，逐个核数据
 ```
@@ -1254,6 +1284,8 @@ python -m coal_retrofit water-members                                 # 20 个�
 - `--water 水文模型/GCM/SSP [--season annual|dry] [--targets sector|total]` 把水文成员、季节与碳目标入口并到登记情景上；不给 `--as`
   时结果名拼成 `<情景>_<水文模型>_<GCM>_<SSP>_<季节>[_<目标>]`。`ST_BASE --water cwatm/gfdl-esm4/ssp126 --season dry` 与
   `ST_WA_cwatm_126_dry_oq` 参数相同。有水约束且指定了成员的 `run` 在求解之前核这个成员的数据，不全就拒绝。
+- `--sinks 300km_complete|300km_average` 选汇变体（`scenario.sink_variant`，§0 的 2026-10-16 条），读带后缀的汇表与管网，结果名再加
+  `_sinks<变体>`；变体的表要先在本机建好，缺了在求解之前报错。
 - `--mip-gap` 只放宽这一次求解的 gap，结果名不变；seed 复现不要用。`--tree` 换求解树，`--sol-dir` 换 `.sol` 的目录。
 - 退出码：0 有可用的解；1 登记表、`--set`、`--water` 或环境变量写错、求解之前就拒绝，或未接住的异常；2 命令行写错；3 没有可用的解。
 - 敏感性（贴现率、煤价乘子、煤电容量电价、部分负荷修正、水泥余热份额）不进登记表，命令见 `_indtree/README.md`。
@@ -1262,7 +1294,7 @@ python -m coal_retrofit water-members                                 # 20 个�
 
 1. `python -m coal_retrofit diff A B`：两个情景只差该差的字段。
 2. `python scripts/check_run_provenance.py --pair A B`：核两次已保存的求解。任一边缺结果、缺溯源（`resolved` 或其中的 `code`）、
-   模型分段号不是当前代码的、没有可用的解，两边都是 LP 松弛或只有一边是，或两边的碳价、贴现率、容量电价、同一输入文件的摘要、
+   模型分段号不是当前代码的、没有可用的解，两边都是 LP 松弛或只有一边是，或两边的碳价、贴现率、容量电价、汇变体、同一输入文件的摘要、
    线程数、MIPFocus、是否热启动不一致，都判不过（退出码 1）；提交号不同只告警。脚本缺省读 `_indtree/results/`，读库里的结果加 `--results results/solved`。
 3. 差值只按可证区间报告：`lo = (LB_t − INC_c)/INC_c`，`hi = (INC_t − LB_c)/LB_c`，LB 用结果里记的目标下界（CLAUDE.md §二.3）。
 

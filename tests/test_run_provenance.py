@@ -65,6 +65,9 @@ RESULTS = {
     "DR8": _result({}, discount_rate=0.08),
     "CAP0": _result({}, coal_capacity_price_cny_per_kw_yr=0.0),
     "CAP100": _result({}, coal_capacity_price_cny_per_kw_yr=100.0),
+    "SINK0": _result({}, sink_variant=""),
+    "SINKC": _result({}, sink_variant="300km_complete"),
+    "SINKA": _result({}, sink_variant="300km_average"),
     "DIG": _result({}, digests={"digest_plants": "p1", "digest_sector_targets": "s1"}, input_files=FILES),
     "DIG_PLANTS": _result({}, digests={"digest_plants": "p2", "digest_sector_targets": "s1"}, input_files=FILES),
     "DIG_OTHER_FILE": _result({}, digests={"digest_plants": "p1", "digest_sector_targets": "s2"},
@@ -123,6 +126,7 @@ def check(monkeypatch, tmp_path, capsys) -> Callable[..., tuple[int, str]]:
         ("DIG", "DIG_WATER", "只有 DIG_WATER 读了"),  # 无水约束的一边不读水的文件
         ("DIG_WATER", "DIG", "只有 DIG_WATER 读了"),  # 两边换位置，点名的仍是读了水文件的那一边
         ("MIP", "CAP0", "参数差 1 项"),  # 加容量电价之前落盘的一边没有这个键，按 0 比：口径相同
+        ("MIP", "SINK0", "参数差 1 项"),  # 加汇变体之前落盘的一边没有这个键，按缺省汇表比：输入相同
     ],
 )
 def test_pair_passes(check, a: str, b: str, message: str) -> None:
@@ -149,6 +153,8 @@ def test_pair_passes(check, a: str, b: str, message: str) -> None:
         ("DR6", "DR8", "discount_rate 两边不同"),  # 折现的贴现率不同
         ("CAP0", "CAP100", "coal_capacity_price_cny_per_kw_yr 两边不同"),  # 目标函数含的容量电费收入不同
         ("MIP", "CAP100", "coal_capacity_price_cny_per_kw_yr 两边不同"),  # 缺键的一边按 0 比，仍不同
+        ("SINKC", "SINKA", "sink_variant 两边不同"),  # 汇表与管网是不同的输入版本（CLAUDE.md 二.6）
+        ("MIP", "SINKC", "sink_variant 两边不同"),  # 缺键的一边按缺省汇表比，仍不同
         ("DIG", "DIG_PLANTS", "输入 plants 两边不同"),  # CLAUDE.md 二.6：不同输入版本不得相减
     ],
 )

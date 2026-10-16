@@ -145,6 +145,19 @@ def test_node_provinces_attributes_first_then_location() -> None:
     }
 
 
+@pytest.mark.skipif(not PROVINCES_SHP.exists(), reason="needs data/ChinaMap/provinces.shp")
+def test_onshore_sink_off_the_province_layer_takes_the_nearest_province() -> None:
+    """陆上汇的注入中心落在省界之外（300 km average 汇变体的雷州半岛—海南北部 DSA 簇，质心在琼州海峡）：取最近的省，
+    不记海上；同一位置的走廊节点仍记海上。"""
+    prepared = _prepared([("n_S_strait", 110.03, 20.06, None), ("c_strait", 110.03, 20.06, None)])
+    prepared.network.storage_node_ids["S_strait"] = "n_S_strait"
+    prepared.storages = pd.concat([prepared.storages, pd.DataFrame(
+        {"storage_hub_id": ["S_strait"], "province": [np.nan], "offshore": [False]})], ignore_index=True)
+    provinces = node_provinces(prepared, PROVINCES_SHP)  # type: ignore[arg-type]
+    assert provinces["c_strait"] == OFFSHORE and provinces["n_S_off"] == OFFSHORE
+    assert provinces["n_S_strait"] == "Hainan"
+
+
 def test_node_provinces_reads_the_layer_only_when_needed(tmp_path) -> None:
     """节点都有省名时不读图层；要按落点定省而图层不在就报错；省名不在 `PROVINCES` 里也报错。"""
     missing = tmp_path / "provinces.shp"

@@ -50,6 +50,10 @@ class OptimizationScenario:
     # 时所用的 TIMES 产量路径。
     industry_output_index_source: str = ""
     storage_scope: str = "dsa_eor"
+    # 封存汇与候选管网的输入变体（2026-10-16 起，`coal_retrofit.sink_inputs`）：空串读 `storage_hubs.csv` 与在它上面建的管网
+    # （连通域 + 海上盆地合并，89 个汇）；"300km_complete" / "300km_average" 读同名加后缀的三张表（300 km 距离聚类，
+    # 簇内任意两块 / 簇间平均距离不超过 300 km）。命令行 `run --sinks`。
+    sink_variant: str = ""
     injectivity_multiplier: float = 1.0
     biomass_supply_multiplier: float = 1.0
     biomass_cost_multiplier: float = 1.0

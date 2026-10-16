@@ -53,6 +53,7 @@ from .run_controls import (
 )
 from .scenarios import ScenarioRegistryError, ScenarioSpec, shown_path
 from .segment import MODEL_SEGMENT
+from .sink_inputs import require_sink_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,13 @@ def run(
         if problems:
             raise RunError(f"水文成员 {scenario.water_scenario_id} 的数据不全（python -m coal_retrofit water-members"
                            f" 查全部）：{'；'.join(problems)}")
+    # 汇变体（`sink_inputs`）的三张表要在本机另建：在热启动删旧 .sol 与读输入之前就核，缺了按 RunError 报（退出码 1）。
+    # 缺省汇表不在这里核，缺了照旧在读输入时报。
+    if scenario.sink_variant:
+        try:
+            require_sink_inputs(tree / "inputs", scenario.sink_variant)
+        except FileNotFoundError as exc:
+            raise RunError(str(exc)) from exc
     controls, sol = SolveControls(), None
     if scenario.warm_start == "lp_relax":
         sol = sol_path(tree, name, sol_dir)

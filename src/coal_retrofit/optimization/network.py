@@ -9,6 +9,7 @@ import pandas as pd
 
 from ..frames import iter_rows
 from ..paths import ProjectPaths
+from ..sink_inputs import sink_input_path
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,29 @@ def _terminal_nodes(nodes: pd.DataFrame, id_column: str) -> dict[str, str]:
     return {str(getattr(row, id_column)): str(row.node_id) for row in iter_rows(nodes.loc[nodes[id_column].notna()])}
 
 
+def _require_sinks_where_the_table_puts_them(
+    nodes: pd.DataFrame, storages: pd.DataFrame, storage_node_ids: dict[str, str], nodes_path: Path, rebuild: str,
+    tol_deg: float = 1e-6,
+) -> None:
+    """模型给每个参与求解的汇用的节点（*storage_node_ids*）坐标须与汇表的一致（建网时照抄汇表坐标，`builders.network_branches`）。
+
+    汇 id 按序号编（S001 起），不同的汇表（如两种汇变体，`sink_inputs`）用的是同一批 id：换了汇表而没在它上面重建管网，
+    汇 id 都找得到也会把汇接到别处（2026-10-16 起查）。节点号重复时与关联矩阵一样取最后一行。
+    """
+    at_node = nodes.assign(node_id=nodes["node_id"].astype(str)).drop_duplicates("node_id", keep="last").set_index("node_id")
+    ids = storages["storage_hub_id"].astype(str)
+    placed = at_node.loc[[storage_node_ids[sid] for sid in ids], ["lon", "lat"]].to_numpy(dtype=float)
+    table = storages[["longitude", "latitude"]].to_numpy(dtype=float)
+    off = np.abs(placed - table).max(axis=1) if len(table) else np.zeros(0)
+    moved = ids[~(off <= tol_deg)].tolist()
+    if moved:
+        more = " …" if len(moved) > 6 else ""
+        raise ValueError(
+            f"{len(moved)} 个汇在 {nodes_path.name} 里的坐标与汇表不同（{', '.join(moved[:6])}{more}）："
+            f"管网不是在这张汇表上建的，重新运行 {rebuild}"
+        )
+
+
 def _require_sources_reach_sinks(
     graph: nx.Graph, sources: dict[str, str], sinks: set[str], inputs_dir: Path
 ) -> None:
@@ -99,19 +123,25 @@ def build_runtime_network(
     plants: pd.DataFrame,
     storages: pd.DataFrame,
     industry_hubs: pd.DataFrame | None = None,
+    sink_variant: str = "",
 ) -> RuntimeNetwork:
-    base_nodes = pd.read_csv(paths.inputs_dir / "pipeline_nodes.csv")
-    base_edges = pd.read_csv(paths.inputs_dir / "pipeline_candidate_edges.csv")
+    """读候选管网两张表（汇变体 *sink_variant* 的，`sink_inputs.sink_input_path`），核海上段长度与源汇都在网里且可达，
+    建有向关联矩阵。"""
+    nodes_path = sink_input_path(paths.inputs_dir, "pipeline_nodes", sink_variant)
+    edges_path = sink_input_path(paths.inputs_dir, "pipeline_candidate_edges", sink_variant)
+    rebuild = "scripts/build_network_inputs.py" + (f" --sinks {sink_variant}" if sink_variant else "")
+    base_nodes = pd.read_csv(nodes_path)
+    base_edges = pd.read_csv(edges_path)
     if "offshore_length_km" not in base_edges.columns:
         raise ValueError(
-            f"{paths.inputs_dir / 'pipeline_candidate_edges.csv'} 没有 offshore_length_km 列（每条边的海上段长度，"
-            "2026-10-10 起按它计海上倍率）：先运行 scripts/build_network_inputs.py --offshore-only"
+            f"{edges_path} 没有 offshore_length_km 列（每条边的海上段长度，"
+            f"2026-10-10 起按它计海上倍率）：先运行 {rebuild} --offshore-only"
         )
     offshore = base_edges["offshore_length_km"].astype(float)
     if not (np.isfinite(offshore).all() and (offshore >= 0.0).all() and (offshore <= base_edges["length_km"] + 1e-3).all()):
         raise ValueError(
-            "pipeline_candidate_edges.csv 的 offshore_length_km 须无缺失、在 0 与 length_km 之间："
-            "重新运行 scripts/build_network_inputs.py --offshore-only"
+            f"{edges_path.name} 的 offshore_length_km 须无缺失、在 0 与 length_km 之间："
+            f"重新运行 {rebuild} --offshore-only"
         )
     graph = _build_base_graph(base_nodes, base_edges)
     nodes = base_nodes.copy()
@@ -129,9 +159,10 @@ def build_runtime_network(
     if missing:
         more = " …" if len(missing) > 6 else ""
         raise ValueError(
-            f"{len(missing)} 个参与求解的源或汇不在 {paths.inputs_dir / 'pipeline_nodes.csv'} 里"
-            f"（{', '.join(missing[:6])}{more}）：管网输入与厂址、汇、工业 hub 表不配套，重新运行 scripts/build_network_inputs.py"
+            f"{len(missing)} 个参与求解的源或汇不在 {nodes_path} 里"
+            f"（{', '.join(missing[:6])}{more}）：管网输入与厂址、汇、工业 hub 表不配套，重新运行 {rebuild}"
         )
+    _require_sinks_where_the_table_puts_them(base_nodes, storages, storage_node_ids, nodes_path, rebuild)
 
     solved_sources = {f"plant {pid}": plant_node_ids[pid] for pid in plants["plant_id"].astype(str)}
     if industry_hubs is not None and len(industry_hubs):

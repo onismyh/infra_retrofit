@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,6 +12,7 @@ from scipy import ndimage
 
 from ..artifacts import write_csv
 from ..paths import ProjectPaths
+from ..sink_inputs import check_sink_variant, cluster_variant, sink_input_path
 from ..spatial import containing_polygon_index, load_provinces, pixel_centers
 from .storage_clusters import CLUSTER_LINKAGES, ClusterLinkage, distance_clusters
 
@@ -383,9 +385,14 @@ def write_storage_hubs(
     offshore_basin_dilation_px: int = 6,
     cluster_km: float | None = None,
     cluster_linkage: ClusterLinkage = "complete",
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, Path]:
+    """建汇表并写出，返回 (汇表, 写到的路径)。缺省写 `storage_hubs.csv`；按距离聚类时写汇变体
+    `<阈值>km_<linkage>` 的表（`sink_inputs`，如 `storage_hubs_300km_complete.csv`，2026-10-16 起），不覆盖缺省汇表；
+    变体名须在 `sink_inputs.SINK_VARIANTS` 里，在读栅格之前就查。"""
+    variant = "" if cluster_km is None else check_sink_variant(cluster_variant(cluster_km, cluster_linkage))
     storage = build_storage_hub_dataframe(
         paths, offshore_basin_dilation_px=offshore_basin_dilation_px, cluster_km=cluster_km, cluster_linkage=cluster_linkage
     )
-    write_csv(storage, paths.inputs_dir / "storage_hubs.csv")
-    return storage
+    path = sink_input_path(paths.inputs_dir, "storage_hubs", variant)
+    write_csv(storage, path)
+    return storage, path

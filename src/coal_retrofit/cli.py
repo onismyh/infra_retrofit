@@ -7,6 +7,7 @@
     python -m coal_retrofit run ST_BASE --set assumptions.air_retrofit_capex_cny_per_kw=400 --as ST_BASE_air400
     python -m coal_retrofit run ST_BASE --set scenario.solver_seed=3 --as ST_BASE_seed3
     python -m coal_retrofit run ST_BASE --water cwatm/gfdl-esm4/ssp370 --season dry [--targets total]
+    python -m coal_retrofit run ST_BASE --sinks 300km_complete
     python -m coal_retrofit water-members [--tree _indtree]
 
 情景登记在仓库根 `scenarios/*.toml`（格式见 `coal_retrofit.scenarios`），`--registry` 可换目录。
@@ -25,6 +26,10 @@
   `<情景>_<水文模型>_<GCM>_<SSP>_<季节>[_<目标>]`（`ST_BASE --water cwatm/gfdl-esm4/ssp370 --season dry` 即
   `ST_BASE_cwatm_gfdl-esm4_ssp370_dry`）。`--season` 只配 `--water`；与 `--set` 改同一字段时报错。`show` 也认这三个
   选项，并显示 run 会用的结果名。
+- 汇变体（`coal_retrofit.sink_inputs`，2026-10-16 起）：`--sinks 300km_complete|300km_average` 设 `scenario.sink_variant`，
+  读带后缀的汇表与管网（先在本机建好：`scripts/build_storage_inputs.py --cluster-km 300 --linkage ...`、
+  `scripts/build_network_inputs.py --sinks ...`），同样记进 `resolved.set`；不给 `--as` 时结果名在上面的后缀之后再加
+  `_sinks<变体>`（`ST_BASE --sinks 300km_complete` 即 `ST_BASE_sinks300km_complete`）。`show` 也认。
 - `water-members` 列出 `<tree>/inputs/water_scenarios.csv` 的成员，逐个核各规划年的可用水量与耗水数据（两个季节）；
   `--tree` 缺省取登记情景的求解树（只许有一棵）。有水约束且指定了成员的 run 在求解之前也核这个成员（只核它读的季节）。
 - `--mip-gap` 只放宽这一次求解的 gap，结果名不变；seed 复现不要用。
@@ -130,13 +135,15 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _add_boundary(p: argparse.ArgumentParser) -> None:
-    """`show`、`run` 共用的水文边界条件与碳目标入口（`_apply_boundary`）。"""
+    """`show`、`run` 共用的水文边界条件、碳目标入口与汇变体（`_apply_boundary`）。"""
     p.add_argument("--water", default=None, metavar="水文模型/GCM/SSP",
                    help="水文成员，如 cwatm/gfdl-esm4/ssp370（全部成员：water-members）")
     p.add_argument("--season", choices=CHOICES["water_season"], default=None,
                    help="可用水量取全年或枯水期（只配 --water）")
     p.add_argument("--targets", choices=CHOICES["sector_target_mode"], default=None,
                    help="碳目标入口：分部门上限或合计总量上限（scenario.sector_target_mode）")
+    p.add_argument("--sinks", choices=[variant for variant in CHOICES["sink_variant"] if variant], default=None,
+                   help="汇变体：读带后缀的汇表与管网（scenario.sink_variant，coal_retrofit.sink_inputs）")
 
 
 def _cmd_list(registry: Registry, args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -159,7 +166,7 @@ def _cmd_show(registry: Registry, args: argparse.Namespace, parser: argparse.Arg
     for key, value in applied.items():
         print(f"--set {key} = {value!r}")
     for key, value in boundary.items():
-        print(f"--water/--season/--targets → {key} = {value!r}")
+        print(f"--water/--season/--targets/--sinks → {key} = {value!r}")
     if suffix and not args.set:
         print(f"run 的结果名（不给 --as 时）：{spec.name}{suffix}")
     print(f"标 * 的与 dataclass 缺省不同；线程数、时限按 run 的缺省（{DEFAULT_THREADS}、{DEFAULT_TIME_LIMIT} s）。")
@@ -249,9 +256,9 @@ def _check_result_name(registry: Registry, name: str, label: str, parser: argpar
 def _apply_boundary(
     spec: ScenarioSpec, args: argparse.Namespace, applied: dict[str, Any], tree: Path | None,
 ) -> tuple[ScenarioSpec, dict[str, Any], str]:
-    """`--water`、`--season`、`--targets` 并到（已并过 `--set` 的）情景上：返回新情景、这三个选项的覆盖项
+    """`--water`、`--season`、`--targets`、`--sinks` 并到（已并过 `--set` 的）情景上：返回新情景、这几个选项的覆盖项
     {`scenario.字段`: 值} 与结果名后缀（水文部分 `_水文模型_GCM_SSP_季节` 见 `hydrology.water_overrides`，再加
-    `_sector` / `_total`）。成员按 *tree* 的成员表核。"""
+    `_sector` / `_total`，再加 `_sinks<变体>`）。成员按 *tree* 的成员表核。"""
     member = None
     if args.water is not None:
         if tree is None:  # 能求解的情景都有求解树（`scenarios._resolve`）；这里只为类型收窄
@@ -261,10 +268,15 @@ def _apply_boundary(
     if args.targets is not None:
         overrides["sector_target_mode"] = args.targets
         suffix += f"_{args.targets}"
+    if args.sinks is not None:
+        overrides["sink_variant"] = args.sinks
+        suffix += f"_sinks{args.sinks}"
     boundary = {f"scenario.{key}": value for key, value in overrides.items()}
     both = sorted(set(boundary) & set(applied))
     if both:
-        raise ScenarioRegistryError(f"{'、'.join(both)} 既由 --set 给、又由 --water / --season / --targets 给，只留一处")
+        raise ScenarioRegistryError(
+            f"{'、'.join(both)} 既由 --set 给、又由 --water / --season / --targets / --sinks 给，只留一处"
+        )
     return replace(spec, scenario={**spec.scenario, **overrides}), boundary, suffix
 
 

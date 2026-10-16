@@ -91,6 +91,18 @@ def test_input_files_include_the_point_source_table_when_it_exists(tmp_path, mon
     assert _reads_during_prepare(paths, scenario, monkeypatch) == {p.resolve() for p in files.values()}
 
 
+def test_input_files_follow_the_sink_variant(tmp_path, monkeypatch) -> None:
+    """汇变体（`sink_inputs`）读带后缀的汇表与管网，清单的逻辑名不变、路径随变体；缺省的三张表不读。"""
+    paths = _write_toy_inputs(tmp_path, retirement_year=9999)
+    for stem in ("storage_hubs", "pipeline_nodes", "pipeline_candidate_edges"):
+        pd.read_csv(paths.inputs_dir / f"{stem}.csv").to_csv(paths.inputs_dir / f"{stem}_300km_complete.csv", index=False)
+    scenario = _scenario(sink_variant="300km_complete")
+    files = _input_files(paths, scenario)
+    assert files["storage_hubs"].name == "storage_hubs_300km_complete.csv"
+    assert files["pipeline_edges"].name == "pipeline_candidate_edges_300km_complete.csv"
+    assert _reads_during_prepare(paths, scenario, monkeypatch) == {p.resolve() for p in files.values()}
+
+
 def test_digest_covers_the_files_that_were_read(tmp_path) -> None:
     scenario = _scenario()
     paths_a = _write_toy_inputs(tmp_path / "tree_a", retirement_year=9999)

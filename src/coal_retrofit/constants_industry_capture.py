@@ -260,10 +260,14 @@ def capture_steam_co2_t_per_t(sector: str, coal_emission_factor_t_per_gj: float,
 
 
 def capture_yield(sector: str, capture_rate: float, steam_co2_t_per_t: float) -> float:
-    """每吨可捕集排放的捕集量：锅炉烟气并入捕集岛的部门（`INDUSTRY_CCS_BOILER_FLUE_CAPTURED`）为 η / (1 − ησ)，其余为 η。"""
+    """每吨可捕集排放的捕集量：锅炉烟气并入捕集岛的部门（`INDUSTRY_CCS_BOILER_FLUE_CAPTURED`）为 η / (1 − ησ)，其余为 η。
+    ησ ≥ 1 时（每捕一吨要烧出不少于一吨的可捕集锅炉 CO2）捕集量发散，报错；现行水泥 ησ = 0.19。"""
     eta = float(capture_rate)
     if sector in INDUSTRY_CCS_BOILER_FLUE_CAPTURED:
-        return eta / (1.0 - eta * float(steam_co2_t_per_t))
+        loop = eta * float(steam_co2_t_per_t)
+        if not loop < 1.0:
+            raise ValueError(f"{sector}: capture_rate x boiler CO2 per tonne captured = {loop:.3f} >= 1, capture diverges")
+        return eta / (1.0 - loop)
     return eta
 
 

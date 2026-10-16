@@ -9,7 +9,8 @@
 读图注意：蓝线画的是年流量，不是建成的管道能力；在役管道按 network.csv 的 total_capacity_mtpa（既有走廊容量 + 寿命内的
   建成容量）判断。管段按候选管网的 WKT 折线画，没有 WKT 的按两端直线画。
 数据：results/solved/<情景>/network.csv、sources.csv（煤电、工业取 source_type 为 coal、industry 的行）、sinks.csv，
-  _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv。
+  _indtree/inputs/pipeline_candidate_edges.csv、pipeline_nodes.csv、storage_hubs.csv（取结果求解时的汇变体 `sink_variant`
+  的三张表，`coal_retrofit.sink_inputs`）。
 自检：每年 煤电捕集 + 工业捕集 = 封存注入（管网节点守恒，model_year 的三条 co2 节点约束）；有流量的管段端点都找得到；
   封存汇类型只有 dsa / eor；工业 hub 的部门都在 SECTOR_ORDER 里（否则图上漏画而守恒照样对得上）；图例不压国土。
 输出：_indtree/results/figures/fig6_co2_network{,_en}.{pdf,png}
@@ -26,7 +27,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 
-from plot_io import check_close, figure_cli, langs, read_input, read_result
+from plot_io import check_close, figure_cli, langs, read_input, read_result, result_sink_variant
 from plot_map import add_scs_inset, check_off_land, draw_china_basemap, edge_lines, mainland_extent, to_map_xy
 from plot_style import (
     FULL_WIDTH_MM, IDLE_PIPE_COLOR, INK, MARKERS, MM, MT_CO2_YR, NEUTRAL, PIPE_COLOR, SECTOR_COLORS, SECTOR_ORDER,
@@ -50,14 +51,15 @@ TEXT = {
 
 def load(scenario: str) -> dict[str, pd.DataFrame]:
     sources = read_result(scenario, "sources").astype({"source_id": str})
+    sinks = result_sink_variant(scenario)
     return {
         "edges": read_result(scenario, "network"),
         "plants": sources[sources["source_type"] == "coal"],
         "industry": sources[sources["source_type"] == "industry"],
         "storage": read_result(scenario, "sinks").astype({"sink_id": str}),
-        "candidates": read_input("pipeline_candidate_edges"),
-        "nodes": read_input("pipeline_nodes"),
-        "sinks": read_input("storage_hubs").astype({"storage_hub_id": str}),
+        "candidates": read_input("pipeline_candidate_edges", sinks),
+        "nodes": read_input("pipeline_nodes", sinks),
+        "sinks": read_input("storage_hubs", sinks).astype({"storage_hub_id": str}),
     }
 
 
