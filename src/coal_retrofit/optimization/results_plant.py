@@ -3,11 +3,13 @@
 与资源采购费）。"""
 from __future__ import annotations
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
 from ..frames import iter_rows
 from ._shared import PATHWAY_INDEX, PreparedInputs
+from .network import RuntimeNetwork
 from .scenario import PATHWAYS, OptimizationScenario
 from .year_types import YearData
 
@@ -131,7 +133,7 @@ def _build_pathway_table(
     发电量与基线排放取 `year_data` 里该年的值（已套用利用小时轨迹），按份额分到各路径。`abatement_mt` 是
     基线排放 × 份额 − 该路径的残余排放，`captured_mt` 是该路径的物理捕集量，都按约束逐项拆分（`_pathway_split`）：
     按路径相加就是求解器的逐厂减排量与捕集量（`checks.csv` 的 `pathway_split_closure` 行核对）。
-    改造路径的发电量带 CF 提升（`retrofit_cf_boost`），低比例掺烧的减排可以为负，就是这条路径净增排；未改造一栏也不一定
+    改造路径的发电量乘 CF 提升（`retrofit_cf_boost`，缺省 1.0）、另烧补效率损失的惩罚燃料，低比例掺烧的减排可以为负，就是这条路径净增排；未改造一栏也不一定
     为零：部分到期 hub 的未到期机组与原址重建机组按各自的毛热耗排放，比 hub 毛热耗少排的记为正、多排的记为负，空冷背压
     多排的记为负。此前按经典减排比例（η、β，不含 CF 提升与惩罚燃料）
     拆分、再缩放到求解器的逐厂合计：合计对，各路径的值与符号可能不对；捕集量按 CCS 与 BECCS 的份额比例分摊。
@@ -181,6 +183,24 @@ def _build_province_table(pathways: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
+def _network_km_to_nearest_sink(network: RuntimeNetwork) -> dict[str, float]:
+    """各煤电 hub 沿候选管网到最近汇的最短管长（km，按边的 `length_km`，不乘各类边的造价倍率）；到不了任何汇的不在字典里。
+
+    2026-10-17 前只看 hub 到汇的直连弧，没有直连弧的 hub（大多数）记 NaN。
+    """
+    graph = nx.Graph()
+    for row in iter_rows(network.edges[["from_node_id", "to_node_id", "length_km"]]):
+        u, v, km = str(row.from_node_id), str(row.to_node_id), float(row.length_km)
+        # 同一对节点的平行边取最短的
+        if not graph.has_edge(u, v) or km < graph[u][v]["length_km"]:
+            graph.add_edge(u, v, length_km=km)
+    sinks = [node for node in network.storage_node_ids.values() if node in graph]
+    if not sinks:
+        return {}
+    km_to_sink = nx.multi_source_dijkstra_path_length(graph, sinks, weight="length_km")
+    return {pid: float(km_to_sink[node]) for pid, node in network.plant_node_ids.items() if node in km_to_sink}
+
+
 def _build_plant_detail_table(
     prepared: PreparedInputs,
     scenario: OptimizationScenario,
@@ -211,19 +231,7 @@ def _build_plant_detail_table(
         biomass_levels=scenario.biomass_blend_levels, ammonia_levels=scenario.ammonia_blend_levels,
     )
 
-    # 预先计算各厂经管网边到封存汇的最小距离
-    plant_to_min_storage_km: dict[str, float] = {}
-    edges = prepared.network.edges
-    storage_node_set = set(prepared.network.storage_node_ids.values())
-    for _, edge in edges.iterrows():
-        from_id, to_id = str(edge["from_node_id"]), str(edge["to_node_id"])
-        length = float(edge["length_km"])
-        # 检查边的任一端是否为封存节点
-        for plant_id, node_id in prepared.network.plant_node_ids.items():
-            if node_id == from_id and to_id in storage_node_set:
-                plant_to_min_storage_km[plant_id] = min(plant_to_min_storage_km.get(plant_id, 1e9), length)
-            elif node_id == to_id and from_id in storage_node_set:
-                plant_to_min_storage_km[plant_id] = min(plant_to_min_storage_km.get(plant_id, 1e9), length)
+    plant_to_min_storage_km = _network_km_to_nearest_sink(prepared.network)
 
     rows: list[dict[str, object]] = []
     for p in range(len(plants)):
@@ -273,7 +281,7 @@ def _build_plant_detail_table(
             "biomass_blend_ratio": float(ratios["biomass"][p]),
             "beccs_blend_ratio": float(ratios["beccs"][p]),
             "ammonia_blend_ratio": float(ratios["ammonia"][p]),
-            # 空间信息
+            # 空间信息：沿候选管网到最近汇的最短管长（`_network_km_to_nearest_sink`）
             "min_distance_to_storage_km": plant_to_min_storage_km.get(pid, float("nan")),
         })
     return pd.DataFrame(rows)

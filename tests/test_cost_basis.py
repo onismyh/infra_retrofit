@@ -17,10 +17,13 @@ from toy_inputs import _write_targets, _write_toy_inputs
 
 
 def test_coal_operating_cost_is_relative_to_running_unretrofitted(tmp_path) -> None:
-    """未改造列为零，退役列为省下的参照，参照 = 发电量 x (毛热耗 x 煤价 + 运维 − 电价)（容量电价缺省 0）。"""
+    """未改造列为零，退役列为省下的参照，参照 = 发电量 x (毛热耗 x 煤价 + 运维 − 电价)（容量电价缺省 0）。
+    CF 提升设 1.15（2026-10-17 前的缺省；现缺省 1.0，改造列恰为零），改造列才测得到乘系数这一项。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 1.0})
-    scenario = OptimizationScenario(experiment_id="T", description="toy", sector_target_source="toy")
+    scenario = OptimizationScenario(
+        experiment_id="T", description="toy", sector_target_source="toy", retrofit_cf_boost=1.15,
+    )
     assumptions = OptimizationAssumptions()
     prepared = prepare_inputs(paths, scenario, assumptions)
     m = _plant_operating_matrices(prepared, scenario, assumptions, 2030)

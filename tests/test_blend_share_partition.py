@@ -53,7 +53,7 @@ def test_cheap_coal_does_not_retrofit_without_blending(tmp_path) -> None:
     """路径全开、山西煤价 10 元/GJ、电力上限 0.8：没有份额为正却不掺烧的掺烧路径。改造路径的发电量乘 1.15
     （`retrofit_cf_boost`），煤价低时多发的电有利可图。改前 2060 年"生物质"份额 0.5、生物质用量为 0，
     多出的排放靠 CCS 份额由 0.229（改后 2060 年的值）加到 0.314 抵掉。
-    这条能不能拦住改前的约束，取决于 `retrofit_cf_boost` 的缺省 1.15 与这里的煤价：`retrofit_cf_boost` 改设 1.0，
+    这条能不能拦住改前的约束，取决于 toy 钉住的 `retrofit_cf_boost` = 1.15（2026-10-17 前的缺省，`_solve_blend_toy`）与这里的煤价：改设 1.0，
     或煤价 20 元/GJ，改前也不出现这种解。那时生物质这一处只剩单元测试拦得住。"""
     pytest.importorskip("gurobipy", reason=GUROBI)
     _, _, _, solution = _solve_blend_toy(tmp_path, (), {2050: 0.8, 2060: 0.8}, coal=10.0, mip_gap=0.0)

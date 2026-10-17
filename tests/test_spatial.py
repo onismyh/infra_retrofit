@@ -13,6 +13,7 @@ from coal_retrofit.spatial import (
     distance_to_lines_km,
     haversine_km,
     haversine_matrix_km,
+    latlon_row_areas,
     nearest_polygon_index,
 )
 
@@ -135,3 +136,22 @@ def test_cluster_labels_groups_nearby_points() -> None:
     labels = cluster_labels(lons, lats, 2)
     assert labels.shape == (6,) and set(labels.tolist()) == {0, 1}
     assert len(set(labels[:3].tolist())) == 1 and len(set(labels[3:].tolist())) == 1 and labels[0] != labels[3]
+
+
+def test_latlon_row_areas_needs_a_geographic_raster() -> None:
+    """经纬度栅格两行 0.5°：面积与球面带公式 R²·Δλ·(sin φ₂ − sin φ₁) 相差不到 1%（WGS84 椭球与球的差），
+    高纬那行更小；投影栅格或没有 CRS 时报错，不把以米计的 transform 当经纬度算。"""
+    from rasterio.crs import CRS
+    from rasterio.transform import from_origin
+
+    transform = from_origin(100.0, 40.5, 0.5, 0.5)   # 两行：40.0–40.5°N、39.5–40.0°N
+    areas = latlon_row_areas(transform, 2, CRS.from_epsg(4326))
+    r_m = EARTH_RADIUS_KM * 1000.0
+    for row, (south, north) in enumerate(((40.0, 40.5), (39.5, 40.0))):
+        band = r_m**2 * np.radians(0.5) * (np.sin(np.radians(north)) - np.sin(np.radians(south)))
+        assert areas[row] == pytest.approx(band, rel=0.01)
+    assert areas[0] < areas[1]
+    with pytest.raises(ValueError, match="经纬度栅格"):
+        latlon_row_areas(transform, 2, CRS.from_epsg(2380))
+    with pytest.raises(ValueError, match="经纬度栅格"):
+        latlon_row_areas(transform, 2, None)

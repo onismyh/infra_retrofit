@@ -172,7 +172,11 @@ def rasterize_provinces_to_match(
     return zone_grid, provinces_in_crs
 
 
-def latlon_row_areas(transform, height: int) -> np.ndarray:
+def latlon_row_areas(transform, height: int, crs) -> np.ndarray:
+    """经纬度栅格每行一个像元的面积（m²，WGS84 椭球上的大地线面积）。*crs*（rasterio 的 `src.crs`）须是地理坐标系：
+    投影栅格的 transform 以米计，当作经纬度会算出错误的面积而不报错（2026-10-17 起报错）。"""
+    if crs is None or not crs.is_geographic:
+        raise ValueError(f"latlon_row_areas 只接受经纬度栅格，得到 CRS {crs}：先把栅格重投影到经纬度坐标")
     geod = Geod(ellps="WGS84")
     x_left = transform.c
     x_right = transform.c + transform.a
