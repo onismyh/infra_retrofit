@@ -32,8 +32,11 @@ def _prepare_basin_caps(paths: ProjectPaths, scenario: OptimizationScenario) -> 
     """读入按流域、按规划年的官方用水总量控制指标余量（`water_basin_caps.csv`）；无水约束时返回空表。"""
     if scenario.water_mode == "no_water":
         return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
+    # `modelled_coal_closed_loop_1e8_m3` 列只作版本标记：2026-10-16 前的表没有这一列、余量里煤电闭式循环取水计了两次，
+    # 新代码不能静默读旧表（分段号只拦旧结果，拦不了旧输入）。
     return read_input_csv(
-        paths.inputs_dir / "water_basin_caps.csv", ("basin_code", "planning_year", "residual_m3_per_year"),
+        paths.inputs_dir / "water_basin_caps.csv",
+        ("basin_code", "planning_year", "residual_m3_per_year", "modelled_coal_closed_loop_1e8_m3"),
         not_found=". The water constraint (water_mode != 'no_water') needs it; run scripts/build_water_basin_caps.py.",
     )
 

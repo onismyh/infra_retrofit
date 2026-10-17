@@ -38,7 +38,6 @@ import pandas as pd
 from ..constants_water_quota import (
     BASIN_NAMES_ZH,
     BASIN_WITHDRAWAL_2025_1E8_M3,
-    BULLETIN_YEAR,
     NATIONAL_ONCE_THROUGH_WITHDRAWAL_1E8_M3,
     PROVINCE_WATER_CAP_1E8_M3,
     PROVINCES_WITHOUT_CAP,
@@ -54,6 +53,7 @@ from .water_grid import (
     _nc_path,
     _province_zone_grid,
 )
+from .water_quota_carveout import modelled_coal_closed_loop_withdrawal, modelled_industry_withdrawal
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +232,9 @@ def once_through_calibration(plants: pd.DataFrame, generation_mwh: pd.Series) ->
 
     模拟总量只数公报年（`BULLETIN_YEAR`）及以前投产的机组：逐 hub 乘 `once_through_bulletin_share`
     （`optimization.data_prep_plants._with_expiry` 按机组算）。2026-10-16 前此后投产的机组也算在内，因子偏小约 9%。
+    因子只保证全国合计对得上（公报小数位舍入内：453.8 对九流域直流子列之和 453.9），分流域不相等（GEM 给内陆北方若干厂
+    标了直流，模型在海河、黄河的直流取水远大于公报子列的 0.1、0.0 亿 m3）。公报子列只含凝汽器冷却水；直流机组的锅炉补给水等
+    淡水留在公报工业余项里，模型两侧都不计（海水直流 hub 的直流分量为 0，内陆直流只有按本因子标定的 Wang 直流整行）。
     """
     if "once_through_bulletin_share" not in plants.columns:
         raise KeyError("plants lacks once_through_bulletin_share; prepare it with optimization.data_prep_plants._with_expiry")
@@ -254,66 +257,6 @@ def basin_reserved_withdrawal() -> dict[str, float]:
         code: row["domestic"] + row["agriculture"] + row["ecology"] + row["industry"] - row["thermal_once_through"]
         for code, row in BASIN_WITHDRAWAL_2025_1E8_M3.items()
     }
-
-
-def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
-    """模型做决策的工业点源的取水量，亿 m3/yr，按流域。
-
-    这些点源包含在公报的工业用水数字里，所以一旦工业成为决策主体，它的水就会被计两次：
-    一次在 `basin_reserved_withdrawal` 里，一次是模型再次使用它。正是这一扣出（carve-out）
-    使两者一致。
-
-    若尚未构建 `inputs/industry_sources.csv`，则返回空映射；那是只含煤电的配置，不需要扣出。
-    """
-    path = paths.inputs_dir / "industry_sources.csv"
-    if not path.exists():
-        logger.info("industry_sources.csv absent; no industrial carve-out from the reservation")
-        return {}
-    from .water_grid import assign_basin_codes
-
-    sources = pd.read_csv(path)
-    sources["basin_code"] = assign_basin_codes(paths, sources)
-    by_basin = sources.groupby("basin_code")["water_m3_per_year"].sum() / 1e8
-    return {str(code): float(value) for code, value in by_basin.items()}
-
-
-def modelled_coal_closed_loop_withdrawal(paths: ProjectPaths) -> dict[str, float]:
-    """模型里煤电在公报年的闭式循环与空冷取水，亿 m3/yr，按 hub 所在流域。
-
-    这份水在公报的工业剩余项里（`basin_reserved_withdrawal`），煤电是模型的决策主体，所以要从预留里扣出、交还给模型，
-    与工业点源的扣出（`modelled_industry_withdrawal`）同理。逐机组算：只数公报年（`BULLETIN_YEAR`）及以前投产的机组
-    （此后投产的不在公报里），只数非直流冷却（直流冷却已随公报的直流火(核)电子列整列扣出），发电量按机组所在省的
-    利用小时（`constants_province.PROVINCE_OPERATING_HOURS`，即 `OptimizationAssumptions.province_operating_hours`
-    的缺省值），取水强度查 Wang (2023) 表（`WATER_INTENSITY_BY_TECH_M3_PER_MWH`，不带 CCS）。机组按其 hub 的质心归流域，
-    与约束里 hub 的归属（`optimization.data_prep_plants`）一致。
-    """
-    from ..constants import WATER_INTENSITY_BY_TECH_M3_PER_MWH, cooling_class
-    from ..constants_province import PROVINCE_OPERATING_HOURS
-    from .plants_water import combustion_class
-    from .water_grid import assign_basin_codes
-
-    units = pd.read_csv(paths.inputs_dir / "plants_unit_hub.csv")
-    hubs = pd.read_csv(paths.inputs_dir / "plants.csv")
-    located = hubs[["plant_id", "centroid_latitude", "centroid_longitude"]].rename(
-        columns={"centroid_latitude": "latitude", "centroid_longitude": "longitude"})
-    hub_basin = pd.Series(assign_basin_codes(paths, located), index=located["plant_id"].astype(str))
-    units = units[units["commission_year"].astype(int) <= BULLETIN_YEAR]
-    cooling = units["cooling_technology"].map(cooling_class)
-    units = units[cooling != "once-through"]
-    missing = sorted(set(units["province"]) - set(PROVINCE_OPERATING_HOURS))
-    if missing:
-        raise KeyError(f"PROVINCE_OPERATING_HOURS has no hours for {missing}")
-    intensity = [
-        WATER_INTENSITY_BY_TECH_M3_PER_MWH[(combustion_class(comb), cooling_class(cool))]["withdrawal"]
-        for comb, cool in zip(units["combustion"], units["cooling_technology"])
-    ]
-    withdrawal = (units["capacity_mw"].astype(float) * units["province"].map(PROVINCE_OPERATING_HOURS)
-                  * pd.Series(intensity, index=units.index))
-    basin = units["plant_id"].astype(str).map(hub_basin)
-    if basin.isna().any():
-        raise ValueError(f"{int(basin.isna().sum())} units belong to hubs missing from plants.csv")
-    by_basin = withdrawal.groupby(basin).sum() / 1e8
-    return {str(code): float(value) for code, value in by_basin.items()}
 
 
 def write_basin_caps(paths: ProjectPaths, kind: WeightKind = "demand") -> pd.DataFrame:
@@ -340,9 +283,10 @@ def write_basin_caps(paths: ProjectPaths, kind: WeightKind = "demand") -> pd.Dat
     保留在 `residual_uncapped_1e8_m3` 中，比例保留在 `compliance_ratio` 中，因此超额占用
     会被报告出来，而不是被隐藏。
 
-    扣出的是模型的两类决策主体在公报年的取水：已建模工业点源与煤电的闭式循环与空冷取水
-    （`modelled_coal_closed_loop_withdrawal`；2026-10-16 前只扣工业，煤电这份水计了两次）。二者合计超过公报工业减直流火(核)电
-    就说明模型的强度或冷却方式与公报对不上，直接报错。
+    扣出的是模型的两类决策主体在公报年（`constants_water_quota.BULLETIN_YEAR`）的取水：已建模工业点源与煤电的闭式循环与空冷取水
+    （`water_quota_carveout`；2026-10-16 前只扣工业，煤电这份水计了两次；2026-10-17 起工业也只计公报年在运的点源，煤电的利用小时
+    改按 hub 所在省取，与求解侧同法）。二者合计超过公报工业减直流火(核)电就说明模型的强度或冷却方式与公报对不上，直接报错
+    （不截断：截了会让保留量低于不建模用户之和，再按达标比例缩放后余量虚高）；当前输入最接近的是西北诸河，占六成。
     """
     from ..constants import PLANNING_YEARS
 
@@ -350,13 +294,17 @@ def write_basin_caps(paths: ProjectPaths, kind: WeightKind = "demand") -> pd.Dat
     reserved = basin_reserved_withdrawal()
     carve_out = modelled_industry_withdrawal(paths)
     coal_carve_out = modelled_coal_closed_loop_withdrawal(paths)
+    unknown = (set(carve_out) | set(coal_carve_out)) - set(BASIN_NAMES_ZH)
+    if unknown:
+        raise ValueError(f"carve-out basin codes {sorted(unknown)} are not in BASIN_NAMES_ZH; check assign_basin_codes")
     for code, row in BASIN_WITHDRAWAL_2025_1E8_M3.items():
         closed_loop_industry = row["industry"] - row["thermal_once_through"]
-        modelled = carve_out.get(code, 0.0) + coal_carve_out.get(code, 0.0)
-        if modelled > closed_loop_industry:
+        industry, coal = carve_out.get(code, 0.0), coal_carve_out.get(code, 0.0)
+        if industry + coal > closed_loop_industry + 1e-9:  # 容差：567.3 − 394.4 在浮点里是 172.8999…
             raise ValueError(
-                f"basin {code}: modelled industry + coal closed-loop withdrawal {modelled:.2f} exceeds the bulletin's "
-                f"industry less once-through thermal {closed_loop_industry:.2f} 1e8 m3"
+                f"basin {code} ({BASIN_NAMES_ZH[code]}): modelled industry {industry:.2f} + coal closed-loop {coal:.2f} = "
+                f"{industry + coal:.2f} 1e8 m3 exceeds the bulletin's industry less once-through thermal "
+                f"{closed_loop_industry:.2f}; the model's intensities or cooling types disagree with the bulletin"
             )
     rows = []
     for year in PLANNING_YEARS:

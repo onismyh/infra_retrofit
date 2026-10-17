@@ -3,7 +3,8 @@
 1. 厂侧水平衡在所有情景里都建（`model_resources.add_resource_balances`）：半径内没有水节点的 hub 耗水被迫为 0、
    只剩退役可行，且不报错。`data_prep._prepare_water` 现在直接拒绝这样的输入。
 2. 流域余量低于"工业最少取水 + 煤电全部改空冷（不退役）的取水"时，硬约束只能靠退役该流域的煤电满足；
-   `water_access.warn_basin_floor` 建模前逐流域告警（`_indtree` 的西北诸河 K 2030 年就是这种情形）。
+   `water_access.warn_basin_floor` 建模前逐流域告警（PR #68 之前 `_indtree` 的西北诸河 K 2030 年就是这种情形；现行输入不触发，
+   下面的用例用合成数）。
 """
 from __future__ import annotations
 

@@ -8,7 +8,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from ..constants import COAL_DESIGN_LIFE_YEARS, WATER_INTENSITY_BY_TECH_M3_PER_MWH, cooling_class
+from ..constants import COAL_DESIGN_LIFE_YEARS, cooling_class
 from ..constants_water_quota import BULLETIN_YEAR
 from ..paths import ProjectPaths
 from .assumptions import OptimizationAssumptions
@@ -122,14 +122,11 @@ def _once_through_bulletin_share(units: pd.DataFrame, by_plant: Callable[[pd.Ser
     标定因子偏小（0.497，改后 0.547）。与流域余量里煤电闭式循环取水的扣出（`modelled_coal_closed_loop_withdrawal`）
     同一个机组口径。海水直流 hub 的直流冷却分量为零，这里不必区分。
     """
-    from ..builders.plants_water import combustion_class
+    from ..builders.plants_water import commissioned_by, unit_withdrawal_intensities
 
     once_through = units["cooling_technology"].map(cooling_class) == "once-through"
-    intensity = units["combustion"].map(
-        lambda label: WATER_INTENSITY_BY_TECH_M3_PER_MWH[(combustion_class(label), "once-through")]["withdrawal"]
-    )
-    withdrawal = (units["capacity_mw"].astype(float) * intensity).where(once_through, 0.0)
-    early = by_plant(withdrawal.where(units["commission_year"].astype(int) <= BULLETIN_YEAR, 0.0))
+    withdrawal = (units["capacity_mw"].astype(float) * unit_withdrawal_intensities(units)).where(once_through, 0.0)
+    early = by_plant(withdrawal.where(commissioned_by(units, BULLETIN_YEAR), 0.0))
     every = by_plant(withdrawal)
     return np.divide(early, every, out=np.ones_like(every), where=every > 0.0)
 

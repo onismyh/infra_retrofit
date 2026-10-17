@@ -143,7 +143,7 @@ def add_basin_withdrawal_cap(
             basin_count, lb=0.0, name=f"water_basin_use_m3_{year_suffix}"
         )
         basin_available = year_data.water_basin_available_m3 / flow_scale
-        # 工业现状取水与工业捕集的水耗与煤电共用同一余量（`write_basin_caps` 已把工业加回余量）。
+        # 工业现状取水与工业捕集的水耗与煤电共用同一余量（`write_basin_caps` 已把建模工业与煤电闭式循环的公报年取水加回余量）。
         industry_basin = year_data.industry_basin_membership
         for basin_idx in range(basin_count):
             members = np.flatnonzero(basin_membership[basin_idx])

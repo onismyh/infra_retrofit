@@ -29,6 +29,18 @@ def combustion_class(label: str) -> str:
     return COMBUSTION_CLASS_MAP.get(text, "subcritical")
 
 
+def unit_withdrawal_intensities(units: pd.DataFrame) -> pd.Series:
+    """逐机组不带捕集的取水强度（m3/MWh）：按 (蒸汽参数等级, 冷却方式) 查 Wang (2023) 表，与 `hub_water_intensities`
+    同一张表、同一映射（`combustion_class`、`cooling_class`）。流域余量的煤电扣出与直流冷却标定的公报年份额共用。"""
+    keys = zip(units["combustion"].map(combustion_class), units["cooling_technology"].map(cooling_class))
+    return pd.Series([WATER_INTENSITY_BY_TECH_M3_PER_MWH[key]["withdrawal"] for key in keys], index=units.index, dtype=float)
+
+
+def commissioned_by(units: pd.DataFrame, year: int) -> pd.Series:
+    """投产年不晚于 *year* 的机组（布尔序列）；`commission_year` 先按数值读，空值为 False——调用方须先核过没有空值。"""
+    return pd.to_numeric(units["commission_year"], errors="coerce") <= year
+
+
 def hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[str, float]:
     """单个 hub 按装机容量加权的用水强度，两种淡水变体都给出。
 

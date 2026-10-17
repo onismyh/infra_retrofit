@@ -218,7 +218,7 @@ def _basin_cap_data(
     if unmatched:
         raise ValueError(f"{unmatched} hubs fell outside every basin in water_basin_caps.csv")
     residual = caps["residual_m3_per_year"].astype(float).to_numpy()
-    # 余量已含 `write_basin_caps` 加回的工业现状取水：工业是决策主体，这份水由它自己占用。
+    # 余量已含 `write_basin_caps` 加回的建模工业与煤电闭式循环的公报年取水（乘达标比例）：它们是决策主体，这份水由它们自己占用。
     residual = residual * scenario.water_multiplier
     return membership, residual, codes
 
@@ -254,8 +254,9 @@ def warn_basin_floor(
     """流域余量低于"工业最少取水 + 煤电不退役的最低取水"时逐流域告警，返回告警的流域码。
 
     这样的流域只有退役煤电才能满足硬约束（`allow_slack` 关时），结果里该流域的退役是水预算逼出来的，不是经济选择；
-    余量还低于工业最少取水的，连退光煤电也不够。`_indtree/inputs/water_basin_caps.csv` 2026-10-16 核对：西北诸河（K）
-    2030 年余量 2.10 亿 m3，低于工业最少取水 1.72 + 煤电全空冷 0.98 = 2.71（`docs/方法论.md` §7.3）。
+    余量还低于工业最少取水的，连退光煤电也不够。PR #68 之前的 `_indtree/inputs/water_basin_caps.csv`（西北诸河 K 2030 年
+    余量 2.10 亿 m3，低于工业最少取水 1.72 + 煤电全空冷 0.98 = 2.71）就是这种情形；现行表 K 10.33 对 2.71，九个流域四个规划年
+    都不触发（`docs/方法论.md` §7.3）。
     """
     flagged: list[str] = []
     for b, code in enumerate(codes):
