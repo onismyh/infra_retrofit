@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..constants import cooling_class
-from ..constants_water_quota import BULLETIN_YEAR
+from ..constants_water_quota import BULLETIN_YEAR, BULLETIN_YEAR_COMMISSIONING_WEIGHT
 from ..paths import ProjectPaths
 
 logger = logging.getLogger(__name__)
@@ -92,9 +92,9 @@ def modelled_coal_closed_loop_withdrawal(paths: ProjectPaths) -> dict[str, float
 
     这份水在公报的工业剩余项里（`water_quota.basin_reserved_withdrawal`），煤电是模型的决策主体，所以要从预留里扣出、交还给模型，
     与工业点源的扣出（`modelled_industry_withdrawal`）同理。逐机组算（`plants_unit_hub.csv`）：
-    只数公报年（`BULLETIN_YEAR`）及以前投产的机组——此后投产的 136.7 GW 不在公报里；公报年当年投产的 94.5 GW 按全年计，其中混有
-    GEM 2025 年 7 月快照里计划当年投产的在建机组（机组表没带 status，分不开；这一队列的取水 3.4 亿 m3，西北诸河 0.85，改按半年计
-    K 余量少 0.37、不计少 0.75 亿 m3）；只数非直流冷却（直流冷却已随公报的直流火(核)电子列整列扣出，直流机组的补给水等淡水两侧都不计，
+    只数公报年（`BULLETIN_YEAR`）及以前投产的机组——此后投产的 136.7 GW 不在公报里；公报年当年投产的 94.5 GW 按年中惯例计半年
+    （`plants_water.bulletin_weights`、`BULLETIN_YEAR_COMMISSIONING_WEIGHT`：其中混有 GEM 2025 年 7 月快照里计划当年投产的在建机组，机组表
+    没带 status 分不开，投产月份也未知，全年与不计之间取 0.5；这一队列全年的取水 3.4 亿 m3、西北诸河 0.85，计半年各减一半）；只数非直流冷却（直流冷却已随公报的直流火(核)电子列整列扣出，直流机组的补给水等淡水两侧都不计，
     见 `water_quota.once_through_calibration`）；取水强度按 Wang (2023) 表逐台查（`plants_water.unit_withdrawal_intensities`，不带 CCS）；
     发电量按 hub 所在省（`plants.csv` 的 `province_mode` 经 `OptimizationAssumptions.canonical_provinces`、`province_hours`）的现状利用小时，
     与求解侧 `optimization.data_prep_plants._prepare_plants` 同法（2026-10-17 起；PR #68 按机组自己的省查常量表，与求解侧差 0.02%、
@@ -107,7 +107,7 @@ def modelled_coal_closed_loop_withdrawal(paths: ProjectPaths) -> dict[str, float
         三种都先 `python scripts/build_plant_inputs.py --hubs`，再重跑 `python scripts/build_water_basin_caps.py`。
     """
     from ..optimization.assumptions import OptimizationAssumptions
-    from .plants_water import commissioned_by, unit_withdrawal_intensities
+    from .plants_water import bulletin_weights, unit_withdrawal_intensities
     from .water_grid import assign_basin_codes
 
     plants = _read_columns(
@@ -126,12 +126,18 @@ def modelled_coal_closed_loop_withdrawal(paths: ProjectPaths) -> dict[str, float
     hours_by_hub = pd.Series([assumptions.province_hours(name) for name in provinces], index=hub_ids, dtype=float)
     located = plants.rename(columns={"centroid_latitude": "latitude", "centroid_longitude": "longitude"})
     basin_by_hub = pd.Series(assign_basin_codes(paths, located), index=hub_ids).astype(str)
-    in_service = units[commissioned_by(units, BULLETIN_YEAR) & (units["cooling_technology"].map(cooling_class) != "once-through")]
-    left_out_mw = float(units.loc[~commissioned_by(units, BULLETIN_YEAR), "capacity_mw"].astype(float).sum())
-    if left_out_mw > 0:
-        logger.info("coal carve-out leaves out %.0f MW commissioned after %d", left_out_mw, BULLETIN_YEAR)
+    weights = bulletin_weights(units)
+    keep = (weights > 0) & (units["cooling_technology"].map(cooling_class) != "once-through")
+    in_service, weights = units[keep], weights[keep]
+    capacity = units["capacity_mw"].astype(float)
+    logger.info(
+        "coal carve-out: %.0f MW commissioned after %d left out, %.0f MW commissioned in %d counted at %.2f",
+        float(capacity[bulletin_weights(units) == 0].sum()), BULLETIN_YEAR,
+        float(capacity[pd.to_numeric(units["commission_year"]) == BULLETIN_YEAR].sum()), BULLETIN_YEAR,
+        BULLETIN_YEAR_COMMISSIONING_WEIGHT,
+    )
     withdrawal_m3 = (
-        in_service["capacity_mw"].astype(float) * in_service["plant_id"].map(hours_by_hub)
+        in_service["capacity_mw"].astype(float) * weights * in_service["plant_id"].map(hours_by_hub)
         * unit_withdrawal_intensities(in_service)
     )
     by_basin = withdrawal_m3.groupby(in_service["plant_id"].map(basin_by_hub)).sum() / 1e8

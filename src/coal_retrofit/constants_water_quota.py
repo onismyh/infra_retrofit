@@ -103,8 +103,12 @@ PROVINCES_WITHOUT_CAP: Final[frozenset[str]] = frozenset({"香港", "澳门", "�
 #    这一来源不单列，`builders/water_quota.modelled_coal_closed_loop_withdrawal` 按模型自己的机组与强度
 #    估出煤电这一块，从预留里扣出。
 # --------------------------------------------------------------------------------------
-# 上表的数据年。煤电闭式循环取水的扣出只数这一年及以前投产的机组。
+# 上表的数据年。煤电闭式循环取水的扣出与直流冷却标定只数这一年及以前投产的机组（`builders.plants_water.bulletin_weights`）。
 BULLETIN_YEAR: Final[int] = 2025
+# 公报年当年投产的机组按年中惯例计半年（作者授权的决定，2026-10-17）：GEM 2025 年 7 月快照里投产年为 2025 的 94.5 GW 分不开
+# 已投运与计划当年投运的在建机组（机组表没带 status），投产月份也未知；在"全年"（高估）与"不计"（低估）之间取无偏的 0.5，
+# 与装机统计里新增容量按半年计的惯例一致。把 GEM status 带进 `plants_unit.csv` 后可改为在建 0、在运 0.5。
+BULLETIN_YEAR_COMMISSIONING_WEIGHT: Final[float] = 0.5
 
 BASIN_WITHDRAWAL_2025_1E8_M3: Final[dict[str, dict[str, float]]] = {
     "A": {"domestic": 58.3, "industry": 38.5, "thermal_once_through": 6.6,

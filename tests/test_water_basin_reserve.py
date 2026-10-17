@@ -2,7 +2,7 @@
 
 公报的工业用水里含闭式循环与空冷煤电的取水（只有直流火(核)电单列）。模型的煤电取水是决策变量，所以这份水要和
 已建模工业一样从预留里扣出、交还给模型；2026-10-16 前只扣工业，煤电的这份水在预留里与约束里各计一次（PR #68 改）。
-2026-10-17 起两项扣出都只计公报年在运的机组与点源，煤电的利用小时按 hub 所在省取（与求解侧同法）。
+2026-10-17 起两项扣出都只计公报年在运的机组与点源，公报年当年投产的机组按年中惯例计半年，煤电的利用小时按 hub 所在省取（与求解侧同法）。
 余量 = cap − (reserved − industry − coal) × ratio，ratio = min(1, cap / actual)。
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _fake_assign_basin_codes(paths: ProjectPaths, nodes: pd.DataFrame) -> np.nda
 
 
 def _write_plants(paths: ProjectPaths) -> None:
-    """四个 hub、八台机组。P1（新疆，hub 省与其中一台机组的省不同）：在运循环冷却、直流（不计）、公报年当年投产的 CFB；
+    """四个 hub、八台机组。P1（新疆，hub 省与其中一台机组的省不同）：在运循环冷却、直流（不计）、公报年当年投产的 CFB（计半年）；
     P2（Neimenggu，别名 → Inner Mongolia）：空冷与公报年后一年投产的机组（不计）；P3（Shanxi）：带 /CCS 标签的超临界循环冷却；
     P4（表外省 Atlantis，缺省小时）：全部机组在公报年之后（扣出为 0）。"""
     paths.inputs_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +77,7 @@ def test_coal_carve_out_counts_closed_loop_and_air_units_built_by_the_bulletin_y
         result = modelled_coal_closed_loop_withdrawal(paths)
     expected_k = (
         1000.0 * h_xj * WITHDRAWAL[("supercritical", "recirculating")]     # u1：机组省 Gansu，小时按 hub 省 Xinjiang
-        + 300.0 * h_xj * WITHDRAWAL[("subcritical", "recirculating")]      # u3：CFB → subcritical，公报年当年投产按全年计
+        + 0.5 * 300.0 * h_xj * WITHDRAWAL[("subcritical", "recirculating")]  # u3：CFB → subcritical，公报年当年投产按年中惯例计半年
         + 600.0 * h_nm * WITHDRAWAL[("subcritical", "air")]                # u4：Neimenggu 经别名取 Inner Mongolia 的小时
     ) / 1e8
     expected_c = 800.0 * h_sx * WITHDRAWAL[("supercritical", "recirculating")] / 1e8  # u6：supercritical/CCS 只看本体机型
@@ -204,7 +204,7 @@ def test_residual_hands_back_both_modelled_industry_and_coal_at_the_compliance_r
     paths.inputs_dir.mkdir(parents=True)
     caps = _caps_above_actual()
     caps.update({"K": 641.152, "F": 1500.0})
-    _stub(monkeypatch, caps, {"K": 2.389, "F": 17.6, "C": 13.7}, {"K": 9.352, "F": 11.2, "C": 9.2})
+    _stub(monkeypatch, caps, {"K": 2.389, "F": 17.6, "C": 13.7}, {"K": 8.928, "F": 11.2, "C": 9.2})
     frame = water_quota.write_basin_caps(paths)
     assert len(frame) == len(PLANNING_YEARS) * len(BASIN_NAMES_ZH)
     first = frame[frame["planning_year"] == PLANNING_YEARS[0]].set_index("basin_code")
@@ -213,11 +213,11 @@ def test_residual_hands_back_both_modelled_industry_and_coal_at_the_compliance_r
     k = first.loc["K"]
     assert k["reserved_1e8_m3"] == pytest.approx(729.0)  # 公报：24.8 + 645.4 + 39.4 + 19.4 − 0
     assert k["compliance_ratio"] == pytest.approx(ratio_k, abs=5e-5)
-    assert k[COAL_COLUMN] == pytest.approx(9.352)
-    assert k["residual_uncapped_1e8_m3"] == pytest.approx(641.152 - 729.0 + 2.389 + 9.352, abs=1e-3)
-    assert k["residual_1e8_m3"] == pytest.approx((2.389 + 9.352) * ratio_k, abs=1e-3)
-    assert k["residual_1e8_m3"] == pytest.approx(10.326, abs=1e-3)
-    assert k["residual_m3_per_year"] == pytest.approx(round((2.389 + 9.352) * ratio_k * 1e8), abs=1)
+    assert k[COAL_COLUMN] == pytest.approx(8.928)
+    assert k["residual_uncapped_1e8_m3"] == pytest.approx(641.152 - 729.0 + 2.389 + 8.928, abs=1e-3)
+    assert k["residual_1e8_m3"] == pytest.approx((2.389 + 8.928) * ratio_k, abs=1e-3)
+    assert k["residual_1e8_m3"] == pytest.approx(9.953, abs=1e-3)
+    assert k["residual_m3_per_year"] == pytest.approx(round((2.389 + 8.928) * ratio_k * 1e8), abs=1)
 
     ratio_f = 1500.0 / 2049.0
     f = first.loc["F"]

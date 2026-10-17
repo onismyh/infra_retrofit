@@ -9,6 +9,7 @@ from typing import cast
 import geopandas as gpd
 import pandas as pd
 
+from ..constants_water_quota import BULLETIN_YEAR, BULLETIN_YEAR_COMMISSIONING_WEIGHT
 from ..constants import (
     CHINA_WATER_QUOTA_M3_PER_MWH,
     COMBUSTION_CLASS_MAP,
@@ -36,9 +37,14 @@ def unit_withdrawal_intensities(units: pd.DataFrame) -> pd.Series:
     return pd.Series([WATER_INTENSITY_BY_TECH_M3_PER_MWH[key]["withdrawal"] for key in keys], index=units.index, dtype=float)
 
 
-def commissioned_by(units: pd.DataFrame, year: int) -> pd.Series:
-    """投产年不晚于 *year* 的机组（布尔序列）；`commission_year` 先按数值读，空值为 False——调用方须先核过没有空值。"""
-    return pd.to_numeric(units["commission_year"], errors="coerce") <= year
+def bulletin_weights(units: pd.DataFrame) -> pd.Series:
+    """各机组在公报年（`BULLETIN_YEAR`）里的在运权重：之前投产 1，当年投产 `BULLETIN_YEAR_COMMISSIONING_WEIGHT`（年中惯例 0.5），
+    之后投产 0；`commission_year` 先按数值读，空值为 0——调用方须先核过没有空值。煤电闭式循环取水的扣出与直流冷却标定共用。"""
+    year = pd.to_numeric(units["commission_year"], errors="coerce")
+    weights = pd.Series(0.0, index=units.index)
+    weights[year < BULLETIN_YEAR] = 1.0
+    weights[year == BULLETIN_YEAR] = BULLETIN_YEAR_COMMISSIONING_WEIGHT
+    return weights
 
 
 def hub_water_intensities(units: pd.DataFrame, total_capacity: float) -> dict[str, float]:
