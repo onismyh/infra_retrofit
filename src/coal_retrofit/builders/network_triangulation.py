@@ -1,6 +1,7 @@
 """源—汇之间的新建候选边。`build_triangulation_candidate_edges`：煤电与封存端点投到等积投影上做 Delaunay 三角剖分（退化时
-回退 k=3 近邻），按最大边长与相对既有路径的伸长率筛选；`build_direct_sink_edges`：去交叉之后再补每个源（煤电 + 工业点源）
-到最近 k 个汇、与已有边不相交的专线。两类边都是直线，长度为大地线 × 绕行系数（`network_edges.make_edge_record`）。"""
+回退 k=3 近邻），按最大边长与相对既有路径的伸长率筛选；`build_direct_sink_edges`：缝合并片之后再补每个源（煤电 + 工业点源）
+到最近 k 个汇的专线，现有路线不比直线绕远 2.8 倍以上的不加。两类边都是直线，长度为大地线 × 绕行系数
+（`network_edges.make_edge_record`），可以与已有边相交。"""
 from __future__ import annotations
 
 import logging
@@ -12,10 +13,10 @@ import pandas as pd
 from pyproj import Transformer
 from scipy.spatial import Delaunay, QhullError
 from shapely.geometry import LineString
-from shapely.strtree import STRtree
 
 from ..constants import (
     NETWORK_DETOUR_FACTOR,
+    NETWORK_DIRECT_SINK_MAX_STRETCH,
     NETWORK_DIRECT_SINK_TOP_K,
     NETWORK_EDGE_CLASS_DIRECT,
     NETWORK_EDGE_CLASS_TRIANGULATION,
@@ -27,7 +28,7 @@ from ..constants import (
 from ..frames import iter_rows
 from ..spatial import geodesic_length_km, haversine_km
 from .network_edges import make_edge_record, next_edge_index, unordered_edge_key
-from .network_repair import edge_geometries, node_coordinates
+from .network_repair import node_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +81,10 @@ def _build_length_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.Graph:
     for row in iter_rows(nodes):
         graph.add_node(str(row.node_id))
     for row in iter_rows(edges):
-        graph.add_edge(
-            str(row.from_node_id),
-            str(row.to_node_id),
-            length_km=float(row.length_km),
-        )
+        u, v, length = str(row.from_node_id), str(row.to_node_id), float(row.length_km)
+        if graph.has_edge(u, v):    # 同一对节点的平行边取最短的那条，否则后读的覆盖前面的
+            length = min(length, graph[u][v]["length_km"])
+        graph.add_edge(u, v, length_km=length)
     return graph
 
 
@@ -153,13 +153,13 @@ def build_triangulation_candidate_edges(nodes: pd.DataFrame, edges: pd.DataFrame
 def build_direct_sink_edges(
     nodes: pd.DataFrame, edges: pd.DataFrame, top_k: int = NETWORK_DIRECT_SINK_TOP_K
 ) -> pd.DataFrame:
-    """每个源到其最近 top_k 个汇的专线候选弧，但只保留不与已有边相交的那些。
+    """每个源到其最近 top_k 个汇的专线候选弧，只在现有路线绕得远时才加。
 
-    专线是真实存在的接入方式（`direct_fallback_capex_multiplier` 2.8 倍就是为它准备的
-    溢价），去掉它会把"必须全程走共享干线"当成硬约束，2050 年水泥捕集因此少了约 70 Mt。
-    但原实现把这些弧放在去交叉之后追加，于是它们以直线穿过整张图——正是图上那些"很奇怪
-    的线"。这里改为：逐条测试，与既有候选边相交的直接丢弃，被接受的立刻计入测试集合，
-    所以专线之间也不会互相交叉。源包括煤电与工业点源。
+    专线是真实存在的接入方式（`direct_fallback_capex_multiplier` 2.8 倍就是为它准备的溢价），去掉它会把"必须全程走共享
+    干线"当成硬约束，2050 年水泥捕集曾因此少了约 70 Mt。源到该汇在 *edges* 上的最短路不长于直线管长的
+    `NETWORK_DIRECT_SINK_MAX_STRETCH` 倍时，专线按 2.8 倍单价算一般不比沿网络走便宜，不加；源到不了该汇时照加。专线可以与已有边
+    相交（2026-10-16 起；此前与已有边相交的一律丢弃，3 680 条候选只留 135 条，源到近处的汇被一条走廊挡住就只能绕远）。
+    源包括煤电与工业点源；最短路只走 *edges*，不走本函数新加的专线。
     """
     sources = nodes.loc[
         nodes["node_type"].isin(["plant", "industry_hub"]), ["node_id", "lon", "lat"]
@@ -169,41 +169,44 @@ def build_direct_sink_edges(
         return pd.DataFrame(columns=list(edges.columns))
 
     coords = node_coordinates(nodes)
-    kept_geoms = edge_geometries(edges, coords)
+    graph = _build_length_graph(nodes, edges)
     existing = {unordered_edge_key(r.from_node_id, r.to_node_id) for r in iter_rows(edges)}
     sink_lon = sinks["lon"].to_numpy(dtype=np.float64)
     sink_lat = sinks["lat"].to_numpy(dtype=np.float64)
     sink_ids = sinks["node_id"].astype(str).to_numpy()
+    stretch = NETWORK_DETOUR_FACTOR * NETWORK_DIRECT_SINK_MAX_STRETCH
 
     order = []
+    farthest: dict[str, float] = {}
     for row in iter_rows(sources):
         dist = haversine_km(float(row.lon), float(row.lat), sink_lon, sink_lat)
-        for position in np.argsort(dist)[:top_k]:
+        nearest = np.argsort(dist)[:top_k]
+        farthest[str(row.node_id)] = float(dist[nearest].max())
+        for position in nearest:
             order.append((float(dist[position]), str(row.node_id), str(sink_ids[position])))
-    order.sort()                                    # 短的先试，长的更可能被挡掉
+    order.sort()
 
-    tree = STRtree(kept_geoms)
-    pending: list[LineString] = []
+    reach: dict[str, dict[str, float]] = {}
     rows: list[dict[str, object]] = []
     for direct_km, from_id, to_id in order:
         edge_key = unordered_edge_key(from_id, to_id)
         if edge_key in existing:
             continue
-        line = LineString([coords[from_id], coords[to_id]])
-        if any(line.crosses(kept_geoms[int(k)]) for k in tree.query(line)):
+        if from_id not in reach:    # 只需知道最短路是否短于门槛，按该源最远的那个汇设截断
+            reach[from_id] = nx.single_source_dijkstra_path_length(
+                graph, from_id, cutoff=farthest[from_id] * stretch, weight="length_km")
+        if reach[from_id].get(to_id, float("inf")) <= direct_km * stretch:
             continue
-        if any(line.crosses(other) for other in pending):
-            continue
-        pending.append(line)
         existing.add(edge_key)
         rows.append(
             make_edge_record(
                 f"edge_direct_{len(rows) + 1:05d}", -2, from_id, to_id, direct_km,
-                geometry_wkt=line.wkt, corridor_type="direct",
+                geometry_wkt=LineString([coords[from_id], coords[to_id]]).wkt, corridor_type="direct",
                 edge_class=NETWORK_EDGE_CLASS_DIRECT, source="direct_sink_rule",
             )
         )
     if not rows:
         return pd.DataFrame(columns=list(edges.columns))
-    logger.info("kept %d of %d direct source-sink arcs (crossing-free)", len(rows), len(order))
+    logger.info("kept %d of %d direct source-sink arcs (existing route longer than %.1f x straight)",
+                len(rows), len(order), NETWORK_DIRECT_SINK_MAX_STRETCH)
     return pd.DataFrame(rows)

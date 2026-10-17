@@ -1,7 +1,7 @@
 """候选管网两张表（`pipeline_nodes.csv`、`pipeline_candidate_edges.csv`）的构建流程 `build_network_tables`：
 既有油气干线走廊（`network_corridors`）与煤电、封存、工业点源的接入支线（`network_branches`）合成一张图，加源—汇
-三角剖分候选边（`network_triangulation`），剔西藏、去交叉、缝合、并片（`network_repair`），再补源到汇的专线，最后量每条边的
-海上段（`network_offshore`）。`--no-corridors` 时只有煤电、封存与工业 hub 三类端点，没有走廊与支线。列序与边记录在 `network_edges`。"""
+三角剖分候选边（`network_triangulation`），剔西藏、缝合、并片（`network_repair`；相交的边都保留），再补源到汇的专线，
+最后量每条边的海上段（`network_offshore`）。`--no-corridors` 时只有煤电、封存与工业 hub 三类端点，没有走廊与支线。列序与边记录在 `network_edges`。"""
 from __future__ import annotations
 
 import logging
@@ -18,7 +18,7 @@ from .network_offshore import offshore_length_km
 from .network_repair import (
     _drop_edges_over_excluded_region,
     _merge_components,
-    _remove_crossing_edges,
+    _repair_connectivity,
     _unreached_terminals,
 )
 from .network_triangulation import build_direct_sink_edges, build_triangulation_candidate_edges
@@ -93,15 +93,15 @@ def build_network_tables(
     if not triangulation_edges.empty:
         edges = pd.concat([edges, triangulation_edges], ignore_index=True, sort=False)
         edges = edges.sort_values(["edge_id"]).reset_index(drop=True)
-    # 西藏不参与减排：先把穿过西藏的三角剖分候选边去掉，再去交叉。
+    # 西藏不参与减排：穿过西藏的三角剖分候选边去掉。
     edges = _drop_edges_over_excluded_region(paths, nodes, edges)
-    # 优先保证平面性，但绝不以断开任何端点为代价
-    edges = _remove_crossing_edges(nodes, edges)
-    # 专线（源 -> 最近的 k 个汇）在去交叉之后补回，但逐条做相交检验：穿过已有管网的
-    # 一律丢弃。既保住"可以为一个源单建一条专线"这个真实选项（2.8 倍造价溢价），
-    # 又不会再出现那些横穿全图的直线。
-    # 先把去交叉切出来的孤片并回一张网，再补专线（专线要对着合并后的图做相交检验）
+    # 相交的边都保留（2026-10-16 起）：两条管道交叉而不相连是常态。此前按交叉删边，缺省网上删掉了 47 段既有干线走廊、
+    # 216 条接入支线与约 560 条三角剖分边，38 个源离汇直线管长不到 300 km、网络里却要绕 1 000 km 以上。
+    # 缺汇的源先缝回汇，再把残留的孤片并成一张网，最后补专线（专线要对着合并后的图量现有路线）。
+    edges = _repair_connectivity(nodes, edges)
     edges = _merge_components(paths, nodes, edges)
+    # 缝合、并片的连线穿过西藏的，在量专线的现有路线之前去掉（并片时被迫过西藏的那条就在这里去掉）。
+    edges = _drop_edges_over_excluded_region(paths, nodes, edges)
     direct_edges = build_direct_sink_edges(nodes, edges)
     if not direct_edges.empty:
         edges = pd.concat([edges, direct_edges], ignore_index=True, sort=False)
