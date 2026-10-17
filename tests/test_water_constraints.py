@@ -71,7 +71,8 @@ def _write_water_inputs(
     ).to_csv(paths.inputs_dir / "water_basin_use.csv", index=False)
     if basin_caps:
         pd.DataFrame(
-            [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": BASIN_RESIDUAL_M3}
+            [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": BASIN_RESIDUAL_M3,
+              "modelled_coal_closed_loop_1e8_m3": 0.0}
              for year in YEARS]
         ).to_csv(paths.inputs_dir / "water_basin_caps.csv", index=False)
 

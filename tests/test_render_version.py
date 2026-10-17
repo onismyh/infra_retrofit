@@ -68,3 +68,24 @@ def test_copy_results_archives_solved_results_not_tree_results(monkeypatch: pyte
     assert (data / "ST_BASE.json").is_file() and (data / "storage_hubs.csv").is_file()
     assert (data / "pipeline_nodes_300km_average.csv").is_file() and not (data / "pipeline_nodes.csv").exists()
     assert not (data / "ST_LOCAL.json").exists() and not (data / "ST_ORPHAN.json").exists()
+
+
+def test_prepare_dest_refuses_a_populated_version_directory_unless_forced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    render_version = _load(monkeypatch)
+    dest = tmp_path / "v1"
+    render_version.prepare_dest(dest, force=False)          # 新目录：建好就行
+    assert dest.is_dir()
+    (dest / "figures").mkdir()
+    (dest / "data").mkdir()
+    render_version.prepare_dest(dest, force=False)          # 空的 figures/、data/ 不算上一轮的归档
+    (dest / "figures" / "fig1.png").write_bytes(b"")
+    (dest / "data" / "ST_BASE.json").write_text("{}", encoding="utf-8")
+    (dest / "render.log").write_text("old", encoding="utf-8")
+    (dest / "README.md").write_text("人写的", encoding="utf-8")
+    with pytest.raises(SystemExit, match="figures, data, render.log"):   # 按 ARCHIVED 的顺序列出
+        render_version.prepare_dest(dest, force=False)
+    render_version.prepare_dest(dest, force=True)
+    assert not (dest / "figures").exists() and not (dest / "data").exists() and not (dest / "render.log").exists()
+    assert (dest / "README.md").read_text(encoding="utf-8") == "人写的"

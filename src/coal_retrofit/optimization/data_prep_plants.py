@@ -8,8 +8,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from ..constants import COAL_DESIGN_LIFE_YEARS, WATER_INTENSITY_BY_TECH_M3_PER_MWH, cooling_class
-from ..constants_water_quota import BULLETIN_YEAR
+from ..constants import COAL_DESIGN_LIFE_YEARS, cooling_class
 from ..paths import ProjectPaths
 from .assumptions import OptimizationAssumptions
 from .input_tables import read_input_csv
@@ -119,17 +118,14 @@ def _once_through_bulletin_share(units: pd.DataFrame, by_plant: Callable[[pd.Ser
 
     直流冷却标定（`builders.water_quota.once_through_calibration`）拿公报的直流火(核)电取水除以模型的直流冷却取水，
     后者只该数公报里有的机组；2026-10-16 前连 2026 年起投产的 24.3 GW 淡水直流机组也算进去，模拟值偏大约 10%，
-    标定因子偏小（0.497，改后 0.547）。与流域余量里煤电闭式循环取水的扣出（`modelled_coal_closed_loop_withdrawal`）
-    同一个机组口径。海水直流 hub 的直流冷却分量为零，这里不必区分。
+    标定因子偏小（0.497，改后 0.547）。公报年当年投产的机组按年中惯例计半年（`BULLETIN_YEAR_COMMISSIONING_WEIGHT`，2026-10-17 起，因子 0.571）。
+    与流域余量里煤电闭式循环取水的扣出（`water_quota_carveout.modelled_coal_closed_loop_withdrawal`）同一个机组口径。海水直流 hub 的直流冷却分量为零，这里不必区分。
     """
-    from ..builders.plants_water import combustion_class
+    from ..builders.plants_water import bulletin_weights, unit_withdrawal_intensities
 
     once_through = units["cooling_technology"].map(cooling_class) == "once-through"
-    intensity = units["combustion"].map(
-        lambda label: WATER_INTENSITY_BY_TECH_M3_PER_MWH[(combustion_class(label), "once-through")]["withdrawal"]
-    )
-    withdrawal = (units["capacity_mw"].astype(float) * intensity).where(once_through, 0.0)
-    early = by_plant(withdrawal.where(units["commission_year"].astype(int) <= BULLETIN_YEAR, 0.0))
+    withdrawal = (units["capacity_mw"].astype(float) * unit_withdrawal_intensities(units)).where(once_through, 0.0)
+    early = by_plant(withdrawal * bulletin_weights(units))
     every = by_plant(withdrawal)
     return np.divide(early, every, out=np.ones_like(every), where=every > 0.0)
 

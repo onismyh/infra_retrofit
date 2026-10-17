@@ -1,7 +1,7 @@
 """工业点源作为决策主体，与煤电机组联合优化。
 
 在本模块之前，2 552 个工业点源只作为输入存在：`builders/industry.py` 把它们聚类成
-390 个分行业 hub，`builders/water_quota.py` 把它们的现状取水从流域预留中扣除，以便煤电
+390 个分行业 hub，`builders/water_quota_carveout.py`（2026-10-17 前在 `water_quota.py`）把在运、且属于建模 hub 的点源的现状取水从流域预留中扣除，以便煤电
 机组争用这份预留。`optimization/` 里从没有代码读过它们。它们的减排是外生的——为零——
 而由此形成的流域余量整份给了煤电。
 

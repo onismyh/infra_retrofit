@@ -63,7 +63,8 @@ def test_input_files_are_what_prepare_inputs_reads_with_water(tmp_path, monkeypa
     """有水约束时多读流域指标、节点余量要扣的流域耗水，以及 data/ 下给电厂与工业 hub 分流域用的一级区多边形。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     pd.DataFrame(
-        [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": 6.0e6} for year in YEARS]
+        [{"basin_code": "B1", "planning_year": year, "residual_m3_per_year": 6.0e6, "modelled_coal_closed_loop_1e8_m3": 0.0}
+         for year in YEARS]
     ).to_csv(paths.inputs_dir / "water_basin_caps.csv", index=False)
     pd.DataFrame(
         [{"scenario_id": WATER["water_scenario_id"], "planning_year": year, "basin_code": "B1",
