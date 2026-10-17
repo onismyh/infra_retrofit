@@ -13,7 +13,13 @@ from .plant_matrices import _air_cooling_matrices, _plant_operating_matrices, _w
 from .resource_access import BiomassAccess, _ammonia_access_data, _biomass_access_matrices, _industry_h2_access_data
 from .assumptions import OptimizationAssumptions
 from .scenario import OptimizationScenario
-from .water_access import _basin_cap_data, _water_access_data, _withdrawal_matrices
+from .water_access import (
+    _basin_cap_data,
+    _water_access_data,
+    _withdrawal_matrices,
+    basin_withdrawal_floor,
+    warn_basin_floor,
+)
 from .year_types import RebuiltDelta, YearData
 
 
@@ -99,6 +105,16 @@ def _build_year_matrices(
     )
     if basin_codes:
         industry_basin_membership = _industry_basin_membership(prepared.industry, basin_codes)
+        # 余量低于"工业最少取水 + 煤电不退役的最低取水"的流域只能靠退役煤电满足硬约束：建模前就说出来。
+        # 煤电下限按本次是否许可空冷改造取空冷或原冷却的取水强度（关空冷时求解侧按原冷却计，`model_resources.py`）。
+        assert basin_membership is not None and basin_residual is not None
+        assert withdrawal_intensity is not None and air_withdrawal_intensity is not None
+        allow_air = bool(assumptions.allow_air_cooling_retrofit)
+        coal_floor, industry_floor = basin_withdrawal_floor(
+            plant["generation_by_pathway"], withdrawal_intensity, air_withdrawal_intensity, basin_membership,
+            industry_data.water_m3, industry_data.route_available, industry_basin_membership, allow_air_cooling=allow_air,
+        )
+        warn_basin_floor(year, basin_codes, basin_residual, coal_floor, industry_floor, allow_air_cooling=allow_air)
     air = _air_cooling_matrices(prepared, scenario, assumptions, plant)
     edges = _edge_matrices(prepared, assumptions, state)
 

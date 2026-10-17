@@ -32,8 +32,11 @@ def _prepare_basin_caps(paths: ProjectPaths, scenario: OptimizationScenario) -> 
     """读入按流域、按规划年的官方用水总量控制指标余量（`water_basin_caps.csv`）；无水约束时返回空表。"""
     if scenario.water_mode == "no_water":
         return pd.DataFrame(columns=["basin_code", "planning_year", "residual_m3_per_year"])
+    # `modelled_coal_closed_loop_1e8_m3` 列只作版本标记：2026-10-16 前的表没有这一列、余量里煤电闭式循环取水计了两次，
+    # 新代码不能静默读旧表（分段号只拦旧结果，拦不了旧输入）。
     return read_input_csv(
-        paths.inputs_dir / "water_basin_caps.csv", ("basin_code", "planning_year", "residual_m3_per_year"),
+        paths.inputs_dir / "water_basin_caps.csv",
+        ("basin_code", "planning_year", "residual_m3_per_year", "modelled_coal_closed_loop_1e8_m3"),
         not_found=". The water constraint (water_mode != 'no_water') needs it; run scripts/build_water_basin_caps.py.",
     )
 
@@ -217,6 +220,15 @@ def _prepare_water(paths: ProjectPaths, plants: pd.DataFrame, assumptions: Optim
     water_links = pd.DataFrame(
         link_rows, columns=["plant_id", "water_node_id", "distance_km", "distance_rank", "delivered_cost_cny_per_m3"]
     )
+    # 厂侧水平衡（供水流量 == 耗水）在所有情景里都建（`model_resources.add_resource_balances`，无水约束时也建）：
+    # 没有一条链路的 hub 耗水被迫为 0，只剩退役一条路径可行，而且不报错。半径内没有水节点的 hub 直接拒绝。
+    unlinked = sorted(set(plants["plant_id"].astype(str)) - set(water_links["plant_id"].astype(str)))
+    if unlinked:
+        more = " …" if len(unlinked) > 6 else ""
+        raise ValueError(
+            f"{len(unlinked)} 个煤电 hub 在 {WATER_MATCH_BUFFER_KM:g} km 内没有水节点（{', '.join(unlinked[:6])}{more}）："
+            "厂侧水平衡会把它们的耗水压成 0、只剩退役可行；核对 water_nodes.csv 与 plants.csv 的坐标，或重建水节点表"
+        )
     logger.info("Water links: %d", len(water_links))
     return water_nodes, water_links, water_availability
 

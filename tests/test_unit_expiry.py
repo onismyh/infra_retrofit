@@ -21,7 +21,11 @@ from coal_retrofit.constants import (
     WATER_INTENSITY_BY_TECH_M3_PER_MWH,
     annuity_factor,
 )
-from coal_retrofit.constants_water_quota import BULLETIN_YEAR, NATIONAL_ONCE_THROUGH_WITHDRAWAL_1E8_M3
+from coal_retrofit.constants_water_quota import (
+    BULLETIN_YEAR,
+    BULLETIN_YEAR_COMMISSIONING_WEIGHT,
+    NATIONAL_ONCE_THROUGH_WITHDRAWAL_1E8_M3,
+)
 from coal_retrofit.optimization._shared import PATHWAY_INDEX, SolveState, _discount_factor
 from coal_retrofit.optimization.data_prep import prepare_inputs
 from coal_retrofit.optimization.data_prep_plants import _with_expiry
@@ -157,6 +161,18 @@ def test_once_through_calibration_counts_only_units_in_the_bulletin(tmp_path, co
     assert once_through_calibration(plants, generation) == pytest.approx(expected, rel=1e-12)
     with pytest.raises(KeyError, match="once_through_bulletin_share"):
         once_through_calibration(plants.drop(columns="once_through_bulletin_share"), generation)
+
+
+def test_once_through_bulletin_share_counts_the_bulletin_year_cohort_at_half(tmp_path) -> None:
+    """公报年当年投产的直流机组按年中惯例计半年（`BULLETIN_YEAR_COMMISSIONING_WEIGHT`，2026-10-17 起）：600 MW 2005 年、
+    300 MW 当年、100 MW 次年投产的三台直流机组，份额 = (600 sub + 0.5 × 300 sup) / (600 sub + 300 sup + 100 sub)。"""
+    paths = _unit_toy(tmp_path, capacity=(600.0, 300.0, 100.0), commission=(2005, BULLETIN_YEAR, BULLETIN_YEAR + 1),
+                      combustion=("subcritical", "supercritical", "subcritical"), cooling=("once-through",) * 3)
+    scenario = OptimizationScenario(experiment_id="T", description="toy", planning_years=YEARS)
+    out = _with_expiry(paths, scenario, OptimizationAssumptions(), pd.read_csv(paths.inputs_dir / "plants.csv"))
+    sub, sup = (WATER_INTENSITY_BY_TECH_M3_PER_MWH[(c, "once-through")]["withdrawal"] for c in ("subcritical", "supercritical"))
+    expected = (600.0 * sub + BULLETIN_YEAR_COMMISSIONING_WEIGHT * 300.0 * sup) / (600.0 * sub + 300.0 * sup + 100.0 * sub)
+    assert out.loc[0, "once_through_bulletin_share"] == pytest.approx(expected, rel=1e-12)
 
 
 @pytest.mark.parametrize("first_unit", ["subcritical", "igcc"])
