@@ -842,39 +842,51 @@
 > 验证（挑到 PR #68 之后的基线上重跑）：ruff 0 条；521 个测试通过（新增 5 个）；方法论 §7.3、§8.1 各加一段，受改动影响的 `opt/data_prep.py`、`opt/water_access.py`、
 > `opt/year_matrices.py` 引用随行号移动。
 
-> 2026-10-17 对 PR #68 的流域余量实现做三视角复核（会计与独立复算、代码与测试、文档一致性，共 39 条发现）并就地修正，`water_basin_caps.csv`
+> 2026-10-17 对 PR #68 的流域余量实现做三视角复核（会计与独立复算、代码与测试、文档一致性，共 39 条发现）并就地修正。合并前对 PR #70 整体做了七维度 review（扣出核心代码、求解侧检查、脚本、测试、方法论、README 等、数据，
+> 每条发现两名怀疑者复核），确认 16 条（无 blocking）并修正，记录在审查记录 §7.5。`water_basin_caps.csv`
 > 完整重建；模型分段仍为 16（该段尚未求解，不另加段；CLAUDE.md §二.7 第十六段补记）：
-> - 口径修正三处：工业扣出只计公报年在运的点源（`status` 为在建的 74 个、3.04 亿 m³ 不计，与煤电侧只计 2025 年及以前投产机组的口径对齐）；
+> - 口径修正四处：工业扣出只计公报年在运的点源（`status` 为在建的 74 个、3.04 亿 m³ 不计，与煤电侧只计 2025 年及以前投产机组的口径对齐）；
 >   公报年当年投产的机组按年中惯例计半年（`constants_water_quota.BULLETIN_YEAR_COMMISSIONING_WEIGHT` = 0.5，扣出与直流标定的公报年份额同用：
 >   GEM 2025 年 7 月快照里投产年 2025 的 94.5 GW 分不开已投运与计划当年投运的在建机组、投产月份未知，全年计高估、不计低估，0.5 为均匀投产下
 >   的无偏值，与新增装机按半年计的统计惯例一致；作者授权的决定，把 GEM status 带进机组表后可改为在建 0、在运 0.5）；直流标定因子随之 0.547 → 0.571；
 >   煤电扣出的利用小时按厂址所在省取（`province_mode` 经别名与缺省回退，与 `_prepare_plants` 同法；此前按机组自己的省查常量表，
->   30 个 hub 的 187 台机组省份与 hub 不同，全国差 0.02%，省名别名会报错）。两项扣出搬到 `builders/water_quota_carveout.py`（`water_quota.py` 回到 347 行），
->   逐机组取水强度与公报年过滤改为共用函数（`plants_water.unit_withdrawal_intensities` / `commissioned_by`，直流标定的公报年份额同用）。
+>   30 个 hub 的 187 台机组省份与 hub 不同，全国差 0.02%，省名别名会报错）；工业扣出另不计求解侧剔除的 hub 下的点源（西藏 4 个水泥 hub、8 个点源、0.04 亿 m³，与 `optimization.industry_inputs`
+>   同一张排除表 `network_branches.EXCLUDED_PROVINCES`；J −0.04、F −0.002）：它们不是决策主体，这份水没有人重用，留在保留量里。
+>   两项扣出搬到 `builders/water_quota_carveout.py`（`water_quota.py` 回到 347 行），
+>   逐机组取水强度与公报年权重改为共用函数（`plants_water.unit_withdrawal_intensities` / `bulletin_weights`，后者返回 1 / 0.5 / 0 的公报年权重，
+>   直流标定的公报年份额同用）。
 > - 防护四处：机组表与 `plants.csv` 不是同一次聚类（空值、装机不为正、hub 集合或装机不同）即报错，与求解侧 `_read_unit_hub_map` 同一核对
 >   （此前空装机被 groupby 跳过、多余机组被丢、空投产年报 IntCastingNaNError）；缺表、缺列报错带重建命令；求解读 `water_basin_caps.csv` 时要求
 >   `modelled_coal_closed_loop_1e8_m3` 列（2026-10-16 前的旧表会被静默读入、煤电闭式循环取水计两次）；超公报项的报错拆成工业与煤电两项并带流域名，
 >   等号边界加浮点容差，扣出里出现九个流域之外的码即报错。
+> - 下限检查一处（求解侧）：`water_access.basin_withdrawal_floor` / `warn_basin_floor` 在关空冷改造（`allow_air_cooling_retrofit` 关）时按煤电
+>   原冷却的取水强度计煤电下限（此前一律按空冷强度，关空冷时漏报：现行输入关空冷时西北诸河 2030 年即触发，原冷却煤电 8.28 + 工业 1.72 = 10.00
+>   对余量 9.95，许可空冷时不触发；告警文案随之区分“全部改空冷”与“维持原冷却”），接线处 `year_matrices` 把开关传下去。
 > - 数字（2030 年，亿 m³；四个规划年相同；对 PR #68 的表）：`cap`、`actual`、`reserved`、`compliance_ratio` 不变；`modelled_industry` 全国 73.9 → 70.8
->   （A −0.25、C −1.10、D −0.13、E −0.37、F −0.30、G −0.14、H −0.66、J −0.11，K 不变 2.389）；煤电扣出 61.53 → 59.85（A 4.71、C 8.95、D 10.97、E 10.65、
->   F 10.95、G 0.63、H 4.07、J 0、K 8.93；厂址所在省小时 +0.01，当年投产计半年 −1.70）；余量合计 1 731.3 → 1 726.7，K 10.326 → 9.953
+>   （A −0.25、C −1.10、D −0.13、E −0.37、F −0.30、G −0.14、H −0.66、J −0.15，K 不变 2.389）；煤电扣出 61.53 → 59.85（A 4.71、C 8.95、D 10.97、E 10.65、
+>   F 10.95、G 0.63、H 4.07、J 0、K 8.93；厂址所在省小时 +0.01，当年投产计半年 −1.70）；余量合计 1 731.3 → 1 726.6，K 10.326 → 9.953
 >   （= (2.389 + 8.928) × 0.8795；m³ 列 995 347 736；PR #68 按恒等式更新的表另有 F、G、K 各差 1 m³，本次为完整重建）。重建后 `warn_basin_floor`
->   九个流域四个规划年都不告警：K 2030 年余量 9.95 对下限 2.71（工业 1.72 + 煤电全空冷 0.98），2040 年对 2.11；K 2030 年不改造取水 8.28 + 2.31 = 10.59
+>   许可空冷改造时九个流域四个规划年都不告警：K 2030 年余量 9.95 对下限 2.71（工业 1.72 + 煤电全空冷 0.98），2040 年对 2.11；K 2030 年不改造取水 8.28 + 2.31 = 10.59
 >   比余量多 0.64，2040 年起（8.77）在余量之下。两项扣出占公报工业非直流项：K 58%、海河 57%、黄河 50%。
 > - 另两条口径的决定（作者授权，理由写在方法论式 34 段与审查记录 §7.4，未改代码）：工业扣出保留按点源坐标归流域（扣出改的是公报侧的保留量，
 >   公报按取水发生地计；约束把点源聚到 hub 是建模简化，47 个 hub 的 127 个点源跨流域、各流域差 −0.72 ～ +0.45、K +0.08、全国抵消，属聚类误差）；
 >   直流机组的补给水等非凝汽器淡水两侧都不计（模型没有这一项的强度来源，对称不计使余量偏紧不偏松，约 8 亿 m³，K 0），直流标定保留全国一个因子
 >   （453.8 对公报子列之和 453.9，分流域不等；按流域标定会拟合观测不到的煤电份额）。
-> - 测试：`tests/test_water_basin_reserve.py` 3 → 25 个（hub 省小时含别名与表外省、机型标签 CFB / 带 /CCS、公报年与次年边界、与 `_prepare_plants` 同算法含
->   直流项非零 hub、缺列参数化 10 个、缺表 2 个、机组表四种不一致、工业在建排除与缺列提示、ratio 分母用 reserved ≠ actual 且直流 > 0 的长江钉住、
+> - 测试：`tests/test_water_basin_reserve.py` 3 → 26 个（hub 省小时含别名与表外省、机型标签 CFB / 带 /CCS、公报年与次年边界、与 `_prepare_plants` 同算法含
+>   直流项非零 hub、缺列参数化 10 个、缺表 2 个、机组表四种不一致、工业在建与求解侧剔除（西藏）hub 的点源排除、缺 hub 表与缺 `status` / `hub_id` / `province` 列的提示、ratio 分母用 reserved ≠ actual 且直流 > 0 的长江钉住、
 >   超公报项报错含两项与等号不报、扣出码越界、actual = 0、库内表恒等式与公报上界、库内表与输入重算对账）；`test_water_constraints`、
->   `test_input_digest` 的 toy 余量表补新列。
+>   `test_input_digest` 的 toy 余量表补新列；`tests/test_water_links_guard.py` 4 → 8 个（下限夹具改成路径列在每座厂上非零且互不相同、
+>   原冷却与空冷取水强度各列不同，取错强度矩阵或对路径列求和都会改变结果；关空冷改造的下限用例、告警文案口径用例、经 `_build_year_matrices` 的
+>   caplog 接线用例——余量取低于两者 / 夹在两个下限之间 / 高于两者三档，接线漏传开关则夹在中间时关空冷漏报——与旧余量表缺
+>   `modelled_coal_closed_loop_1e8_m3` 列的拒绝用例）；`test_render_version` 的重跑拒绝用例补 `data/`。
 > - 文档：方法论式（34）段按新口径改写并补四条披露、§7.3 0.26 → 0.27、附录 §7.3 行与 `plants_unit_hub.csv` / `industry_sources.csv` / `water_basin_caps.csv`
 >   三行、B.4 加公报年一行、`opt/data_prep.py`、`opt/data_prep_plants.py`、`bld/plants_water.py`、`bld/water_quota*.py` 引用随行号移动；
 >   `docs/官方指标口径水预算.md` 现状注列出过期数字；`docs/工业联合减排实现说明.md` §四第 2、5 条与 §六第 2 条加现状注、第 19 行模块指针；
 >   `_indtree/README.md` 三处；`water_access`、`model_resources`、`plot_fig7`、`industry.py`、`test_water_links_guard` 的陈旧注释；本节 2026-10-14、
->   2026-10-16 两条加指针。审查记录 §7 记录本次复核。
-> - 结果：分段 16 尚无求解；`ST_WA_*` 求解时读的是本次重建的表；开流域上限时淡水直流机组的取水随因子 0.547 → 0.571 增 4.4%。验证见本条末尾。
+>   2026-10-16 两条加指针。审查记录 §7 记录本次复核。整体 review 后另改：方法论式 32 段补直流标定只在全国合计对齐的披露、式 34 段补西藏点源与数字、
+>   §7.3 下限段补关空冷口径与真实输入数字、"模型也不收费"改正、`opt/water_access.py` / `opt/year_matrices.py` / `cr/segment.py` 引用随行号移动，
+>   附录 B.1 `industry_hubs.csv` 行与 B.4 公报年行；本节 §0.1 表两处 `year_matrices.py` 行号；审查记录 §7.5。
+> - 结果：分段 16 尚无求解；`ST_WA_*` 求解时读的是本次重建的表；开流域上限时淡水直流机组的取水随因子 0.547 → 0.571 增 4.4%。验证：ruff check src scripts tests 0 条；python -m pytest 全量 549 个通过。
 
 ### 0.1 煤电改造投资与工业改造投资的建模方式是否一样
 
@@ -887,10 +899,10 @@
 | capex 何时收 | 计在新增上：捕集岛（CCS 与 BECCS 共用，CCS↔BECCS 切换不重复付钱）按本期新建量 `retrofit_new` 计，到寿命退出后重建再付（2026-09-30 起按建设年分代，此前计在单调存量的增量上）；空冷与掺烧能力（掺烧按档位分层）同法按本期新建量计（2026-10-02 起，此前计在存量或档位的增量上）；原址重建计在重建份额的增量上 | 每条路线按本期新建能力 B 计（Mt/yr；CCS 为捕集能力，H2 为产能）：寿命内历年新建之和 ≥ 份额 × 当年所需能力（按铭牌定规模，见 §0 的 2026-09-30 改造能力分代条）；capex = 单位 capex × B_t | `optimization/model_costs.py:255`（`_one_off_capex`）、`optimization/model_year.py:194`、`optimization/vintage.py`、`optimization/model_industry.py:153-157`、`:232`（`industry_capex_expr`） |
 | 改造不可逆 | 捕集份额（CCS + BECCS）锁定，只能随退役减少；捕集岛到寿命（20 年）退出，份额仍在就得重建 | 路线份额跨期单调（工业没有退役）；能力到寿命（CCS 20、H2 25 年）退出，份额仍在就得重建 | `optimization/model_linking.py:33-54`、`optimization/model_industry.py:174` |
 | 折现 | 一次性项 × 折现因子；年度项 × 折现因子 × 区间年金权重（6%，基年 2025） | 同一套 | `optimization/model_costs.py:51-52`、`optimization/_shared._discount_factor`、`constants.annuity_factor` |
-| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:126`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:262`、`:295-298` |
+| 固定运维 | 捕集岛：建设年的学习后 capex × 5%/年，计在在役且在用的捕集岛上（≥ 捕集份额 × 装机，与利用小时无关），退役后不付；生物质掺烧能力（BECCS 共用）：capex × 3%/年，计在在用的掺烧能力上（各档位层之和，闲置的不付；单价不随年份变，2026-10-02 起，此前按发电量每 MWh 30 元）；掺氨能力同按掺烧 capex × 3%/年（2026-10-10 起，此前按发电量每 MWh 80 元） | CCS：建设年的 capex × 5%/年，计在在役且在用的捕集能力上（≥ 份额 × 所需能力）；H2 路线：capex × 3.5%/年 × 份额 × 所需产能（单价不随年份变）。所需能力随产量降下来时，多出的部分不付（见下文"仍不一样"第 5 条） | `optimization/year_matrices.py:142`、`optimization/vintage.py:79-89`、`optimization/plant_matrices.py:159-169`、`optimization/model_costs.py:148-157`、`optimization/industry_matrices.py:262`、`:295-298` |
 | 能耗 | 省级煤价 | 再沸器蒸汽按厂址所在省煤价（可按部门设一部分取自余热，2026-10-02 起；水泥缺省 0.3，少发的余热电按情景电价买电，2026-10-07 起），压缩与辅机按情景电价 | `optimization/plant_matrices.py:82-85, 126-128`、`optimization/industry_matrices.py:205-210`、`:235-242` |
 | 学习曲线 | CCS/BECCS capex × `ccs_learning_factor(year)`（15%/倍增，5.6 年倍增一次，参照年 2030） | 工业 CCS 用同一条；H2 路线没有 | `OptimizationAssumptions.ccs_learning_factor`（`optimization/assumptions.py`）、`optimization/industry_matrices.py:200` |
-| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:126`、`optimization/industry_matrices.py:252`、`:291` |
+| 成本乘子 | `ccs_cost_multiplier` 只乘捕集岛 capex 与随之的固定运维 | `industry_cost_multiplier` 只乘捕集 capex 与随之的固定运维；`industry_h2_cost_multiplier` 只乘 H2 路线 capex 与随之的固定运维 | `optimization/plant_matrices.py:147`、`optimization/year_matrices.py:142`、`optimization/industry_matrices.py:252`、`:291` |
 | 期末残值 | 共用 `_add_salvage_credit`，直线折旧到 2070；寿命 CCS 20、掺烧升级 20、空冷 20、管道 40（2026-10-16 前 30）、重建 30 年。分代的能力（捕集岛、空冷、掺烧能力）只计最后一个规划年仍在用的部分（2026-10-02 起，此前按建成量计）；管道按建成量计，重建按建成量计、扣回期末已关停的 | 寿命 CCS 20、H2 路线 25 年；同样只计最后一个规划年仍在用的部分 | `optimization/salvage.py:65`、`optimization/model_costs.py:67-104`、`optimization/vintage.py`（`_end_in_use`） |
 | 到寿命后 | 管道到 40 年（2026-10-16 前 30 年；2030 年铺的在规划期内不到期），捕集岛、空冷与掺烧能力到 20 年退出，还要用就在原址重铺、重建（捕集岛 2026-09-30 起，空冷与掺烧能力 2026-10-02 起，此前照常运行、不再投资）；原址重建的机组按设计寿命 40 年服役，规划期内不到期（残值仍按 30 年折旧） | 捕集能力 20 年、H2 路线 25 年退出，份额仍在就得重建（2026-09-30 起；此前照常运行） | `optimization/vintage.py`（`alive_vintages`）、`optimization/model_linking.add_capacity_constraints`（`alive_indices`）；`optimization/salvage.py` 文件头注明为已知简化 |
 
@@ -1212,13 +1224,13 @@ python -m ruff check src tests scripts
 | `build_network_inputs.py [--sinks <变体>]` | `network.py`、`network_corridors.py`、`network_triangulation.py`、`network_edges.py`、`network_repair.py`、`network_branches.py`、`network_offshore.py` | `pipeline_nodes.csv`、`pipeline_candidate_edges.csv`（`--sinks` 写同后缀的两张） | 1 052、1 559（变体待本机建） |
 | `build_supply_inputs.py` | `supply.py`、`supply_ammonia.py` | `biomass_supply_curve.csv`、`ammonia_supply_curve.csv`（绿氢节点） | 13 883、61 408 |
 | `build_water_inputs.py` | `water.py`、`water_availability.py`、`water_grid.py`、`water_bias.py` | `water_scenarios.csv`、`water_nodes.csv`、`water_availability.csv` | 20、373、29 840 |
-| `build_water_basin_caps.py` | `water_quota.py` | `water_basin_caps.csv` | 36 |
+| `build_water_basin_caps.py` | `water_quota.py`、`water_quota_carveout.py` | `water_basin_caps.csv` | 36 |
 | `build_water_use.py` | `water_use.py` | `water_basin_use.csv` | 720 |
 | `build_sector_targets.py` | （脚本内） | `sector_targets_times_cn60.csv`、`industry_output_index_times_cn60.csv` | 16、20 |
 
 - 先后：管网读 `plants.csv`、`storage_hubs.csv`、`industry_hubs.csv`；水输入读 `plants.csv`；流域指标读 `plants.csv`、`plants_unit_hub.csv`
-  （煤电公报年在运机组的闭式循环扣出，按 `OptimizationAssumptions` 缺省的分省利用小时）与 `industry_sources.csv`（在运工业点源的扣出）——
-  改机组表或小时表后要重跑 `build_water_basin_caps.py`；耗水表读 `water_scenarios.csv`。
+  （煤电公报年在运机组的闭式循环扣出，按 `OptimizationAssumptions` 缺省的分省利用小时）与 `industry_sources.csv`、`industry_hubs.csv`（在运且属于建模 hub 的工业点源的扣出，剔西藏按 hub 表的省）——
+  改机组表、小时表、点源表或 hub 表后要重跑 `build_water_basin_caps.py`；耗水表读 `water_scenarios.csv`。
 - `build_plant_inputs.py` 缺省只写 `plants_unit.csv`；`--hubs` 才重新聚类、重写每个情景都读的 `plants.csv` 与 `plants_unit_hub.csv`，
   只在加列或改正数值时用，之后下游全部重解（见该脚本的说明）。
   `build_storage_inputs.py` 的 `--offshore-basin-dilation-px` 缺省 6（2026-10-11 前缺省不合并），给 0 才不合并海上封存体，得到的不是库里这 89 个汇。

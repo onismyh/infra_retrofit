@@ -2,7 +2,7 @@
 
 公报的工业用水里含闭式循环与空冷煤电的取水（只有直流火(核)电单列）。模型的煤电取水是决策变量，所以这份水要和
 已建模工业一样从预留里扣出、交还给模型；2026-10-16 前只扣工业，煤电的这份水在预留里与约束里各计一次（PR #68 改）。
-2026-10-17 起两项扣出都只计公报年在运的机组与点源，公报年当年投产的机组按年中惯例计半年，煤电的利用小时按 hub 所在省取（与求解侧同法）。
+2026-10-17 起两项扣出都只计公报年在运的机组与点源（点源另须属于求解侧建模的 hub，剔西藏），公报年当年投产的机组按年中惯例计半年，煤电的利用小时按 hub 所在省取（与求解侧同法）。
 余量 = cap − (reserved − industry − coal) × ratio，ratio = min(1, cap / actual)。
 """
 from __future__ import annotations
@@ -165,21 +165,43 @@ def test_coal_carve_out_rejects_a_unit_table_from_another_clustering(tmp_path, h
         modelled_coal_closed_loop_withdrawal(paths)
 
 
-def test_industry_carve_out_leaves_out_sources_under_construction(tmp_path, monkeypatch) -> None:
-    paths = ProjectPaths(tmp_path)
-    paths.inputs_dir.mkdir(parents=True)
+def _write_industry(paths: ProjectPaths) -> None:
+    """四个点源、三个 hub。H1（Xinjiang）：S1 在运、S2 在建；H2（Shanxi）：S3 在运但在退役前；H3（Xizang，求解侧剔除）：S4 在运、
+    坐标落在 K、点源自己的省记 Gansu（按 hub 的省剔除，不看点源自己的省）。K = 东经 100° 以西（见 `_fake_assign_basin_codes`）。"""
+    paths.inputs_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({
-        "source_id": ["S1", "S2", "S3"], "status": ["operating", "construction", "operating pre-retirement"],
-        "water_m3_per_year": [1.0e8, 5.0e8, 2.0e8], "longitude": [87.0, 88.0, 112.0], "latitude": [44.0, 43.0, 37.0],
+        "source_id": ["S1", "S2", "S3", "S4"], "hub_id": ["H1", "H1", "H2", "H3"],
+        "status": ["operating", "construction", "operating pre-retirement", "operating"],
+        "province": ["Xinjiang", "Xinjiang", "Shanxi", "Gansu"],
+        "water_m3_per_year": [1.0e8, 5.0e8, 2.0e8, 3.0e8],
+        "longitude": [87.0, 88.0, 112.0, 88.0], "latitude": [44.0, 43.0, 37.0, 43.0],
     }).to_csv(paths.inputs_dir / "industry_sources.csv", index=False)
+    pd.DataFrame({"hub_id": ["H1", "H2", "H3"], "province": ["Xinjiang", "Shanxi", " Xizang "]}).to_csv(
+        paths.inputs_dir / "industry_hubs.csv", index=False
+    )
+
+
+def test_industry_carve_out_leaves_out_construction_and_solver_dropped_hub_sources(tmp_path, monkeypatch) -> None:
+    """只计公报年在运、且所属 hub 求解侧建模的点源：在建的 S2（5e8）与西藏 hub 下的 S4（3e8，坐标在 K、点源自己的省不是西藏）都不进结果。"""
+    paths = ProjectPaths(tmp_path)
+    _write_industry(paths)
     monkeypatch.setattr(water_grid, "assign_basin_codes", _fake_assign_basin_codes)
     assert modelled_industry_withdrawal(paths) == pytest.approx({"K": 1.0, "C": 2.0})
     assert modelled_industry_withdrawal(ProjectPaths(tmp_path / "empty")) == {}
-    pd.read_csv(paths.inputs_dir / "industry_sources.csv").drop(columns=["status"]).to_csv(
-        paths.inputs_dir / "industry_sources.csv", index=False
-    )
-    with pytest.raises(KeyError, match=r"lacks \['status'\].*build_industry_inputs.py, then .*build_water_basin_caps.py"):
+
+
+def test_industry_carve_out_names_the_missing_table_and_columns(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(water_grid, "assign_basin_codes", _fake_assign_basin_codes)
+    paths = ProjectPaths(tmp_path)
+    _write_industry(paths)
+    (paths.inputs_dir / "industry_hubs.csv").unlink()
+    with pytest.raises(FileNotFoundError, match=r"industry_hubs.csv not found.*build_industry_inputs.py, then .*build_water_basin_caps.py"):
         modelled_industry_withdrawal(paths)
+    for table, column in (("industry_sources.csv", "status"), ("industry_sources.csv", "hub_id"), ("industry_hubs.csv", "province")):
+        _write_industry(paths)
+        pd.read_csv(paths.inputs_dir / table).drop(columns=[column]).to_csv(paths.inputs_dir / table, index=False)
+        with pytest.raises(KeyError, match=rf"{table} lacks \['{column}'\].*build_industry_inputs.py, then .*build_water_basin_caps.py"):
+            modelled_industry_withdrawal(paths)
 
 
 def _reserved(code: str) -> float:
@@ -298,8 +320,8 @@ def test_committed_table_satisfies_the_residual_identity_and_the_bulletin_bound(
 
 
 def test_committed_table_matches_the_carve_outs_recomputed_from_the_inputs(tmp_path) -> None:
-    """库内表的两列扣出与当前 `plants.csv`、`plants_unit_hub.csv`、`industry_sources.csv` 及缺省利用小时表一致：
-    改了这些输入或小时表而没重跑 `scripts/build_water_basin_caps.py`，这里会先于求解发现。"""
+    """库内表的两列扣出与当前 `plants.csv`、`plants_unit_hub.csv`、`industry_sources.csv`、`industry_hubs.csv`（剔除求解侧不建模的 hub）
+    及缺省利用小时表一致：改了这些输入或小时表而没重跑 `scripts/build_water_basin_caps.py`，这里会先于求解发现。"""
     inputs = REPO / "_indtree" / "inputs"
     basins = REPO / "data" / "ChinaBasins" / "basin_l1.gpkg"
     if not (inputs / "water_basin_caps.csv").exists() or not basins.exists():

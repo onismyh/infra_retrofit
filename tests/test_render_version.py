@@ -78,12 +78,14 @@ def test_prepare_dest_refuses_a_populated_version_directory_unless_forced(
     render_version.prepare_dest(dest, force=False)          # 新目录：建好就行
     assert dest.is_dir()
     (dest / "figures").mkdir()
-    render_version.prepare_dest(dest, force=False)          # 空的 figures/ 不算上一轮的归档
+    (dest / "data").mkdir()
+    render_version.prepare_dest(dest, force=False)          # 空的 figures/、data/ 不算上一轮的归档
     (dest / "figures" / "fig1.png").write_bytes(b"")
+    (dest / "data" / "ST_BASE.json").write_text("{}", encoding="utf-8")
     (dest / "render.log").write_text("old", encoding="utf-8")
     (dest / "README.md").write_text("人写的", encoding="utf-8")
-    with pytest.raises(SystemExit, match="figures, render.log"):
+    with pytest.raises(SystemExit, match="figures, data, render.log"):   # 按 ARCHIVED 的顺序列出
         render_version.prepare_dest(dest, force=False)
     render_version.prepare_dest(dest, force=True)
-    assert not (dest / "figures").exists() and not (dest / "render.log").exists()
+    assert not (dest / "figures").exists() and not (dest / "data").exists() and not (dest / "render.log").exists()
     assert (dest / "README.md").read_text(encoding="utf-8") == "人写的"

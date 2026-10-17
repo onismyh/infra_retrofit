@@ -117,7 +117,7 @@ storage_hubs.csv               35 -> 89      取自 _v9tree/inputs/
   （`once_through_withdrawal_*`、`air_withdrawal_*`）。
 * v9 的 `pipeline_nodes.csv` 引用的 350 个 `plant_id` **全部存在**于 `plants.csv`。
 * `water_availability.csv` 与 `water_nodes.csv` 与 `_v9tree` 逐字节相同（v9.1 已核对；2026-10-12 重建后不再相同，见上）。
-* `water_basin_caps.csv` 由指标、预留、`industry_sources.csv`（扣出在运工业点源的取水）与 `plants.csv`、`plants_unit_hub.csv`
+* `water_basin_caps.csv` 由指标、预留、`industry_sources.csv` 与 `industry_hubs.csv`（扣出在运且属于建模 hub 的工业点源的取水，剔西藏按 hub 表的省）与 `plants.csv`、`plants_unit_hub.csv`
   （扣出煤电公报年在运机组的闭式循环取水，2026-10-16 起）生成，
   **不含任何管网信息**，所以直接沿用是正确的。
 
@@ -237,7 +237,7 @@ Linux / macOS `ln -s ../data _indtree/data`；没有它求解时直接报错：�
 > 百万元），根数不设上限，删每边在役新增上限与建成、新增两个二元标志，寿命 30 → 40 年；流域余量把煤电闭式循环与空冷的现状取水也从预留里扣出
 > （此前计两次），`inputs/water_basin_caps.csv` 随之更新（`docs/方法论.md` §6.2、§7.3、§9.2；根 README §0）。同一 PR 还按 GEM 改正重写了 `plants.csv`、
 > `plants_unit.csv`、`plants_unit_hub.csv`（21 行）、加了 `storage_hubs_300km_*` 两张汇变体表，直流标定因子 0.497 → 0.547。2026-10-17 复核后
-> `water_basin_caps.csv` 完整重建：工业扣出不计在建点源、煤电小时按厂址所在省、公报年当年投产的机组按年中惯例计半年（直流标定因子 0.547 → 0.571），
+> `water_basin_caps.csv` 完整重建：工业扣出不计在建点源与西藏 hub 的点源、煤电小时按厂址所在省、公报年当年投产的机组按年中惯例计半年（直流标定因子 0.547 → 0.571），
 > K 余量 10.33 → 9.95、其余流域减 0.1–1.4 亿 m³（根 README §0 2026-10-17 一条）。
 > 第十五段的任何结果都**不得与改后的求解相减**。
 

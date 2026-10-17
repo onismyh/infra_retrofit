@@ -4,7 +4,8 @@
 计两次——一次留在保留量里（`water_quota.basin_reserved_withdrawal`），一次被模型重用。`water_quota.write_basin_caps` 把这两项从
 保留量里刨出、再按达标比例回补（工业项 2026-09-10 起，煤电项 2026-10-16 起，PR #68）。只算公报年（`BULLETIN_YEAR`）已在运的部分：
 在建的工业点源（`status == "construction"`，2026-10-17 起不计）与之后投产的机组那一年没有取水，不在公报里，不能从保留量里刨；
-它们日后的取水要在余量里挤。
+它们日后的取水要在余量里挤。求解侧按省剔除、不做决策的工业 hub（`network_branches.EXCLUDED_PROVINCES`，西藏；
+`optimization.industry_inputs.prepare_industry`）下的点源同样不计（2026-10-17 起）：它们的水没有人在模型里重用，留在保留量里。
 """
 from __future__ import annotations
 
@@ -37,16 +38,30 @@ def _read_columns(path: Path, needed: Iterable[str], hint: str) -> pd.DataFrame:
     return frame
 
 
+def _hubs_outside_the_model(paths: ProjectPaths) -> set[str]:
+    """`industry_hubs.csv` 里求解侧按省剔除、不做决策的 hub 编号（`optimization.industry_inputs.prepare_industry` 与
+    `network_branches.load_industry_hubs` 同一张排除表 `EXCLUDED_PROVINCES`）。按 hub 的省判断，与求解侧一致：点源表里有
+    294 个点源的省与所属 hub 不同，按点源自己的省会与求解侧的点源集合错开。"""
+    from .network_branches import EXCLUDED_PROVINCES
+
+    hubs = _read_columns(paths.inputs_dir / "industry_hubs.csv", ("hub_id", "province"), INDUSTRY_REBUILD_HINT)
+    excluded = hubs["province"].astype(str).str.strip().str.lower().isin(EXCLUDED_PROVINCES)
+    return set(hubs.loc[excluded, "hub_id"].astype(str))
+
+
 def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
     """模型做决策的工业点源在公报年份的取水量，亿 m3/yr，按点源所在流域。
 
     若尚未构建 `inputs/industry_sources.csv`，返回空映射；那是只含煤电的配置，不需要扣出。
     在建点源（`status == "construction"`，当前输入 74 个、3.04 亿 m3）不计：它们公报年还没有取水（2026-10-17 起；此前全算，
-    PR #68 复核发现与煤电侧只计公报年及以前投产机组的口径不对称）。点源按自己的坐标归流域，而求解按枢纽坐标归
-    （`optimization.industry_inputs`）：47 个枢纽的点源跨流域，各流域最多差 0.7 亿 m3、全国合计相同，见方法论 §7.3。
+    PR #68 复核发现与煤电侧只计公报年及以前投产机组的口径不对称）。求解侧剔除的 hub（`_hubs_outside_the_model`，西藏的
+    4 个水泥 hub、8 个点源、0.04 亿 m3）下的点源不计：它们不是决策主体，这份水没有人重用（2026-10-17 起）。点源按自己的
+    坐标归流域，而求解按枢纽坐标归（`optimization.industry_inputs`）：47 个枢纽的点源跨流域，各流域最多差 0.7 亿 m3、
+    全国合计相同，见方法论 §7.3。
 
     Raises:
-        KeyError: 表缺 `status`、`water_m3_per_year` 或经纬度列。
+        FileNotFoundError: 有点源表而没有 `industry_hubs.csv`（两张表由同一个构建脚本写出）。
+        KeyError: 点源表缺 `status`、`water_m3_per_year`、经纬度或 `hub_id` 列，hub 表缺 `hub_id`、`province` 列。
     """
     path = paths.inputs_dir / "industry_sources.csv"
     if not path.exists():
@@ -54,7 +69,9 @@ def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
         return {}
     from .water_grid import assign_basin_codes
 
-    sources = _read_columns(path, ("status", "water_m3_per_year", "longitude", "latitude"), INDUSTRY_REBUILD_HINT)
+    sources = _read_columns(
+        path, ("status", "water_m3_per_year", "longitude", "latitude", "hub_id"), INDUSTRY_REBUILD_HINT
+    )
     status = sources["status"].astype(str).str.strip().str.lower()
     under_construction = status.eq(INDUSTRY_STATUS_UNDER_CONSTRUCTION)
     if under_construction.any():
@@ -63,7 +80,14 @@ def modelled_industry_withdrawal(paths: ProjectPaths) -> dict[str, float]:
             int(under_construction.sum()), float(sources.loc[under_construction, "water_m3_per_year"].sum()) / 1e8,
             BULLETIN_YEAR,
         )
-    sources = sources.loc[~under_construction].copy()
+    outside = sources["hub_id"].astype(str).isin(_hubs_outside_the_model(paths))
+    if outside.any():
+        logger.info(
+            "industry carve-out leaves out %d sources in hub(s) the solver drops (%s; %.3f 1e8 m3): not modelled",
+            int(outside.sum()), sorted(set(sources.loc[outside, "hub_id"].astype(str))),
+            float(sources.loc[outside, "water_m3_per_year"].sum()) / 1e8,
+        )
+    sources = sources.loc[~under_construction & ~outside].copy()
     sources["basin_code"] = assign_basin_codes(paths, sources)
     by_basin = sources.groupby("basin_code")["water_m3_per_year"].sum() / 1e8
     return {str(code): float(value) for code, value in by_basin.items()}

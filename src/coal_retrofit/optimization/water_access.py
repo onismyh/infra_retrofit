@@ -231,14 +231,17 @@ def basin_withdrawal_floor(
     industry_water_m3: np.ndarray,
     industry_route_available: np.ndarray,
     industry_basin_membership: np.ndarray | None,
+    allow_air_cooling: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """各流域取水的两个下限（m3/yr，与 `water_basin_available_m3` 同单位），供 `warn_basin_floor` 与诊断用。
+    """各流域取水的两个下限（m3/yr，与 `water_basin_available_m3` 同单位），供 `warn_basin_floor` 用。
 
-    返回 (煤电全部改空冷、不退役、不加捕集时的取水, 工业每个 hub 取各可用路线中取水最少者)。前者是煤电不退役能做到的
-    最低取水：空冷取水强度已是 min(空冷, 原冷却)（`_withdrawal_matrices`），再低只能退役。
+    返回 (煤电不退役、不加捕集能做到的最低取水, 工业每个 hub 取各可用路线中取水最少者)。前者在许可空冷改造时按全部改空冷计
+    （空冷取水强度已是 min(空冷, 原冷却)，`_withdrawal_matrices`）；不许可时（`allow_air_cooling_retrofit` 关，求解侧空冷份额的
+    上界为 0，`constraints.py`）按原冷却的取水强度计。再低只能退役。
     """
     un = PATHWAY_INDEX["unabated"]
-    coal_min = generation_by_pathway[:, un] * air_withdrawal[:, un]
+    coal_intensity = air_withdrawal if allow_air_cooling else withdrawal
+    coal_min = generation_by_pathway[:, un] * coal_intensity[:, un]
     coal_floor = basin_membership @ coal_min
     water = np.where(industry_route_available, industry_water_m3, np.inf).min(axis=1)
     industry_floor = (
@@ -249,26 +252,30 @@ def basin_withdrawal_floor(
 
 
 def warn_basin_floor(
-    year: int, codes: list[str], residual_m3: np.ndarray, coal_floor_m3: np.ndarray, industry_floor_m3: np.ndarray
+    year: int, codes: list[str], residual_m3: np.ndarray, coal_floor_m3: np.ndarray, industry_floor_m3: np.ndarray,
+    allow_air_cooling: bool = True,
 ) -> list[str]:
     """流域余量低于"工业最少取水 + 煤电不退役的最低取水"时逐流域告警，返回告警的流域码。
 
+    `allow_air_cooling` 只决定文案里煤电下限的口径（全部改空冷 / 维持原冷却），与 `basin_withdrawal_floor` 传同一个值。
+
     这样的流域只有退役煤电才能满足硬约束（`allow_slack` 关时），结果里该流域的退役是水预算逼出来的，不是经济选择；
     余量还低于工业最少取水的，连退光煤电也不够。PR #68 之前的 `_indtree/inputs/water_basin_caps.csv`（西北诸河 K 2030 年
-    余量 2.10 亿 m3，低于工业最少取水 1.72 + 煤电全空冷 0.98 = 2.71）就是这种情形；现行表 K 9.95 对 2.71，九个流域四个规划年
-    都不触发（`docs/方法论.md` §7.3）。
+    余量 2.10 亿 m3，低于工业最少取水 1.72 + 煤电全空冷 0.98 = 2.71）就是这种情形；现行表许可空冷改造时 K 9.95 对 2.71，九个流域四个规划年
+    都不触发；关空冷改造时 K 2030 年触发（原冷却煤电 8.28 + 工业 1.72 = 10.00 对 9.95）（`docs/方法论.md` §7.3）。
     """
     flagged: list[str] = []
+    coal_basis = "all air-cooled" if allow_air_cooling else "at its current cooling (air-cooling retrofit disabled)"
     for b, code in enumerate(codes):
         floor = float(coal_floor_m3[b]) + float(industry_floor_m3[b])
         if float(residual_m3[b]) < floor:
             flagged.append(str(code))
             logger.warning(
                 "water: basin %s in %d: quota residual %.2f 1e8 m3 is below the floor %.2f "
-                "(industry at its least-water routes %.2f + coal all air-cooled without retirement %.2f); "
+                "(industry at its least-water routes %.2f + coal %s without retirement %.2f); "
                 "the basin cap can only be met by retiring coal there%s",
                 code, year, float(residual_m3[b]) / 1e8, floor / 1e8, float(industry_floor_m3[b]) / 1e8,
-                float(coal_floor_m3[b]) / 1e8,
+                coal_basis, float(coal_floor_m3[b]) / 1e8,
                 " (or not at all: it is below industry's floor alone)" if float(residual_m3[b]) < float(industry_floor_m3[b]) else "",
             )
     return flagged
