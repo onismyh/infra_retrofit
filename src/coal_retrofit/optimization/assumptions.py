@@ -32,7 +32,11 @@ class OptimizationAssumptions:
     # 美元汇率取整，约为 2023 年年均：美联储 H.10 年均 7.0809（`fred_h10`）；国家统计局 2023 年统计公报
     # 7.0467（只见检索摘要，未核原文）。模型里的美元参数分属不同价格年，都按这一个汇率折算，没有价格指数。
     usd_to_cny: float = 7.0
-    retire_cost_cny_per_mwh: float = 450.0  # ⚠ 假设（无出处）
+    # 退役费，元/MWh，按退役份额 x 基线发电量逐年计（`plant_matrices` 的成本基数退役列）。缺省 0（2026-10-17 起，作者授权
+    # 本会话决定；此前 450，v9 首次入库即有、无出处）：增量口径下退役已失去售电收入（退役列 = −参照，`plant_matrices`），按电价
+    # 计的售电收入就是这部分电量的价值，再按每 MWh 收替代电量费是重复计；未到期机组的未回收投资另由搁浅资产计
+    # （`stranded_asset_base_cny_per_kw`）。字段保留作敏感性：450 为旧值；容量电价 330 元/(kW·a) 按 4 307 h 折约 77。
+    retire_cost_cny_per_mwh: float = 0.0
     # CCS/BECCS 捕集岛运维按每年 ccs_om_fraction x 改造 CAPEX 计（见下方 ccs_om_fraction），生物质与掺氨的掺烧运维按每年
     # biomass_upgrade_om_fraction / ammonia_upgrade_om_fraction x 掺烧能力的 capex 计（生物质 2026-10-02 起、掺氨 2026-10-10
     # 起），都不另设每 MWh 附加项：两者并存会把同一笔成本重复计算。此前生物质与 BECCS 的掺烧运维各 30 CNY/MWh，按改造路径的

@@ -123,10 +123,11 @@ class OptimizationScenario:
     # An et al. 2025 不设速率上限，其 Base 情景 2030-2040 年仅比 Flex 情景多出的提前退役就有 302.8-397.1 GW。
     # v9 的 `*_noair` 结果正好卡在这个上限上（`a303f05` 里的 `_v9tree/scripts/plot_fig5_pathway_succession.py`）。
     max_new_retirement_share_per_period: float = 0.15
-    # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线乘以此系数，是必然多发，不是上限。
-    # ⚠ 假设（用法无出处）：数值与 Fan et al. 2023 SI Table 11 里 CCS 类机组与未改造煤电的最大容量因子之比
-    # 0.69/0.60 = 1.15 相同，但那是上限之比，且只有 CCS 类；生物质、掺氨两列没有出处。
-    retrofit_cf_boost: float = 1.15
+    # 改造后 CF 提升：改造过的电厂（CCS/生物质/BECCS/氨）发电量相对基线乘以此系数，是必然多发，不是上限。缺省 1.0（2026-10-17
+    # 起，作者授权本会话决定；此前 1.15）：模型没有电量平衡，改造路径多发的电不从别处扣，`ST_` 的煤电利用小时又是 TIMES 给定的
+    # 轨迹，乘 1.15 等于让改造机组跑在轨迹之外。1.15 只与 Fan et al. 2023 SI Table 11 里 CCS 类机组与未改造煤电的最大容量因子之比
+    # 0.69/0.60 相同，那是上限之比、只有 CCS 类，生物质、掺氨两列没有出处。字段保留作敏感性。
+    retrofit_cf_boost: float = 1.0
     # 原址重建参数：到期电厂可按新建成本的 70% 重建
     rebuild_capex_fraction: float = 0.70  # stranded_asset_base_cny_per_kw 的 70%；⚠ 假设（无出处）
     # 重建机组取超超临界效率：逐台毛热耗取 min(机组毛热耗, 3.6 / 0.45 = 8.0 GJ/MWh)，不劣于原值；空冷机组原址重建仍为

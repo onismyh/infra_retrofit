@@ -258,7 +258,8 @@ def test_retired_plant_pays_no_capture_island_om(tmp_path) -> None:
     """2030 年建捕集岛，2040 年目标归零、全厂退役：捕集岛仍在寿命内，但不再运行，不付固定运维，也不再建。
     只开放 CCS 与退役，退役速率不设上限；目标缺口的罚价调高 10 倍，否则留一部分捕集、付缺口比全退便宜。
     2026-09-30 前固定运维按当年份额计，结论相同；这里锁住的是分代以后仍然成立：在用的捕集岛只需覆盖当年的
-    捕集份额，闲置的在役部分不付固定运维。"""
+    捕集份额，闲置的在役部分不付固定运维。退役费钉在 2026-10-17 前的缺省 450 元/MWh：缺省改 0 后退役比捕集便宜，
+    2030 年的 0.5 直接靠退役达到、不建捕集岛，测不到这里要锁的情形。"""
     paths = _write_toy_inputs(tmp_path, retirement_year=9999)
     _write_targets(paths, {2030: 0.5, 2040: 0.0})
     scenario = OptimizationScenario(
@@ -270,7 +271,7 @@ def test_retired_plant_pays_no_capture_island_om(tmp_path) -> None:
         max_new_retirement_share_per_period=1.0,
         solver_time_limit=300,
     )
-    assumptions = replace(_toy_assumptions(), slack_penalty_cny_per_unit=5.0e10)
+    assumptions = replace(_toy_assumptions(), slack_penalty_cny_per_unit=5.0e10, retire_cost_cny_per_mwh=450.0)
     prepared = prepare_inputs(paths, scenario, assumptions)
     state = SolveState(
         edge_added_stock_mtpa=np.zeros(len(prepared.network.edges), dtype=np.float64),

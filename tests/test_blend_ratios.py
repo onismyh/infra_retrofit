@@ -332,6 +332,8 @@ def _solve_blend_toy(
         electricity_price_cny_per_mwh_by_year=(490.0, 550.0),
         pathway_disable=pathway_disable,
         solver_time_limit=300,
+        # toy 按 2026-10-17 前的缺省 1.15 标定（改造多发的电有利可图，几条测试的前提靠它），缺省改 1.0 后在这里钉住。
+        retrofit_cf_boost=1.15,
     )
     if mip_gap is not None:
         scenario = replace(scenario, mip_gap=mip_gap)

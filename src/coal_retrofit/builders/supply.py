@@ -57,7 +57,7 @@ def build_biomass_supply_dataframe(paths: ProjectPaths) -> pd.DataFrame:
 
     with rasterio.open(biomass_tif) as src:
         biomass = src.read(1).astype(np.float64)
-        row_areas = latlon_row_areas(src.transform, src.height)
+        row_areas = latlon_row_areas(src.transform, src.height, src.crs)
         pixel_area = np.broadcast_to(row_areas[:, None], biomass.shape)
         zone_grid, _ = rasterize_provinces_to_match(provinces, biomass_tif)
         # 栅格单位为 GJ/km²（Wang et al. 2023, Sci Data）；

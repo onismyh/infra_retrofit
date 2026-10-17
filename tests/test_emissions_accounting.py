@@ -23,11 +23,12 @@ from test_blend_ratios import SCENARIO, _prepared
 
 
 def test_pathway_and_retirement_cost_defaults_are_publication_ready() -> None:
+    """退役费缺省 0（2026-10-17 起，此前 450）：退役已失去售电收入，不再另按每 MWh 收替代电量费；字段仍可设正值作敏感性。"""
     assumptions = OptimizationAssumptions()
 
     assert PATHWAYS[0] == "unabated"
     assert assumptions.fixed_cost_cny_per_mwh("unabated") == 0.0
-    assert assumptions.fixed_cost_cny_per_mwh("retire") > 0.0
+    assert assumptions.fixed_cost_cny_per_mwh("retire") == assumptions.retire_cost_cny_per_mwh == 0.0
 
 
 def test_pathway_split_unabated_uses_the_operating_emissions() -> None:
